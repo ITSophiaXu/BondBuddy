@@ -1,6 +1,6 @@
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {readFile,lstat,chmod,chown,unlink} from 'node:fs/promises';
+import {readFile,lstat,chmod,chown,unlink,readdir} from 'node:fs/promises';
 import net from 'node:net';
 import {pathToFileURL} from 'node:url';
 import {readPrivateJson} from './private-files.mjs';
@@ -20,9 +20,10 @@ export async function serveTransport(config){
   const state=await readPrivateJson('/etc/bondbuddy/transport/state.json'),pg=config.private_pg;
   requireThat(state.identity.account_id===config.account_id&&state.identity.region===config.region&&
     sha256(await readFile(pg.config_file))===pg.config_sha256,'TRANSPORT_SERVICE_SCOPE');
-  const socketPath='/run/bondbuddy/service/transport.sock';
-  const parent=await lstat('/run/bondbuddy/service');
-  requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&(parent.mode&0o777)===0o750,'TRANSPORT_SOCKET_DIRECTORY');
+  const socketPath='/run/bondbuddy/transport-socket/transport.sock';
+  const parent=await lstat('/run/bondbuddy/transport-socket');
+  requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&parent.gid===1000&&(parent.mode&0o777)===0o750&&
+    (await readdir('/run/bondbuddy/transport-socket')).every(name=>name==='transport.sock'),'TRANSPORT_SOCKET_DIRECTORY');
   try{const s=await lstat(socketPath);requireThat(s.isSocket()&&s.uid===0,'TRANSPORT_SOCKET_DRIFT');
     // A connectable socket belongs to an active service; never unlink it.
     const alive=await new Promise(resolve=>{const c=net.connect(socketPath);c.once('connect',()=>{c.destroy();resolve(true);});c.once('error',e=>resolve(e.code!=='ECONNREFUSED'));});

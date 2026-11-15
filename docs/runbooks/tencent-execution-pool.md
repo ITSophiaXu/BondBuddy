@@ -73,6 +73,10 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 新源凭据只由根权限控制服务读取 `/etc/bondbuddy/execution-control/source-credentials.json`，父目录 root:root/0700、文件 root:root/0600，JSON 严格为 secretId、secretKey。source signer 仅允许 AssumeRole 到固定控制角色；取得短 STS 后校验 AccountId、roleId:sessionName 和 PrincipalId。业务运维进程通过 `/run/bondbuddy/elastic-control/issuer.sock` 取得短 STS，不挂载长效源文件或 CA 私钥。独立签发服务使用 PG 只读操作/费用接口及准确云回读授权签发，私钥留在本地根权限目录。当前接入只准独立隔离数据库，正式数据库迁移和策略开启需要各自验收。
 
-运维入口共享持久 flock/时间前像，至少 60 秒才能开始下一次云协调，进程退出不重置调用间隔；节点 broker 同样持久限制每分钟一次。两节点一日内最多 2880 次刷新 Get、48 次初始 Get，单运维 tick 最坏 34 次 SSM 调用、一日最多 1440 tick，加 1024 次管理余量，保守上界 52912 次。有限当日费用应为两 Secret 六元月费加六个万次包 2.4 元，即 8.4 元完整预留。当前 role 的 Get/Put 授权不能替代 ListSecretVersionIds/DeleteSecretVersion；版本清理授权不足将安全关闭发行。
+运维入口共享持久 flock/时间前像，至少 60 秒才能开始下一次云协调，进程退出不重置调用间隔；节点 broker 同样持久限制每分钟一次。按有限窗口剩余分钟数 N，保守纳入每轮最多两节点各 34 次续期调用、两次 broker Get，并按至多 N+2 次启动各 24 次初始 Get，完整调用上界为 94N+48，另叠加管理调用/已花费用。单运维入口最少 60 秒且持久跨重启；禁止旁路自动重启扩大启动次数。两 Secret 六元整月义务加按每万次向上取整的 API 费用必须完整预留。例如 N=746 时最多 70172 次、费用上界 9.2 元，采用十元保守预留；整个自然日 N=1440 则应至少预留 11.6 元。当前 role 的 Get/Put 授权不能替代 ListSecretVersionIds/DeleteSecretVersion；版本清理授权不足将安全关闭发行。
 
 报价需明确 secret 与 snapshot 两项固定未决义务，保留到真实对账证据解除；自然日变化不能清零。2026 年 11 月 15 日计算加两盘报价为单节点 0.91 元/小时、双节点 1.82 元/小时，准确停算力后双节点磁盘为 0.22 元/小时。SSM 和自制镜像快照费用另行完整预留；未知快照字节/费率禁止新增支出。主站套餐余量只能支持有效到当日北京时间 24:00 的网络报价，不代表永久免费。自动长期模式还须绑定运行状态刷新消费、旧会话继续、新 TLS/PG 成功和模型 socket 拒绝的准确版本证据。
+
+小时总费用上限允许四元，计算双节点 1.6 元与自然日总额 48 元仍保持。当前主站 5Mbps 的物理上界与有限当日套餐余量用于网络报价，不人为激活每节点 1Mbps 限速。
+
+容器保持 `/run/bondbuddy/service/transport.sock` 路径，但只挂载宿主专用 `/run/bondbuddy/transport-socket` 目录；该目录只允许 socket，绝不包含 service env 或 key。重启 transport 后新 inode 会在同一个容器内可见。两个根权限 unit 通过 RuntimeDirectory/Group 1000/0750 创建冷启动目录，并保留目录以便代码拒绝未知残留，不自动删除未知内容。

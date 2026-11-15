@@ -10,6 +10,7 @@ import {createControlAuthority} from './control-authority.mjs';
 import {installPrivateTransport,transportOperationSan} from './private-transport.mjs';
 import {TencentTransport} from './tencent-cvm.mjs';
 import {sha256} from './policy.mjs';
+import {issueTransportCredentials} from './transport-issuer.mjs';
 const exec=promisify(execFile);
 
 test('root signing authorization comes from PG and exact cloud ACK; leaf binds the immutable operation',async t=>{
@@ -19,10 +20,11 @@ test('root signing authorization comes from PG and exact cloud ACK; leaf binds t
   const issuer={ca_file:join(dir,'ca.pem'),signing_key_file:join(dir,'ca.key'),ca_sha256:sha256(await readFile(join(dir,'ca.pem')))};
   const config={account_id:identity.account_id,region:identity.region,control_role_id:'7',issuer,pool:{source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64)}};
   let operation={operation_id:'op1',identity,state:'completed',action:'run',provider_request_id:'ack1',request:{source_sha256:config.pool.source_sha256,image_sha256:config.pool.image_sha256,launch_manifest_sha256:'c'.repeat(64)}};
-  let cloudAck='ack1',nodeEpoch=identity.epoch,dbChecks=0;
+  let cloudAck='ack1',nodeEpoch=identity.epoch,dbChecks=0,invalidateOnSign=false;
   const authority=createControlAuthority({config,control:{loadOperation:async()=>operation},expenseLedger:async()=>({nodes:[{identity:{...identity,epoch:nodeEpoch},state:'ready',cloud_start_operation_id:'op1',launch_manifest_sha256:operation.request.launch_manifest_sha256}]}),
     cloud:{describe:async()=>({instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'RunInstances',latest_operation_request_id:cloudAck})},
-    verifyDatabase:async()=>{dbChecks++;},credentialsProvider:{get:async()=>({secretId:'short-only',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+1800000})}});
+    verifyDatabase:async()=>{dbChecks++;},credentialsProvider:{get:async()=>({secretId:'short-only',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+1800000})},
+    sign:async(...args)=>{const c=await issueTransportCredentials(...args);if(invalidateOnSign)nodeEpoch='new-epoch';return c;}});
   const request={version:'execution-pg-issuer-v1',action:'issue',operation_id:'op1',identity};
   const result=await authority.handle(request);
   assert.equal(new X509Certificate(result.transport_credentials.cert_pem).subjectAltName,`URI:${transportOperationSan(identity,'op1','ack1')}`);
@@ -35,7 +37,24 @@ test('root signing authorization comes from PG and exact cloud ACK; leaf binds t
   nodeEpoch='old';await assert.rejects(authority.handle(request),/AUTHORITY_NODE_SCOPE/);nodeEpoch=identity.epoch;
   operation={...operation,state:'unknown'};await assert.rejects(authority.handle(request),/AUTHORITY_OPERATION_SCOPE/);
   await assert.rejects(authority.handle({...request,operation:{state:'completed'}}),/AUTHORITY_ISSUER_ACTION/);
+  operation={...operation,state:'completed'};invalidateOnSign=true;
+  await assert.rejects(authority.handle(request),/AUTHORITY_NODE_SCOPE/);
+  assert.equal(sha256(await readFile(join(dir,'private/client.pem'))),original);
   assert.ok(dbChecks>=4);
+});
+
+test('authority deadline retains the uncertain flight and a disconnect cannot trigger issuance',async()=>{
+  let release,calls=0;const pending=new Promise(r=>{release=r;});
+  const authority=createControlAuthority({config:{account_id:'123456',control_role_id:'7',issuer:{}},credentialsProvider:{get:async()=>{
+    calls++;await pending;return {token:'synthetic',expiresAt:Date.now()+1800000};}}});
+  const request={version:'execution-control-credentials-v1',account_id:'123456',role_id:'7'};
+  const first=authority.handle(request,{deadline:Date.now()+20});
+  await assert.rejects(authority.handle(request),/AUTHORITY_BUSY/);
+  await assert.rejects(first,/AUTHORITY_REQUEST_EXPIRED/);
+  await assert.rejects(authority.handle(request),/AUTHORITY_BUSY/);assert.equal(calls,1);
+  release();await new Promise(r=>setImmediate(r));
+  await assert.rejects(authority.handle(request,{isConnected:()=>false}),/AUTHORITY_REQUEST_EXPIRED/);assert.equal(calls,1);
+  assert.ok((await authority.handle(request)).credentials.token);assert.equal(calls,2);
 });
 
 test('actual source TC3 signer and provider verify role and originating principal before exposing a short credential',async()=>{

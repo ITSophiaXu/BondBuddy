@@ -45,8 +45,8 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
   const compute=quote.components.find(c=>c.kind==='compute');
   requireThat(compute.running_cny_per_node_hour===.8 && compute.stopped_cny_per_node_hour===0, 'EXPENSE_COMPUTE_RATE');
   const running=quote.components.reduce((a,c)=>a+c.running_cny_per_node_hour,0), stopped=quote.components.reduce((a,c)=>a+c.stopped_cny_per_node_hour,0);
-  requireThat(running*2<=config.total_cap_cny_per_hour+1e-9 && running*2<=2.4+1e-9 && stopped<=running &&
-    config.total_cap_cny_per_hour<=2.4 && config.period_cap_cny===48 && config.reservation_hours>=1 && config.drain_reserve_hours>=1, 'EXPENSE_RATE_CAP');
+  requireThat(running*2<=config.total_cap_cny_per_hour+1e-9 && running*2<=4+1e-9 && stopped<=running &&
+    config.total_cap_cny_per_hour<=4 && config.period_cap_cny===48 && config.reservation_hours>=1 && config.drain_reserve_hours>=1, 'EXPENSE_RATE_CAP');
   const ops=new Map(ledger.operations.map(o=>[o.operation_id,o]));
   requireThat(ops.size===ledger.operations.length && inventory.length<=2 && new Set(inventory.map(i=>i.instance_id)).size===inventory.length, 'EXPENSE_INVENTORY_DRIFT');
   const live=ledger.nodes.filter(n=>n.destroyed_at===null);
@@ -117,7 +117,7 @@ export function costAdmission(input, inventory, config) {
   if(Object.entries(period).some(([k,v])=>input[k]!==v)||now>=Date.parse(period.period_end))return fail('expense_period_mismatch');
   if(input.currency!=='CNY'||input.account_id!==config.account_id||input.region!==config.region||input.quote_sha256!==config.quote_sha256||
     input.expense_policy_sha256!==config.expense_policy_sha256||input.policy_revision!==config.expense_policy_revision||
-    input.period_cap_cny!==48||input.total_hourly_cap_cny>2.4||input.inventory_sha256!==sha256(canonical(inventory))||
+    input.period_cap_cny!==48||input.total_hourly_cap_cny>4||input.inventory_sha256!==sha256(canonical(inventory))||
     !digest(input.ledger_sha256)||input.quote_component_evidence?.length!==6)return fail('expense_source_mismatch');
   const keys=['spent_upper_bound_cny','reserved_upper_bound_cny','unknown_liability_cny','drain_reserve_cny','resident_remaining_period_cny','prospective_slot_cny','fixed_commitments_upper_bound_cny'];
   if(keys.some(k=>!finite(input[k]))||input.drain_reserve_cny<1.6)return fail('expense_bound_missing');

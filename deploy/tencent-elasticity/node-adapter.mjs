@@ -53,6 +53,10 @@ const runtime = {
     await mkdir('/run/bondbuddy/service', {recursive: true, mode: 0o750});
     requireThat((await lstat('/run/bondbuddy/service')).isDirectory() && !(await lstat('/run/bondbuddy/service')).isSymbolicLink(),'NODE_PRIVATE_DIRECTORY');
     await chown('/run/bondbuddy/service',0,1000);await chmod('/run/bondbuddy/service',0o750);
+    await mkdir('/run/bondbuddy/transport-socket',{recursive:true,mode:0o750});
+    const socketParent=await lstat('/run/bondbuddy/transport-socket');
+    requireThat(socketParent.isDirectory()&&!socketParent.isSymbolicLink()&&socketParent.uid===0,'NODE_SOCKET_DIRECTORY');
+    await chown('/run/bondbuddy/transport-socket',0,1000);await chmod('/run/bondbuddy/transport-socket',0o750);
     requireThat(config.seccomp_sha256===sha256(await readFile(config.seccomp_file)) && config.apparmor_sha256===sha256(await readFile(config.apparmor_file)),'NODE_SECURITY_PROFILE_DRIFT');
     const profiles=await readFile('/sys/kernel/security/apparmor/profiles','utf8');
     requireThat(profiles.split('\n').includes('bondbuddy-codex-v1 (enforce)'),'NODE_SECURITY_PROFILE_NOT_LOADED');

@@ -1,5 +1,5 @@
 import net from 'node:net';
-import {lstat,chown,chmod,unlink} from 'node:fs/promises';
+import {lstat,chown,chmod,unlink,readdir} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {canonical,requireThat} from './policy.mjs';
 import {readPrivateJson,observationArchive} from './private-files.mjs';
@@ -8,49 +8,72 @@ import {issueTransportCredentials,validateTransportIssuer} from './transport-iss
 
 /** The local root authority owns source credentials and the CA. Callers send
  * IDs only; PG and exact cloud readback supply all signing authorization. */
-export function createControlAuthority({config,control,expenseLedger,cloud,credentialsProvider,verifyDatabase,now=Date.now}){
+export function createControlAuthority({config,control,expenseLedger,cloud,credentialsProvider,verifyDatabase,now=Date.now,sign=issueTransportCredentials}){
   const issuer=config.issuer;
-  return {async handle(request){
+  let active=null;
+  async function execute(request,guard){
+    guard();
+    const checked=async p=>{guard();const result=await p;guard();return result;};
     requireThat(request&&['execution-pg-issuer-v1','execution-control-credentials-v1'].includes(request.version),'AUTHORITY_PROTOCOL');
     if(request.version==='execution-control-credentials-v1'){
       requireThat(Object.keys(request).every(k=>['version','account_id','role_id'].includes(k))&&
         request.account_id===config.account_id&&request.role_id===config.control_role_id,'AUTHORITY_CREDENTIAL_SCOPE');
-      const credentials=await credentialsProvider.get();
+      const credentials=await checked(credentialsProvider.get());
       requireThat(credentials.token&&credentials.expiresAt>now()+60000,'AUTHORITY_SHORT_EXPIRED');
       return {version:request.version,account_id:config.account_id,role_id:config.control_role_id,credentials};
     }
     requireThat(['status','issue'].includes(request.action)&&Object.keys(request).every(k=>['version','action','operation_id','identity'].includes(k)),'AUTHORITY_ISSUER_ACTION');
-    await verifyDatabase();await validateTransportIssuer(issuer,{now});
-    if(request.action==='status'){await credentialsProvider.get();return {version:request.version,ready:true,ca_sha256:issuer.ca_sha256};}
+    await checked(verifyDatabase());await checked(validateTransportIssuer(issuer,{now}));
+    if(request.action==='status'){await checked(credentialsProvider.get());return {version:request.version,ready:true,ca_sha256:issuer.ca_sha256};}
     requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(request.operation_id??''),'AUTHORITY_OPERATION_ID');
-    const operation=await control.loadOperation(request.operation_id),snapshot=await expenseLedger();
+    const operation=await checked(control.loadOperation(request.operation_id));
+    const verifyBinding=async()=>{
+    const current=await checked(control.loadOperation(request.operation_id)),snapshot=await checked(expenseLedger());
+    requireThat(canonical(current)===canonical(operation),'AUTHORITY_OPERATION_CHANGED');
     requireThat(operation?.state==='completed'&&['run','start'].includes(operation.action)&&operation.provider_request_id&&
       canonical(operation.identity)===canonical(request.identity)&&operation.identity.account_id===config.account_id&&operation.identity.region===config.region&&
       operation.request.source_sha256===config.pool.source_sha256&&operation.request.image_sha256===config.pool.image_sha256,'AUTHORITY_OPERATION_SCOPE');
     const node=snapshot.nodes.find(n=>canonical(n.identity)===canonical(operation.identity));
     requireThat(node&&['starting','ready','draining'].includes(node.state)&&node.cloud_start_operation_id===operation.operation_id&&
       node.launch_manifest_sha256===operation.request.launch_manifest_sha256&&snapshot.nodes.filter(n=>n.state!=='destroyed').length<=2,'AUTHORITY_NODE_SCOPE');
-    const observed=await cloud.describe(operation.identity.instance_id);
+    const observed=await checked(cloud.describe(operation.identity.instance_id));
     requireThat(observed.instance_state==='RUNNING'&&observed.latest_operation_state==='SUCCESS'&&
       observed.latest_operation===(operation.action==='run'?'RunInstances':'StartInstances')&&observed.latest_operation_request_id===operation.provider_request_id,
       'AUTHORITY_CLOUD_COMPLETION');
-    const transport_credentials=await issueTransportCredentials(operation.identity,issuer,{now,operation});
+    };
+    await verifyBinding();
+    const transport_credentials=await checked(sign(operation.identity,issuer,{now,operation}));
+    // A Stop or newer epoch during signing invalidates the result before any
+    // caller can install or publish it. Never return a late signed response.
+    await verifyBinding();
     return {version:request.version,operation_id:operation.operation_id,provider_request_id:operation.provider_request_id,transport_credentials};
+  }
+  return {async handle(request,{deadline=now()+20000,isConnected=()=>true}={}){
+    requireThat(!active,'AUTHORITY_BUSY');let expired=false,timer;
+    const guard=()=>requireThat(!expired&&now()<deadline&&isConnected(),'AUTHORITY_REQUEST_EXPIRED');
+    const operation=Promise.resolve().then(()=>execute(request,guard));
+    const record={};active=record;
+    const cutoff=new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;reject(Error('AUTHORITY_REQUEST_EXPIRED'));},Math.max(0,Math.min(20000,deadline-now())));});
+    operation.finally(()=>{clearTimeout(timer);if(active===record)active=null;}).catch(()=>{});
+    return Promise.race([operation,cutoff]);
   }};
 }
 
 export async function serveControlAuthority(authority,path='/run/bondbuddy/elastic-control/issuer.sock'){
   requireThat(process.getuid()===0&&path==='/run/bondbuddy/elastic-control/issuer.sock','AUTHORITY_ROOT_REQUIRED');
   const parent=await lstat('/run/bondbuddy/elastic-control');
-  requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&parent.gid===1000&&(parent.mode&0o777)===0o750,'AUTHORITY_DIRECTORY');
+  requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&parent.gid===1000&&(parent.mode&0o777)===0o750&&
+    (await readdir('/run/bondbuddy/elastic-control')).every(name=>name==='issuer.sock'),'AUTHORITY_DIRECTORY');
   try{const s=await lstat(path);requireThat(s.isSocket()&&s.uid===0&&s.gid===1000&&(s.mode&0o777)===0o660,'AUTHORITY_SOCKET_DRIFT');
     const alive=await new Promise(resolve=>{const c=net.connect(path);c.once('connect',()=>{c.destroy();resolve(true);});c.once('error',e=>resolve(e.code!=='ECONNREFUSED'));});
     requireThat(!alive,'AUTHORITY_ALREADY_ACTIVE');await unlink(path);
   }catch(error){if(error.code!=='ENOENT')throw error;}
-  const server=net.createServer(socket=>{let bytes=0,text='',handling=false;socket.setTimeout(20000,()=>socket.destroy());socket.on('error',()=>{});
+  const server=net.createServer(socket=>{let bytes=0,text='',handling=false;const deadline=Date.now()+20000;
+    const timer=setTimeout(()=>socket.destroy(),20000);socket.once('close',()=>clearTimeout(timer));socket.on('error',()=>{});
     socket.on('data',async chunk=>{if(handling)return;bytes+=chunk.length;if(bytes>8192){socket.destroy();return;}text+=chunk.toString();
       if(!text.endsWith('\n'))return;handling=true;socket.pause();
-      try{socket.end(canonical(await authority.handle(JSON.parse(text)))+'\n');}catch{socket.end('{"status":"blocked"}\n');}
+      try{const result=await authority.handle(JSON.parse(text),{deadline,isConnected:()=>!socket.destroyed});if(!socket.destroyed)socket.end(canonical(result)+'\n');}
+      catch{if(!socket.destroyed)socket.end('{"status":"blocked"}\n');}
     });
   });server.maxConnections=16;
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(path,resolve);});await chown(path,0,1000);await chmod(path,0o660);

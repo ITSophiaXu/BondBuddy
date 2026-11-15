@@ -86,10 +86,21 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         return;
       }
       await syncBudget();
-      const starting = snapshot.nodes.find(n => n.state === 'starting');
-      if (starting) {
-        if (starting.cloud_start_operation_id) await enroll(await control.loadOperation(starting.cloud_start_operation_id));
-        return; // no capacity from booting nodes and no new instance while boot is unfinished
+      // Advance contraction before any potentially slow credential issuance.
+      // A draining task without a positive finish receipt still gets renewal.
+      let drainAttempted=false,plan;
+      const ongoing=snapshot.nodes.find(n=>['draining','drained'].includes(n.state));
+      if(ongoing?.drain_operation_id){
+        const result=await controller.drain(ongoing.identity,ongoing.drain_operation_id,ongoing.revision);
+        if(result.state!=='draining')return;
+        drainAttempted=true;snapshot=await control.snapshot();
+      }else if(!snapshot.nodes.some(n=>n.state==='starting')){
+        plan=await controller.plan(inventory);
+        if(plan.kind==='drain'){
+          const result=await controller.drain(plan.identity,randomUUID(),plan.revision);
+          if(result.state!=='draining')return;
+          drainAttempted=true;snapshot=await control.snapshot();
+        }
       }
       let renewalBlocked=false,renewalIssued=false;
       if(!dependencies.cloud)try{
@@ -108,13 +119,13 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         }}catch{}
         log({event:'execution_pool_transport_admission_closed'});
       }
-      const ongoing = snapshot.nodes.find(n => ['draining', 'drained'].includes(n.state));
-      if (ongoing) {
-        // The drain operation ID is durable in PG and exported with the node.
-        if (ongoing.drain_operation_id) await controller.drain(ongoing.identity, ongoing.drain_operation_id, ongoing.revision);
+      if(drainAttempted)return;
+      const starting=snapshot.nodes.find(n=>n.state==='starting');
+      if(starting){
+        if(starting.cloud_start_operation_id)await enroll(await control.loadOperation(starting.cloud_start_operation_id));
         return;
       }
-      const plan = await controller.plan(inventory);
+      plan??=await controller.plan(inventory);
       if (plan.kind === 'drain') {
         await controller.drain(plan.identity, randomUUID(), plan.revision);
       } else if (['run', 'start'].includes(plan.kind)) {

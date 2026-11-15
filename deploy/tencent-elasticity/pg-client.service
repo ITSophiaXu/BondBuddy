@@ -5,13 +5,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=root
+Group=1000
+RuntimeDirectory=bondbuddy/transport-socket
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
 ExecStart=/usr/bin/node /opt/bondbuddy/deploy/tencent-elasticity/transport-service.mjs
 UMask=0077
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/etc/bondbuddy/transport /run/bondbuddy/service
+ReadWritePaths=/etc/bondbuddy/transport /run/bondbuddy/transport-socket
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 StandardOutput=null
 StandardError=journal
