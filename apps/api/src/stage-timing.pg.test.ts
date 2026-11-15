@@ -2,32 +2,25 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import test from 'node:test';
 import {Pool} from 'pg';
-import {createServer} from './server.js';
-import {beginRunStage,checkpointStage,claim} from './queue.js';
+import {beginRunStage,checkpointStage,claim,enqueue} from './queue.js';
 import {collectAdminInspection} from './admin-inspection-data.js';
 import {isolatedTestDatabase} from './test-database.js';
-import {uploadSyntheticReference} from './test-authoring-source.js';
-import type {PrivateBlobs} from './data.js';
+import {transaction} from './data.js';
 
 const connection=await isolatedTestDatabase(undefined,'stage-timing');
 test('stage durations persist with outbox, survive long pauses and reach the scalar inspection snapshot',{skip:!connection,timeout:60000},async()=>{
  const pool=new Pool({connectionString:connection}),owner='stage-timing-'+randomUUID();
- const files=new Map<string,Buffer>();
- const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,
-  getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
- const origin='http://bondbuddy.test';
- const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
- const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin}});
+ // An already accepted synthetic legacy run isolates event persistence from upload, pricing and model workflows.
+ const projectId=randomUUID(),runId=randomUUID(),hash='a'.repeat(64);
  try{
-  const project=await send('POST','/api/v1/projects',{name:'Synthetic stage timing',kind:'update',issuer_name:null,market:'sse',offering:'private'});
-  assert.equal(project.statusCode,201,project.body);
-  const projectId=project.json().project_id,reference=await uploadSyntheticReference(app,projectId);
-  const input=await send('POST','/api/v1/projects/'+projectId+'/input-revisions',reference);
-  assert.equal(input.statusCode,201,input.body);
-  const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:projectId,input_revision:input.json().input_revision,
-   input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-stage-timing',storage_origin:'cloud',workspace_id:'synthetic'});
-  assert.equal(submitted.statusCode,202,submitted.body);
-  const runId=submitted.json().run_id,lease=await claim(pool,60);assert.ok(lease);assert.equal(lease.runId,runId);
+  await transaction(pool,async client=>{
+   await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,owner]);
+   await client.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic stage timing','update')",[projectId,owner]);
+   await client.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[projectId,owner,hash]);
+   const run=(await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'update',$4,'queued') RETURNING *",[runId,owner,projectId,hash])).rows[0];
+   await enqueue(client,run);
+  });
+  const lease=await claim(pool,60);assert.ok(lease);assert.equal(lease.runId,runId);
   const ageLatest=async(stage:string,seconds:number)=>pool.query("UPDATE bb_run_events SET occurred_at=now()-($3::int*interval '1 second') WHERE id=(SELECT id FROM bb_run_events WHERE run_id=$1 AND stage=$2 AND payload->>'reason'='stage_started' ORDER BY seq DESC LIMIT 1)",[runId,stage,seconds]);
   const complete=async(stage:string)=>{
    await checkpointStage(pool,lease,stage,{synthetic:true});
@@ -59,5 +52,5 @@ test('stage durations persist with outbox, survive long pauses and reach the sca
   assert.equal(Object.hasOwn(exported,'payload'),false,'inspection keeps its scalar allowlist');
   assert.equal(events.find(e=>e.id===missing.id)!.duration_ms,null);
   assert.equal(Number(events.find(e=>e.id===long.id)!.duration_ms),long.payload.duration_ms);
- }finally{await app.close();await pool.end();}
+ }finally{await pool.end();}
 });
