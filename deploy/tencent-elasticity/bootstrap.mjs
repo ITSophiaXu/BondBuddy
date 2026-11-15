@@ -4,13 +4,18 @@ import {constants} from 'node:fs';
 import {canonical, requireThat} from './policy.mjs';
 
 /** Public cloud-init only. All credentials are issued later to a role-bound node. */
-export function bootstrapUserData(config, request) {
+export function bootstrapUserData(config, request, slot=0) {
   const manifest = {version: 'execution-bootstrap-v1', pool_tag: config.pool_tag,
     account_id:request.account_id,region:request.region,
     source_sha256: request.source_sha256, image_sha256: request.image_sha256,
     services: request.services};
   requireThat(request.services?.length >= 1 && request.services.length <= 2 &&
     request.services.every(s => ['authoring', 'review'].includes(s.service_id)), 'SERVICE_MANIFEST');
+  requireThat(Number.isInteger(slot)&&slot>=0&&slot<2&&config.role_names?.length===2,'BOOTSTRAP_ROLE_SLOT');
+  const descriptor=config.node_secrets?.[slot];
+  requireThat(descriptor?.role_name===config.role_names[slot]&&/^\d{1,20}$/.test(descriptor.role_id??'')&&
+    /^[A-Za-z0-9_-]{1,128}$/.test(descriptor.secret_name??''),'BOOTSTRAP_SLOT_BINDING');
+  manifest.slot_binding={role_name:descriptor.role_name,role_id:descriptor.role_id,secret_name:descriptor.secret_name};
   const publicJson = canonical(manifest);
   requireThat(!/[\r\n']/.test(publicJson), 'PUBLIC_MANIFEST_ENCODING');
   // The reviewed image must already contain Docker, Node and this oneshot unit.

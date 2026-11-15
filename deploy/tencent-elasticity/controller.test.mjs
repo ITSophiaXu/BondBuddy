@@ -14,6 +14,29 @@ import {createExecutionPoolOpsHandler} from './ops-handler.mjs';
 const h = 'a'.repeat(64), identity = {account_id: '123456', region: 'ap-beijing', instance_id: 'ins-a1', epoch: 'e3432123-84b5-4f11-8b51-94a29eac1234'};
 const services = [{service_id: 'authoring', capabilities: ['authoring']}, {service_id: 'review', capabilities: ['review', 'assistant']}];
 const config = {version: 'tencent-execution-pool-v1', enabled: true, phase: 'automatic', account_id: '123456', pool_tag: 'bondbuddy-execution', region: 'ap-beijing', zone: 'ap-beijing-7', instance_type: 'SA9.LARGE16', min_running: 1, max_owned: 2, resident_instance_id: 'ins-a1', global_model_limit: 4, node_model_limit: 4, compute_cny_per_hour: .8, compute_cap_cny_per_hour: 1.6, scale_up_wait_seconds: 60, idle_seconds: 300, failure_cooldown_seconds: 300, image_id: 'img-a1', vpc_id: 'vpc-a1', subnet_id: 'subnet-a1', security_group_id: 'sg-a1', source_sha256: h, image_sha256: h, network_review_sha256: h, quote_sha256: h, role_names: ['node-a', 'node-b'], noncompute_cap_cny_per_hour: .8, total_cap_cny_per_hour: 2.4, stop_charging_verified: true, stop_charging_evidence_sha256: h, private_pg_verified: true, service_credentials_verified: true, services, expense_policy_revision: 1, expense_policy_sha256:h, time_zone:'Asia/Shanghai', period_cap_cny:48, reservation_hours:1, drain_reserve_hours:1};
+config.node_secrets=config.role_names.map((role_name,index)=>({role_name,role_id:String(index+7),secret_name:'node-secret-'+index}));
+
+test('one shared image launches both role slots with distinct public bindings and rejects a crossed slot',async()=>{
+  let launches=0;
+  const cvm=new TencentCvm({config,archive:async()=>{throw Error('unused');},transport:new TencentTransport({region:config.region,
+    credentials:async()=>({secretId:'synthetic',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+600000}),
+    fetchImpl:async(_url,options)=>{
+      const p=JSON.parse(options.body);
+      if(options.headers['X-TC-Action']==='GetCallerIdentity')return new Response(JSON.stringify({Response:{AccountId:config.account_id,RequestId:'synthetic-caller'}}));
+      assert.equal(options.headers['X-TC-Action'],'RunInstances');
+      const slot=launches++,script=Buffer.from(p.UserData,'base64').toString();
+      const manifest=JSON.parse(script.match(/printf '%s' '([^']+)'/)[1]);
+      assert.equal(p.CamRoleName,config.role_names[slot]);assert.deepEqual(manifest.slot_binding,config.node_secrets[slot]);
+      return new Response(JSON.stringify({Response:{RequestId:'synthetic-run-'+slot,InstanceIdSet:['ins-slot'+slot]}}));
+    }})});
+  for(const slot of [0,1]){
+    const r=request(),data=bootstrapUserData(config,r,slot),token=sha256('slot'+slot),opId='slot'+slot;
+    r.launch_manifest_sha256=sha256(canonical(runParameters(config,r,token,data,slot,opId)));
+    await cvm.execute({action:'run',operation_id:opId,client_token:token,request:r},{slot,userData:data});
+    assert.throws(()=>runParameters(config,r,token,bootstrapUserData(config,r,1-slot),slot,opId),/BOOTSTRAP_SLOT_MANIFEST_DRIFT/);
+  }
+  assert.equal(launches,2);
+});
 const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
 const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
 config.quote_sha256=sha256(canonical(quote));

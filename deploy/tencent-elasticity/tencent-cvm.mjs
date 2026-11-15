@@ -62,6 +62,7 @@ export function runParameters(config, request, clientToken, userData, slot, opId
   requireThat(request.account_id === config.account_id && request.region === config.region && request.instance_id === null &&
     request.instance_count === 1 && request.source_sha256 === config.source_sha256 && request.image_sha256 === config.image_sha256, 'LAUNCH_BINDING');
   requireThat(Number.isInteger(slot) && slot >= 0 && slot < 2, 'INVENTORY_SLOT');
+  requireThat(userData===bootstrapUserData(config,request,slot),'BOOTSTRAP_SLOT_MANIFEST_DRIFT');
   requireThat(Buffer.byteLength(userData) <= 16384, 'USER_DATA_BOUND');
   return {InstanceChargeType: 'POSTPAID_BY_HOUR', InstanceCount: 1, ClientToken: clientToken,
     Placement: {Zone: config.zone}, InstanceType: config.instance_type, ImageId: config.image_id,
@@ -135,7 +136,7 @@ export class TencentCvm {
       requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
       const oldRequest={...operation.request,instance_id:null};
       const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
-      const oldParams=runParameters(this.config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(this.config,oldRequest),
+      const oldParams=runParameters(this.config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(this.config,oldRequest,this.config.role_names.indexOf(i.role_name)),
         this.config.role_names.indexOf(i.role_name),i.create_operation_id);
       requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});

@@ -44,7 +44,7 @@ export class ExecutionPoolController {
     let slot = 0;
     if (operation.action === 'run') {
       slot = this.config.role_names.findIndex((_, index) => sha256(canonical(runParameters(this.config, operation.request,
-        operation.client_token, bootstrapUserData(this.config, operation.request), index, operation.operation_id))) === operation.request.launch_manifest_sha256);
+        operation.client_token, bootstrapUserData(this.config, operation.request, index), index, operation.operation_id))) === operation.request.launch_manifest_sha256);
       requireThat(slot >= 0 && !inventory.some(i => i.role_name === this.config.role_names[slot]), 'PERSISTED_LAUNCH_SLOT_CHANGED');
     }
     const current=await this.control.reauthorizeCloudIntent(operation.operation_id,operation.revision,snapshot.policy.revision);
@@ -76,7 +76,7 @@ export class ExecutionPoolController {
     let result;
     try {
       const response = await this.cloud.execute(claimed, claimed.action === 'run' ?
-        {slot: material.slot, userData: bootstrapUserData(this.config, claimed.request)} : undefined);
+        {slot: material.slot, userData: bootstrapUserData(this.config, claimed.request, material.slot)} : undefined);
       let identity = claimed.identity;
       if (claimed.action === 'run') {
         requireThat(response.InstanceIdSet?.length === 1, 'EXACT_RUN_RESULT_REQUIRED');
