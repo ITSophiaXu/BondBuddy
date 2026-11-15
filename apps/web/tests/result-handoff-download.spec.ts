@@ -97,7 +97,7 @@ test('result handoff: generated prospectus variants share canonical downloads wi
     const fromVersions=await artifact(page,s,button,id);delivered.set(variant,fromVersions);
     expect(await artifact(page,s,projectFileButton(page,id,'clean'),id)).toEqual(fromVersions);
   }
-  const uploaded=await receive(page,page.locator(`[data-download-version="${s.task.source.version_id}"]`),s.material.filename,s.originalBytes);
+  const uploaded=await receive(page,page.locator(`[data-prospectus-history] [data-download-version="${s.task.source.version_id}"]`),s.material.filename,s.originalBytes);
   expect(await receive(page,projectFileButton(page,s.material.material_id,'clean'),s.material.filename,s.originalBytes)).toEqual(uploaded);
   expect(s.materialReads).toEqual([s.material.material_id,s.material.material_id]);
   expect(s.materialByteReads).toEqual([s.material.material_id,s.material.material_id]);

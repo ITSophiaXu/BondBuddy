@@ -24,10 +24,12 @@ export async function readGenerationProgress(db:Db,owner:string,id:string,kind:'
       WHERE owner_user_id=$1 AND project_id=$2
         AND (id IN (SELECT id FROM recent) OR id IN (SELECT workpaper_batch_id FROM fg) OR id=$4)
     ), wi AS (
-      SELECT i.batch_id,i.item_id,i.run_id,i.attempt,i.state,i.error,r.state AS run_state,r.stage,
+      SELECT i.batch_id,i.item_id,i.run_id,i.attempt,i.state,i.error,r.state AS run_state,r.stage,r.event_cursor,
+        coalesce(r.state='running' AND j.state='running' AND (j.lease_token IS NULL OR j.lease_until IS NULL OR j.lease_until<=now()),false) AS lease_interrupted,
         w.result_hash FROM bb_workpaper_items i
       JOIN wb ON wb.id=i.batch_id
       LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+      LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
       LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id
       WHERE i.owner_user_id=$1
     ), db AS (

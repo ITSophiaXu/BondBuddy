@@ -52,3 +52,44 @@ test('batch execution links use explicit item and attempt IDs, never a shared pr
  const d=make({bb_runs:[run,{...run,id:'unrelated'}],bb_workpaper_batches:[{id:'b1',project_id:'p1'}],bb_workpaper_attempts:[{batch_id:'b1',run_id:'r1'}],bb_workpaper_items:[{batch_id:'b1',run_id:'r1'}]});
  assert.deepEqual(d.batchRuns('b1').map(r=>r.id),['r1']);assert.doesNotMatch(taskDetail(d,'b1','execution'),/unrelated/);
 });
+
+test('grouped status filters use the batch lifecycle without hiding queued or running batches',()=>{
+ const states=['draft','queued','running','paused','complete','partial','cancelled','future_batch_state',null];
+ const d=make({bb_workpaper_batches:states.map((state,index)=>({id:`b${index}`,project_id:'p1',owner_user_id:'u1',state,created_at:at}))});
+ const filtered=(state:string)=>d.batches({...emptyFilters(),state}).map(batch=>batch.state);
+ assert.deepEqual(filtered('in_progress'),['queued','running']);
+ assert.deepEqual(filtered('unknown_state'),['future_batch_state',null]);
+ assert.deepEqual(filtered('attention'),['paused','partial']);
+ assert.deepEqual(filtered('succeeded'),['complete']);
+ for(const state of ['draft','queued','running','paused','partial','cancelled'])assert.deepEqual(filtered(state),[state]);
+ assert.equal(filtered('').length,states.length);
+ assert.deepEqual(filtered('stale'),[]);
+});
+
+test('grouped batch filters preserve owner date type search and channel restrictions',()=>{
+ const batch:Row={id:'active',project_id:'p1',owner_user_id:'u1',state:'running',created_at:at};
+ const d=make({bb_projects:[{id:'p1',name:'合成底稿项目'}],bb_workpaper_batches:[batch,{...batch,id:'other-user',owner_user_id:'u2'},{...batch,id:'outside-date',created_at:'2026-11-05T00:00:00Z'},{...batch,id:'paused',state:'paused'}]});
+ const f={...emptyFilters(),state:'in_progress',user:'u1',kind:'workpaper',search:'合成底稿',from:'2026-11-04',to:'2026-11-04',channel:'unknown'};
+ assert.deepEqual(d.batches(f).map(b=>b.id),['active']);
+ assert.deepEqual(d.batches({...f,kind:'review'}),[]);
+ assert.deepEqual(d.batches({...f,channel:'production'}),[]);
+ assert.deepEqual(d.batches({...f,search:'其他项目'}),[]);
+});
+
+test('integrated overview retains task status counts alongside queue and stage timing',()=>{
+ const succeeded:Row={...run,state:'succeeded'};
+ const d=make({bb_runs:[succeeded]});
+ // Render the typed timing projection; the timing calculator and HTTP shape
+ // have their own tests and are not bypassed with an invalid public row payload.
+ d.timing=()=>({totalMs:12000,initialWaitMs:2000,processingMs:10000,
+  startedAt:'2026-11-03T23:00:02Z',endedAt:'2026-11-03T23:00:12Z',open:false,
+  stages:[{stage:'provider_call',ms:3000}]});
+ const html=overview(d,[succeeded]);
+ assert.match(html,/data-status-summary/);
+ assert.match(html,/data-status-kind="__total"/);
+ assert.match(html,/data-run-state="succeeded"[^>]*>[\s\S]*?<strong>1<\/strong>/);
+ assert.match(html,/平均排队/);
+ assert.match(html,/data-stage-duration-summary/);
+ assert.match(html,/模型调用/);
+ assert.match(html,/3 秒/);
+});

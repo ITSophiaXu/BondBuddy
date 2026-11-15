@@ -121,7 +121,16 @@ export async function install(page:Page,s=fixture()){
 }
 export async function ready(page:Page){await expect(page.locator('#pw-prospectus .prospectus-panel')).toBeVisible();await expect(page.locator('#refresh-files')).toBeEnabled();}
 export async function open(page:Page,s=fixture(),entry='/#/projects/'+ids.project+'/files'){await page.setViewportSize({width:1440,height:960});await install(page,s);await page.goto(entry);if(entry.includes('#generate'))await expect(page.locator('#pf-prospectus .prospectus-panel')).toBeVisible();else await ready(page);await page.clock.runFor(80);return s;}
-export async function upload(page:Page,s:State){const input=page.locator('#prospectus-version-file'),details=input.locator('xpath=ancestor::details[1]');if(!await details.evaluate(e=>(e as HTMLDetailsElement).open))await details.locator(':scope > summary').click();await input.setInputFiles({name:s.candidate.filename,mimeType:mime,buffer:newBytes});if(process.env.BB_PROSPECTUS_REFERENCE_DIR)await page.locator('#save-prospectus-version').click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);if(!process.env.BB_PROSPECTUS_REFERENCE_DIR)await expect(page.locator('#save-prospectus-version')).toBeHidden();expect(s.puts).toBe(1);expect(s.completions).toBe(1);}
+export async function upload(page:Page,s:State){
+  const input=page.locator('#prospectus-version-file'),details=input.locator('xpath=ancestor::details[1]');
+  if(!await details.evaluate(e=>(e as HTMLDetailsElement).open))await details.locator(':scope > summary').click();
+  await input.setInputFiles({name:s.candidate.filename,mimeType:mime,buffer:newBytes});
+  if(process.env.BB_PROSPECTUS_REFERENCE_DIR)await page.locator('#save-prospectus-version').click();
+  // Bounded hashing yields through timers; the fixture deliberately freezes this clock.
+  await expect.poll(async()=>{await page.clock.runFor(20);return page.locator('#prospectus-status').textContent();}).toMatch(/已保存.*尚未采用/);
+  if(!process.env.BB_PROSPECTUS_REFERENCE_DIR)await expect(page.locator('#save-prospectus-version')).toBeHidden();
+  expect(s.puts).toBe(1);expect(s.completions).toBe(1);
+}
 export async function reenter(page:Page){await page.locator('a.back-link[href="#tasks"]').click();await expect(page.locator('#project-list')).toHaveAttribute('aria-busy','false');const link=page.locator('[data-project-id="'+ids.project+'"] a.collection-title');await expect(link).toHaveAttribute('href','#/projects/'+ids.project+'/files');await link.click();await ready(page);await page.clock.runFor(80);}
 export const history=(page:Page)=>page.locator('details[data-prospectus-history]');
 export const version=(page:Page,id:string)=>page.locator('[data-prospectus-version="'+id+'"]');

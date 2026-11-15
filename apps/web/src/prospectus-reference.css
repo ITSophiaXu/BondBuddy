@@ -15,7 +15,6 @@
 .reference-selection { border-radius: 4px; background: #f0f2ed; padding: 1px 6px; font-size: 12px; }
 .reference-file .reference-selection.is-selected { background: #e1eddc; color: #315c3d; }
 .reference-file .prospectus-version-actions { flex: none; gap: 4px 12px; }
-.reference-file .prospectus-version-info details { margin-top: 6px; font-size: 12px; }
 .reference-retained { margin-top: 5px; color: #69766b; }
 .reference-prospectus .reference-selection-help { margin-top: 8px; }
 .reference-prospectus .reference-selection-help .text-button { padding: 0 3px; }
