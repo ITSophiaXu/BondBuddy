@@ -53,7 +53,7 @@ test('248 items / 120 files / 25,997 links: small public responses, retained evi
   assert.deepEqual((await get('/workpapers/progress')).json(),first);
   const fg=(await get('/file-generation/progress')).json();assert.equal(fg.active,true);
   const job=randomUUID();
-  await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,state,stage,lease_token,lease_until) VALUES($1,$2,$3,'generation','running','claimed',$4,now()+interval '2 minutes')",[job,user,run,randomUUID()]);
+  await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,lease_token,lease_until) VALUES($1,$2,$3,'generation','m4_document_v1','running','claimed',$4,now()+interval '2 minutes')",[job,user,run,randomUUID()]);
   let sequence=0;
   const progressEvent=async(stage:string,reason:string)=>{
    sequence++;
