@@ -91,13 +91,22 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if (starting.cloud_start_operation_id) await enroll(await control.loadOperation(starting.cloud_start_operation_id));
         return; // no capacity from booting nodes and no new instance while boot is unfinished
       }
-      if(!dependencies.cloud){
+      let renewalBlocked=false,renewalIssued=false;
+      if(!dependencies.cloud)try{
         const stoppedIdentities=(await expenseLedger()).operations.filter(op=>op.action==='stop'&&op.state==='completed').map(op=>op.identity);
         for(const node of snapshot.nodes.filter(n=>['ready','draining'].includes(n.state)&&n.cloud_start_operation_id)){
           const op=await control.loadOperation(node.cloud_start_operation_id),observed=await cloud.describe(node.identity.instance_id);
           const slot=config.role_names.indexOf(observed.role_name);
-          if(await renewNodeTransport({node,operation:op,slot,config,transport:cloud.transport,stoppedIdentities}))return;
+          if(await renewNodeTransport({node,operation:op,slot,config,transport:cloud.transport,stoppedIdentities})){renewalIssued=true;break;}
         }
+      }catch{
+        renewalBlocked=true;
+        // Credential outages fence new claims/spend but cannot block contraction
+        // or admitted leases. Failure to tighten does not suppress drain either.
+        try{if(snapshot.policy.managed_nodes&&snapshot.policy.budget_available){
+          await control.setAdmissionBudget(snapshot.policy.revision,false,config.expense_policy_sha256);snapshot=await control.snapshot();
+        }}catch{}
+        log({event:'execution_pool_transport_admission_closed'});
       }
       const ongoing = snapshot.nodes.find(n => ['draining', 'drained'].includes(n.state));
       if (ongoing) {
@@ -105,6 +114,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if (ongoing.drain_operation_id) await controller.drain(ongoing.identity, ongoing.drain_operation_id, ongoing.revision);
         return;
       }
+      if(renewalBlocked||renewalIssued)return;
       const plan = await controller.plan(inventory);
       if (plan.kind === 'drain') {
         await controller.drain(plan.identity, randomUUID(), plan.revision);
