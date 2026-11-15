@@ -77,7 +77,7 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 新源凭据只由根权限控制服务读取 `/etc/bondbuddy/execution-control/source-credentials.json`，父目录 root:root/0700、文件 root:root/0600，JSON 严格为 secretId、secretKey。source signer 仅允许 AssumeRole 到固定控制角色；取得短 STS 后校验 AccountId、roleId:sessionName 和 PrincipalId。业务运维进程通过 `/run/bondbuddy/elastic-control/issuer.sock` 取得短 STS，不挂载长效源文件或 CA 私钥。独立签发服务使用 PG 只读操作/费用接口及准确云回读授权签发，私钥留在本地根权限目录。当前接入只准独立隔离数据库，正式数据库迁移和策略开启需要各自验收。
 
-运维入口共享持久 flock/时间前像，至少 60 秒才能开始下一次云协调，进程退出不重置调用间隔；节点 broker 同样持久限制每分钟一次。按有限窗口剩余分钟数 N，保守纳入每轮最多两节点各 34 次续期调用、两次 broker Get，并按至多 N+2 次启动各 24 次初始 Get，完整调用上界为 94N+48，另叠加管理调用/已花费用。单运维入口最少 60 秒且持久跨重启；禁止旁路自动重启扩大启动次数。两 Secret 六元整月义务加按每万次向上取整的 API 费用必须完整预留。例如 N=746 时最多 70172 次、费用上界 9.2 元，采用十元保守预留；整个自然日 N=1440 则应至少预留 11.6 元。当前 role 的 Get/Put 授权不能替代 ListSecretVersionIds/DeleteSecretVersion；版本清理授权不足将安全关闭发行。
+运维入口共享持久 flock/时间前像，至少 60 秒才能开始下一次云协调，进程退出不重置调用间隔。启动入口必须在任何 SSM 请求前取得跨重启保留的 60 秒锁和时间前像，持锁覆盖全部握手；每个节点分别受限，普通故障或手动重启不能绕开。调用费用采用下述跨日报价的完整版本扫描上界，另叠加管理调用和已花费用。只有一次性服务或持久 enable 不能证明此频控成立；必须绑定准确启动代码及跨进程、时钟回拨和重建反例证据。当前 role 的 Get/Put 授权不能替代 ListSecretVersionIds/DeleteSecretVersion；版本清理授权不足将安全关闭发行。
 
 报价需明确 secret 与 snapshot 两项固定未决义务，保留到真实对账证据解除；自然日变化不能清零。2026 年 11 月 15 日计算加两盘报价为单节点 0.91 元/小时、双节点 1.82 元/小时，准确停算力后双节点磁盘为 0.22 元/小时。SSM 和自制镜像快照费用另行完整预留；未知快照字节/费率禁止新增支出。主站套餐余量只能支持有效到当日北京时间 24:00 的网络报价，不代表永久免费。自动长期模式还须绑定运行状态刷新消费、旧会话继续、新 TLS/PG 成功和模型 socket 拒绝的准确版本证据。
 
@@ -109,3 +109,28 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 ## 受限私网出口
 
 节点仅连主站私网的数据库、初始化代理与 mTLS 代理。初始化代理仅允许精确域名的 443 CONNECT；运行阶段通过同代际客户端证书连接 `proxy-execution.internal`，继续校验目标站点自身 TLS。Node 22 使用官方 `NODE_USE_ENV_PROXY`，link-local metadata、本机与私网数据库走 NO_PROXY。受控 stunnel 配置由单一 renderer 生成并逐字验证，禁止夹带额外监听段。主站共享 5Mbps 物理出口，不附加单节点 1Mbps 限流。独立构建源的临时额外域名只允许准确 builder 私网 IP，验通后使用、退役时移除，不扩大业务节点出口。
+# 跨日报价刷新（#1389）
+
+自动 tick 和手动入口共用既有控制锁及一分钟调用边界，在预算同步前读取受限控制角色的 Lighthouse 实例与流量包。只接受约定账户、地域、实例、套餐和 5 Mbps 整机出口上界。流量余量按字节核验，必须覆盖观测至北京时间当天结束的**全部主站出站**最坏流量；不只计算执行池，不跨流量包结束时间借用下一期额度。新周期必须由真实 API 返回，并与上一周期边界一致。
+
+原 `cloud_quote_file` 和 `quote_sha256` 保持为已审价格模板；配置可增加 `cloud_quote_refresh`：
+
+```json
+{
+  "version": "lighthouse-quote-refresh-v1",
+  "instance_id": "REVIEWED_LIGHTHOUSE_INSTANCE",
+  "bundle_id": "REVIEWED_CURRENT_BUNDLE",
+  "bandwidth_mbps": 5,
+  "traffic_package_total_bytes": 536870912000,
+  "pricing_valid_until": "REVIEWED_TARIFF_EVIDENCE_EXPIRY",
+  "snapshot_file": "REGISTRATION_DIRECTORY/cloud-quote-snapshot.json"
+}
+```
+
+`pricing_valid_until` 是单价材料独立复核后的有效期，不能照抄下一天日期来延长旧报价。缺少完整价格证据时保留关闭状态。快照保留原六项费率证据、SSM 月费及两张快照完整负债，并核 `222*N+264` 次 SSM 调用费用上界：两节点续期每分钟最多 68 次、心跳版本扫描最多 22 次，两个节点**各自**启动最多 N+2 次，每次最多 6 轮、每轮 List 1 次及 Get 最多 10 次，单次握手总截止 180 秒。N 是采样至日末的实际分钟数向上取整，包含普通故障和手动重启；该上界依赖上述持久启动门和六轮握手，未合入并验证前不能称为已强制上界。旧 `94*N+48` 的低预留不能代替新分支；`354*N+528` 或 `618*N+1056` 属更保守的预留，仍需满足相同预算和价格门禁。
+
+全天 N=1440 时共 319944 次 API 请求，按每万次向上取整、每万次 0.4 元计为 12.8 元；另加六元 SSM 整月义务和十二元快照义务，至少 30.8 元。还需纳入计算、磁盘、网络、管理调用及已花费用，不能由公式测试通过推断长期自动准入可用。换日不清零固定承诺，也不以缺少账单为零费用。小时上限 4 元、自然日上限 48 元保持；不足时禁止新增，原任务与正向排空继续。
+
+发布只替换一个私有 JSON 快照，内含有效配置、报价及观测证据。消费者校验源配置哈希和报价哈希；不分别改写两个文件。模板或配置漂移、时间回拨、套餐到期/不足、API 错误、发布中断及超时均关闭新增准入；原任务、结果持久化、未知调用恢复和正向排空继续。超时工作不能迟到发布，也不能在未决查询结束前重复请求。同一分钟内重复费用检查仅复用刚发布且已覆盖整机余量的快照。
+
+控制角色仅需 `lighthouse:DescribeInstances` 与 `lighthouse:DescribeInstancesTrafficPackages`。前者官方 CAM 支持的实例查询范围为地域内 `instance/*`；后者绑定约定实例资源。客户端额外固定账户、地域和准确实例，不能把 API 支持的地域级权限说成 IAM 的单实例隔离。新私网代理仅增加 `lighthouse.tencentcloudapi.com` 的 CONNECT/443 出口，保留原代理与其它服务。

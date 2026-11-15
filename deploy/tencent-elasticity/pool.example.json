@@ -45,6 +45,7 @@
   "registration_directory": null,
   "time_zone": "Asia/Shanghai",
   "cloud_quote_file": null,
+  "cloud_quote_refresh": null,
   "node_secrets": [
     {"role_name":"bondbuddy-execution-node-1","role_id":null,"secret_name":"bondbuddy-execution-node-1","service_template_file":null,"pg_issuer":{"authority_socket":"/run/bondbuddy/elastic-control/issuer.sock","ca_sha256":null}},
     {"role_name":"bondbuddy-execution-node-2","role_id":null,"secret_name":"bondbuddy-execution-node-2","service_template_file":null,"pg_issuer":{"authority_socket":"/run/bondbuddy/elastic-control/issuer.sock","ca_sha256":null}}

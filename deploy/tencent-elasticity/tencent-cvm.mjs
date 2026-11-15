@@ -3,9 +3,10 @@ import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag} from '@bondbuddy/contracts';
 
-const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23'};
+const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', lighthouse: '2020-03-24'};
 const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
-  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion'])};
+  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']),
+  lighthouse: new Set(['DescribeInstances','DescribeInstancesTrafficPackages'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
@@ -24,6 +25,8 @@ export class TencentTransport {
       /^[A-Za-z0-9+=,.@_-]{2,128}$/.test(payload.RoleSessionName??'') &&
       Number.isInteger(payload.DurationSeconds) && payload.DurationSeconds>=900 && payload.DurationSeconds<=7200 :
       allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
+    if(service==='lighthouse')requireThat(payload?.InstanceIds?.length===1&&payload.InstanceIds[0]==='lhins-4i18xeto'&&
+      payload.Offset===0&&payload.Limit===1&&Object.keys(payload).every(k=>['InstanceIds','Offset','Limit'].includes(k)), 'LIGHTHOUSE_EXACT_SCOPE');
     const c = await this.credentials();
     signal?.throwIfAborted();
     requireThat(typeof c.secretId==='string' && c.secretId && typeof c.secretKey==='string' && c.secretKey &&
