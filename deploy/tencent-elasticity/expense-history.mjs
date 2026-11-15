@@ -26,7 +26,7 @@ export async function readExpenseHistory(config) {
   return history;
 }
 
-export function mergeExpenseHistory(ledger, history, config, period) {
+export function mergeExpenseHistory(ledger, history, config, period, periodFor) {
   const pin = config.external_expense_history;
   if (pin === undefined) {
     requireThat(history === undefined, 'EXPENSE_HISTORY_UNPINNED');
@@ -45,15 +45,25 @@ export function mergeExpenseHistory(ledger, history, config, period) {
     digest(pin.sha256) && sha256(canonical(history)) === pin.sha256,
     'EXPENSE_HISTORY_SOURCE');
   requireThat(Number.isFinite(now) && Number.isFinite(captured) && captured <= now &&
-    Date.parse(history.valid_from) <= now && now < Date.parse(history.valid_until) &&
-    Date.parse(history.valid_until) <= Date.parse(period.period_end) &&
-    Object.entries(period).every(([key, value]) => history[key] === value), 'EXPENSE_HISTORY_TIME');
+    Date.parse(history.valid_from) <= now && now < Date.parse(history.valid_until), 'EXPENSE_HISTORY_TIME');
+  const rollover = history.rollover_policy;
+  requireThat(rollover === undefined || rollover?.mode === 'closed_archive_conservative_carry_v1' &&
+    digest(rollover.review_sha256), 'EXPENSE_HISTORY_ROLLOVER_POLICY');
+  const sourcePeriod = rollover ? periodFor(history.ledger.captured_at, config.time_zone) : period;
+  requireThat(Object.entries(sourcePeriod).every(([key, value]) => history[key] === value) &&
+    (rollover || Date.parse(history.valid_until) <= Date.parse(period.period_end)), 'EXPENSE_HISTORY_TIME');
+  // Reserve the entire new day from its first instant. DST can only round this
+  // duration upward; no immutable debt or continuing resource is zeroed at midnight.
+  const carryDays = rollover ? Math.max(0, Math.ceil((Date.parse(period.period_end) -
+    Date.parse(sourcePeriod.period_end)) / 86400000)) : 0;
   requireThat(Array.isArray(history.ledger.nodes) && Array.isArray(history.ledger.operations) &&
     Array.isArray(ledger.nodes) && Array.isArray(ledger.operations), 'EXPENSE_HISTORY_ROWS');
   // An immutable closed archive remains usable. Live resources and unresolved
   // operations must be refreshed, and still need the producer's live inventory.
-  requireThat(history.ledger.nodes.every(n => Number.isFinite(Date.parse(n.destroyed_at)) && Date.parse(n.destroyed_at) <= captured) &&
-    !history.ledger.operations.some(pending) || now - captured <= 300000, 'EXPENSE_HISTORY_STALE');
+  const closed = history.ledger.nodes.every(n => Number.isFinite(Date.parse(n.destroyed_at)) && Date.parse(n.destroyed_at) <= captured) &&
+    !history.ledger.operations.some(pending);
+  requireThat(!rollover || closed, 'EXPENSE_HISTORY_ARCHIVE_NOT_CLOSED');
+  requireThat(closed || now - captured <= 300000, 'EXPENSE_HISTORY_STALE');
   const union = (old, current, key) => {
     const rows = new Map();
     for (const row of [...old, ...current]) {
@@ -79,7 +89,7 @@ export function mergeExpenseHistory(ledger, history, config, period) {
       ['manual_compute', 'management_calls', 'surviving_disk', 'independent_other'].includes(row.kind) &&
       row.scope === 'outside_source_ledger_and_current_quote' &&
       typeof row.source_ref === 'string' && row.source_ref.length > 0 && digest(row.source_sha256) &&
-      row.coverage_end === period.period_end && Array.isArray(row.resource_ids) &&
+      (rollover ? Date.parse(row.coverage_end) >= Date.parse(history.valid_until) : row.coverage_end === period.period_end) && Array.isArray(row.resource_ids) &&
       new Set(row.resource_ids).size === row.resource_ids.length &&
       row.resource_ids.every(id => typeof id === 'string' && id.length > 0 && !nodes.some(n => n.identity.instance_id === id)),
       'EXPENSE_HISTORY_EXTERNAL_OVERLAP');
@@ -87,6 +97,14 @@ export function mergeExpenseHistory(ledger, history, config, period) {
     for (const key of ['spent_upper_bound_cny', 'unknown_carry_upper_bound_cny', 'remaining_period_upper_bound_cny']) {
       requireThat(Number.isFinite(row[key]) && row[key] >= 0, 'EXPENSE_HISTORY_EXTERNAL_BOUND');
       external += Math.ceil(row[key] * 1000000);
+    }
+    if (rollover) {
+      requireThat(row.carry_policy === 'retain_and_accrue_daily_upper_bound' &&
+        Number.isFinite(row.daily_upper_bound_cny) && row.daily_upper_bound_cny >= 0,
+        'EXPENSE_HISTORY_CARRY_BOUND');
+      // Keep the full original bound, including unknowns, and accumulate each
+      // subsequent day's reviewed upper bound. Never infer billing settlement.
+      external += carryDays * Math.ceil(row.daily_upper_bound_cny * 1000000);
     }
   }
   requireThat(Number.isSafeInteger(external), 'EXPENSE_HISTORY_EXTERNAL_BOUND');

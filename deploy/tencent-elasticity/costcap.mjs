@@ -70,7 +70,7 @@ export function expensePeriod(capturedAt, timeZone) {
 export function produceExpenseSnapshot({ledger, inventory, quote, config, history}) {
   requireThat(ledger?.captured_at && Array.isArray(ledger.nodes) && Array.isArray(ledger.operations) && Array.isArray(inventory), 'EXPENSE_LEDGER_REQUIRED');
   const now=ms(ledger.captured_at), period=expensePeriod(ledger.captured_at,config.time_zone);
-  ledger = mergeExpenseHistory(ledger, history, config, period);
+  ledger = mergeExpenseHistory(ledger, history, config, period, expensePeriod);
   const start=ms(period.period_start), end=ms(period.period_end);
   requireThat(quote?.version==='execution-cloud-price-bounds-v1' && quote.currency==='CNY' &&
     quote.account_id===config.account_id && quote.region===config.region && quote.policy_revision===config.expense_policy_revision &&

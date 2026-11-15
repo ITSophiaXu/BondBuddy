@@ -1,17 +1,17 @@
 {
   "version": "execution-expense-control-delta-v1",
-  "base_develop": "fa2f90fc871a45663de74b8a86f55a958e0a674b",
+  "base_develop": "529a776d81f7aad8d877ec7d324f4620ce5d9ba0",
   "existing_control_source": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
   "control_files": [
     {
       "path": "deploy/tencent-elasticity/expense-history.mjs",
-      "bytes": 5947,
-      "sha256": "f7cc23bd7a70047b1efc3b05a7234b619bca039e0b73f75fc9a057232c39e304"
+      "bytes": 7286,
+      "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af"
     },
     {
       "path": "deploy/tencent-elasticity/costcap.mjs",
-      "bytes": 16249,
-      "sha256": "fac646f4860379313927bec298664ff2e62b034e77a99fe0958957cb2e3c0a51"
+      "bytes": 16264,
+      "sha256": "bee0c1d86edd2886907f34c959f14387dad74dfc3b8f26388b9454554be91540"
     },
     {
       "path": "deploy/tencent-elasticity/ops-handler.mjs",
@@ -42,5 +42,8 @@
     "review": "sha256:ea4f4de5d307485ecda4c22c6d105132bc51549b4b6bbe477e6d7db6f2a684a2"
   },
   "node_images_canonical_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
-  "scope": "Control deployment only; existing node OCI bytes and launch identity remain unchanged."
+  "scope": "Control deployment only; existing node OCI bytes and launch identity remain unchanged.",
+  "rollover_issue": 1418,
+  "rollover_mode": "closed_archive_conservative_carry_v1",
+  "rollover_behavior": "Immutable fully closed source priced by current civil day; independent liabilities retain full original upper bound plus reviewed upper bound for every subsequent day, within unchanged reviewed validity."
 }
