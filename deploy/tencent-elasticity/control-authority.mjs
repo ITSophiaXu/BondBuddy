@@ -13,22 +13,22 @@ export function createControlAuthority({config,control,expenseLedger,cloud,crede
   let active=null;
   async function execute(request,guard){
     guard();
-    const checked=async p=>{guard();const result=await p;guard();return result;};
+    const checked=async start=>{guard();const result=await start();guard();return result;};
     requireThat(request&&['execution-pg-issuer-v1','execution-control-credentials-v1'].includes(request.version),'AUTHORITY_PROTOCOL');
     if(request.version==='execution-control-credentials-v1'){
       requireThat(Object.keys(request).every(k=>['version','account_id','role_id'].includes(k))&&
         request.account_id===config.account_id&&request.role_id===config.control_role_id,'AUTHORITY_CREDENTIAL_SCOPE');
-      const credentials=await checked(credentialsProvider.get());
+      const credentials=await checked(()=>credentialsProvider.get());
       requireThat(credentials.token&&credentials.expiresAt>now()+60000,'AUTHORITY_SHORT_EXPIRED');
       return {version:request.version,account_id:config.account_id,role_id:config.control_role_id,credentials};
     }
     requireThat(['status','issue'].includes(request.action)&&Object.keys(request).every(k=>['version','action','operation_id','identity'].includes(k)),'AUTHORITY_ISSUER_ACTION');
-    await checked(verifyDatabase());await checked(validateTransportIssuer(issuer,{now}));
-    if(request.action==='status'){await checked(credentialsProvider.get());return {version:request.version,ready:true,ca_sha256:issuer.ca_sha256};}
+    await checked(()=>verifyDatabase());await checked(()=>validateTransportIssuer(issuer,{now}));
+    if(request.action==='status'){await checked(()=>credentialsProvider.get());return {version:request.version,ready:true,ca_sha256:issuer.ca_sha256};}
     requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(request.operation_id??''),'AUTHORITY_OPERATION_ID');
-    const operation=await checked(control.loadOperation(request.operation_id));
-    const verifyBinding=async()=>{
-    const current=await checked(control.loadOperation(request.operation_id)),snapshot=await checked(expenseLedger());
+    const operation=await checked(()=>control.loadOperation(request.operation_id));
+    const verifyPgBinding=async()=>{
+    const current=await checked(()=>control.loadOperation(request.operation_id)),snapshot=await checked(()=>expenseLedger());
     requireThat(canonical(current)===canonical(operation),'AUTHORITY_OPERATION_CHANGED');
     requireThat(operation?.state==='completed'&&['run','start'].includes(operation.action)&&operation.provider_request_id&&
       canonical(operation.identity)===canonical(request.identity)&&operation.identity.account_id===config.account_id&&operation.identity.region===config.region&&
@@ -36,13 +36,19 @@ export function createControlAuthority({config,control,expenseLedger,cloud,crede
     const node=snapshot.nodes.find(n=>canonical(n.identity)===canonical(operation.identity));
     requireThat(node&&['starting','ready','draining'].includes(node.state)&&node.cloud_start_operation_id===operation.operation_id&&
       node.launch_manifest_sha256===operation.request.launch_manifest_sha256&&snapshot.nodes.filter(n=>n.state!=='destroyed').length<=2,'AUTHORITY_NODE_SCOPE');
-    const observed=await checked(cloud.describe(operation.identity.instance_id));
+    };
+    const verifyBinding=async()=>{
+    await verifyPgBinding();
+    const observed=await checked(()=>cloud.describe(operation.identity.instance_id));
     requireThat(observed.instance_state==='RUNNING'&&observed.latest_operation_state==='SUCCESS'&&
       observed.latest_operation===(operation.action==='run'?'RunInstances':'StartInstances')&&observed.latest_operation_request_id===operation.provider_request_id,
       'AUTHORITY_CLOUD_COMPLETION');
+    // Cloud I/O may straddle a Stop or new epoch. PG is authoritative at the
+    // last boundary before delivery, after the final cloud read has settled.
+    await verifyPgBinding();
     };
     await verifyBinding();
-    const transport_credentials=await checked(sign(operation.identity,issuer,{now,operation}));
+    const transport_credentials=await checked(()=>sign(operation.identity,issuer,{now,operation}));
     // A Stop or newer epoch during signing invalidates the result before any
     // caller can install or publish it. Never return a late signed response.
     await verifyBinding();

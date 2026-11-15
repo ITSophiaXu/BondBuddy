@@ -13,6 +13,46 @@ import {sha256} from './policy.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
 const exec=promisify(execFile);
 
+async function raceAuthority(t,{sign,describe,now}={}){
+  const dir=await mkdtemp(join(tmpdir(),'bb-authority-race-'));t.after(()=>rm(dir,{recursive:true}));
+  await exec('openssl',['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-days','2','-subj','/CN=synthetic-ca','-keyout',join(dir,'ca.key'),'-out',join(dir,'ca.pem')]);await chmod(join(dir,'ca.pem'),0o600);
+  const identity={account_id:'123456',region:'ap-beijing',instance_id:'ins-a1',epoch:'a3432123-84b5-4f11-8b51-94a29eac1234'};
+  const issuer={ca_file:join(dir,'ca.pem'),signing_key_file:join(dir,'ca.key'),ca_sha256:sha256(await readFile(join(dir,'ca.pem')))};
+  const operation={operation_id:'op1',identity,state:'completed',action:'run',provider_request_id:'ack1',request:{source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),launch_manifest_sha256:'c'.repeat(64)}};
+  const node={identity:{...identity},state:'ready',cloud_start_operation_id:'op1',launch_manifest_sha256:operation.request.launch_manifest_sha256};
+  const observed={instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'RunInstances',latest_operation_request_id:'ack1'};
+  const authority=createControlAuthority({config:{account_id:identity.account_id,region:identity.region,issuer,pool:operation.request},
+    control:{loadOperation:async()=>structuredClone(operation)},expenseLedger:async()=>({nodes:[structuredClone(node)]}),
+    cloud:{describe:describe??(async()=>observed)},verifyDatabase:async()=>{},now,
+    ...(sign?{sign}:{}),credentialsProvider:{get:async()=>{throw Error('unused');}}});
+  return {authority,node,observed,request:{version:'execution-pg-issuer-v1',action:'issue',operation_id:'op1',identity}};
+}
+
+test('signing that advances time and remains pending retains exclusive ownership until settlement',async t=>{
+  let time=Date.now(),started,release,calls=0;
+  const barrier=new Promise(r=>{release=r;}),entered=new Promise(r=>{started=r;});
+  const {authority,request}=await raceAuthority(t,{now:()=>time,sign:async()=>{calls++;time+=20001;started();await barrier;return {};}});
+  const first=authority.handle(request);
+  await entered;
+  await assert.rejects(authority.handle(request),/AUTHORITY_BUSY/);
+  assert.equal(calls,1);
+  release();await assert.rejects(first,/AUTHORITY_REQUEST_EXPIRED/);
+  await new Promise(r=>setImmediate(r));
+  await assert.rejects(authority.handle(request,{deadline:time}),/AUTHORITY_REQUEST_EXPIRED/);
+  assert.equal(calls,1); // An expired boundary never starts the signer.
+});
+
+test('final cloud read cannot hide a Stop or epoch change that occurred while it was pending',async t=>{
+  for(const change of ['stop','epoch']){
+    let calls=0,entered,release;
+    const arrived=new Promise(r=>{entered=r;}),barrier=new Promise(r=>{release=r;});
+    const fixture=await raceAuthority(t,{describe:async()=>{if(++calls===2){entered();await barrier;}return fixture.observed;}});
+    const pending=fixture.authority.handle(fixture.request);await arrived;
+    if(change==='stop')fixture.node.state='stop_submitted';else fixture.node.identity.epoch='b3432123-84b5-4f11-8b51-94a29eac1234';
+    release();await assert.rejects(pending,/AUTHORITY_NODE_SCOPE/);assert.equal(calls,2);
+  }
+});
+
 test('root signing authorization comes from PG and exact cloud ACK; leaf binds the immutable operation',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'bb-authority-'));t.after(()=>rm(dir,{recursive:true}));
   await exec('openssl',['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-days','2','-subj','/CN=synthetic-ca','-keyout',join(dir,'ca.key'),'-out',join(dir,'ca.pem')]);await chmod(join(dir,'ca.pem'),0o600);
