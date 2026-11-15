@@ -32,17 +32,17 @@ function chargingHistory(operations, created, until) {
   events.sort((a,b)=>a.at-b.at||Number(a.running)-Number(b.running)||a.id.localeCompare(b.id));
   const run=starts.find(o=>o.action==='run');
   requireThat(run&&new Set(starts.map(o=>o.identity.epoch)).size===starts.length,'EXPENSE_START_HISTORY_DRIFT');
-  let cursor=created,running=true,epoch=run.identity.epoch;
+  let cursor=created,running=true,epoch=run.identity.epoch,stopId=null;
   const intervals=[];
   for(const e of events) {
     requireThat(e.at>=created&&e.at<=until+30000,'EXPENSE_OPERATION_TIME');
     if(e.at>until)continue;
     if(!e.running&&e.epoch!==epoch)continue;
     if(e.at>cursor)intervals.push({from:cursor,to:e.at,running});
-    cursor=e.at;running=e.running;epoch=e.epoch;
+    cursor=e.at;running=e.running;epoch=e.epoch;stopId=e.running?null:e.id;
   }
   if(cursor<until)intervals.push({from:cursor,to:until,running});
-  return {intervals,running};
+  return {intervals,running,stop:operations.find(o=>o.operation_id===stopId)};
 }
 
 function intervalCost(intervals, from, to, runningRate, stoppedRate) {
@@ -115,7 +115,9 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
     // Closed historical savings stay intact, but an open stopped tail must
     // agree with fresh inventory. Unexpected running or uncertainty closes
     // admission instead of using an old Stop to discount current liability.
-    requireThat(n.destroyed_at!==null||charging.running||cloud?.instance_state==='STOPPED','EXPENSE_CURRENT_STOP_UNCONFIRMED');
+    requireThat(n.destroyed_at!==null||charging.running||cloud?.instance_state==='STOPPED'&&cloud.stop_charging_mode==='STOP_CHARGING'&&
+      cloud.latest_operation==='StopInstances'&&cloud.latest_operation_state==='SUCCESS'&&charging.stop?.provider_request_id&&
+      cloud.latest_operation_request_id===charging.stop.provider_request_id,'EXPENSE_CURRENT_STOP_UNCONFIRMED');
     const upper=money(intervalCost(charging.intervals,start,until,running,stopped));
     const unresolved=history.filter(pending),dispatchedUnknown=unresolved.some(o=>o.dispatched_at);
     const prior=dispatchedUnknown?money(intervalCost(charging.intervals,created,Math.min(start,until),running,stopped)):0;

@@ -23,7 +23,9 @@ function fixture(at=12){
   return {captured_at:time(at),operations:[run,s],nodes:[{identity,state:'stopped',created_at:time(.02),destroyed_at:null,cloud_start_operation_id:'run',stop_operation_id:'stop1',launch_manifest_sha256:h}]};
 }
 function bound(ledger,state='STOPPED'){
-  const inventory=ledger.nodes.filter(n=>n.destroyed_at===null).map(n=>({...n.identity,instance_state:state,observed_at:ledger.captured_at,evidence_ref:'synthetic/inventory',evidence_sha256:h}));
+  const lastStop=ledger.operations.filter(o=>o.action==='stop'&&o.state==='completed').sort((a,b)=>Date.parse(b.completed_at)-Date.parse(a.completed_at))[0];
+  const inventory=ledger.nodes.filter(n=>n.destroyed_at===null).map(n=>({...n.identity,instance_state:state,observed_at:ledger.captured_at,evidence_ref:'synthetic/inventory',evidence_sha256:h,
+    latest_operation:'StopInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:lastStop?.provider_request_id,stop_charging_mode:'STOP_CHARGING'}));
   return produceExpenseSnapshot({ledger,inventory,quote,config});
 }
 const close=(value,expected)=>assert.ok(Math.abs(value-expected)<.000002,`${value} != ${expected}`);
@@ -108,4 +110,14 @@ test('an open historical stopped tail cannot discount contradictory or unknown f
   const ledger=fixture();
   for(const state of ['RUNNING','PENDING','UNKNOWN'])assert.throws(()=>bound(ledger,state),/EXPENSE_CURRENT_STOP_UNCONFIRMED/);
   close(bound(ledger).spent_upper_bound_cny,2*1.2+10*.4);
+});
+
+test('fresh stopped tail requires the historical Stop ACK and exact action, success and charging mode',()=>{
+  const ledger=fixture(),baseline={...identity,instance_state:'STOPPED',observed_at:ledger.captured_at,evidence_ref:'synthetic/inventory',evidence_sha256:h,
+    latest_operation:'StopInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:'ack-stop1',stop_charging_mode:'STOP_CHARGING'};
+  const snapshot=i=>produceExpenseSnapshot({ledger,inventory:[i],quote,config});
+  for(const [key,value] of [['latest_operation','StartInstances'],['latest_operation',null],['latest_operation_state','PENDING'],['latest_operation_state',null],
+    ['latest_operation_request_id','foreign'],['latest_operation_request_id',null],['stop_charging_mode','KEEP_CHARGING'],['stop_charging_mode',null]])
+    assert.throws(()=>snapshot({...baseline,[key]:value}),/EXPENSE_CURRENT_STOP_UNCONFIRMED/);
+  reserve(ledger);close(snapshot(baseline).spent_upper_bound_cny,2*1.2+10*.4);
 });
