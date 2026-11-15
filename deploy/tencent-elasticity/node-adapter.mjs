@@ -19,6 +19,44 @@ async function metadataValue(path) {
   requireThat(r.ok && Number(r.headers.get('content-length') ?? 0) <= 1024, 'NODE_METADATA_BOUND');
   const text = await r.text(); requireThat(text.length <= 1024, 'NODE_METADATA_BOUND'); return text.trim();
 }
+/** Public selection is initialization only. The existing broker still verifies
+ * STS, the exact instance/role/operation and that role's exclusive secret. */
+export function selectExecutionNodeConfig(config, publicManifest) {
+  requireThat(config&&typeof config==='object'&&!Array.isArray(config),'NODE_SLOT_TEMPLATE_INVALID');
+  const validBinding=value=>value&&typeof value==='object'&&!Array.isArray(value)&&
+    Object.keys(value).length===3&&Object.keys(value).every(k=>['role_name','role_id','secret_name'].includes(k))&&
+    ['role_name','role_id','secret_name'].every(k=>typeof value[k]==='string')&&
+    /^[A-Za-z0-9_-]{1,60}$/.test(value.role_name??'')&&/^\d{1,20}$/.test(value.role_id??'')&&
+    /^[A-Za-z0-9_-]{1,128}$/.test(value.secret_name??'');
+  const shared=Object.hasOwn(config,'node_slots');
+  const hasBinding=publicManifest&&Object.hasOwn(publicManifest,'slot_binding');
+  let slots;
+  if(shared){
+    requireThat(!['role_name','role_id','secret_name'].some(k=>Object.hasOwn(config,k)), 'NODE_SLOT_CONFIG_CONFLICT');
+    slots=config.node_slots;
+    requireThat(Array.isArray(slots)&&slots.length===2&&slots.every(validBinding)&&
+      ['role_name','role_id','secret_name'].every(k=>new Set(slots.map(s=>s[k])).size===2), 'NODE_SLOT_TEMPLATE_INVALID');
+    requireThat(hasBinding, 'NODE_SLOT_BINDING_REQUIRED');
+  }else{
+    // Direct single-config adapters remain compatible. A supplied binding must
+    // still exactly match that one configured role; it never falls back to it.
+    slots=[{role_name:config.role_name,role_id:config.role_id,secret_name:config.secret_name}];
+    requireThat(validBinding(slots[0]), 'NODE_SLOT_TEMPLATE_INVALID');
+  }
+  if(publicManifest){
+    requireThat(publicManifest.version==='execution-bootstrap-v1'&&publicManifest.account_id===config.account_id&&
+      publicManifest.region===config.region&&publicManifest.image_sha256===config.image_sha256&&
+      /^[a-f0-9]{64}$/.test(publicManifest.source_sha256??'')&&
+      canonical(publicManifest.services)===canonical(config.services), 'NODE_PUBLIC_CONFIG_MISMATCH');
+  }
+  const binding=hasBinding?publicManifest.slot_binding:slots[0];
+  requireThat(validBinding(binding), 'NODE_SLOT_BINDING_INVALID');
+  const matches=slots.filter(slot=>canonical(slot)===canonical(binding));
+  requireThat(matches.length===1,'NODE_SLOT_NOT_UNIQUE');
+  const {node_slots,...common}=config;
+  return {...common,...matches[0]};
+}
+
 export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {
 requireThat(config.runtime_uid === 1000 && /^[a-f0-9]{64}$/.test(config.image_sha256) && config.compose_file.startsWith('/opt/bondbuddy/'), 'NODE_ADAPTER_CONFIG');
 const launched=new Map();
@@ -179,4 +217,6 @@ const runtime = {
 
 return {metadata,broker,runtime};
 }
-export async function createConfiguredNodeAdapter(){return createNodeAdapter(await readPrivateJson('/etc/bondbuddy/elastic-node.json'));}
+export async function createConfiguredNodeAdapter({publicManifest}={}, {readConfig=()=>readPrivateJson('/etc/bondbuddy/elastic-node.json'),...dependencies}={}){
+  return createNodeAdapter(selectExecutionNodeConfig(await readConfig(),publicManifest),dependencies);
+}

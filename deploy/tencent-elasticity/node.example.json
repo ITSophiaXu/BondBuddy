@@ -2,9 +2,6 @@
   "runtime_uid": 1000,
   "account_id": "REQUIRED_OWNER_ACCOUNT",
   "region": "ap-beijing",
-  "role_name": "REQUIRED_NODE_SPECIFIC_ROLE",
-  "role_id": "REQUIRED_NODE_ROLE_ID",
-  "secret_name": "REQUIRED_NODE_SPECIFIC_SECRET",
   "services": [
     {
       "service_id": "authoring",
@@ -56,5 +53,17 @@
     "remote_host": "10.2.0.5",
     "remote_port": 15434,
     "sni": "proxy-execution.internal"
-  }
+  },
+  "node_slots": [
+    {
+      "role_name": "REQUIRED_NODE_1_ROLE",
+      "role_id": "REQUIRED_NODE_1_ROLE_ID",
+      "secret_name": "REQUIRED_NODE_1_SECRET"
+    },
+    {
+      "role_name": "REQUIRED_NODE_2_ROLE",
+      "role_id": "REQUIRED_NODE_2_ROLE_ID",
+      "secret_name": "REQUIRED_NODE_2_SECRET"
+    }
+  ]
 }
