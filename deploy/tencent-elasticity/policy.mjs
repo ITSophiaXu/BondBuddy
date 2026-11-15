@@ -12,7 +12,7 @@ export function validateConfig(c, {apply = false, expenditure = true} = {}) {
   requireThat(c?.version === 'tencent-execution-pool-v1', 'CONFIG_VERSION');
   requireThat(c.region === 'ap-beijing' && c.zone === 'ap-beijing-7' && c.instance_type === 'SA9.LARGE16', 'RESOURCE_SCOPE');
   requireThat(/^\d{1,20}$/.test(c.account_id) && /^[a-z0-9-]{1,40}$/.test(c.pool_tag), 'OWNERSHIP_SCOPE');
-  requireThat(c.min_running === 1 && c.max_owned === 2, 'POOL_BOUND');
+  requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) && c.max_owned === 2, 'POOL_BOUND');
   requireThat(['single_node_validation', 'two_node_validation', 'automatic'].includes(c.phase), 'PHASE_REQUIRED');
   requireThat([4, 8].includes(c.global_model_limit) && c.node_model_limit === 4, 'CAPACITY_BOUND');
   requireThat(c.compute_cny_per_hour === 0.8 && c.compute_cap_cny_per_hour === 1.6, 'COMPUTE_QUOTE');
@@ -44,8 +44,19 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   if (inventory.some(x => x.cooldown_until && now < Date.parse(x.cooldown_until))) return hold('inventory_cooldown');
   const live = inventory.filter(x => x.instance_state !== 'STOPPED'); // unknown/starting still reserve costs
   const ready = snapshot.nodes.filter(x => x.state === 'ready');
+  const automaticZero=config.phase==='automatic'&&config.min_running===0;
+  // Zero is an explicit execution-pool policy. Idle selection still requires
+  // positive PG activity evidence; the controller obtains the full drain proof
+  // and freezes the epoch before any cloud Stop. A lost node is never idle proof.
+  if(automaticZero&&ready.length>0&&
+    (snapshot.effective_queued_work===0||!snapshot.policy.budget_available)){
+    const idle=ready.find(n=>inventory.some(i=>i.instance_id===n.identity.instance_id&&i.instance_state==='RUNNING')&&
+      (!snapshot.policy.budget_available||(n.active_leases===0&&n.active_model_calls===0&&
+        Number.isFinite(Date.parse(n.idle_since))&&now-Date.parse(n.idle_since)>=config.idle_seconds*1000)));
+    if(idle)return {kind:'drain',identity:idle.identity,revision:idle.revision};
+  }
   // Safe contraction is allowed even when the spend budget has been withdrawn.
-  if ((config.phase === 'automatic' || !snapshot.policy.budget_available) && ready.length > 1 && live.length > 1 &&
+  if (!automaticZero && (config.phase === 'automatic' || !snapshot.policy.budget_available) && ready.length > 1 && live.length > 1 &&
       (snapshot.effective_queued_work === 0 || !snapshot.policy.budget_available)) {
     const spare = ready.find(n => n.identity.instance_id !== config.resident_instance_id &&
       ready.some(other => other.identity.instance_id === config.resident_instance_id &&
@@ -62,7 +73,7 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
     g.available_run_slots === 0);
   const unsupplied = demand.filter(g => !ready.some(n => n.capabilities.includes(g.capability) && n.ready_slots > 0));
   const hasBudgetSlots = snapshot.active_model_calls < snapshot.policy.global_model_limit;
-  if (live.length < 1 || (config.phase !== 'single_node_validation' && unsupplied.length && hasBudgetSlots)) {
+  if (live.length < config.min_running || ((live.length===0||config.phase !== 'single_node_validation') && unsupplied.length && hasBudgetSlots)) {
     const spare = inventory.find(x => x.instance_state === 'STOPPED');
     if (live.length >= 2 || (!spare && inventory.length >= 2)) return hold('max_owned');
     if ((live.length + 1) * config.compute_cny_per_hour > config.compute_cap_cny_per_hour) return hold('compute_cap');

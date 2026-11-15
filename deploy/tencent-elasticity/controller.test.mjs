@@ -47,6 +47,46 @@ const request = () => ({...identity, instance_id: null, instance_count: 1, sourc
 const operation = () => ({operation_id: 'op1', identity, action: 'stop', state: 'intent', revision: 1, provider_request_id: null, proof_sha256: h, request: null, client_token: sha256('op1')});
 const observation = () => ({...identity, instance_state: 'STOPPED', latest_operation: 'StopInstances', latest_operation_state: 'SUCCESS', latest_operation_request_id: 'cloud1', stop_charging_mode: 'STOP_CHARGING', observed_at: new Date().toISOString(), evidence_ref: 'sealed/cloud.json', evidence_sha256: h});
 
+test('automatic zero floor waits for effective demand and budget, while validation keeps its single-node floor',()=>{
+  const zero={...config,min_running:0};assert.doesNotThrow(()=>validateConfig(zero));
+  assert.throws(()=>validateConfig({...zero,phase:'single_node_validation'}),/POOL_BOUND/);
+  const s=snapshot();assert.equal(planCapacity(s,[],zero).kind,'hold');
+  s.groups=[{capability:'authoring',effective_queued_work:1,oldest_wait_seconds:59,available_run_slots:0}];
+  assert.equal(planCapacity(s,[],zero).kind,'hold');s.groups[0].oldest_wait_seconds=60;
+  assert.equal(planCapacity(s,[],zero).kind,'run');
+  assert.equal(planCapacity(s,[{instance_id:'ins-a1',instance_state:'STOPPED'}],zero).kind,'start');
+  assert.equal(planCapacity({...s,policy:{...s.policy,budget_available:false}},[],zero).reason,'budget');
+  assert.equal(planCapacity({...s,pending_cloud_reservations:1},[],zero).reason,'pending_cloud_operation');
+  assert.equal(planCapacity(snapshot(),[],{...config,phase:'single_node_validation'}).kind,'run');
+});
+
+test('automatic zero floor drains the final healthy idle node but refuses lease, unknown and missing-idle shortcuts',()=>{
+  const time=Date.now(),zero={...config,min_running:0},n={identity,state:'ready',revision:1,active_leases:0,active_model_calls:0,
+    ready_slots:4,capabilities:['authoring','review'],idle_since:new Date(time-301000).toISOString()};
+  const s={...snapshot(),nodes:[n]},inventory=safeInventory();
+  assert.equal(planCapacity(s,inventory,zero,time).kind,'drain');
+  for(const bad of [{...n,active_leases:1},{...n,active_model_calls:1},{...n,idle_since:null},{...n,idle_since:new Date(time-299000).toISOString()}])
+    assert.equal(planCapacity({...s,nodes:[bad]},inventory,zero,time).kind,'hold');
+  assert.equal(planCapacity(s,[{...inventory[0],instance_state:'UNKNOWN'}],zero,time).kind,'hold');
+  assert.equal(planCapacity({...s,effective_queued_work:1},inventory,zero,time).kind,'hold');
+  // Withdrawn spend asks the normal controller to drain, including holders. It
+  // never supplies a stop proof or cancels admitted work in the planner.
+  assert.equal(planCapacity({...s,nodes:[{...n,active_leases:1}],policy:{...s.policy,budget_available:false}},inventory,zero,time).kind,'drain');
+});
+
+test('automatic zero expense drops only fictional resident reserve and retains actual rows, uncertainty and fixed fees',()=>{
+  const inventory=safeInventory(),ledger=ledgerFor(inventory),base=produceExpenseSnapshot({ledger,inventory,quote,config});
+  const zero=produceExpenseSnapshot({ledger,inventory,quote,config:{...config,min_running:0}});
+  assert.equal(zero.resident_remaining_period_cny,0);assert.ok(base.resident_remaining_period_cny>0);
+  for(const k of ['spent_upper_bound_cny','reserved_upper_bound_cny','unknown_liability_cny','drain_reserve_cny','prospective_slot_cny','fixed_commitments_upper_bound_cny'])
+    assert.equal(zero[k],base[k]);
+  const stopped={...inventory[0],instance_state:'STOPPED'};ledger.nodes[0].state='stopped';ledger.nodes[0].stop_operation_id='uncertain-stop';
+  ledger.operations.push({operation_id:'uncertain-stop',action:'stop',state:'unknown',identity,created_at:ledger.captured_at});
+  const pending=produceExpenseSnapshot({ledger,inventory:[stopped],quote,config:{...config,min_running:0}});
+  assert.deepEqual(pending.rows[0].operation_ids,['uncertain-stop']);assert.equal(pending.rows[0].reservation_cny,zero.rows[0].reservation_cny);
+  assert.throws(()=>produceExpenseSnapshot({ledger,inventory:[stopped],quote:{...quote,components:quote.components.slice(1)},config:{...config,min_running:0}}),/EXPENSE_QUOTE_UNVERIFIED/);
+});
+
 test('budget / pending / shared waiters never trigger expansion; first-node validation is bounded', () => {
   assert.equal(planCapacity({...snapshot(), policy: {...snapshot().policy, budget_available: false}}, [], config).reason, 'budget');
   assert.equal(planCapacity({...snapshot(), pending_cloud_reservations: 1}, [], config).reason, 'pending_cloud_operation');

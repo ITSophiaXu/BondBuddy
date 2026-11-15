@@ -93,9 +93,11 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
     rows.push({resource_id:null,operation_ids:[o.operation_id],launch_manifest_sha256:o.request.launch_manifest_sha256,
       upper_bound_cny:upper,carry_liability_cny:prior,reservation_cny:reserve});
   }
-  // Budget a resident through the end of this civil day, plus safe drain on BOTH
-  // slots and a full prospective slot reservation. No per-user task quota.
-  const resident=money(Math.max(0,end-now)/HOUR*running), drain=money(2*running*config.drain_reserve_hours);
+  // A zero-floor automatic pool promises no resident. Actual running/unknown
+  // rows, disk and fixed liabilities remain above; both safe-drain slots and a
+  // prospective start stay reserved independently of the resident floor.
+  const automaticZero=config.phase==='automatic'&&config.min_running===0;
+  const resident=automaticZero?0:money(Math.max(0,end-now)/HOUR*running), drain=money(2*running*config.drain_reserve_hours);
   const result={version:'execution-cloud-expense-v2',currency:'CNY',account_id:config.account_id,region:config.region,
     quote_sha256:config.quote_sha256,expense_policy_sha256:config.expense_policy_sha256,policy_revision:config.expense_policy_revision,
     observed_at:ledger.captured_at,...period,period_cap_cny:config.period_cap_cny,total_hourly_cap_cny:config.total_cap_cny_per_hour,
