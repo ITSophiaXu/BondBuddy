@@ -65,6 +65,7 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
 
 async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={}) {
   await syncAuthoringProgress(client,r,{state,stage,reason});
+  if(terminal.has(state))await client.query('DELETE FROM bb_run_model_activity WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
@@ -146,6 +147,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
       return null;
     }
     const token=uid();
+    await client.query('DELETE FROM bb_run_model_activity WHERE job_id=$1',[j.id]);
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
     return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
@@ -164,6 +166,48 @@ async function lockedLease(client:PoolClient, lease:Lease, renewing=false) {
   if(!j || j.lease_token!==lease.token || j.state!=='running' || expired&&!(renewing&&j.renewal_started_in_time===true) || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   return {r,j};
 }
+
+/** A request is registered before either the local or shared model-capacity queue.
+ * Do not change run state/stage: an executing job waiting for a model still owns
+ * its lease. Only this lease's complete set of requests controls its meter. */
+export async function setRunModelActivity(pool:Pool,lease:Lease,requestId:string,state:'waiting'|'active'|'finished'|'abandoned'):Promise<boolean>{
+  if(!/^[a-f0-9-]{36}$/.test(requestId))throw new Problem(422,'VALIDATION_FAILED','Invalid model activity request');
+  return transaction(pool,async client=>{
+    let locked;
+    try{locked=await lockedLease(client,lease);}
+    catch(error){
+      if((state==='finished'||state==='abandoned')&&error instanceof Problem&&['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;
+      throw error;
+    }
+    const {r}=locked;
+    const prior=(await client.query('SELECT * FROM bb_run_model_activity WHERE request_id=$1',[requestId])).rows[0];
+    if(prior&&(prior.owner_user_id!==lease.owner||prior.run_id!==lease.runId||prior.job_id!==lease.jobId||prior.lease_token!==lease.token))
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity request belongs to another lease');
+    if(prior?.state===state)return true;
+    if(state==='waiting'&&prior||state==='active'&&prior?.state!=='waiting')
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity cannot be reopened');
+    if((state==='finished'||state==='abandoned')&&!prior)return false;
+    if(state==='finished'&&prior.state!=='active')return false;
+    // Settle the old interval before the transition, then start/freeze the new
+    // interval at the database clock. Renewals and cancellation use these locks.
+    await syncAuthoringProgress(client,r);
+    if(state==='waiting'){
+      await client.query(`INSERT INTO bb_run_model_activity(request_id,owner_user_id,run_id,job_id,lease_token,state)
+        VALUES($1,$2,$3,$4,$5,'waiting')`,[requestId,lease.owner,lease.runId,lease.jobId,lease.token]);
+    }else if(state==='finished'){
+      await client.query('DELETE FROM bb_run_model_activity WHERE request_id=$1',[requestId]);
+    }else{
+      await client.query('UPDATE bb_run_model_activity SET state=$2,updated_at=clock_timestamp() WHERE request_id=$1',[requestId,state]);
+
+    }
+    // An abandoned wait remains a frozen marker until work explicitly resumes.
+    // Deleting the last failed waiter here would start charging before the
+    // caller has persisted its pause/failure (possibly behind a blocked DB lock).
+    await syncAuthoringProgress(client,r);
+    return true;
+  });
+}
+
 
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
   const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease,true);
@@ -236,6 +280,8 @@ export async function beginRunStage(pool:Pool,lease:Lease,stage:string){
   await transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     if(!['update','generation'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))return;
+    await syncAuthoringProgress(client,r);
+    await client.query("DELETE FROM bb_run_model_activity WHERE job_id=$1 AND lease_token=$2 AND state='abandoned'",[j.id,lease.token]);
     await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[j.id,stage]);
     await event(client,r,'running',stage,'stage_started',undefined,'run.progress');
   });

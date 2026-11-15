@@ -13,5 +13,7 @@ function renderWordFailure(){
     <p class="muted">本次任务按提交时的试用规则执行，不扣积分。</p>
     <div class="actions"><button onclick="render('queued')">继续修改</button><button>查看材料</button></div>`;
 }
+states.model_waiting=['正在等待模型处理名额','当前没有可用的模型处理名额，可用后会自动继续。等待期间积分不增加，无需重复提交。',2,'1,830','1分30秒','等待模型处理名额，积分不会增加。'];
+document.querySelector('[data-state="running"]').insertAdjacentHTML('afterend','<button data-state="model_waiting">等待模型名额</button>');
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>render(b.dataset.state));render(new URLSearchParams(location.search).get('state')||'running');
 </script></html>

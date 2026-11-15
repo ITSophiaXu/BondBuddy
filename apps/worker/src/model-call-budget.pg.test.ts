@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isolatedTestDatabase } from './test-database.js';
-import { PgModelCallBudget, modelCallConcurrency } from './model-call-budget.js';
+import { PgModelCallBudget, modelCallConcurrency, type ModelCallPermit } from './model-call-budget.js';
 const connection = await isolatedTestDatabase(undefined,'global-model-budget');
 const until = async (check:()=>Promise<boolean>) => {
   for (let i=0;i<100;i++) { if (await check()) return; await delay(25); }
@@ -46,27 +47,58 @@ test('a 250-item batch yields to fresh authoring/assistant scopes before taking 
   await pool.end();
 });
 test('stale renewal never frees an actual live process; dead local process identity permits recovery',{skip:!connection,timeout:20000},async()=>{
-  const pool = new Pool({connectionString:connection});
-  const budget=new PgModelCallBudget(pool);
-  const held=await Promise.all(Array.from({length:4},(_,i)=>budget.acquire(undefined,`holder:${i}`)));
-  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});
-  const exited=new Promise<void>(resolve=>child.once('close',()=>resolve()));
-  assert.ok(child.pid);await held[0]!.bindProcess(child.pid!);
-  await pool.query("UPDATE bb_model_capacity_holders SET renewed_at=now()-interval '100 days'");
-  let fifthGranted=false;const controller=new AbortController();
-  const fifth=new PgModelCallBudget(pool).acquire(controller.signal,'fresh:after_loss').then(p=>{fifthGranted=true;return p;});
-  await delay(300);assert.equal(fifthGranted,false,'no TTL reclaim of four holders');
-  // A former parent identity with its real child still alive must remain fenced.
-  await pool.query("UPDATE bb_model_capacity_holders SET parent_start='prior-process' WHERE child_pid=$1",[child.pid]);
-  await budget.reconcileOwnExitedProcesses();
-  assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders')).rows[0].n,4);
-  assert.equal(child.exitCode,null,'bound process is still alive before stop');
-  child.kill('SIGKILL');await exited;
-  await budget.reconcileOwnExitedProcesses();
-  const next=await fifth;assert.equal(fifthGranted,true);await next.release();
-  await Promise.all(held.map(p=>p.release()));
-  assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders WHERE host_id=$1',[hostname()])).rows[0].n,0);
-  await pool.end();
+  const pool = new Pool({connectionString:connection}), budget=new PgModelCallBudget(pool);
+  const held: ModelCallPermit[]=[];
+  const controller=new AbortController();
+  let child:ReturnType<typeof spawn>|undefined,exited:Promise<void>|undefined;
+  let fifth:Promise<{permit:ModelCallPermit|null;error:unknown}>|undefined,fixtureToken:string|undefined;
+  let fifthGranted=false;
+  try{
+    held.push(...await Promise.all(Array.from({length:4},(_,i)=>budget.acquire(undefined,'holder:'+i))));
+    child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});
+    exited=new Promise<void>(resolve=>child!.once('close',()=>resolve()));
+    assert.ok(child.pid);await held[0]!.bindProcess(child.pid!);
+    await pool.query("UPDATE bb_model_capacity_holders SET renewed_at=now()-interval '100 days'");
+    fifth=new PgModelCallBudget(pool).acquire(controller.signal,'fresh:after_loss').then(
+      permit=>{fifthGranted=true;return {permit,error:null};},error=>({permit:null,error}));
+    await delay(300);assert.equal(fifthGranted,false,'no TTL reclaim of four holders');
+
+    // 0181 makes an existing entitlement's identity immutable. Preserve that
+    // guard, and INSERT a synthetic former-parent association from the saved
+    // entitlement instead. The child itself is real, directly owned and reaped.
+    await assert.rejects(pool.query("UPDATE bb_model_capacity_holders SET parent_start='prior-process' WHERE child_pid=$1",[child.pid]),/Model entitlement identity immutable/);
+    const saved=(await pool.query('SELECT * FROM bb_model_capacity_holders WHERE child_pid=$1',[child.pid])).rows[0];
+    assert.ok(saved);
+    fixtureToken=randomUUID();
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1::integer,0)',[0x42424d43]);
+      await held[0]!.release();
+      await client.query('INSERT INTO bb_model_capacity_holders SELECT * FROM json_populate_record(NULL::bb_model_capacity_holders,$1::json)',
+        [JSON.stringify({...saved,token:fixtureToken,parent_start:'prior-process'})]);
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    await budget.reconcileOwnExitedProcesses();
+    assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders')).rows[0].n,4);
+    assert.equal(child.exitCode,null,'bound process is still alive before stop');
+    assert.equal(fifthGranted,false,'a synthetic dead parent does not free its live child');
+    child.kill('SIGKILL');await exited;
+    await budget.reconcileOwnExitedProcesses();
+    await until(async()=>fifthGranted);
+    const next=await fifth;assert.ifError(next.error);assert.ok(next.permit);await next.permit.release();
+    await Promise.all(held.map(permit=>permit.release()));
+    assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders WHERE host_id=$1',[hostname()])).rows[0].n,0);
+  }finally{
+    controller.abort();
+    if(child&&child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');
+    if(exited)await exited;
+    const pending=await fifth;
+    if(pending?.permit)await pending.permit.release();
+    await Promise.all(held.map(permit=>permit.release()));
+    if(fixtureToken)await pool.query('DELETE FROM bb_model_capacity_holders WHERE token=$1',[fixtureToken]);
+    await pool.end();
+  }
 });
 
 test('continually new child run scopes cannot starve an already waiting assistant',{skip:!connection,timeout:20000},async()=>{
