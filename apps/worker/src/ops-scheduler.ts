@@ -1,4 +1,4 @@
-import {bindExecutionRegistration,executionCapacityControl} from '@bondbuddy/api/execution-capacity';
+import {bindExecutionRegistration,executionCloudExpenseLedger,executionCapacityControl} from '@bondbuddy/api/execution-capacity';
 import {fileURLToPath} from 'node:url';
 import {resolve,dirname} from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -246,7 +246,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     let executionPoolTick:(()=>Promise<void>)|undefined;
     if(process.env.BB_EXECUTION_POOL_CONFIG){
       const module=await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)),'../../../deploy/tencent-elasticity/ops-handler.mjs')).href);
-      const handler=await module.createExecutionPoolOpsHandler({control:executionCapacityControl(pool),enrollmentBinder:(identity:Parameters<typeof bindExecutionRegistration>[1],opId:string,token:string)=>bindExecutionRegistration(pool,identity,opId,token),configPath:process.env.BB_EXECUTION_POOL_CONFIG,log});
+      const handler=await module.createExecutionPoolOpsHandler({control:executionCapacityControl(pool),expenseLedger:()=>executionCloudExpenseLedger(pool),enrollmentBinder:(identity:Parameters<typeof bindExecutionRegistration>[1],opId:string,token:string)=>bindExecutionRegistration(pool,identity,opId,token),configPath:process.env.BB_EXECUTION_POOL_CONFIG,log});
       executionPoolTick=()=>handler.tick();
     }
     scheduler = new OpsScheduler({ pool, tasks,executionPoolTick, tickMs: intEnv(process.env, 'BB_OPS_TICK_SECONDS', 5, 1, 300) * 1000, log }).start();

@@ -1,4 +1,3 @@
-import {gateState} from '@bondbuddy/api/evidence-gate';
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren} from './execution-node-runtime.js';
 import { modelCallConcurrency } from './model-call-budget.js';
@@ -165,7 +164,7 @@ export class WorkerRuntime {
     if(this.o.uploadConfirmationEnabled)this.confirmationLoops.push(this.uploadConfirmationLoop(this.o.uploadConfirmationLane));
     if(this.o.uploadConfirmationSmallSlot)this.confirmationLoops.push(this.uploadConfirmationLoop('small'));
     this.loops.push(this.sweepLoop());
-    this.loops.push(this.heartbeatLoop());
+    this.heartbeatTask=this.heartbeatLoop();
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
     if (this.o.reviewAssistant && this.o.kinds.includes('run') && this.o.runKinds.includes('review'))
@@ -269,6 +268,11 @@ export class WorkerRuntime {
     }
   }
 
+  private heartbeatTask:Promise<void>|null=null;
+  private drainWorkSettled=false;
+  private sessionFinished=false;
+  private finishSession!:()=>void;
+  private readonly sessionFinishedReceipt=new Promise<void>(resolve=>{this.finishSession=resolve;});
   private readonly startedAt = new Date();
   /** Upserts this process's heartbeat; a failed write only counts as an error (readiness will show it stale). */
   async heartbeat(stopped = false) {
@@ -281,12 +285,20 @@ export class WorkerRuntime {
   }
 
   private async heartbeatLoop() {
-    while (!this.stopping) {
+    const managed=!!executionNodeForPool(this.o.pool);
+    while (!this.stopping || managed&&!this.sessionFinished) {
       await this.heartbeat();
-      if(executionNodeForPool(this.o.pool)){
-        try{const state=await executionNodeState(this.o.pool);if(['draining','drained','stop_submitted','lost'].includes(state??'')){void this.stop();return;}}catch{this.counters.errors++;}
+      if(managed){
+        if(this.drainWorkSettled){
+          try{
+            await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:false,finished:true});
+            this.sessionFinished=true;this.finishSession();return;
+          }catch{this.counters.errors++;this.emit({kind:'execution_session_finish_retry'});}
+        }else if(!this.stopping){
+          try{const state=await executionNodeState(this.o.pool);if(['draining','drained','stop_submitted','lost'].includes(state??''))void this.stop().catch(()=>{this.counters.errors++;});}catch{this.counters.errors++;}
+        }
       }
-      await sleep(this.o.heartbeatMs, this.stopSignal.signal);
+      await sleep(this.o.heartbeatMs,this.stopping?undefined:this.stopSignal.signal);
     }
   }
 
@@ -354,18 +366,19 @@ export class WorkerRuntime {
     if(executionNodeForPool(this.o.pool)){
       // Cloud drain has no twenty-second deadline and never releases a live
       // job/model merely because a process heartbeat or lease timed out.
-      const ticker=setInterval(()=>{void this.heartbeat();},this.o.heartbeatMs);
-      try{await Promise.all([...this.loops,...this.confirmationLoops]);}
-      finally{clearInterval(ticker);}
-      const evidence=await gateState(this.o.pool);
-      await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size+(evidence.state==='paused'||evidence.process_state==='paused'?1:0),ready:false,finished:true});
-      await recordWorkerHeartbeat(this.o.pool,{workerId:this.o.workerId,startedAt:this.startedAt,kinds:this.o.kinds,concurrency:this.o.concurrency,stopped:true});
+      await Promise.all([...this.loops,...this.confirmationLoops]);
+      this.drainWorkSettled=true;
+      // The existing heartbeat loop keeps retrying the positive session receipt.
+      // A durable global evidence pause is not an unpersisted local result.
+      await this.sessionFinishedReceipt;
+      await this.heartbeatTask;
+      await recordWorkerHeartbeat(this.o.pool,{workerId:this.o.workerId,startedAt:this.startedAt,kinds:this.o.kinds,concurrency:this.o.concurrency,stopped:true}).catch(()=>{this.counters.errors++;});
       this.emit({kind:'execution_session_finished',native_processes:0,unpersisted_results:0,released:0});return;
     }
-    const drained = await Promise.race([Promise.all(this.loops).then(() => true), sleep(this.o.drainMs).then(() => false)]);
+    const drained = await Promise.race([Promise.all([...this.loops,...(this.heartbeatTask?[this.heartbeatTask]:[])]).then(() => true), sleep(this.o.drainMs).then(() => false)]);
     if (!drained) {
       this.workAbort.abort();
-      await Promise.race([Promise.all(this.loops), sleep(5000)]);
+      await Promise.race([Promise.all([...this.loops,...(this.heartbeatTask?[this.heartbeatTask]:[])]), sleep(5000)]);
     }
     for (const lease of this.runLeases.values()) await releaseLease(this.o.pool, lease).catch(() => undefined);
     for (const lease of this.parseLeases.values()) await releaseMaterialParse(this.o.pool, lease).catch(() => undefined);

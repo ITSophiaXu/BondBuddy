@@ -15,3 +15,7 @@ test('whole shared plan remains one author; caches and explicit retries become i
 test('ordinary independent files are not collapsed into a shared whole-plan demand',()=>{
  const b=fixture('ordinary');assert.equal(new Set(b.items.map(i=>workpaperDemandKey('b',i.item_id,b).key)).size,250);
 });
+
+test('an invalid persisted source or receipt is unready input, never another planning author',()=>{
+ const b=fixture();b.invalidInput=true;assert.equal(b.items.filter(i=>workpaperDemandKey('b',i.item_id,b).key).length,0);assert.equal(workpaperDemandKey('b','item-0',b).reason,'unready_input');
+});

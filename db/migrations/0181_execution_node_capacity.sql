@@ -4,10 +4,11 @@ CREATE TABLE bb_execution_capacity_policy (
  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
  revision bigint NOT NULL DEFAULT 0,
  managed_nodes boolean NOT NULL DEFAULT false,
- global_model_limit integer NOT NULL DEFAULT 4 CHECK(global_model_limit BETWEEN 1 AND 64),
+ global_model_limit integer NOT NULL DEFAULT 4 CHECK(global_model_limit IN (4,8)),
  node_model_limit integer NOT NULL DEFAULT 4 CHECK(node_model_limit=4),
- max_nodes integer NOT NULL DEFAULT 2 CHECK(max_nodes BETWEEN 1 AND 16),
+ max_nodes integer NOT NULL DEFAULT 2 CHECK(max_nodes BETWEEN 1 AND 2),
  budget_available boolean NOT NULL DEFAULT true,
+ cooldown_until timestamptz,
  provider_concurrency_limit integer NOT NULL DEFAULT 4 CHECK(provider_concurrency_limit BETWEEN 1 AND 64),
  provider_policy_sha256 char(64),expense_policy_sha256 char(64),
  CHECK(global_model_limit<=provider_concurrency_limit),
@@ -30,7 +31,7 @@ CREATE TABLE bb_execution_nodes (
  drain_operation_id text,stop_operation_id text,
  drain_proof jsonb,
  last_heartbeat_at timestamptz,idle_since timestamptz,
- destroyed_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),destroyed_at timestamptz,
  UNIQUE(account_id,region,instance_id)
 );
 CREATE TABLE bb_execution_node_sessions (
@@ -59,16 +60,16 @@ CREATE TABLE bb_execution_cloud_operations (
  provider_request_id text,
  proof_sha256 char(64),
  holder_preimage jsonb NOT NULL DEFAULT '[]'::jsonb,
- cloud_observation jsonb,
+ cloud_observation jsonb,rejection_evidence jsonb,retry_after timestamptz,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  dispatched_at timestamptz,
  completed_at timestamptz
 );
 CREATE INDEX bb_execution_cloud_pending ON bb_execution_cloud_operations(state,created_at);
 ALTER TABLE bb_jobs ADD COLUMN execution_node_id text REFERENCES bb_execution_nodes(id),
- ADD COLUMN execution_node_epoch uuid,ADD COLUMN execution_session_id uuid REFERENCES bb_execution_node_sessions(session_id);
+ ADD COLUMN execution_node_epoch uuid,ADD COLUMN execution_session_id uuid REFERENCES bb_execution_node_sessions(session_id),ADD COLUMN execution_admission_policy_revision bigint;
 ALTER TABLE bb_review_messages ADD COLUMN execution_node_id text REFERENCES bb_execution_nodes(id),
- ADD COLUMN execution_node_epoch uuid,ADD COLUMN execution_session_id uuid REFERENCES bb_execution_node_sessions(session_id);
+ ADD COLUMN execution_node_epoch uuid,ADD COLUMN execution_session_id uuid REFERENCES bb_execution_node_sessions(session_id),ADD COLUMN execution_admission_policy_revision bigint;
 -- A full node must not head-of-line block another eligible node.
 ALTER TABLE bb_model_capacity_waiters ADD COLUMN execution_node_id text REFERENCES bb_execution_nodes(id),
  ADD COLUMN execution_node_epoch uuid,ADD COLUMN execution_session_id uuid REFERENCES bb_execution_node_sessions(session_id),
@@ -99,6 +100,7 @@ BEGIN
  -- never between its gate and durable lease write.
  SELECT * INTO n FROM bb_execution_nodes WHERE id=node_key FOR UPDATE;
  SELECT * INTO s FROM bb_execution_node_sessions WHERE session_id=session_key AND node_id=node_key AND epoch=epoch_key;
+ IF NOT policy.budget_available THEN RAISE EXCEPTION 'Execution admission budget unavailable' USING ERRCODE='55000'; END IF;
  IF n.id IS NULL OR n.epoch<>epoch_key OR n.state<>'ready' OR s.state IS DISTINCT FROM 'active'
   OR NOT s.ready OR s.heartbeat_at<clock_timestamp()-interval '30 seconds'
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(n.expected_services) service
@@ -108,7 +110,6 @@ BEGIN
  SELECT (SELECT count(*) FROM bb_jobs WHERE execution_node_id=n.id AND lease_token IS NOT NULL)
   +(SELECT count(*) FROM bb_review_messages WHERE execution_node_id=n.id AND lease_token IS NOT NULL) INTO occupied;
  IF occupied>=4 THEN RAISE EXCEPTION 'Execution node claim slots full' USING ERRCODE='55000'; END IF;
- UPDATE bb_execution_nodes SET idle_since=NULL WHERE id=n.id;
  RETURN n;
 END $$;
 CREATE FUNCTION bb_execution_guard_claim() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -125,7 +126,9 @@ BEGIN
   capability:=CASE WHEN TG_TABLE_NAME='bb_review_messages' THEN 'assistant' ELSE NULL END;
   IF TG_TABLE_NAME='bb_jobs' THEN capability:=CASE WHEN NEW.job_type='platform_probe' THEN 'probe' WHEN NEW.job_type='review' THEN 'review' ELSE 'authoring' END; END IF;
   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(n.expected_services) svc WHERE svc->>'service_id'=(SELECT service_id FROM bb_execution_node_sessions WHERE session_id=NULLIF(current_setting('bb.execution_session_id',true),'')::uuid) AND svc->'capabilities' ? capability) THEN RAISE EXCEPTION 'Execution service capability mismatch' USING ERRCODE='55000'; END IF;
+  UPDATE bb_execution_nodes SET idle_since=NULL WHERE id=n.id;
   NEW.execution_node_id:=n.id;NEW.execution_node_epoch:=n.epoch;
+  SELECT revision INTO NEW.execution_admission_policy_revision FROM bb_execution_capacity_policy WHERE singleton;
   NEW.execution_session_id:=NULLIF(current_setting('bb.execution_session_id',true),'')::uuid;
  END IF;
  RETURN NEW;
@@ -138,14 +141,15 @@ DECLARE p bb_execution_capacity_policy;n bb_execution_nodes;s bb_execution_node_
 BEGIN
  -- Renewal/binding keeps its existing entitlement, including draining/lost.
  IF TG_OP='UPDATE' THEN
-  IF ROW(NEW.token,NEW.scope,NEW.slot,NEW.execution_node_id,NEW.execution_node_epoch,NEW.execution_session_id,NEW.node_slot,NEW.admission_job_id,NEW.admission_message_id)
-   IS DISTINCT FROM ROW(OLD.token,OLD.scope,OLD.slot,OLD.execution_node_id,OLD.execution_node_epoch,OLD.execution_session_id,OLD.node_slot,OLD.admission_job_id,OLD.admission_message_id)
+  IF ROW(NEW.token,NEW.scope,NEW.slot,NEW.host_id,NEW.execution_host,NEW.host_boot_id,NEW.pid_namespace,NEW.namespace_init_start,NEW.parent_pid,NEW.parent_start,NEW.execution_node_id,NEW.execution_node_epoch,NEW.execution_session_id,NEW.node_slot,NEW.admission_job_id,NEW.admission_message_id)
+   IS DISTINCT FROM ROW(OLD.token,OLD.scope,OLD.slot,OLD.host_id,OLD.execution_host,OLD.host_boot_id,OLD.pid_namespace,OLD.namespace_init_start,OLD.parent_pid,OLD.parent_start,OLD.execution_node_id,OLD.execution_node_epoch,OLD.execution_session_id,OLD.node_slot,OLD.admission_job_id,OLD.admission_message_id)
    THEN RAISE EXCEPTION 'Model entitlement identity immutable'; END IF;
+  IF OLD.child_pid IS NOT NULL AND ROW(NEW.child_pid,NEW.child_start,NEW.child_group,NEW.codex_home) IS DISTINCT FROM ROW(OLD.child_pid,OLD.child_start,OLD.child_group,OLD.codex_home) THEN RAISE EXCEPTION 'Bound model process identity immutable'; END IF;
   RETURN NEW;
  END IF;
  PERFORM pg_advisory_xact_lock(1111641411,0);
  SELECT * INTO p FROM bb_execution_capacity_policy WHERE singleton FOR SHARE;
- IF NOT p.budget_available OR NEW.slot>p.global_model_limit
+ IF (NOT p.budget_available AND NEW.execution_node_id IS NULL) OR NEW.slot>p.global_model_limit
   OR (SELECT count(*) FROM bb_model_capacity_holders)>=p.global_model_limit
   THEN RAISE EXCEPTION 'Global model budget unavailable' USING ERRCODE='55000'; END IF;
  IF NEW.execution_node_id IS NULL THEN
@@ -161,10 +165,10 @@ BEGIN
  -- draining; an unleased probe or a stale runtime epoch cannot create a call.
  SELECT EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=NEW.admission_job_id AND j.execution_node_id=n.id
   AND j.execution_node_epoch=n.epoch AND j.execution_session_id=s.session_id AND j.state='running' AND j.lease_token IS NOT NULL AND j.lease_until>clock_timestamp()
-  AND j.lease_token=current_setting('bb.execution_lease_token',true)) OR
+  AND j.execution_admission_policy_revision IS NOT NULL AND j.lease_token=current_setting('bb.execution_lease_token',true)) OR
   EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=NEW.admission_message_id AND m.execution_node_id=n.id
   AND m.execution_node_epoch=n.epoch AND m.execution_session_id=s.session_id AND m.reply_status='running' AND m.lease_token IS NOT NULL AND m.lease_until>clock_timestamp()
-  AND m.lease_token::text=current_setting('bb.execution_lease_token',true)) INTO ok;
+  AND m.execution_admission_policy_revision IS NOT NULL AND m.lease_token::text=current_setting('bb.execution_lease_token',true)) INTO ok;
  IF NOT ok THEN RAISE EXCEPTION 'Model admission lease missing' USING ERRCODE='55000'; END IF;
  UPDATE bb_execution_nodes SET idle_since=NULL WHERE id=n.id;
  RETURN NEW;

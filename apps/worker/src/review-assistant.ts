@@ -119,6 +119,7 @@ export async function claimReviewAssistant(pool:Pool,leaseSeconds=120):Promise<R
     await executionClaimGate(client,pool);
     const row=(await client.query(`SELECT m.* FROM bb_review_messages m JOIN bb_projects p ON p.id=m.project_id AND p.owner_user_id=m.owner_user_id
       WHERE m.role='user' AND p.archived_at IS NULL AND p.deleted_at IS NULL AND (m.reply_status='queued' OR (m.reply_status='running' AND m.lease_until<now()))
+      AND NOT (m.execution_node_id IS NOT NULL AND m.lease_token IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM bb_review_messages earlier WHERE earlier.owner_user_id=m.owner_user_id AND earlier.project_id=m.project_id
         AND earlier.role='user' AND earlier.reply_status IN ('queued','running')
         AND (earlier.created_at,earlier.id)<(m.created_at,m.id))

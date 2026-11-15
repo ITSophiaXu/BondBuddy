@@ -187,7 +187,7 @@ export class PgModelCallBudget implements ModelCallBudget {
               if(policy.managed_nodes&&!context)throw Error('Managed execution node identity required');
               const node=context?(await client.query('SELECT id,state,epoch FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 FOR UPDATE',[context.identity.account_id,context.identity.region,context.identity.instance_id])).rows[0]:null;
               if(context&&(!node||node.epoch!==context.identity.epoch||!['ready','draining'].includes(node.state)||!admission))throw Error('Execution node capacity fenced');
-              const slot = policy.budget_available&&(await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
+              const slot = (policy.budget_available||!!node)&&(await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
                 WHERE (SELECT count(*) FROM bb_model_capacity_holders)<$1 AND NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders h WHERE h.slot=g.slot) LIMIT 1`,[policy.global_model_limit])).rows[0]?.slot;
               const nodeSlot=node?(await client.query('SELECT g.slot FROM generate_series(1,4) g(slot) WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1 AND node_slot=g.slot) LIMIT 1',[node.id])).rows[0]?.slot:null;
               if (slot !== undefined && slot!==false && (!node||nodeSlot!==undefined)) {

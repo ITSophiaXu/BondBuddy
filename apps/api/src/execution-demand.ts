@@ -2,12 +2,12 @@ import {workpaperChapters,workpaperPlanGroupIds,WORKPAPER_PLAN_GROUP_SIZE,type W
 import {inputManifestHash} from './production-rule-pin.js';
 
 type BatchItem={item_id:string;attempt:number;manifest:any};
-export type ExecutionBatchDemand={items:BatchItem[];sourceReady:boolean;wholePlanReady:boolean;itemPlans:Set<string>;groupReceipts:Map<string,{status:string}>;progressive_plan:WorkpaperProgressive|null;progressive_phase:string|null;state:string;max_parallel:number|null};
+export type ExecutionBatchDemand={items:BatchItem[];invalidInput?:boolean;sourceReady:boolean;wholePlanReady:boolean;itemPlans:Set<string>;groupReceipts:Map<string,{status:string}>;progressive_plan:WorkpaperProgressive|null;progressive_phase:string|null;state:string;max_parallel:number|null};
 /** Same frozen chapter/group membership as the document stage. This classifies
  * existing admitted runs only; it neither admits another item nor schedules work. */
 export function workpaperDemandKey(batchId:string,itemId:string,b:ExecutionBatchDemand):{key:string|null;reason?:'shared_plan_waiter'|'unready_input'}{
  const item=b.items.find(i=>i.item_id===itemId),task=item?.manifest?.input?.workpaper;
- if(!item||!task)return {key:null,reason:'unready_input'};
+ if(b.invalidInput||!item||!task)return {key:null,reason:'unready_input'};
  const method=task.execution;
  if(!['shared_batch_v1','progressive_item_v1','grouped_batch_v1'].includes(method))return {key:'job:'+itemId};
  const first=b.items[0]?.item_id;

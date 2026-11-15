@@ -19,7 +19,7 @@ export async function enrollExecutionNodeFromEnv(pool:Pool,options:Parameters<ty
  if(!isAbsolute(path))throw Error('EXECUTION_ENROLLMENT_FILE_INVALID');
  const before=await lstat(path);if(!before.isFile()||before.isSymbolicLink()||(before.mode&0o777)!==0o600||before.uid!==process.getuid?.()||before.size>16384)throw Error('EXECUTION_ENROLLMENT_FILE_INVALID');
  const bytes=await readFile(path);const after=await lstat(path);if(before.ino!==after.ino||before.dev!==after.dev||before.mtimeMs!==after.mtimeMs||before.size!==after.size)throw Error('EXECUTION_ENROLLMENT_FILE_CHANGED');
- const material:ExecutionRuntimeEnrollment=JSON.parse(bytes.toString('utf8'));
+ let material:ExecutionRuntimeEnrollment;try{material=JSON.parse(bytes.toString('utf8'));}catch{throw Error('EXECUTION_ENROLLMENT_INVALID');}
  if(!Value.Check(ExecutionRuntimeEnrollmentSchema,material))throw Error('EXECUTION_ENROLLMENT_INVALID');
  const own=await stat(process.pid),init=await stat(1);if(!own||!init)throw Error('EXECUTION_BOOT_IDENTITY_UNAVAILABLE');
  const capabilities:ExecutionNode['capabilities']=[];
