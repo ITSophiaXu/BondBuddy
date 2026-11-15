@@ -7,6 +7,10 @@ import {canonical, sha256, validateConfig} from './policy.mjs';
 import {issueNodeEnrollment} from './enrollment.mjs';
 import {produceExpenseSnapshot, costAdmission} from './costcap.mjs';
 import {validateTransportIssuer} from './transport-issuer.mjs';
+import {renewNodeTransport} from './transport-renewal.mjs';
+import {validateTransportLifecycleProof} from './transport-refresher.mjs';
+import {createSocketCredentialProvider} from './control-socket.mjs';
+import {acquireControlTick} from './control-tick-bound.mjs';
 
 /** Called by the already-existing ops scheduler tick, also on startup/restart.
  * No new timer. Cloud dependencies can be injected for isolated fault tests. */
@@ -16,15 +20,25 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
   const clientToken=dependencies.clientToken ?? (async id=>{
     const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');return executionCloudClientToken(id);
   });
+  const providers=new Map();
   return {async tick() {
     if (busy || !configPath) return;
     busy = true;
+    let releaseTick;
     try {
       const config = validateConfig(await readConfig(configPath));
       const pending = await control.listPendingOperations();
       if (!config.enabled && !pending.length) return;
+      if(!dependencies.cloud){releaseTick=await acquireControlTick(config.registration_directory,{now:dependencies.now??Date.now});if(!releaseTick)return;}
+      let credentialsProvider=dependencies.credentialsProvider;
+      if(!credentialsProvider&&!dependencies.cloud){
+        const key=canonical(config.control_credential_provider);
+        if(!providers.has(key))providers.set(key,createSocketCredentialProvider(config.control_credential_provider));
+        credentialsProvider=providers.get(key);
+      }
       const cloud = dependencies.cloud ?? new TencentCvm({config,
-        transport: new TencentTransport({region: config.region, credentials: () => readPrivateJson(config.control_credentials_file)}),
+        transport: new TencentTransport({region: config.region, credentials: () => credentialsProvider.get(),
+          ...(dependencies.transportOptions??{})}),
         archive: observationArchive(config.observation_directory)});
       const costSnapshot = dependencies.costSnapshot ?? (async inventory => {
         if(!expenseLedger)throw Error('PG_EXPENSE_LEDGER_REQUIRED');
@@ -51,6 +65,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
           if(admission.allowed&&!dependencies.cloud){
             if(config.node_secrets?.length!==2)throw Error('PG_DYNAMIC_ISSUER_REQUIRED');
             for(const descriptor of config.node_secrets)await validateTransportIssuer(descriptor.pg_issuer);
+            if(config.phase==='automatic')validateTransportLifecycleProof(await readConfig(config.transport_renewal_evidence_file),config);
           }
         }catch{admission={allowed:false,reason:'expense_or_issuer_unavailable'};}
         if(snapshot.policy.managed_nodes && admission.allowed!==snapshot.policy.budget_available) {
@@ -75,6 +90,14 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       if (starting) {
         if (starting.cloud_start_operation_id) await enroll(await control.loadOperation(starting.cloud_start_operation_id));
         return; // no capacity from booting nodes and no new instance while boot is unfinished
+      }
+      if(!dependencies.cloud){
+        const stoppedIdentities=(await expenseLedger()).operations.filter(op=>op.action==='stop'&&op.state==='completed').map(op=>op.identity);
+        for(const node of snapshot.nodes.filter(n=>['ready','draining'].includes(n.state)&&n.cloud_start_operation_id)){
+          const op=await control.loadOperation(node.cloud_start_operation_id),observed=await cloud.describe(node.identity.instance_id);
+          const slot=config.role_names.indexOf(observed.role_name);
+          if(await renewNodeTransport({node,operation:op,slot,config,transport:cloud.transport,stoppedIdentities}))return;
+        }
       }
       const ongoing = snapshot.nodes.find(n => ['draining', 'drained'].includes(n.state));
       if (ongoing) {
@@ -111,6 +134,6 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       }
     } catch {
       log({event: 'execution_pool_reconcile_failed_closed'}); // no vendor messages, inputs or credentials
-    } finally { busy = false; }
+    } finally { try{await releaseTick?.();}finally{busy = false;} }
   }};
 }

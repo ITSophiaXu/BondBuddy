@@ -5,13 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/stunnel /etc/bondbuddy/pg-client.conf
+ExecStart=/usr/bin/node /opt/bondbuddy/deploy/tencent-elasticity/transport-service.mjs
 UMask=0077
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
 ProtectSystem=strict
-RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/etc/bondbuddy/transport /run/bondbuddy/service
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 StandardOutput=null
 StandardError=journal
 

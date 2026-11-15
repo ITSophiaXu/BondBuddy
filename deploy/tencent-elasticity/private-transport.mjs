@@ -4,10 +4,17 @@ import {mkdir, lstat, open, rename, unlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {requireThat, sha256} from './policy.mjs';
 
+export function transportOperationSan(identity,operationId,requestId){
+  requireThat(/^\d{1,20}$/.test(identity.account_id)&&identity.region==='ap-beijing'&&
+    /^ins-[a-z0-9]+$/.test(identity.instance_id)&&/^[a-f0-9-]{36}$/.test(identity.epoch)&&
+    /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(operationId??'')&&typeof requestId==='string'&&requestId.length>0&&requestId.length<=128,'PG_OPERATION_BINDING');
+  return `urn:bondbuddy:execution:${identity.account_id}:${identity.region}:${identity.instance_id}:${identity.epoch}:${sha256(operationId)}:${sha256(requestId)}`;
+}
+
 /** Install freshly issued credentials, never personal authentication or image data.
  * The production caller supplies a root-owned directory under /etc/bondbuddy,
  * which the contained model's named permission policy explicitly denies. */
-export function validateTransportCredentials(credentials,expected,{now=Date.now}={}) {
+export function validateTransportCredentials(credentials,expected,{now=Date.now,allowExpired=false}={}) {
   requireThat(credentials?.version==='execution-pg-mtls-v1', 'PG_ISSUANCE_REQUIRED');
   requireThat(['ca_pem','cert_pem','key_pem'].every(k=>typeof credentials[k]==='string' && Buffer.byteLength(credentials[k])<=16384), 'PG_CREDENTIAL_BOUND');
   requireThat(credentials.instance_id===expected.instance_id && credentials.epoch===expected.epoch &&
@@ -17,8 +24,10 @@ export function validateTransportCredentials(credentials,expected,{now=Date.now}
   try {ca=new X509Certificate(credentials.ca_pem);cert=new X509Certificate(credentials.cert_pem);key=createPrivateKey(credentials.key_pem);} catch {throw Error('PG_CREDENTIAL_INVALID');}
   requireThat(ca.ca && Date.parse(ca.validFrom)<=now() && Date.parse(ca.validTo)>now()+60000 &&
     cert.keyUsage?.includes('1.3.6.1.5.5.7.3.2') && cert.verify(ca.publicKey) && cert.subject===`CN=${expected.instance_id}:${expected.epoch}` &&
-    cert.checkPrivateKey(key) && Date.parse(cert.validFrom)<=now() && Date.parse(cert.validTo)>now()+60000 &&
+    cert.checkPrivateKey(key) && Date.parse(cert.validFrom)<=now() && (allowExpired||Date.parse(cert.validTo)>now()+60000) &&
     Date.parse(cert.validTo)<=now()+86400000, 'PG_CERTIFICATE_BINDING');
+  if(expected.operation_id)requireThat(cert.subjectAltName===`URI:${transportOperationSan(expected,expected.operation_id,expected.provider_request_id)}`,
+    'PG_CERTIFICATE_OPERATION_BINDING');
   // Assert the public key again before any filesystem or service mutation.
   requireThat(createPublicKey(key).export({type:'spki',format:'der'}).equals(cert.publicKey.export({type:'spki',format:'der'})), 'PG_KEY_BINDING');
 }

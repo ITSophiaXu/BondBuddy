@@ -2,7 +2,7 @@
 # All placeholders are mandatory; this file is not a runnable configuration.
 foreground = yes
 pid =
-debug = err
+debug = notice
 output = /dev/null
 [execution-pg]
 client = yes

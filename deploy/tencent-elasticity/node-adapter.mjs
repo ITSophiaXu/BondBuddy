@@ -6,6 +6,7 @@ import {readPrivateJson} from './private-files.mjs';
 import {createSsmEnrollmentBroker} from './enrollment.mjs';
 import {requireThat, canonical, sha256} from './policy.mjs';
 import {installPrivateTransport, ensurePrivateExecutionNetwork, validateTransportCredentials} from './private-transport.mjs';
+import {replacePrivateJson} from './transport-renewal.mjs';
 
 const exec = promisify(execFile);
 async function docker(args) {
@@ -61,7 +62,7 @@ const runtime = {
     // The reviewed stunnel client config binds endpoint/SNI/CA/mTLS identity;
     // a route or CCN attachment on its own is never a readiness receipt.
     const transportText=await readFile(pg.config_file,'utf8');
-    for(const line of ['client = yes','verifyChain = yes',`checkHost = ${pg.sni}`,`sni = ${pg.sni}`,`CAfile = ${pg.ca_file}`,`cert = ${pg.cert_file}`,`key = ${pg.key_file}`,
+    for(const line of ['foreground = yes','debug = notice','output = /dev/null','client = yes','verifyChain = yes',`checkHost = ${pg.sni}`,`sni = ${pg.sni}`,`CAfile = ${pg.ca_file}`,`cert = ${pg.cert_file}`,`key = ${pg.key_file}`,
       `connect = ${pg.remote_host}:${pg.remote_port}`,`accept = ${pg.local_host}:${pg.local_port}`])
       requireThat(transportText.split('\n').map(x=>x.trim()).includes(line),'NODE_PRIVATE_PG_CONFIG_DRIFT');
     requireThat(process.getuid()===0 && pg.credential_directory==='/etc/bondbuddy/transport' &&
@@ -74,7 +75,9 @@ const runtime = {
     try{enabled=(await exec('/usr/bin/systemctl',['is-enabled',pg.unit_name],{timeout:5000,maxBuffer:4096})).stdout.trim();}
     catch(error){enabled=error.stdout?.trim();}
     requireThat(['static','disabled'].includes(enabled),'NODE_PRIVATE_PG_BOOT_ORDER');
-    validateTransportCredentials(enrollment.transport_credentials,{...e.identity,ca_sha256:pg.ca_sha256},{now});
+    const credentialScope={...e.identity,operation_id:e.operation_id,provider_request_id:e.provider_request_id,ca_sha256:pg.ca_sha256};
+    requireThat(e.operation_id&&e.provider_request_id,'NODE_PRIVATE_PG_OPERATION_REQUIRED');
+    validateTransportCredentials(enrollment.transport_credentials,credentialScope,{now});
     await ensurePrivateExecutionNetwork(config,runDocker);
     const unitState=async()=>{
       if(checkUnit)return checkUnit(pg.unit_name);
@@ -90,7 +93,9 @@ const runtime = {
         sha256(await readFile(pg.cert_file))===sha256(enrollment.transport_credentials.cert_pem) &&
         sha256(await readFile(pg.key_file))===sha256(enrollment.transport_credentials.key_pem),'NODE_PRIVATE_PG_ACTIVE_DRIFT');
     }else{
-      await installPrivateTransport(pg.credential_directory,enrollment.transport_credentials,{...e.identity,ca_sha256:pg.ca_sha256},{now});
+      await installPrivateTransport(pg.credential_directory,enrollment.transport_credentials,credentialScope,{now});
+      await replacePrivateJson(`${pg.credential_directory}/state.json`,{identity:e.identity,source_sha256:e.source_sha256,
+        image_sha256:e.image_sha256,launch_manifest_sha256:e.launch_manifest_sha256,provider_request_id:e.provider_request_id,operation_id:e.operation_id});
       if(startUnit)await startUnit(pg.unit_name);
       else await exec('/usr/bin/systemctl',['start',pg.unit_name],{timeout:10000,maxBuffer:4096});
     }

@@ -32,3 +32,25 @@ test('warm boot waits for exact current Start ACK version; stale public tag cann
  assert.equal((await broker.enroll(identity)).verified,true);assert.equal(waits,1);assert.equal(reads,2);
  const foreign=createSsmEnrollmentBroker({config:{...config,role_id:'8'},transport,wait:async()=>{},attempts:1});await assert.rejects(foreign.enroll(identity),/NODE_ROLE_MISMATCH/);
 });
+test('first boot tolerates bounded exact-policy propagation; identity and unknown failures still stop before enrollment',async()=>{
+ const config={account_id:identity.account_id,region:identity.region,role_name:'role-a',role_id:'7',secret_name:'node-a'};
+ const envelope={identity,role_id:'7',services,expires_at:Date.now()+300000,operation_completed:true,operation_id:'op1',provider_request_id:'ack1'};
+ let descriptions=0,waits=0;
+ const transport={call:async(_,action,p)=>{
+   if(action==='GetCallerIdentity')return {AccountId:identity.account_id,UserId:'7:synthetic'};
+   if(action==='DescribeInstances'){if(++descriptions===1){const e=Error('CLOUD_API_ERROR');e.code='UnauthorizedOperation';e.requestId='synthetic-denial';throw e;}
+     return {InstanceSet:[{InstanceId:identity.instance_id,CamRoleName:'role-a',LatestOperation:'RunInstances',LatestOperationState:'SUCCESS',LatestOperationRequestId:'ack1',Tags:[{Key:'bondbuddy-enrollment-version',Value:'op1'}]}]};}
+   if(action==='GetSecretValue')return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:canonical(envelope)};
+   throw Error('unexpected mutation');
+ }};
+ assert.equal((await createSsmEnrollmentBroker({config,transport,attempts:2,wait:async()=>{waits++;}}).enroll(identity)).verified,true);assert.equal(waits,1);
+ waits=0;await assert.rejects(createSsmEnrollmentBroker({config,attempts:2,wait:async()=>{waits++;},transport:{call:async()=>{throw Error('CLOUD_HTTP_UNCERTAIN');}}}).enroll(identity),/CLOUD_HTTP_UNCERTAIN/);assert.equal(waits,0);
+});
+test('unknown initial secret publish cannot be reissued by a later tick',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'bb-enrollment-unknown-'));let puts=0;
+ const config={account_id:identity.account_id,region:identity.region,registration_directory:dir,role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a'}]};
+ const options={config,operation,slot:0,serviceTemplate:{},bind:async()=>{},transport:{call:async(_,action)=>{
+   if(action==='PutSecretValue'){puts++;throw Error('lost unobserved ACK');}const error=Error();error.code='ResourceNotFound';throw error;
+ }}};
+ try{await assert.rejects(issueNodeEnrollment(options));await assert.rejects(issueNodeEnrollment(options));assert.equal(puts,1);}finally{await rm(dir,{recursive:true});}
+});

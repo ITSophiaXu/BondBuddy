@@ -3,6 +3,7 @@ import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport} from './tencent-cvm.mjs';
 import {validateConfig, requireThat} from './policy.mjs';
 import {produceExpenseSnapshot} from './costcap.mjs';
+import {createSocketCredentialProvider} from './control-socket.mjs';
 
 // Explicit invocation inside the existing ops service. No background scheduling.
 const [action, configPath, requestPath, opId] = process.argv.slice(2);
@@ -14,8 +15,8 @@ try {
   const {executionCapacityControl,executionCloudExpenseLedger} = await import('@bondbuddy/api/execution-capacity');
   pool = new Pool({connectionString: process.env.DATABASE_URL, max: 2, connectionTimeoutMillis: 5000, query_timeout: 10000});
   const control = executionCapacityControl(pool);
-  const transport = new TencentTransport({region: config.region,
-    credentials: () => readPrivateJson(config.control_credentials_file)});
+  const credentialsProvider=createSocketCredentialProvider(config.control_credential_provider);
+  const transport = new TencentTransport({region: config.region,credentials: () => credentialsProvider.get()});
   const cloud = new TencentCvm({transport, config, archive: observationArchive(config.observation_directory)});
   const controller = new ExecutionPoolController({control, cloud, config, costSnapshot:async inventory=>produceExpenseSnapshot({
     ledger:await executionCloudExpenseLedger(pool),inventory,quote:await readPrivateJson(config.cloud_quote_file),config})});

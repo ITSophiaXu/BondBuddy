@@ -11,18 +11,28 @@ import {issueTransportCredentials} from './transport-issuer.mjs';
  * CAM enforces a different secret resource for each inventory slot. */
 export function createSsmEnrollmentBroker({config, transport, now = Date.now, wait = ms => new Promise(resolve=>setTimeout(resolve,ms)), attempts=24}) {
   transport ??= new TencentTransport({region: config.region, credentials: () => readRoleCredentials(config.role_name)});
+  const read=async(service,action,payload)=>{
+    try{return await transport.call(service,action,payload);}catch(error){
+      // First-boot exact-instance CAM attachment may still be propagating.
+      // Only explicit denial on these read-only calls can wait within the boot
+      // bound; identity errors, unknown transport failures and mutations cannot.
+      if(['DescribeInstances','GetSecretValue'].includes(action)&&error.code==='UnauthorizedOperation'&&
+        typeof error.requestId==='string'&&error.requestId.length>0)throw Error('NODE_ENROLLMENT_PENDING');
+      throw error;
+    }
+  };
   const once=async metadata => {
     const caller = await transport.call('sts', 'GetCallerIdentity', {});
     requireThat(String(caller.AccountId) === config.account_id && String(caller.UserId).startsWith(`${config.role_id}:`), 'NODE_ROLE_MISMATCH');
     // A controlled public tag selects the explicit immutable secret version on
     // warm boots. StartInstances does not update old UserData. The node role can
     // Describe only its own instance; it cannot modify this tag or any secret.
-    const description = await transport.call('cvm', 'DescribeInstances', {InstanceIds: [metadata.instance_id]});
+    const description = await read('cvm', 'DescribeInstances', {InstanceIds: [metadata.instance_id]});
     requireThat(description.InstanceSet?.length === 1 && description.InstanceSet[0].InstanceId === metadata.instance_id &&
       description.InstanceSet[0].CamRoleName === config.role_name, 'NODE_INSTANCE_SCOPE');
     const version = description.InstanceSet[0].Tags?.find(t => t.Key === 'bondbuddy-enrollment-version')?.Value;
     requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(version??''), 'NODE_ENROLLMENT_PENDING');
-    const result = await transport.call('ssm', 'GetSecretValue', {SecretName: config.secret_name, VersionId: version});
+    const result = await read('ssm', 'GetSecretValue', {SecretName: config.secret_name, VersionId: version});
     requireThat(result.SecretName === config.secret_name && result.VersionId === version &&
       typeof result.SecretString === 'string' && !result.SecretBinary, 'NODE_SECRET_VERSION_MISMATCH');
     const envelope = JSON.parse(result.SecretString);
@@ -56,7 +66,7 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     operation.provider_request_id && operation.identity.account_id === config.account_id && operation.identity.region === config.region,
     'ISSUER_SCOPE');
   requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(operation.operation_id), 'SECRET_VERSION_BOUND');
-  const transportCredentials=descriptor.pg_issuer?await issueTransportCredentials(operation.identity,descriptor.pg_issuer,{now}):serviceTemplate.transport_credentials;
+  const transportCredentials=descriptor.pg_issuer?await issueTransportCredentials(operation.identity,descriptor.pg_issuer,{now,operation}):serviceTemplate.transport_credentials;
   const proposed = {...serviceTemplate,...(transportCredentials?{transport_credentials:transportCredentials}:{}), identity: operation.identity, role_id: descriptor.role_id,
     services: operation.request.services, source_sha256: operation.request.source_sha256,
     image_sha256: operation.request.image_sha256, launch_manifest_sha256: operation.request.launch_manifest_sha256,
@@ -84,7 +94,12 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
   try {existing = await get();} catch (e) {if (e.code !== 'ResourceNotFound' && !e.code?.startsWith('ResourceNotFound.')) throw e;}
   if (existing) requireThat(matches(existing), 'SECRET_VERSION_CONFLICT');
   else {
-    try {await transport.call('ssm', 'PutSecretValue', {SecretName: descriptor.secret_name,
+    let dispatched=false;
+    try{const f=await open(`${vaultPath}.dispatched`,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
+      try{await f.writeFile(canonical({operation_id:operation.operation_id,payload_sha256:sha256(canonical(payload))}));await f.sync();dispatched=true;}finally{await f.close();}
+    }catch(error){if(error.code!=='EEXIST')throw error;const marker=await readPrivateJson(`${vaultPath}.dispatched`);
+      requireThat(marker.operation_id===operation.operation_id&&marker.payload_sha256===sha256(canonical(payload)),'ENROLLMENT_DISPATCH_DRIFT');}
+    if(dispatched)try {await transport.call('ssm', 'PutSecretValue', {SecretName: descriptor.secret_name,
       VersionId: operation.operation_id, SecretString: canonical(payload)});} catch { /* exact readback resolves unknown */ }
     requireThat(matches(await get()), 'SECRET_PUBLISH_UNCONFIRMED');
   }

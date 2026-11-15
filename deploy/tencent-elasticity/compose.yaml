@@ -10,6 +10,7 @@ services:
     environment:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/authoring.json
+      BB_EXECUTION_TRANSPORT_SOCKET: /run/bondbuddy/service/transport.sock
       BB_WORKER_RUN_KINDS: update,generation,qa
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
@@ -19,6 +20,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
+      - /run/bondbuddy/service/transport.sock:/run/bondbuddy/service/transport.sock:ro
     mem_limit: 3g
     cpus: 1.5
     pids_limit: 256
@@ -37,6 +39,7 @@ services:
     environment:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/review.json
+      BB_EXECUTION_TRANSPORT_SOCKET: /run/bondbuddy/service/transport.sock
       BB_WORKER_RUN_KINDS: review
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
@@ -47,6 +50,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=2048
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
+      - /run/bondbuddy/service/transport.sock:/run/bondbuddy/service/transport.sock:ro
     mem_limit: 6g
     cpus: 1.5
     pids_limit: 256

@@ -4,19 +4,27 @@ import {bootstrapUserData} from './bootstrap.mjs';
 
 const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13'};
 const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances']),
-  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue']), tag: new Set(['ModifyResourceTags'])};
+  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']), tag: new Set(['ModifyResourceTags'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
 export class TencentTransport {
-  constructor({credentials, region, fetchImpl = fetch, now = Date.now, timeoutMs = 15000}) {
+  constructor({credentials, region, fetchImpl = fetch, now = Date.now, timeoutMs = 15000, purpose = 'role', assumeRoleArn}) {
     requireThat(region === 'ap-beijing' && timeoutMs > 0 && timeoutMs <= 20000, 'TRANSPORT_SCOPE');
-    Object.assign(this, {credentials, region, fetchImpl, now, timeoutMs});
+    requireThat(['role','control-source'].includes(purpose) && (purpose!=='control-source' ||
+      /^qcs::cam::uin\/\d{1,20}:roleName\/bondbuddy-execution-control$/.test(assumeRoleArn??'')), 'SOURCE_ROLE_SCOPE');
+    Object.assign(this, {credentials, region, fetchImpl, now, timeoutMs, purpose, assumeRoleArn});
   }
   async call(service, action, payload) {
-    requireThat(allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
+    const source=this.purpose==='control-source';
+    requireThat(source ? service==='sts' && action==='AssumeRole' && payload?.RoleArn===this.assumeRoleArn &&
+      Object.keys(payload).every(k=>['RoleArn','RoleSessionName','DurationSeconds'].includes(k)) &&
+      /^[A-Za-z0-9+=,.@_-]{2,128}$/.test(payload.RoleSessionName??'') &&
+      Number.isInteger(payload.DurationSeconds) && payload.DurationSeconds>=900 && payload.DurationSeconds<=7200 :
+      allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
     const c = await this.credentials();
-    requireThat(c.secretId && c.secretKey && c.token && Number(c.expiresAt) > this.now() + 60000, 'SHORT_CREDENTIAL_REQUIRED');
+    requireThat(typeof c.secretId==='string' && c.secretId && typeof c.secretKey==='string' && c.secretKey &&
+      (source ? !c.token : c.token && Number(c.expiresAt) > this.now() + 60000), 'SHORT_CREDENTIAL_REQUIRED');
     const body = canonical(payload), host = `${service}.tencentcloudapi.com`;
     const timestamp = Math.floor(this.now() / 1000), date = new Date(timestamp * 1000).toISOString().slice(0, 10);
     const headers = `content-type:application/json; charset=utf-8\nhost:${host}\n`;
@@ -26,7 +34,7 @@ export class TencentTransport {
     const signature = hmac(key, `TC3-HMAC-SHA256\n${timestamp}\n${scope}\n${sha256(request)}`, 'hex');
     const response = await this.fetchImpl(`https://${host}/`, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs), body,
       headers: {'Content-Type': 'application/json; charset=utf-8', 'X-TC-Action': action, 'X-TC-Version': apiVersion[service],
-        'X-TC-Region': this.region, 'X-TC-Timestamp': String(timestamp), 'X-TC-Token': c.token,
+        'X-TC-Region': this.region, 'X-TC-Timestamp': String(timestamp), ...(source?{}:{'X-TC-Token': c.token}),
         Authorization: `TC3-HMAC-SHA256 Credential=${c.secretId}/${scope}, SignedHeaders=content-type;host, Signature=${signature}`}});
     requireThat(response.ok, 'CLOUD_HTTP_UNCERTAIN');
     let length = 0;

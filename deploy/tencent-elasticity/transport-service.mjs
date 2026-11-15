@@ -1,0 +1,71 @@
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {readFile,lstat,chmod,chown,unlink} from 'node:fs/promises';
+import net from 'node:net';
+import {pathToFileURL} from 'node:url';
+import {readPrivateJson} from './private-files.mjs';
+import {readRoleCredentials} from './bootstrap.mjs';
+import {TencentTransport} from './tencent-cvm.mjs';
+import {installPrivateTransport} from './private-transport.mjs';
+import {createTransportRefresher} from './transport-refresher.mjs';
+import {createStunnelReloadController} from './stunnel-reload.mjs';
+import {acquireControlTick} from './control-tick-bound.mjs';
+import {requireThat,sha256} from './policy.mjs';
+const exec=promisify(execFile);
+
+/** The existing transport service supervises stunnel and the root-only refresh
+ * socket. There is no independent scheduler or consumer. */
+export async function serveTransport(config){
+  requireThat(process.getuid()===0,'TRANSPORT_ROOT_REQUIRED');
+  const state=await readPrivateJson('/etc/bondbuddy/transport/state.json'),pg=config.private_pg;
+  requireThat(state.identity.account_id===config.account_id&&state.identity.region===config.region&&
+    sha256(await readFile(pg.config_file))===pg.config_sha256,'TRANSPORT_SERVICE_SCOPE');
+  const socketPath='/run/bondbuddy/service/transport.sock';
+  const parent=await lstat('/run/bondbuddy/service');
+  requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&(parent.mode&0o777)===0o750,'TRANSPORT_SOCKET_DIRECTORY');
+  try{const s=await lstat(socketPath);requireThat(s.isSocket()&&s.uid===0,'TRANSPORT_SOCKET_DRIFT');
+    // A connectable socket belongs to an active service; never unlink it.
+    const alive=await new Promise(resolve=>{const c=net.connect(socketPath);c.once('connect',()=>{c.destroy();resolve(true);});c.once('error',e=>resolve(e.code!=='ECONNREFUSED'));});
+    requireThat(!alive,'TRANSPORT_SERVICE_ALREADY_ACTIVE');await unlink(socketPath);
+  }catch(e){if(e.code!=='ENOENT')throw e;}
+  const child=spawn('/usr/bin/stunnel',[pg.config_file],{stdio:['ignore','ignore','pipe']});
+  const nativeReload=createStunnelReloadController(child);
+  try{await nativeReload.ready();}catch(error){child.kill('SIGTERM');throw error;}
+  const cloud=new TencentTransport({region:config.region,credentials:()=>readRoleCredentials(config.role_name)});
+  const readActive=async()=>({version:'execution-pg-mtls-v1',...state.identity,ca_pem:await readFile(pg.ca_file,'utf8'),cert_pem:await readFile(pg.cert_file,'utf8'),key_pem:await readFile(pg.key_file,'utf8')});
+  const refresh=createTransportRefresher({config,state,readActive,
+    reserveBroker:()=>acquireControlTick(`${pg.credential_directory}/ssm-broker`),
+    broker:async()=>{
+      const caller=await cloud.call('sts','GetCallerIdentity',{});requireThat(String(caller.AccountId)===config.account_id&&String(caller.UserId).startsWith(`${config.role_id}:`),'TRANSPORT_ROLE_DRIFT');
+      const d=await cloud.call('cvm','DescribeInstances',{InstanceIds:[state.identity.instance_id]}),i=d.InstanceSet?.[0];
+      requireThat(d.InstanceSet?.length===1&&i.InstanceId===state.identity.instance_id&&i.CamRoleName===config.role_name&&i.LatestOperationRequestId===state.provider_request_id,'TRANSPORT_CLOUD_DRIFT');
+      const version=i.Tags?.find(t=>t.Key==='bondbuddy-transport-version')?.Value;
+      requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(version??''),'TRANSPORT_RENEWAL_PENDING');
+      const secret=await cloud.call('ssm','GetSecretValue',{SecretName:config.secret_name,VersionId:version});
+      requireThat(secret.SecretName===config.secret_name&&secret.VersionId===version&&typeof secret.SecretString==='string'&&!secret.SecretBinary,'TRANSPORT_SECRET_DRIFT');
+      return JSON.parse(secret.SecretString);
+    },
+    install:c=>installPrivateTransport(pg.credential_directory,c,{...state.identity,operation_id:state.operation_id,provider_request_id:state.provider_request_id,ca_sha256:pg.ca_sha256}),
+    reload:nativeReload.reload,
+    probe:async()=>{
+      for(const service of config.services){
+        const envFile=`/run/bondbuddy/service/${service.service_id}.env`;
+        const program="const{Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:5000});try{console.log(JSON.stringify((await p.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0]))}finally{await p.end()}";
+        const {stdout:id}=await exec('/usr/bin/docker',['create','--pull','never','--network',config.execution_network,'--memory','128m','--pids-limit','64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--env-file',envFile,'--entrypoint','node',config.images[service.service_id],'--input-type=module','-e',program],{timeout:5000,maxBuffer:4096});
+        requireThat(/^[a-f0-9]{12,64}$/.test(id.trim()),'TRANSPORT_PROBE_ID');
+        try{const r=await exec('/usr/bin/docker',['start','-a',id.trim()],{timeout:10000,maxBuffer:4096});requireThat(JSON.parse(r.stdout).system_identifier===pg.system_identifier,'TRANSPORT_PROBE_IDENTITY');}
+        finally{const r=await exec('/usr/bin/docker',['inspect','--format','{{.State.Running}}',id.trim()],{timeout:5000});if(r.stdout.trim()==='false')await exec('/usr/bin/docker',['rm',id.trim()],{timeout:5000});}
+      }
+    }});
+  const server=net.createServer(socket=>{let bytes=0,text='';socket.setTimeout(20000,()=>socket.destroy());
+    socket.on('error',()=>{});socket.on('data',async chunk=>{bytes+=chunk.length;if(bytes>4096){socket.destroy();return;}text+=chunk.toString();
+      if(!text.endsWith('\n'))return;socket.pause();try{socket.end(JSON.stringify(await refresh.refresh(JSON.parse(text)))+'\n');}catch{socket.destroy();}});
+  });server.maxConnections=16;
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(socketPath,resolve);});await chown(socketPath,0,1000);await chmod(socketPath,0o660);
+  let shuttingDown=false;
+  child.once('error',()=>{server.close();process.exitCode=1;});
+  child.once('close',()=>{server.close();process.exitCode=shuttingDown?0:1;});
+  const shutdown=()=>{shuttingDown=true;server.close();child.kill('SIGTERM');};process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
+  return {server,child};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)try{await serveTransport(await readPrivateJson('/etc/bondbuddy/elastic-node.json'));}catch{process.stderr.write('Private transport failed closed.\n');process.exitCode=1;}

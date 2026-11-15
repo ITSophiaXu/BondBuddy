@@ -65,3 +65,14 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 所有 live 操作先留准确配置、库存、运行版本和安全观察前像；测试最多两台，不新增无界资源。失败先禁领，保留运行任务、未知调用与成果。确认排空/云停止后才清本次合成资料和测试资源；带客户/成果/未决操作的盘不得删除。回退优先关闭扩容，保留常驻容量，再按本协议排空备用；不强停运行任务，不因客户端超时猜测云操作未发生。
 
 官方依据：[CVM SDK 模型](https://github.com/TencentCloud/tencentcloud-sdk-python/blob/master/tencentcloud/cvm/v20170312/models.py)、[CVM API 方法](https://github.com/TencentCloud/tencentcloud-sdk-python/blob/master/tencentcloud/cvm/v20170312/cvm_client.py)、[实例角色](https://cloud.tencent.com/document/product/213/47668)。
+
+
+客户端证书续期复用现有运维入口和运行状态上报。控制端按同一已完成 Run/Start 操作提前六小时发行新叶证书，固定私有 vault/SSM 版本先持久化派发标记；不确定写入只精确回读，禁止重发。CN 保持 instance:epoch，SAN URI 绑定账号、地域、实例、epoch、operation SHA-256 和云 ACK SHA-256。节点安装前验证全部绑定；旧证书过期只关闭新领取，不阻止取回合法替代证书。
+
+本地 transport 服务将两服务的刷新请求串行化。证书落盘后必须收到原生 stunnel 配置成功确认，再验证全新 PG 连接；换证或确认失败维持禁止新领取，后续继续尝试确认，不用磁盘 hash 或相同 SQL 身份推断内存证书。SIGHUP 保留已建连接。transport unit 必须包含 AF_UNIX，并保持 static；暖启动只能在 bootstrap 安装当前 epoch 证书后启动。未知 unit 或活跃旧代际拒绝安装和新容量，不强制重启消费者。
+
+新源凭据只由根权限控制服务读取 `/etc/bondbuddy/execution-control/source-credentials.json`，父目录 root:root/0700、文件 root:root/0600，JSON 严格为 secretId、secretKey。source signer 仅允许 AssumeRole 到固定控制角色；取得短 STS 后校验 AccountId、roleId:sessionName 和 PrincipalId。业务运维进程通过 `/run/bondbuddy/elastic-control/issuer.sock` 取得短 STS，不挂载长效源文件或 CA 私钥。独立签发服务使用 PG 只读操作/费用接口及准确云回读授权签发，私钥留在本地根权限目录。当前接入只准独立隔离数据库，正式数据库迁移和策略开启需要各自验收。
+
+运维入口共享持久 flock/时间前像，至少 60 秒才能开始下一次云协调，进程退出不重置调用间隔；节点 broker 同样持久限制每分钟一次。两节点一日内最多 2880 次刷新 Get、48 次初始 Get，单运维 tick 最坏 34 次 SSM 调用、一日最多 1440 tick，加 1024 次管理余量，保守上界 52912 次。有限当日费用应为两 Secret 六元月费加六个万次包 2.4 元，即 8.4 元完整预留。当前 role 的 Get/Put 授权不能替代 ListSecretVersionIds/DeleteSecretVersion；版本清理授权不足将安全关闭发行。
+
+报价需明确 secret 与 snapshot 两项固定未决义务，保留到真实对账证据解除；自然日变化不能清零。2026 年 11 月 15 日计算加两盘报价为单节点 0.91 元/小时、双节点 1.82 元/小时，准确停算力后双节点磁盘为 0.22 元/小时。SSM 和自制镜像快照费用另行完整预留；未知快照字节/费率禁止新增支出。主站套餐余量只能支持有效到当日北京时间 24:00 的网络报价，不代表永久免费。自动长期模式还须绑定运行状态刷新消费、旧会话继续、新 TLS/PG 成功和模型 socket 拒绝的准确版本证据。

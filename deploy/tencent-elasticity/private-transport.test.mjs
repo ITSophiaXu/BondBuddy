@@ -12,6 +12,10 @@ import {installPrivateTransport,ensurePrivateExecutionNetwork} from './private-t
 import {sha256} from './policy.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
 import {issueNodeEnrollment} from './enrollment.mjs';
+import {createTransportRefresher,validateTransportLifecycleProof} from './transport-refresher.mjs';
+import {TRANSPORT_REFRESH_VERSION,renewNodeTransport,pruneExpiredTransportVersions} from './transport-renewal.mjs';
+import {X509Certificate} from 'node:crypto';
+import {createStunnelReloadController} from './stunnel-reload.mjs';
 const exec=promisify(execFile);
 const identity={account_id:'123456',region:'ap-beijing',instance_id:'ins-a1',epoch:'a3432123-84b5-4f11-8b51-94a29eac1234'};
 async function fixture(t) {
@@ -25,6 +29,13 @@ async function fixture(t) {
   }
   const credentials={version:'execution-pg-mtls-v1',...identity,ca_pem:await readFile(join(dir,'ca.pem'),'utf8'),cert_pem:await readFile(join(dir,'client.pem'),'utf8'),key_pem:await readFile(join(dir,'client.key'),'utf8')};
   return {dir,credentials,expected:{...identity,ca_sha256:sha256(credentials.ca_pem)}};
+}
+async function shortLeaf(dir,credentials){
+  await writeFile(join(dir,'index'),'');await writeFile(join(dir,'serial'),'01\n');
+  const cfg=join(dir,'sign.conf');await writeFile(cfg,`[ca]\ndefault_ca=x\n[x]\ndatabase=${dir}/index\nnew_certs_dir=${dir}\ncertificate=${dir}/ca.pem\nprivate_key=${dir}/ca.key\nserial=${dir}/serial\ndefault_md=sha256\npolicy=p\nunique_subject=no\nx509_extensions=e\n[p]\ncommonName=supplied\n[e]\nextendedKeyUsage=clientAuth\nbasicConstraints=critical,CA:FALSE\n`);
+  const stamp=n=>new Date(n).toISOString().replace(/[-:TZ.]/g,'').slice(2,14)+'Z';
+  await exec('openssl',['ca','-batch','-notext','-config',cfg,'-in',join(dir,'client.csr'),'-out',join(dir,'short.pem'),'-startdate',stamp(Date.now()-60000),'-enddate',stamp(Date.now()+3600000)]);
+  return {...credentials,cert_pem:await readFile(join(dir,'short.pem'),'utf8')};
 }
 test('newly issued node/epoch mTLS credentials are private; different identity, CA and symlink fail closed',async t=>{
   const {dir,credentials,expected}=await fixture(t),target=join(dir,'private');
@@ -60,28 +71,136 @@ test('operation-aware issuer signs a new warm epoch and preserves exact vault ce
   await installPrivateTransport(join(dir,'warm'),fresh,{...warm.identity,ca_sha256:pg_issuer.ca_sha256});
   await assert.rejects(issueTransportCredentials(identity,{...pg_issuer,ca_sha256:'0'.repeat(64)}),/PG_ISSUER_CA_PIN/);
 });
-test('issued private files drive actual stunnel mTLS and a real isolated PostgreSQL identity query',
+test('concurrent existing ticks share one renewal version; uncertain publish never reissues Put',async t=>{
+  const {dir,credentials}=await fixture(t),old=await shortLeaf(dir,credentials),vault=join(dir,'vault');
+  await import('node:fs/promises').then(fs=>fs.mkdir(vault,{mode:0o700}));
+  const op={operation_id:'run1',state:'completed',action:'run',identity,provider_request_id:'ack',request:{source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64)}};
+  await writeFile(join(vault,sha256(op.operation_id)+'.json'),JSON.stringify({identity,provider_request_id:'ack',transport_credentials:old}),{mode:0o600});
+  const config={account_id:identity.account_id,region:identity.region,registration_directory:vault,node_secrets:[{secret_name:'own-node',pg_issuer:{ca_file:join(dir,'ca.pem'),ca_sha256:sha256(credentials.ca_pem),signing_key_file:join(dir,'ca.key')}}]};
+  let puts=0;const values=new Map();const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[]};if(action==='GetSecretValue'){if(!values.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:values.get(p.VersionId)};}if(action==='PutSecretValue'){puts++;values.set(p.VersionId,p.SecretString);throw Error('lost ACK');}return {RequestId:'synthetic'};}};
+  const args={node:{state:'ready',identity},operation:op,slot:0,config,transport};
+  await Promise.all([renewNodeTransport(args),renewNodeTransport(args),renewNodeTransport(args)]);assert.equal(puts,1);assert.equal(values.size,1);
+  const unknownDir=join(dir,'unknown');await import('node:fs/promises').then(fs=>fs.mkdir(unknownDir,{mode:0o700}));await writeFile(join(unknownDir,sha256(op.operation_id)+'.json'),JSON.stringify({identity,provider_request_id:'ack',transport_credentials:old}),{mode:0o600});
+  let unknownPuts=0;const unknown={...args,config:{...config,registration_directory:unknownDir},transport:{call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[]};if(action==='PutSecretValue'){unknownPuts++;throw Error();}const e=Error();e.code='ResourceNotFound';throw e;}}};
+  await assert.rejects(renewNodeTransport(unknown));await assert.rejects(renewNodeTransport(unknown));assert.equal(unknownPuts,1);
+});
+test('failed fresh-session verification fences admission until an actual retry succeeds; wrong material never installs',async t=>{
+  const {dir,credentials,expected}=await fixture(t),old=await shortLeaf(dir,credentials);
+  const fresh=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
+  const state={identity,source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64),provider_request_id:'ack'};
+  const config={services:[{service_id:'authoring'}],private_pg:{ca_sha256:expected.ca_sha256}};
+  const request={version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'};
+  let active=old,time=Date.now(),fail=true,probes=0,installs=0;
+  const make=()=>({version:'execution-transport-envelope-v1',...state,transport_credentials:fresh});
+  const r=createTransportRefresher({config,state,readActive:async()=>active,broker:async()=>make(),install:async c=>{installs++;active=c;},reload:async cert_sha256=>({cert_sha256}),
+    probe:async()=>{probes++;if(fail&&active===fresh)throw Error('synthetic interrupted PG');},now:()=>time});
+  assert.equal((await r.refresh(request)).admission_allowed,false);assert.equal((await r.refresh(request)).admission_allowed,false);assert.equal(probes,2);
+  time+=61000;fail=false;assert.equal((await r.refresh(request)).admission_allowed,true);assert.equal(probes,3);assert.equal(installs,1);
+  let badInstalls=0;
+  const bad=createTransportRefresher({config,state,readActive:async()=>old,broker:async()=>({...make(),identity:{...identity,epoch:'wrong'}}),install:async()=>{badInstalls++;},reload:async cert_sha256=>({cert_sha256}),probe:async()=>{}});
+  assert.equal((await bad.refresh(request)).admission_allowed,false);assert.equal(badInstalls,0);
+  assert.throws(()=>validateTransportLifecycleProof(null,{source_sha256:state.source_sha256,image_sha256:state.image_sha256}),/TRANSPORT_RENEWAL_PROOF_REQUIRED/);
+});
+test('SSM cleanup retains current versions and unproven old epochs; deletes only expired TLS or exact stopped-epoch credentials',async t=>{
+  const {dir,credentials}=await fixture(t),leaf=await shortLeaf(dir,credentials),oldIdentity={...identity,epoch:'b3432123-84b5-4f11-8b51-94a29eac1234'};
+  const values=new Map([['tls-expired',{version:'execution-transport-envelope-v1',identity,transport_credentials:leaf}],
+    ['old-stopped',{identity:oldIdentity,expires_at:Date.now()-1000,transport_credentials:leaf}],
+    ['unknown-old',{identity:{...identity,epoch:'c3432123-84b5-4f11-8b51-94a29eac1234'},expires_at:Date.now()-1000,transport_credentials:leaf}],
+    ['keep-current',{version:'execution-transport-envelope-v1',identity,transport_credentials:leaf}]]);
+  const deleted=[];const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...values.keys()].map(VersionId=>({VersionId}))};
+    if(action==='DeleteSecretVersion'){deleted.push(p.VersionId);values.delete(p.VersionId);return {RequestId:'synthetic'};}
+    if(!values.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:JSON.stringify(values.get(p.VersionId))};}};
+  await pruneExpiredTransportVersions({secretName:'own-node',keep:['keep-current'],scope:identity,stoppedIdentities:[oldIdentity],transport,now:()=>Date.now()+3601000});
+  assert.deepEqual(deleted,['tls-expired','old-stopped']);assert.ok(values.has('unknown-old'));assert.ok(values.has('keep-current'));
+});
+test('same-epoch native stunnel reload preserves existing PG session and authenticates new sessions with the renewed leaf',
  {skip:!process.env.BB_TEST_DATABASE_URL||!process.env.BB_TEST_STUNNEL_BINARY,timeout:20000},async t=>{
   const {isolatedTestDatabase}=await import('../../apps/api/dist/test-database.js');
   const {Pool}=await import('pg');const connection=await isolatedTestDatabase(undefined,'private-mtls');
   const fixtureData=await fixture(t),{dir,expected}=fixtureData;
-  const credentials=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
+  const credentials=await shortLeaf(dir,fixtureData.credentials);
+  const renewed=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
   const files=await installPrivateTransport(join(dir,'private'),credentials,expected);
-  const url=new URL(connection),upstreamHost=url.hostname,upstreamPort=Number(url.port),sockets=new Set();
+  const url=new URL(connection),upstreamHost=url.hostname,upstreamPort=Number(url.port),sockets=new Set(),peers=[];
   const server=tls.createServer({key:await readFile(join(dir,'server.key')),cert:await readFile(join(dir,'server.pem')),
     ca:credentials.ca_pem,requestCert:true,rejectUnauthorized:true},s=>{
-    assert.equal(s.authorized,true);const upstream=net.connect(upstreamPort,upstreamHost);sockets.add(s);sockets.add(upstream);
+    assert.equal(s.authorized,true);peers.push(s.getPeerCertificate().fingerprint256);const upstream=net.connect(upstreamPort,upstreamHost);sockets.add(s);sockets.add(upstream);
     s.on('error',()=>{});upstream.on('error',()=>s.destroy());s.pipe(upstream).pipe(s);
   });server.on('tlsClientError',()=>{});server.listen(0,'127.0.0.1');await once(server,'listening');
   let child,closed,direct,through;
   t.after(async()=>{await through?.end();await direct?.end();if(child?.exitCode===null)child.kill('SIGTERM');if(closed)await closed;for(const s of sockets)s.destroy();server.close();});
   const reservation=net.createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(r=>reservation.close(r));
-  const conf=join(dir,'stunnel.conf');await writeFile(conf,`foreground = yes\npid =\ndebug = err\noutput = /dev/null\n[pg]\nclient = yes\naccept = 127.0.0.1:${port}\nconnect = 127.0.0.1:${server.address().port}\nverifyChain = yes\ncheckHost = localhost\nsni = localhost\nCAfile = ${files.ca_file}\ncert = ${files.cert_file}\nkey = ${files.key_file}\n`,{mode:0o600});
-  child=spawn(process.env.BB_TEST_STUNNEL_BINARY,[conf],{stdio:'ignore'});closed=once(child,'close');
+  const conf=join(dir,'stunnel.conf');await writeFile(conf,`foreground = yes\npid =\ndebug = notice\noutput = /dev/null\n[pg]\nclient = yes\naccept = 127.0.0.1:${port}\nconnect = 127.0.0.1:${server.address().port}\nverifyChain = yes\ncheckHost = localhost\nsni = localhost\nCAfile = ${files.ca_file}\ncert = ${files.cert_file}\nkey = ${files.key_file}\n`,{mode:0o600});
+  child=spawn(process.env.BB_TEST_STUNNEL_BINARY,[conf],{stdio:['ignore','ignore','pipe']});closed=once(child,'close');
+  const nativeReload=createStunnelReloadController(child);await nativeReload.ready();
   const started=Date.now();for(;;){try{await new Promise((r,j)=>{const s=net.connect(port,'127.0.0.1');s.on('connect',()=>{s.destroy();r();});s.on('error',j);});break;}catch{assert.ok(Date.now()-started<3000);await new Promise(r=>setTimeout(r,25));}}
   direct=new Pool({connectionString:connection,max:1});
   const expectedId=(await direct.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0].system_identifier;
   url.hostname='127.0.0.1';url.port=String(port);through=new Pool({connectionString:url.toString(),ssl:false,max:1,connectionTimeoutMillis:5000});
   const result=(await through.query('SELECT system_identifier::text,current_database(),current_user FROM pg_control_system()')).rows[0];
   assert.equal(result.system_identifier,expectedId);assert.equal(result.current_database,decodeURIComponent(url.pathname.slice(1)));assert.ok(result.current_user);
+  const before=(await through.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+  assert.equal(peers.at(-1),new X509Certificate(credentials.cert_pem).fingerprint256);
+  let active=credentials;
+  const state={identity,source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64),provider_request_id:'ack'};
+  const config={services:[{service_id:'authoring'}],private_pg:{ca_sha256:expected.ca_sha256}};
+  const envelope={version:'execution-transport-envelope-v1',...state,transport_credentials:renewed};
+  const refresh=createTransportRefresher({config,state,readActive:async()=>active,broker:async()=>envelope,
+    install:async c=>{await installPrivateTransport(join(dir,'private'),c,expected);active=c;},
+    reload:nativeReload.reload,
+    probe:async()=>{const fresh=new Pool({connectionString:url.toString(),ssl:false,max:1});try{assert.equal((await fresh.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0].system_identifier,expectedId);}finally{await fresh.end();}}});
+  const request={version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'};
+  const receipt=await refresh.refresh(request);assert.equal(receipt.status,'refreshed');assert.equal(receipt.admission_allowed,true);
+  assert.equal(peers.at(-1),new X509Certificate(renewed.cert_pem).fingerprint256);
+  assert.equal((await through.query('SELECT pg_backend_pid() pid')).rows[0].pid,before);
+  assert.equal((await refresh.refresh(request)).status,'current');
+  await assert.rejects(refresh.refresh({...request,context:{...request.context,identity:{...identity,epoch:'old'}}}),/TRANSPORT_REQUEST_SCOPE/);
+});
+
+
+test('concurrent refresh cannot pass the first asynchronous read; reload failure remains unverified across the next call',async t=>{
+  const {dir,credentials,expected}=await fixture(t),old=await shortLeaf(dir,credentials);
+  const fresh=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
+  const state={identity,source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64),provider_request_id:'ack'};
+  const config={services:[{service_id:'authoring'},{service_id:'review'}],private_pg:{ca_sha256:expected.ca_sha256}};
+  const request={version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'};
+  let release,active=old,time=Date.now(),reads=0,reloads=0,probes=0,brokers=0,fail=true;
+  const gate=new Promise(r=>{release=r;});
+  const refresh=createTransportRefresher({config,state,now:()=>time,readActive:async()=>{reads++;await gate;return active;},
+    broker:async()=>{brokers++;return {version:'execution-transport-envelope-v1',...state,transport_credentials:fresh};},
+    install:async c=>{active=c;},reload:async cert_sha256=>{reloads++;if(fail&&active===fresh)throw Error('synthetic reload failure');return {cert_sha256};},probe:async()=>{probes++;}});
+  const first=refresh.refresh(request);assert.equal((await refresh.refresh({...request,service_id:'review'})).admission_allowed,false);assert.equal(reads,1);release();
+  assert.equal((await first).admission_allowed,false);assert.equal(brokers,1);assert.equal(probes,1);assert.equal(reloads,2);
+  assert.equal((await refresh.refresh(request)).admission_allowed,false);assert.equal(reloads,2); // old in-memory identity could still answer PG
+  time+=61000;fail=false;assert.equal((await refresh.refresh(request)).admission_allowed,true);assert.equal(reloads,3);assert.equal(probes,2);assert.equal(brokers,1);
+  const restarted=createTransportRefresher({config,state,now:()=>time,readActive:async()=>active,broker:async()=>{throw Error('unnecessary');},install:async()=>{},
+    reload:async cert_sha256=>{reloads++;return {cert_sha256};},probe:async()=>{probes++;}});
+  assert.equal((await restarted.refresh(request)).admission_allowed,true);assert.equal(reloads,4); // restart never trusts disk alone
+});
+
+test('expired or nearly expired old material can recover through a valid same-epoch replacement',async t=>{
+  const {dir,credentials,expected}=await fixture(t),old=await shortLeaf(dir,credentials);
+  for(const remaining of [30000,-1000]){
+    const time=Date.parse(new X509Certificate(old.cert_pem).validTo)-remaining;
+    const fresh=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
+    const state={identity,source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64),provider_request_id:'ack'};
+    const config={services:[{service_id:'authoring'}],private_pg:{ca_sha256:expected.ca_sha256}};
+    let active=old,installs=0;
+    const refresh=createTransportRefresher({config,state,now:()=>time,readActive:async()=>active,
+      broker:async()=>({version:'execution-transport-envelope-v1',...state,transport_credentials:fresh}),install:async c=>{installs++;active=c;},
+      reload:async cert_sha256=>({cert_sha256}),probe:async()=>{}});
+    const result=await refresh.refresh({version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'});
+    assert.equal(result.status,'refreshed');assert.equal(result.admission_allowed,true);assert.equal(installs,1);
+  }
+});
+
+
+test('persisted control and broker rate bound survives recreation and a backwards clock',async t=>{
+ const {acquireControlTick}=await import('./control-tick-bound.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'bb-control-rate-'));t.after(()=>rm(dir,{recursive:true}));
+ let now=Date.now();const a=await acquireControlTick(dir,{now:()=>now});assert.equal(typeof a,'function');
+ assert.equal(await acquireControlTick(dir,{now:()=>now+61000}),null);await a();
+ assert.equal(await acquireControlTick(dir,{now:()=>now}),null);
+ assert.equal(await acquireControlTick(dir,{now:()=>now-60000}),null);
+ const b=await acquireControlTick(dir,{now:()=>now+61000});assert.equal(typeof b,'function');await b();
 });

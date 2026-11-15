@@ -36,6 +36,12 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
     required.every(k=>quote.components.some(c=>c.kind===k)), 'EXPENSE_FEE_COMPONENTS_INCOMPLETE');
   for(const c of quote.components) requireThat(finite(c.running_cny_per_node_hour) && finite(c.stopped_cny_per_node_hour) &&
     typeof c.evidence_ref==='string' && c.evidence_ref.length>0 && digest(c.evidence_sha256) && digest(c.enforced_bound_sha256), 'EXPENSE_RATE_EVIDENCE_REQUIRED');
+  // Monthly secret charges and image snapshots are committed liabilities. They
+  // cannot be reduced to zero by hourly averaging or a fresh civil-day file.
+  requireThat(Array.isArray(quote.fixed_commitments)&&quote.fixed_commitments.length===2&&
+    ['secret','snapshot'].every(kind=>quote.fixed_commitments.filter(c=>c.kind===kind).length===1),'EXPENSE_FIXED_COMMITMENTS_REQUIRED');
+  for(const c of quote.fixed_commitments)requireThat(finite(c.upper_bound_cny)&&c.evidence_ref&&digest(c.evidence_sha256)&&digest(c.enforced_bound_sha256),'EXPENSE_FIXED_COMMITMENT_EVIDENCE');
+  const fixedCommitments=money(quote.fixed_commitments.reduce((sum,c)=>sum+c.upper_bound_cny,0));
   const compute=quote.components.find(c=>c.kind==='compute');
   requireThat(compute.running_cny_per_node_hour===.8 && compute.stopped_cny_per_node_hour===0, 'EXPENSE_COMPUTE_RATE');
   const running=quote.components.reduce((a,c)=>a+c.running_cny_per_node_hour,0), stopped=quote.components.reduce((a,c)=>a+c.stopped_cny_per_node_hour,0);
@@ -95,6 +101,7 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
     observed_at:ledger.captured_at,...period,period_cap_cny:config.period_cap_cny,total_hourly_cap_cny:config.total_cap_cny_per_hour,
     resource_ids:live.map(n=>n.identity.instance_id).sort(),ledger_sha256:sha256(canonical(ledger)),inventory_sha256:sha256(canonical(inventory)),
     quote_component_evidence:quote.components.map(c=>({kind:c.kind,evidence_ref:c.evidence_ref,evidence_sha256:c.evidence_sha256,enforced_bound_sha256:c.enforced_bound_sha256})),
+    fixed_commitment_evidence:quote.fixed_commitments,fixed_commitments_upper_bound_cny:fixedCommitments,
     reconciliation:'conservative_rate_bound_without_zero_bill_assumption',rows,spent_upper_bound_cny:money(spent),
     reserved_upper_bound_cny:money(reservations),unknown_liability_cny:money(carry),drain_reserve_cny:drain,
     resident_remaining_period_cny:resident,prospective_slot_cny:money(running*config.reservation_hours)};
@@ -112,7 +119,7 @@ export function costAdmission(input, inventory, config) {
     input.expense_policy_sha256!==config.expense_policy_sha256||input.policy_revision!==config.expense_policy_revision||
     input.period_cap_cny!==48||input.total_hourly_cap_cny>2.4||input.inventory_sha256!==sha256(canonical(inventory))||
     !digest(input.ledger_sha256)||input.quote_component_evidence?.length!==6)return fail('expense_source_mismatch');
-  const keys=['spent_upper_bound_cny','reserved_upper_bound_cny','unknown_liability_cny','drain_reserve_cny','resident_remaining_period_cny','prospective_slot_cny'];
+  const keys=['spent_upper_bound_cny','reserved_upper_bound_cny','unknown_liability_cny','drain_reserve_cny','resident_remaining_period_cny','prospective_slot_cny','fixed_commitments_upper_bound_cny'];
   if(keys.some(k=>!finite(input[k]))||input.drain_reserve_cny<1.6)return fail('expense_bound_missing');
   const used=keys.reduce((n,k)=>n+Math.ceil(input[k]*1000000),0);
   return used<=48000000?{allowed:true,headroom_cny:(48000000-used)/1000000}:{allowed:false,reason:'period_cap'};

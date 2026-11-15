@@ -15,7 +15,7 @@ const h = 'a'.repeat(64), identity = {account_id: '123456', region: 'ap-beijing'
 const services = [{service_id: 'authoring', capabilities: ['authoring']}, {service_id: 'review', capabilities: ['review', 'assistant']}];
 const config = {version: 'tencent-execution-pool-v1', enabled: true, phase: 'automatic', account_id: '123456', pool_tag: 'bondbuddy-execution', region: 'ap-beijing', zone: 'ap-beijing-7', instance_type: 'SA9.LARGE16', min_running: 1, max_owned: 2, resident_instance_id: 'ins-a1', global_model_limit: 4, node_model_limit: 4, compute_cny_per_hour: .8, compute_cap_cny_per_hour: 1.6, scale_up_wait_seconds: 60, idle_seconds: 300, failure_cooldown_seconds: 300, image_id: 'img-a1', vpc_id: 'vpc-a1', subnet_id: 'subnet-a1', security_group_id: 'sg-a1', source_sha256: h, image_sha256: h, network_review_sha256: h, quote_sha256: h, role_names: ['node-a', 'node-b'], noncompute_cap_cny_per_hour: .8, total_cap_cny_per_hour: 2.4, stop_charging_verified: true, stop_charging_evidence_sha256: h, private_pg_verified: true, service_credentials_verified: true, services, expense_policy_revision: 1, expense_policy_sha256:h, time_zone:'Asia/Shanghai', period_cap_cny:48, reservation_hours:1, drain_reserve_hours:1};
 const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
-const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
+const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
 config.quote_sha256=sha256(canonical(quote));
 const safeInventory = () => [{account_id:config.account_id,region:config.region,instance_id:'ins-a1',role_name:'node-a',instance_state:'RUNNING',observed_at:new Date().toISOString(),evidence_ref:'synthetic/cloud',evidence_sha256:h}];
 const ledgerFor = inventory => ({captured_at:new Date().toISOString(),operations:inventory.map(i=>({operation_id:'create-'+i.instance_id,identity:{...identity,instance_id:i.instance_id},action:'run',state:'completed',created_at:new Date(Date.now()-3600000).toISOString(),dispatched_at:new Date(Date.now()-3600000).toISOString(),completed_at:new Date(Date.now()-3500000).toISOString()})),nodes:inventory.map(i=>({identity:{...identity,instance_id:i.instance_id},state:'ready',created_at:new Date(Date.now()-3600000).toISOString(),destroyed_at:null,cloud_start_operation_id:'create-'+i.instance_id,stop_operation_id:null,launch_manifest_sha256:h}))});
@@ -112,6 +112,18 @@ test('IMDS role credentials bounded and temporary; they are not an instance admi
   const c = await readRoleCredentials('node-a', {fetchImpl: async () => new Response(JSON.stringify({TmpSecretId: 'synthetic', TmpSecretKey: 'synthetic', Token: 'synthetic', ExpiredTime: Math.floor(Date.now()/1000) + 300}))});
   assert.ok(c.expiresAt > Date.now());
   await assert.rejects(readRoleCredentials('../other'), /ROLE_NAME/);
+});
+test('source signer can only assume the fixed control role and never attaches a session token',async()=>{
+  const roleArn='qcs::cam::uin/123456:roleName/bondbuddy-execution-control';let calls=0,captured;
+  const transport=new TencentTransport({region:'ap-beijing',purpose:'control-source',assumeRoleArn:roleArn,
+    credentials:async()=>({secretId:'synthetic-source',secretKey:'synthetic-only'}),fetchImpl:async(_,options)=>{
+      calls++;captured=options;return new Response(JSON.stringify({Response:{RequestId:'synthetic-ack'}}));}});
+  const payload={RoleArn:roleArn,RoleSessionName:'bondbuddy-execution-control',DurationSeconds:1800};
+  await transport.call('sts','AssumeRole',payload);assert.equal('X-TC-Token' in captured.headers,false);
+  for(const [service,action,p] of [['cvm','RunInstances',{}],['ssm','GetSecretValue',{}],['sts','GetCallerIdentity',{}],
+    ['sts','AssumeRole',{...payload,RoleArn:roleArn+'-other'}],['sts','AssumeRole',{...payload,Policy:'wider'}]])
+    await assert.rejects(transport.call(service,action,p),/ACTION_NOT_ALLOWED/);
+  assert.equal(calls,1);
 });
 test('bootstrap rejects metadata-only/wrong-account/partial-manifest; starts nothing', async () => {
   let starts = 0;
@@ -217,4 +229,16 @@ test('completed Run boot time before PG node insertion remains charged from orig
  ledger.nodes[0].created_at=new Date(captured-1000).toISOString();ledger.operations[0].dispatched_at=new Date(captured-1800000).toISOString();
  const bound=produceExpenseSnapshot({ledger,inventory,quote,config});const today=Date.parse(bound.period_start);
  assert.ok(bound.spent_upper_bound_cny>=Math.max(0,captured-Math.max(today,captured-1800000))/3600000*1.2-0.000001);
+});
+
+
+test('fixed secret and snapshot commitments are reserved in full and survive the civil-day boundary',()=>{
+ const q={...quote,fixed_commitments:quote.fixed_commitments.map(c=>({...c,upper_bound_cny:c.kind==='secret'?8.4:2.0}))};
+ const c={...config,quote_sha256:sha256(canonical(q))};
+ const ledger=ledgerFor([]),first=produceExpenseSnapshot({ledger,inventory:[],quote:q,config:c});
+ assert.equal(first.fixed_commitments_upper_bound_cny,10.4);
+ const next={...ledger,captured_at:new Date(Date.parse(first.period_end)+1000).toISOString()};
+ assert.equal(produceExpenseSnapshot({ledger:next,inventory:[],quote:q,config:c}).fixed_commitments_upper_bound_cny,10.4);
+ const missing={...q,fixed_commitments:q.fixed_commitments.filter(c=>c.kind!=='snapshot')};
+ assert.throws(()=>produceExpenseSnapshot({ledger,inventory:[],quote:missing,config:{...c,quote_sha256:sha256(canonical(missing))}}),/EXPENSE_FIXED_COMMITMENTS_REQUIRED/);
 });

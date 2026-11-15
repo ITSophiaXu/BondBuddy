@@ -6,6 +6,10 @@
   "policy_revision": null,
   "valid_from": null,
   "valid_until": null,
+  "fixed_commitments": [
+    {"kind":"secret","upper_bound_cny":null,"evidence_ref":null,"evidence_sha256":null,"enforced_bound_sha256":null},
+    {"kind":"snapshot","upper_bound_cny":null,"evidence_ref":null,"evidence_sha256":null,"enforced_bound_sha256":null}
+  ],
   "components": [
     {
       "kind": "compute",

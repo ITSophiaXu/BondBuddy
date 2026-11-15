@@ -5,8 +5,9 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {sha256,requireThat} from './policy.mjs';
-import {validateTransportCredentials} from './private-transport.mjs';
+import {sha256,requireThat,canonical} from './policy.mjs';
+import {validateTransportCredentials,transportOperationSan} from './private-transport.mjs';
+import {privateControlRequest} from './control-socket.mjs';
 const exec=promisify(execFile);
 async function privatePem(path) {
   requireThat(path?.startsWith('/'),'PG_ISSUER_PRIVATE_PATH');
@@ -15,6 +16,12 @@ async function privatePem(path) {
   finally{await f.close();}
 }
 export async function validateTransportIssuer(config,{now=Date.now}={}) {
+  if(config?.authority_socket){
+    requireThat(config.authority_socket==='/run/bondbuddy/elastic-control/issuer.sock'&&/^[a-f0-9]{64}$/.test(config.ca_sha256??''),'PG_DYNAMIC_ISSUER_REQUIRED');
+    const result=await privateControlRequest(config.authority_socket,{version:'execution-pg-issuer-v1',action:'status'});
+    requireThat(result?.version==='execution-pg-issuer-v1'&&result.ready===true&&result.ca_sha256===config.ca_sha256,'PG_AUTHORITY_NOT_READY');
+    return;
+  }
   requireThat(config?.ca_file&&config.signing_key_file&&/^[a-f0-9]{64}$/.test(config.ca_sha256??''),'PG_DYNAMIC_ISSUER_REQUIRED');
   const caPem=await privatePem(config.ca_file),keyPem=await privatePem(config.signing_key_file);
   requireThat(sha256(caPem)===config.ca_sha256,'PG_ISSUER_CA_PIN');
@@ -25,12 +32,22 @@ export async function validateTransportIssuer(config,{now=Date.now}={}) {
 }
 /** Only the control service holds the new signing authority. Leaf issuance is
  * operation-aware; a warm epoch never reuses the previous epoch's certificate. */
-export async function issueTransportCredentials(identity,config,{now=Date.now}={}) {
+export async function issueTransportCredentials(identity,config,{now=Date.now,operation}={}) {
   requireThat(/^ins-[a-z0-9]+$/.test(identity.instance_id)&&/^[a-f0-9-]{36}$/.test(identity.epoch),'PG_ISSUER_IDENTITY');
+  if(operation)requireThat(operation.state==='completed'&&['run','start'].includes(operation.action)&&
+    canonical(operation.identity)===canonical(identity)&&operation.provider_request_id,'PG_ISSUER_OPERATION');
+  const expected={...identity,ca_sha256:config.ca_sha256,...(operation?{operation_id:operation.operation_id,provider_request_id:operation.provider_request_id}:{})};
+  if(config.authority_socket){
+    requireThat(operation,'PG_ISSUER_OPERATION_REQUIRED');
+    const result=await privateControlRequest(config.authority_socket,{version:'execution-pg-issuer-v1',action:'issue',operation_id:operation.operation_id,identity});
+    requireThat(result?.version==='execution-pg-issuer-v1'&&result.operation_id===operation.operation_id&&result.provider_request_id===operation.provider_request_id,'PG_AUTHORITY_BINDING');
+    validateTransportCredentials(result.transport_credentials,expected,{now});return result.transport_credentials;
+  }
   const {caPem,keyPem}=await validateTransportIssuer(config,{now}),dir=await mkdtemp(join(tmpdir(),'execution-pg-issuer-'));
   try {
     await writeFile(join(dir,'ca.pem'),caPem,{mode:0o600});await writeFile(join(dir,'ca.key'),keyPem,{mode:0o600});
-    await writeFile(join(dir,'client.ext'),'extendedKeyUsage=clientAuth\nbasicConstraints=critical,CA:FALSE\n',{mode:0o600});
+    await writeFile(join(dir,'client.ext'),'extendedKeyUsage=clientAuth\nbasicConstraints=critical,CA:FALSE\n'+
+      (operation?`subjectAltName=URI:${transportOperationSan(identity,operation.operation_id,operation.provider_request_id)}\n`:''),{mode:0o600});
     try {
       await exec('/usr/bin/openssl',['req','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-subj',`/CN=${identity.instance_id}:${identity.epoch}`,
         '-keyout',join(dir,'client.key'),'-out',join(dir,'client.csr')],{timeout:5000,maxBuffer:4096});
@@ -38,6 +55,6 @@ export async function issueTransportCredentials(identity,config,{now=Date.now}={
         '-days','1','-extfile',join(dir,'client.ext'),'-out',join(dir,'client.pem')],{timeout:5000,maxBuffer:4096});
     }catch{throw Error('PG_LEAF_ISSUANCE_FAILED');}
     const credentials={version:'execution-pg-mtls-v1',...identity,ca_pem:caPem,cert_pem:await readFile(join(dir,'client.pem'),'utf8'),key_pem:await readFile(join(dir,'client.key'),'utf8')};
-    validateTransportCredentials(credentials,{...identity,ca_sha256:config.ca_sha256},{now});return credentials;
+    validateTransportCredentials(credentials,expected,{now});return credentials;
   }finally{await rm(dir,{recursive:true});}
 }
