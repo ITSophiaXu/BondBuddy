@@ -18,7 +18,7 @@ config.node_secrets=config.role_names.map((role_name,index)=>({role_name,role_id
 
 test('one shared image launches both role slots with distinct public bindings and rejects a crossed slot',async()=>{
   let launches=0;
-  const cvm=new TencentCvm({config,archive:async()=>{throw Error('unused');},transport:new TencentTransport({region:config.region,
+  const cvm=new TencentCvm({config,archive:async bytes=>({ref:'synthetic/accepted',sha256:sha256(bytes)}),transport:new TencentTransport({region:config.region,
     credentials:async()=>({secretId:'synthetic',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+600000}),
     fetchImpl:async(_url,options)=>{
       const p=JSON.parse(options.body);

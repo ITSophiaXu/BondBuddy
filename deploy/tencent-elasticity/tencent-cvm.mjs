@@ -1,9 +1,10 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
+import {executionInstanceLaunchBinding,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
 
 const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13'};
-const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances']),
+const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
   sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']), tag: new Set(['ModifyResourceTags'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
@@ -104,13 +105,28 @@ export class TencentCvm {
       i.DataDisks?.length === 1 && i.DataDisks[0].DiskSize === 80 && i.DataDisks[0].DiskType === 'CLOUD_PREMIUM' &&
       !i.PublicIpAddresses?.length, 'CLOUD_LAUNCH_DRIFT');
     const safe = {account_id: this.config.account_id, region: this.config.region, instance_id: instanceId, role_name: i.CamRoleName,
-      instance_state: i.InstanceState, latest_operation: i.LatestOperation, latest_operation_state: i.LatestOperationState,
+      instance_state: i.InstanceState, latest_operation: i.LatestOperation??null, latest_operation_state: i.LatestOperationState??null,
       latest_operation_request_id: i.LatestOperationRequestId ?? null, create_operation_id: tags.get('bondbuddy-create-op') ?? null,
       stop_charging_mode: i.StopChargingMode ?? null,
+      created_at:i.CreatedTime??null,launch_binding_sha256:sha256(canonical(executionInstanceLaunchBinding(i))),
       observed_at: new Date(this.now()).toISOString(), request_id: data.RequestId};
     const bytes = canonical(safe), evidence = await this.archive(bytes);
     requireThat(evidence.sha256 === sha256(bytes) && evidence.ref, 'CLOUD_EVIDENCE_NOT_DURABLE');
     return {...safe, evidence_ref: evidence.ref, evidence_sha256: evidence.sha256};
+  }
+  async describeRun(operation) {
+    requireThat(executionRunAcceptanceMatches(operation,operation.run_acceptance),'RUN_ACCEPTANCE_UNPROVEN');
+    const i=await this.describe(operation.identity.instance_id),slot=this.config.role_names.indexOf(i.role_name);
+    requireThat(slot>=0&&i.create_operation_id===operation.operation_id&&i.launch_binding_sha256===operation.run_acceptance.launch_binding_sha256&&
+      sha256(canonical(runParameters(this.config,operation.request,operation.client_token,bootstrapUserData(this.config,operation.request,slot),slot,operation.operation_id)))===operation.request.launch_manifest_sha256,'RUN_CREATION_SCOPE');
+    const status=await this.transport.call('cvm','DescribeInstancesStatus',{InstanceIds:[operation.identity.instance_id]});
+    requireThat(status.InstanceStatusSet?.length===1&&status.InstanceStatusSet[0].InstanceId===operation.identity.instance_id,'RUN_STATUS_SCOPE');
+    const safe={instance_state:i.instance_state,latest_operation:i.latest_operation,latest_operation_state:i.latest_operation_state,
+      latest_operation_request_id:i.latest_operation_request_id,stop_charging_mode:i.stop_charging_mode,observed_at:new Date(this.now()).toISOString(),
+      run_creation:{operation_id:operation.operation_id,identity:operation.identity,launch_manifest_sha256:operation.request.launch_manifest_sha256,
+        launch_binding_sha256:i.launch_binding_sha256,created_at:i.created_at,instance_status:status.InstanceStatusSet[0].InstanceState,status_request_id:status.RequestId}};
+    const evidence=await this.archive(canonical(safe));requireThat(evidence.sha256===sha256(canonical(safe))&&evidence.ref,'RUN_CREATION_EVIDENCE');
+    return {...safe,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};
   }
   async execute(operation, {userData, slot} = {}) {
     validateConfig(this.config, {apply: true, expenditure: operation.action !== 'stop'});
@@ -118,7 +134,15 @@ export class TencentCvm {
     if (operation.action === 'run') {
       const params = runParameters(this.config, operation.request, operation.client_token, userData, slot, operation.operation_id);
       requireThat(sha256(canonical(params)) === operation.request.launch_manifest_sha256, 'LAUNCH_MANIFEST_MISMATCH');
-      try {return await this.transport.call('cvm', 'RunInstances', params);} catch(error) {
+      try {
+        const result=await this.transport.call('cvm', 'RunInstances', params);
+        requireThat(result.RequestId&&result.InstanceIdSet?.length===1&&/^ins-[a-z0-9]+$/.test(result.InstanceIdSet[0]),'EXACT_RUN_RESULT_REQUIRED');
+        const accepted={operation_id:operation.operation_id,identity:{account_id:operation.request.account_id,region:operation.request.region,instance_id:result.InstanceIdSet[0],epoch:operation.request.epoch},
+          provider_request_id:result.RequestId,instance_ids:result.InstanceIdSet,client_token:operation.client_token,launch_manifest_sha256:operation.request.launch_manifest_sha256,
+          launch_binding_sha256:sha256(canonical(executionInstanceLaunchBinding({...params,Tags:params.TagSpecification[0].Tags,PublicIpAddresses:[]})))};
+        const evidence=await this.archive(canonical(accepted));requireThat(evidence.sha256===sha256(canonical(accepted))&&evidence.ref,'RUN_ACCEPTANCE_EVIDENCE');
+        return {...result,run_acceptance:{...accepted,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256}};
+      } catch(error) {
         if(error.code && typeof error.requestId==='string') {
           const bytes=canonical({service:'cvm',action:'RunInstances',instance_count:1,operation_id:operation.operation_id,
             client_token_sha256:sha256(operation.client_token),code:error.code,request_id:error.requestId});

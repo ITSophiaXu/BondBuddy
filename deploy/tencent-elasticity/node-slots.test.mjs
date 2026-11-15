@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createConfiguredNodeAdapter,selectExecutionNodeConfig} from './node-adapter.mjs';
 import {canonical,sha256} from './policy.mjs';
 import {bootstrapUserData,bootstrapNode} from './bootstrap.mjs';
+import {executionInstanceLaunchBinding} from '@bondbuddy/contracts';
 
 // Actual configured adapter, default IMDS credential reader, STS/CVM signer and
 // SSM broker. Only their lowest HTTP/metadata/Docker IO is synthetic. No live
@@ -26,6 +27,14 @@ async function withAdapter(slot,run,{manifest=manifestFor(slot),config=configFor
   const envelope={identity:{account_id:common.account_id,region:common.region,instance_id:instance,epoch},role_id:slots[slot].role_id,
     expires_at:Date.now()+600000,operation_completed:true,operation_id:operation,provider_request_id:ack,
     registration_token:randomUUID(),services,source_sha256:source,image_sha256:common.image_sha256,launch_manifest_sha256:source};
+  const cloudInstance={InstanceId:instance,InstanceState:'RUNNING',CamRoleName:slots[slot].role_name,LatestOperationRequestId:null,LatestOperationState:null,LatestOperation:null,
+    CreatedTime:new Date().toISOString(),Tags:[{Key:'bondbuddy-enrollment-version',Value:operation},{Key:'bondbuddy-create-op',Value:operation},{Key:'bondbuddy-pool',Value:'synthetic'}]};
+  const launchBinding=sha256(canonical(executionInstanceLaunchBinding(cloudInstance)));
+  envelope.operation_action='run';
+  envelope.run_acceptance={operation_id:operation,identity:envelope.identity,provider_request_id:ack,instance_ids:[instance],client_token:sha256(canonical(operation)),
+    launch_manifest_sha256:source,launch_binding_sha256:launchBinding,evidence_ref:'synthetic/acceptance',evidence_sha256:source};
+  envelope.run_creation={operation_id:operation,identity:envelope.identity,launch_manifest_sha256:source,launch_binding_sha256:launchBinding,
+    created_at:cloudInstance.CreatedTime,instance_status:'RUNNING',status_request_id:'synthetic-status'};
   globalThis.fetch=async(url,options)=>{
     const target=new URL(url);
     if(target.hostname==='metadata.tencentyun.com'){
@@ -40,8 +49,7 @@ async function withAdapter(slot,run,{manifest=manifestFor(slot),config=configFor
     if(service==='sts'&&action==='GetCallerIdentity')response={AccountId:common.account_id,UserId:slots[slot].role_id+':synthetic-session',Type:'CAMRole'};
     else if(service==='cvm'&&action==='DescribeInstances'){
       assert.deepEqual(payload,{InstanceIds:[instance]});
-      response={InstanceSet:[{InstanceId:instance,CamRoleName:slots[slot].role_name,LatestOperationRequestId:ack,
-        LatestOperationState:'SUCCESS',LatestOperation:'RunInstances',Tags:[{Key:'bondbuddy-enrollment-version',Value:operation}]}]};
+      response={InstanceSet:[structuredClone(cloudInstance)]};
     }else if(service==='ssm'&&action==='GetSecretValue'){
       assert.deepEqual(payload,{SecretName:slots[slot].secret_name,VersionId:operation});
       response={SecretName:slots[slot].secret_name,VersionId:operation,SecretString:JSON.stringify(envelope)};

@@ -23,10 +23,12 @@
 
 1. 从 PG 取得有效独立工作或组 leader、有限批内窗口和最老等待；共享等待、材料/业务/付款阻塞及未知调用不计扩容需求。再次查询准确云库存；未 ready、启动中和未决操作保留库存与费用预约，不计可用处理容量。
 2. `reserveStart` 原子保存 launch request、库存/预算预约和固定 ClientToken；`claimCloudDispatch` 唯一 CAS 胜者先记录网络不确定性再调用云 API。Run 每次只创建一台，Start/Stop 没有 ClientToken，不依赖 SDK 重试。
-3. API RequestId 仅证明受理。归档 Describe 的安全元数据，核 `LatestOperationRequestId` 与原 ACK、对应操作 SUCCESS、准确实例状态及完整启动范围。缺失 ACK、超时和外部漂移保留未决状态，不重新开池或自动重投业务。仅官方四个明确库存拒绝码、单实例 Run、真实请求 ID 和已归档原件可持久拒绝与冷却。unknown Run 先 Describe 查原创建 tag，绑定归属后仍不得冒签缺失 ACK。
+3. API RequestId 仅证明受理。Run 单独归档并持久保存原 RequestId、唯一 InstanceIdSet、操作／实例／epoch、固定 token、launch manifest 和完整云启动范围 hash。随后准确 DescribeInstances 核角色、镜像、区域、网络、盘、公网关闭及创建 tag；DescribeInstancesStatus 也必须返回同一单实例 RUNNING。Run 的三个 LatestOperation 字段可以为 null，公共 schema 原样保留，不制造启停字段。Start/Stop 则仍核 LatestOperationRequestId 与原 ACK、对应操作 SUCCESS 和准确状态。缺失受理 ACK 的 unknown Run 可按创建 tag 绑定库存归属，但仍不得完成、发行登记或重投。仅官方四个明确库存拒绝码、单实例 Run、真实请求 ID 和已归档原件可持久拒绝与冷却。
 4. 停止前 `beginDrain` 禁止新领取；现有任务继续心跳和保存成果。只有所有预登记服务正向回执、租约、模型 holder、子进程和未提交成果均为零，才取得 `drainProof`。时间过去或租约过期不能代替回执。
 5. `submitStop` 先冻结 epoch，随后唯一 dispatch。停止未决期间不得 ready、Start 或登记新 epoch。仅准确 Stop 完成、`STOPPED` 和 `StopChargingMode=STOP_CHARGING` 的证据才允许回收旧 epoch 容量；完整 holder 前像 CAS 与账务未知保留由 PG 适配器处理。
-6. 常驻实例明确固定；自动缩容要求另一台已经 ready 并覆盖相同能力。启动中或失联节点不能作为替代。连续空闲起点来自 PG 正向零活动回执，不用 TTL。
+6. 验证阶段常驻实例明确固定，保留常驻节点；零底线自动阶段可按后文正向排空规则停最后一台。需要保留能力时，另一台必须已 ready 并覆盖相同能力；启动中或失联节点不能作为替代。连续空闲起点来自 PG 正向零活动回执，不用 TTL。
+
+0182 仅新增 `run_acceptance` 列，旧操作不补造受理证明。控制端需按准确库存范围授予只读 `DescribeInstancesStatus`；节点角色仍仅读取自己的实例与独占 Secret。签发、登记和证书刷新共用 contracts 的分 action 完成校验，Run 的原证明随独占登记信封及本地 transport 状态传播。目标数据库迁移、实际业务节点启动和完整镜像验收分别执行。
 
 ## 自然日费用准入
 

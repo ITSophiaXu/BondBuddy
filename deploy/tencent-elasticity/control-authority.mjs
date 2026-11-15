@@ -5,6 +5,7 @@ import {canonical,requireThat} from './policy.mjs';
 import {readPrivateJson,observationArchive} from './private-files.mjs';
 import {TencentTransport,TencentCvm} from './tencent-cvm.mjs';
 import {issueTransportCredentials,validateTransportIssuer} from './transport-issuer.mjs';
+import {executionCloudCompletionMatches} from '@bondbuddy/contracts';
 
 /** The local root authority owns source credentials and the CA. Callers send
  * IDs only; PG and exact cloud readback supply all signing authorization. */
@@ -39,10 +40,8 @@ export function createControlAuthority({config,control,expenseLedger,cloud,crede
     };
     const verifyBinding=async()=>{
     await verifyPgBinding();
-    const observed=await checked(()=>cloud.describe(operation.identity.instance_id));
-    requireThat(observed.instance_state==='RUNNING'&&observed.latest_operation_state==='SUCCESS'&&
-      observed.latest_operation===(operation.action==='run'?'RunInstances':'StartInstances')&&observed.latest_operation_request_id===operation.provider_request_id,
-      'AUTHORITY_CLOUD_COMPLETION');
+    const observed=await checked(()=>operation.action==='run'?cloud.describeRun(operation):cloud.describe(operation.identity.instance_id));
+    requireThat(executionCloudCompletionMatches(operation,observed),'AUTHORITY_CLOUD_COMPLETION');
     // Cloud I/O may straddle a Stop or new epoch. PG is authoritative at the
     // last boundary before delivery, after the final cloud read has settled.
     await verifyPgBinding();

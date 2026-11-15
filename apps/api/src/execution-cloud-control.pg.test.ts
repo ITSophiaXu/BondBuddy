@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Pool} from 'pg';
+import {readFile} from 'node:fs/promises';
 import {Value} from '@sinclair/typebox/value';
-import {ExecutionCapacitySnapshotSchema,ExecutionCloudExpenseLedgerSchema,type ExecutionLaunchRequest} from '@bondbuddy/contracts';
+import {ExecutionCapacitySnapshotSchema,ExecutionCloudExpenseLedgerSchema,type ExecutionLaunchRequest,type ExecutionCloudOperation,type ExecutionNodeIdentity} from '@bondbuddy/contracts';
 import {configureExecutionCapacity,executionCapacityControl,executionCloudExpenseLedger,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime,executionCloudClientToken} from './execution-capacity.js';
 import {isolatedTestDatabase} from './test-database.js';
 const connection=await isolatedTestDatabase(undefined,'execution-cloud-control'),hash='a'.repeat(64);
+const accepted=(op:ExecutionCloudOperation,i:ExecutionNodeIdentity,ack:string)=>({operation_id:op.operation_id,identity:i,provider_request_id:ack,instance_ids:[i.instance_id],client_token:op.client_token,launch_manifest_sha256:op.request!.launch_manifest_sha256,launch_binding_sha256:hash,evidence_ref:'synthetic/accepted',evidence_sha256:hash});
 test('cloud dispatch has a single durable winner and proven inventory rejection cools future starts',{skip:!connection,timeout:10000},async t=>{
- const pool=new Pool({connectionString:connection,max:4});t.after(()=>pool.end());const a=executionCapacityControl(pool),b=executionCapacityControl(pool);
+ const pool=new Pool({connectionString:connection,max:4});t.after(()=>pool.end());if(!(await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='bb_execution_cloud_operations' AND column_name='run_acceptance'")).rowCount)await pool.query(await readFile(new URL('../../../db/migrations/0182_execution_run_acceptance.sql',import.meta.url),'utf8'));const a=executionCapacityControl(pool),b=executionCapacityControl(pool);
  await configureExecutionCapacity(pool,0,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:true,expense_policy_sha256:hash});
  const request:ExecutionLaunchRequest={account_id:'synthetic',region:'synthetic',instance_id:null,instance_count:1,epoch:randomUUID(),source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:['authoring'],services:[{service_id:'one',capabilities:['authoring']}]};
  const reserved=await Promise.allSettled([a.reserveStart(request,'synthetic-one',1),b.reserveStart({...request,epoch:randomUUID()},'synthetic-two',1)]);
@@ -40,14 +42,15 @@ test('cloud dispatch has a single durable winner and proven inventory rejection 
  const resumed=await a.claimCloudDispatch(authorized.operation_id,authorized.revision);assert.equal(resumed.state,'unknown');
  await assert.rejects(a.reauthorizeCloudIntent(resumed.operation_id,resumed.revision,restored.revision),'unknown cannot be renewed or replayed');
  await assert.rejects(a.cancelUndispatchedCloudIntent(resumed.operation_id,resumed.revision,restored.revision));
- const acknowledged=await a.recordCloudResult(resumed.operation_id,resumed.revision,{state:'submitted',provider_request_id:'synthetic-accepted',identity:{account_id:request.account_id,region:request.region,instance_id:'synthetic-new-instance',epoch:next.request!.epoch},observation:null});
+ const acceptedIdentity={account_id:request.account_id,region:request.region,instance_id:'synthetic-new-instance',epoch:next.request!.epoch};
+ const acknowledged=await a.recordCloudResult(resumed.operation_id,resumed.revision,{state:'submitted',provider_request_id:'synthetic-accepted',identity:acceptedIdentity,observation:null,run_acceptance:accepted(resumed,acceptedIdentity,'synthetic-accepted')});
  await assert.rejects(a.reauthorizeCloudIntent(acknowledged.operation_id,acknowledged.revision,restored.revision),'submitted cannot be renewed or replayed');
  await assert.rejects(a.cancelUndispatchedCloudIntent(acknowledged.operation_id,acknowledged.revision,restored.revision));
 });
 
 test('never-dispatched Run cancellation releases reservation; warm cancellation restores exact stopped epoch',{skip:!connection,timeout:10000},async t=>{
  const isolated=await isolatedTestDatabase(undefined,'execution-cloud-cancel');
- const pool=new Pool({connectionString:isolated,max:4});t.after(()=>pool.end());const a=executionCapacityControl(pool),b=executionCapacityControl(pool);
+ const pool=new Pool({connectionString:isolated,max:4});t.after(()=>pool.end());if(!(await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='bb_execution_cloud_operations' AND column_name='run_acceptance'")).rowCount)await pool.query(await readFile(new URL('../../../db/migrations/0182_execution_run_acceptance.sql',import.meta.url),'utf8'));const a=executionCapacityControl(pool),b=executionCapacityControl(pool);
  await configureExecutionCapacity(pool,0,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:true,expense_policy_sha256:hash});
  const request:ExecutionLaunchRequest={account_id:'synthetic',region:'synthetic',instance_id:null,instance_count:1,epoch:randomUUID(),source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:['authoring'],services:[{service_id:'one',capabilities:['authoring']}]};
  const abandoned=await a.reserveStart(request,'abandoned-run',1);
@@ -60,8 +63,8 @@ test('never-dispatched Run cancellation releases reservation; warm cancellation 
  const i={account_id:request.account_id,region:request.region,instance_id:'synthetic-warm',epoch:randomUUID()};
  const finish=async(op:Awaited<ReturnType<typeof a.reserveStart>>)=>{
   const requestId='synthetic-ack-'+op.operation_id;
-  op=await a.recordCloudResult(op.operation_id,op.revision,{state:'submitted',provider_request_id:requestId,identity:i,observation:null});
-  return a.recordCloudResult(op.operation_id,op.revision,{state:'completed',provider_request_id:requestId,identity:i,observation:{instance_state:op.action==='stop'?'STOPPED':'RUNNING',latest_operation:op.action==='stop'?'StopInstances':'RunInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:requestId,stop_charging_mode:op.action==='stop'?'STOP_CHARGING':null,observed_at:new Date().toISOString(),evidence_ref:'synthetic-describe.json',evidence_sha256:hash}});
+  op=await a.recordCloudResult(op.operation_id,op.revision,{state:'submitted',provider_request_id:requestId,identity:i,observation:null,...(op.action==='run'?{run_acceptance:accepted(op,i,requestId)}:{})});
+  return a.recordCloudResult(op.operation_id,op.revision,{state:'completed',provider_request_id:requestId,identity:i,observation:{instance_state:op.action==='stop'?'STOPPED':'RUNNING',latest_operation:op.action==='stop'?'StopInstances':null,latest_operation_state:op.action==='stop'?'SUCCESS':null,latest_operation_request_id:op.action==='stop'?requestId:null,stop_charging_mode:op.action==='stop'?'STOP_CHARGING':null,observed_at:new Date().toISOString(),evidence_ref:'synthetic-describe.json',evidence_sha256:hash,...(op.action==='run'?{run_creation:{operation_id:op.operation_id,identity:i,launch_manifest_sha256:hash,launch_binding_sha256:hash,created_at:op.dispatched_at!,instance_status:'RUNNING',status_request_id:'synthetic-status'}}:{})}});
  };
  let created=await a.reserveStart({...request,epoch:i.epoch},'warm-create',3);created=await a.claimCloudDispatch(created.operation_id,created.revision);await finish(created);
  const registration='synthetic-registration-token-0123456789';await bindExecutionRegistration(pool,i,created.operation_id,registration);

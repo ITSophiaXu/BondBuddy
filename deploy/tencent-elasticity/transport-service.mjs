@@ -11,6 +11,7 @@ import {createTransportRefresher} from './transport-refresher.mjs';
 import {createStunnelReloadController} from './stunnel-reload.mjs';
 import {acquireControlTick} from './control-tick-bound.mjs';
 import {requireThat,sha256} from './policy.mjs';
+import {nodeCloudCompletionMatches} from './enrollment.mjs';
 const exec=promisify(execFile);
 
 /** The existing transport service supervises stunnel and the root-only refresh
@@ -39,7 +40,7 @@ export async function serveTransport(config){
     broker:async()=>{
       const caller=await cloud.call('sts','GetCallerIdentity',{});requireThat(String(caller.AccountId)===config.account_id&&String(caller.UserId).startsWith(`${config.role_id}:`),'TRANSPORT_ROLE_DRIFT');
       const d=await cloud.call('cvm','DescribeInstances',{InstanceIds:[state.identity.instance_id]}),i=d.InstanceSet?.[0];
-      requireThat(d.InstanceSet?.length===1&&i.InstanceId===state.identity.instance_id&&i.CamRoleName===config.role_name&&i.LatestOperationRequestId===state.provider_request_id,'TRANSPORT_CLOUD_DRIFT');
+      requireThat(d.InstanceSet?.length===1&&i.InstanceId===state.identity.instance_id&&i.CamRoleName===config.role_name&&nodeCloudCompletionMatches(state,i),'TRANSPORT_CLOUD_DRIFT');
       const version=i.Tags?.find(t=>t.Key==='bondbuddy-transport-version')?.Value;
       requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(version??''),'TRANSPORT_RENEWAL_PENDING');
       const secret=await cloud.call('ssm','GetSecretValue',{SecretName:config.secret_name,VersionId:version});

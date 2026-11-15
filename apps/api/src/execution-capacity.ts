@@ -1,7 +1,7 @@
 import {Pool,type PoolClient} from 'pg';
 import {Value} from '@sinclair/typebox/value';
 import {createHash,randomUUID} from 'node:crypto';
-import {ExecutionNodeContextSchema,ExecutionLaunchRequestSchema,ExecutionCloudObservationSchema,ExecutionCloudRejectionSchema,type ExecutionCloudExpenseLedger,type ExecutionCapacityPolicy,type ExecutionNodeContext,type ExecutionNodeIdentity,type ExecutionNode,type ExecutionCloudOperation,type ExecutionCloudResult,type ExecutionLaunchRequest,type ExecutionCapacityControl,type ExecutionCapacitySnapshot,type ExecutionDrainProof} from '@bondbuddy/contracts';
+import {executionCloudCompletionMatches,executionRunAcceptanceMatches,ExecutionNodeContextSchema,ExecutionLaunchRequestSchema,ExecutionCloudObservationSchema,ExecutionCloudRejectionSchema,type ExecutionCloudExpenseLedger,type ExecutionCapacityPolicy,type ExecutionNodeContext,type ExecutionNodeIdentity,type ExecutionNode,type ExecutionCloudOperation,type ExecutionCloudResult,type ExecutionLaunchRequest,type ExecutionCapacityControl,type ExecutionCapacitySnapshot,type ExecutionDrainProof} from '@bondbuddy/contracts';
 import {transaction} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {fenceStoppedExecutionEpoch,providerCallNeedsReconciliation} from './queue.js';
@@ -30,7 +30,7 @@ async function dto(client:PoolClient|Pool,row:any):Promise<ExecutionNode>{
  const allReady=row.expected_services.length>0&&row.expected_services.every((service:any)=>sessions.some(s=>s.service_id===service.service_id&&s.state==='active'&&s.ready&&new Date(s.heartbeat_at).getTime()>Date.now()-30000));
  return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,4-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id};
 }
-function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:row.request,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null};}
+function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:row.request,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null};}
 async function operation(client:PoolClient|Pool,id:string,lock=false){return (await client.query(`SELECT * FROM bb_execution_cloud_operations WHERE operation_id=$1 ${lock?'FOR UPDATE':''}`,[id])).rows[0];}
 
 /** Called inside every model-job/assistant/probe claim transaction, before job locks. */
@@ -205,18 +205,21 @@ async function recordExecutionCloudResult(pool:Pool,id:string,revision:number,re
   if(result.identity){
    if(result.identity.account_id!==op.account_id||result.identity.region!==op.region||result.identity.epoch!==op.epoch||op.instance_id&&result.identity.instance_id!==op.instance_id)cas();
   }else if(op.instance_id||op.action!=='run'||result.state==='completed')cas();
+  if(result.run_acceptance){
+   if(result.state!=='submitted'||op.action!=='run'||!executionRunAcceptanceMatches({...opDto(op),identity:result.identity,provider_request_id:result.provider_request_id},result.run_acceptance)||
+    op.run_acceptance&&sha(op.run_acceptance)!==sha(result.run_acceptance))throw Error('EXECUTION_RUN_ACCEPTANCE_UNPROVEN');
+  }
+  if(op.action==='run'&&result.state==='submitted'&&!result.run_acceptance)throw Error('EXECUTION_RUN_ACCEPTANCE_UNPROVEN');
   if(result.state==='completed'){
    const o=result.observation;
-   if(!result.identity||!o||!Value.Check(ExecutionCloudObservationSchema,o)||!op.provider_request_id||o.latest_operation_request_id!==op.provider_request_id
-    ||result.provider_request_id!==op.provider_request_id||o.latest_operation_state!=='SUCCESS'||!Number.isFinite(Date.parse(o.observed_at))
+   if(!result.identity||!o||!Value.Check(ExecutionCloudObservationSchema,o)||!op.provider_request_id||!executionCloudCompletionMatches(opDto(op),o)
+    ||result.provider_request_id!==op.provider_request_id||!Number.isFinite(Date.parse(o.observed_at))
     ||Date.parse(o.observed_at)<new Date(op.dispatched_at).getTime()||Date.parse(o.observed_at)>Date.now()+30000)throw Error('EXECUTION_CLOUD_COMPLETION_UNPROVEN');
-   const expected={run:'RunInstances',start:'StartInstances',stop:'StopInstances',destroy:'TerminateInstances'}[op.action as 'run'|'start'|'stop'|'destroy'];
-   if(o.latest_operation!==expected||(op.action==='stop'&&(o.instance_state!=='STOPPED'||o.stop_charging_mode!=='STOP_CHARGING'))
-    ||op.action==='destroy'&&o.instance_state!=='TERMINATED'||['run','start'].includes(op.action)&&o.instance_state!=='RUNNING')throw Error('EXECUTION_CLOUD_COMPLETION_UNPROVEN');
   }
   if(op.provider_request_id&&result.provider_request_id&&op.provider_request_id!==result.provider_request_id)cas();
   await client.query(`UPDATE bb_execution_cloud_operations SET state=$2,revision=revision+1,provider_request_id=COALESCE(provider_request_id,$3),
-   instance_id=COALESCE(instance_id,$4),cloud_observation=$5,completed_at=CASE WHEN $2='completed' THEN clock_timestamp() ELSE NULL END WHERE operation_id=$1`,[id,result.state,result.provider_request_id,result.identity?.instance_id??null,result.observation]);
+   instance_id=COALESCE(instance_id,$4),cloud_observation=$5,completed_at=CASE WHEN $2='completed' THEN clock_timestamp() ELSE NULL END,
+   run_acceptance=COALESCE(run_acceptance,$6) WHERE operation_id=$1`,[id,result.state,result.provider_request_id,result.identity?.instance_id??null,result.observation,result.run_acceptance??null]);
   if(result.state==='completed'&&result.identity){
    if(['run','start'].includes(op.action)){
     const request=op.request as ExecutionLaunchRequest;

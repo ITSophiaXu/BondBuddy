@@ -146,7 +146,8 @@ const runtime = {
     }else{
       await installPrivateTransport(pg.credential_directory,enrollment.transport_credentials,credentialScope,{now});
       await replacePrivateJson(`${pg.credential_directory}/state.json`,{identity:e.identity,source_sha256:e.source_sha256,
-        image_sha256:e.image_sha256,launch_manifest_sha256:e.launch_manifest_sha256,provider_request_id:e.provider_request_id,operation_id:e.operation_id});
+        image_sha256:e.image_sha256,launch_manifest_sha256:e.launch_manifest_sha256,provider_request_id:e.provider_request_id,operation_id:e.operation_id,
+        operation_action:e.operation_action,...(e.operation_action==='run'?{run_acceptance:e.run_acceptance,run_creation:e.run_creation}:{})});
       if(startUnit)await startUnit(pg.unit_name);
       else await exec('/usr/bin/systemctl',['start',pg.unit_name],{timeout:10000,maxBuffer:4096});
     }

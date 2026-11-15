@@ -6,6 +6,24 @@ import {readRoleCredentials} from './bootstrap.mjs';
 import {canonical, requireThat, sha256} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
+import {executionCloudCompletionMatches,executionInstanceLaunchBinding} from '@bondbuddy/contracts';
+
+/** The exclusive secret carries the original durable acceptance and action.
+ * Fresh own-instance readback must still match that immutable launch binding. */
+export function nodeCloudCompletionMatches(envelope,instance) {
+  const op={operation_id:envelope.operation_id,action:envelope.operation_action,identity:envelope.identity,
+    provider_request_id:envelope.provider_request_id,client_token:sha256(canonical(envelope.operation_id)),
+    request:{launch_manifest_sha256:envelope.launch_manifest_sha256},run_acceptance:envelope.run_acceptance};
+  const observed={instance_state:instance.InstanceState,latest_operation:instance.LatestOperation??null,latest_operation_state:instance.LatestOperationState??null,
+    latest_operation_request_id:instance.LatestOperationRequestId??null,stop_charging_mode:instance.StopChargingMode??null,
+    observed_at:new Date().toISOString(),evidence_ref:'exclusive-enrollment/readback',evidence_sha256:sha256(canonical(executionInstanceLaunchBinding(instance)))};
+  if(op.action==='run'){
+    if(instance.Tags?.filter(t=>t.Key==='bondbuddy-create-op'&&t.Value===op.operation_id).length!==1||
+      sha256(canonical(executionInstanceLaunchBinding(instance)))!==op.run_acceptance?.launch_binding_sha256)return false;
+    observed.run_creation=envelope.run_creation;
+  }
+  return executionCloudCompletionMatches(op,observed);
+}
 
 /** Node-exclusive role/secret. The image contains only the public name/version;
  * CAM enforces a different secret resource for each inventory slot. */
@@ -36,9 +54,7 @@ export function createSsmEnrollmentBroker({config, transport, now = Date.now, wa
     requireThat(result.SecretName === config.secret_name && result.VersionId === version &&
       typeof result.SecretString === 'string' && !result.SecretBinary, 'NODE_SECRET_VERSION_MISMATCH');
     const envelope = JSON.parse(result.SecretString);
-    requireThat(envelope.provider_request_id && description.InstanceSet[0].LatestOperationRequestId===envelope.provider_request_id &&
-      description.InstanceSet[0].LatestOperationState==='SUCCESS' &&
-      ['RunInstances','StartInstances'].includes(description.InstanceSet[0].LatestOperation), 'NODE_ENROLLMENT_PENDING');
+    requireThat(nodeCloudCompletionMatches(envelope,description.InstanceSet[0]),'NODE_ENROLLMENT_PENDING');
     requireThat(envelope.identity?.account_id === config.account_id && envelope.identity.region === config.region &&
       envelope.identity.instance_id === metadata.instance_id && envelope.role_id === config.role_id &&
       envelope.expires_at > now() + 60000 && envelope.expires_at <= now() + 900000 &&
@@ -61,6 +77,7 @@ export function createSsmEnrollmentBroker({config, transport, now = Date.now, wa
 export async function issueNodeEnrollment({operation, slot, config, transport, bind, serviceTemplate, now = Date.now}) {
   requireThat(operation.state === 'completed' && ['run', 'start'].includes(operation.action) && operation.identity,
     'START_COMPLETION_REQUIRED');
+  requireThat(executionCloudCompletionMatches(operation,operation.cloud_observation),'START_COMPLETION_REQUIRED');
   const descriptor = config.node_secrets[slot];
   requireThat(descriptor && descriptor.role_name===config.role_names[slot] &&
     operation.provider_request_id && operation.identity.account_id === config.account_id && operation.identity.region === config.region,
@@ -71,7 +88,8 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     services: operation.request.services, source_sha256: operation.request.source_sha256,
     image_sha256: operation.request.image_sha256, launch_manifest_sha256: operation.request.launch_manifest_sha256,
     registration_token: randomBytes(32).toString('base64url'), expires_at: now() + 600000,
-    operation_id: operation.operation_id, provider_request_id:operation.provider_request_id, operation_completed: true};
+    operation_id: operation.operation_id, provider_request_id:operation.provider_request_id, operation_completed: true,
+    operation_action:operation.action,...(operation.action==='run'?{run_acceptance:operation.run_acceptance,run_creation:operation.cloud_observation?.run_creation}:{})};
   // Own credential vault persists the SAME token/payload across PG bind or SSM
   // publish timeouts. This is not an independent operation queue.
   await mkdir(config.registration_directory, {recursive: true, mode: 0o700});

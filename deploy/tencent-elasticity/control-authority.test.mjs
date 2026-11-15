@@ -18,9 +18,9 @@ async function raceAuthority(t,{sign,describe,now}={}){
   await exec('openssl',['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-days','2','-subj','/CN=synthetic-ca','-keyout',join(dir,'ca.key'),'-out',join(dir,'ca.pem')]);await chmod(join(dir,'ca.pem'),0o600);
   const identity={account_id:'123456',region:'ap-beijing',instance_id:'ins-a1',epoch:'a3432123-84b5-4f11-8b51-94a29eac1234'};
   const issuer={ca_file:join(dir,'ca.pem'),signing_key_file:join(dir,'ca.key'),ca_sha256:sha256(await readFile(join(dir,'ca.pem')))};
-  const operation={operation_id:'op1',identity,state:'completed',action:'run',provider_request_id:'ack1',request:{source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),launch_manifest_sha256:'c'.repeat(64)}};
+  const operation={operation_id:'op1',identity,state:'completed',action:'start',provider_request_id:'ack1',request:{source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),launch_manifest_sha256:'c'.repeat(64)}};
   const node={identity:{...identity},state:'ready',cloud_start_operation_id:'op1',launch_manifest_sha256:operation.request.launch_manifest_sha256};
-  const observed={instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'RunInstances',latest_operation_request_id:'ack1'};
+  const observed={instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'StartInstances',latest_operation_request_id:'ack1',stop_charging_mode:null,observed_at:new Date().toISOString(),evidence_ref:'synthetic/describe',evidence_sha256:'a'.repeat(64)};
   const authority=createControlAuthority({config:{account_id:identity.account_id,region:identity.region,issuer,pool:operation.request},
     control:{loadOperation:async()=>structuredClone(operation)},expenseLedger:async()=>({nodes:[structuredClone(node)]}),
     cloud:{describe:describe??(async()=>observed)},verifyDatabase:async()=>{},now,
@@ -59,10 +59,10 @@ test('root signing authorization comes from PG and exact cloud ACK; leaf binds t
   const identity={account_id:'123456',region:'ap-beijing',instance_id:'ins-a1',epoch:'a3432123-84b5-4f11-8b51-94a29eac1234'};
   const issuer={ca_file:join(dir,'ca.pem'),signing_key_file:join(dir,'ca.key'),ca_sha256:sha256(await readFile(join(dir,'ca.pem')))};
   const config={account_id:identity.account_id,region:identity.region,control_role_id:'7',issuer,pool:{source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64)}};
-  let operation={operation_id:'op1',identity,state:'completed',action:'run',provider_request_id:'ack1',request:{source_sha256:config.pool.source_sha256,image_sha256:config.pool.image_sha256,launch_manifest_sha256:'c'.repeat(64)}};
+  let operation={operation_id:'op1',identity,state:'completed',action:'start',provider_request_id:'ack1',request:{source_sha256:config.pool.source_sha256,image_sha256:config.pool.image_sha256,launch_manifest_sha256:'c'.repeat(64)}};
   let cloudAck='ack1',nodeEpoch=identity.epoch,dbChecks=0,invalidateOnSign=false;
   const authority=createControlAuthority({config,control:{loadOperation:async()=>operation},expenseLedger:async()=>({nodes:[{identity:{...identity,epoch:nodeEpoch},state:'ready',cloud_start_operation_id:'op1',launch_manifest_sha256:operation.request.launch_manifest_sha256}]}),
-    cloud:{describe:async()=>({instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'RunInstances',latest_operation_request_id:cloudAck})},
+    cloud:{describe:async()=>({instance_state:'RUNNING',latest_operation_state:'SUCCESS',latest_operation:'StartInstances',latest_operation_request_id:cloudAck,stop_charging_mode:null,observed_at:new Date().toISOString(),evidence_ref:'synthetic/describe',evidence_sha256:'a'.repeat(64)})},
     verifyDatabase:async()=>{dbChecks++;},credentialsProvider:{get:async()=>({secretId:'short-only',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+1800000})},
     sign:async(...args)=>{const c=await issueTransportCredentials(...args);if(invalidateOnSign)nodeEpoch='new-epoch';return c;}});
   const request={version:'execution-pg-issuer-v1',action:'issue',operation_id:'op1',identity};

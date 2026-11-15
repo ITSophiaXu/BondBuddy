@@ -2,6 +2,7 @@ import {canonical, planCapacity, requireThat, sha256, validateConfig} from './po
 import {bootstrapUserData} from './bootstrap.mjs';
 import {requireCostAdmission, costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
+import {executionCloudCompletionMatches,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
 
 /** @typedef {import('@bondbuddy/contracts').ExecutionCapacityControl} ExecutionCapacityControl */
 /** One existing ops invocation. No polling service, timer or independent task store. */
@@ -84,6 +85,10 @@ export class ExecutionPoolController {
         identity = {account_id: identity.account_id, region: identity.region, instance_id: identity.instance_id, epoch: identity.epoch};
       }
       result = {state: 'submitted', provider_request_id: response.RequestId, identity, observation: null};
+      if(claimed.action==='run'){
+        requireThat(executionRunAcceptanceMatches({...claimed,identity,provider_request_id:response.RequestId},response.run_acceptance),'RUN_ACCEPTANCE_UNPROVEN');
+        result.run_acceptance=response.run_acceptance;
+      }
     } catch (error) {
       const rejection = claimed.action === 'run' && claimed.identity === null && claimed.request?.instance_count === 1
         ? await this.cloud.capacityRejection?.(error) : null;
@@ -112,18 +117,14 @@ export class ExecutionPoolController {
       return this.control.recordCloudResult(opId,op.revision,{state:'unknown',provider_request_id:null,
         identity:{account_id:op.request.account_id,region:op.request.region,instance_id:i.instance_id,epoch:op.request.epoch},observation:null});
     }
-    const observation = await this.cloud.describe(op.identity.instance_id);
-    const action = {run: 'RunInstances', start: 'StartInstances', stop: 'StopInstances'}[op.action];
-    const state = op.action === 'stop' ? 'STOPPED' : 'RUNNING';
-    // Describe latest request must bind the ACK; timeout without an ACK stays
-    // unknown for explicit recovery. Never treat a foreign stop as our completion.
-    if (!op.provider_request_id || observation.latest_operation_request_id !== op.provider_request_id ||
-        observation.latest_operation !== action || observation.latest_operation_state !== 'SUCCESS' ||
-        observation.instance_state !== state || (op.action === 'stop' && observation.stop_charging_mode !== 'STOP_CHARGING')) return op;
+    if(!op.provider_request_id)return op;
+    const observation=op.action==='run'?await this.cloud.describeRun(op):await this.cloud.describe(op.identity.instance_id);
+    if(!executionCloudCompletionMatches(op,observation))return op;
     return this.control.recordCloudResult(opId, op.revision, {state: 'completed', provider_request_id: op.provider_request_id,
       identity: op.identity, observation: {instance_state: observation.instance_state, latest_operation: observation.latest_operation,
         latest_operation_state: observation.latest_operation_state, observed_at: observation.observed_at,
         latest_operation_request_id: observation.latest_operation_request_id, stop_charging_mode: observation.stop_charging_mode,
-        evidence_ref: observation.evidence_ref, evidence_sha256: observation.evidence_sha256}});
+        evidence_ref: observation.evidence_ref, evidence_sha256: observation.evidence_sha256,
+        ...(observation.run_creation?{run_creation:observation.run_creation}:{})}});
   }
 }
