@@ -22,7 +22,7 @@ test('actual runtime finishes an empty draining session under persistent global 
  IF NEW.state='finished' AND nextval('synthetic_finish_attempt')=1 THEN RAISE EXCEPTION 'synthetic transient finish failure' USING ERRCODE='08006'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER synthetic_finish_failure BEFORE UPDATE ON bb_execution_node_sessions FOR EACH ROW EXECUTE FUNCTION synthetic_fail_first_finish()`);
  const logs:Record<string,unknown>[]=[];const blobs=new Proxy({}, {get:()=>async()=>{throw Error('no blob expected');}}) as PrivateBlobs;
- const runtime=new WorkerRuntime({pool,blobs,kinds:['run'],runKinds:['generation'],concurrency:1,interactiveSlots:0,parseSlots:0,heartbeatMs:25,pollMs:25,sweepMs:25,log:e=>logs.push(e)}).start();
+ const runtime=new WorkerRuntime({pool,blobs,kinds:['run'],runKinds:['generation'],concurrency:1,interactiveSlots:0,parseSlots:0,heartbeatMs:25,pollMs:25,sweepMs:25,executionTransport:{refresh:async()=>{},ready:()=>true,close:()=>{}},log:e=>logs.push(e)}).start();
  t.after(()=>runtime.stop());
  for(let n=0;;n++){if((await control.snapshot()).nodes[0]?.state==='ready')break;assert.ok(n<100);await delay(10);}
  const node=(await control.snapshot()).nodes[0]!;await control.beginDrain(identity,'runtime-drain',node.revision);
