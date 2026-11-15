@@ -24,11 +24,11 @@ export function modelCancellationDiagnostic(reason: unknown, source: 'capacity_r
   const error = reason as { code?: unknown; message?: unknown; cancellation?: { original_error_code: string | null; error_class: string } } | null;
   const safeCode = (value: unknown) => typeof value === 'string' && (/^[0-9A-Z]{5}$/.test(value) || ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','ENOTFOUND'].includes(value)) ? value : null;
   const code = safeCode(error?.cancellation?.original_error_code) ?? safeCode(error?.code);
-  const errorClass = error?.message === 'Query read timeout' ? 'pg_query_timeout' : error?.message === 'Model capacity holder lost' ? 'holder_missing' : reason instanceof DOMException && reason.name === 'AbortError' ? 'abort' : reason instanceof Error ? 'error' : 'unavailable';
+  const errorClass = error?.message === 'Connection terminated due to connection timeout' ? 'pg_connect_timeout' : error?.message === 'Query read timeout' ? 'pg_query_timeout' : error?.message === 'Model capacity holder lost' ? 'holder_missing' : reason instanceof DOMException && reason.name === 'AbortError' ? 'abort' : reason instanceof Error ? 'error' : 'unavailable';
   const preservedClass = error?.cancellation?.error_class;
   return { kind: 'model_cancellation', source, phase,
     original_error_code: code,
-    error_class: preservedClass && ['pg_query_timeout','holder_missing','abort','error','unavailable'].includes(preservedClass) ? preservedClass : errorClass,
+    error_class: preservedClass && ['pg_connect_timeout','pg_query_timeout','holder_missing','abort','error','unavailable'].includes(preservedClass) ? preservedClass : errorClass,
     ...(scope && /^[A-Za-z0-9:_-]{1,180}$/.test(scope) ? { scope } : {}) };
 }
 export function reportModelCancellation(diagnostic: ReturnType<typeof modelCancellationDiagnostic>) {
@@ -84,7 +84,9 @@ export class PgModelCallBudget implements ModelCallBudget {
   constructor(private readonly pool: Pool, private readonly limit: number = 4) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 4) throw new Error('Invalid model call concurrency');
     this.sessions = new Pool({ ...pool.options, max: limit, application_name: 'bondbuddy_model_budget',
-      connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 1000, allowExitOnIdle: true });
+      // Renew every five seconds on the existing connection instead of reopening
+      // the database transport each time. Idle connections still retire promptly.
+      connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 30000, allowExitOnIdle: true });
     this.sessions.on('error', () => { /* a failed operation is fail-closed */ });
   }
   private async enter(scope: string, signal?: AbortSignal) {
