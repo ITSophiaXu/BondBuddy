@@ -414,6 +414,16 @@ test('managed read-only invocations carry named credential denies without enabli
   } finally { await cleanup(); }
 });
 
+test('managed sandbox verification failure releases permit without a model intent or observation',async()=>{
+  const {config,cleanup}=await setup({protected_runtime_files:true,command:[process.execPath,'-e',"process.stdout.write('UNVERIFIED_BOUNDARY')",'--']});
+  try {
+    const journal=new MemoryCodexJournal() as MemoryCodexJournal & import('./codex-adapter.js').CodexJournal;let released=0,modelSpawns=0;
+    journal.acquireCallSlot=async()=>({signal:new AbortController().signal,bindProcess:async()=>{modelSpawns++;},renew:async()=>{},release:async()=>{released++;}});
+    await assert.rejects(runContainedModelCall(call('synthetic'),journal,config),/AUTHORING_FILE_SANDBOX_UNAVAILABLE/);
+    assert.equal(journal.intents.length,0);assert.equal(journal.observations.length,0);assert.equal(journal.runtimes.length,0);assert.equal(journal.results.size,0);assert.equal(modelSpawns,0);assert.equal(released,1);
+  }finally{await cleanup();}
+});
+
 test('structured success: intent before spawn, isolated cwd/home/env, #79 record with thread id and unknown request id', async () => {
   const { config, cleanup } = await setup();
   process.env.BB_SYNTHETIC_DEEPSEEK_KEY = 'synthetic-key-value';
