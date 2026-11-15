@@ -204,3 +204,15 @@ test('persisted control and broker rate bound survives recreation and a backward
  assert.equal(await acquireControlTick(dir,{now:()=>now-60000}),null);
  const b=await acquireControlTick(dir,{now:()=>now+61000});assert.equal(typeof b,'function');await b();
 });
+
+
+test('refresh response validation fences malformed, old identity and near-expiry admission',async()=>{
+ const {validateTransportRefreshResponse}=await import('./transport-renewal.mjs');
+ const now=Date.now(),request={version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'};
+ const response={version:TRANSPORT_REFRESH_VERSION,identity,status:'current',not_after:new Date(now+86400000).toISOString(),admission_allowed:true,evidence_sha256:'a'.repeat(64)};
+ assert.equal(validateTransportRefreshResponse(request,response,now).admissionAllowed,true);
+ assert.equal(validateTransportRefreshResponse(request,{...response,status:'blocked',admission_allowed:false},now).admissionAllowed,false);
+ assert.equal(validateTransportRefreshResponse(request,{...response,not_after:new Date(now+60000).toISOString()},now).admissionAllowed,false);
+ assert.throws(()=>validateTransportRefreshResponse(request,{...response,identity:{...identity,epoch:'old'}},now),/TRANSPORT_REFRESH_RESPONSE_INVALID/);
+ assert.throws(()=>validateTransportRefreshResponse(request,{...response,token:'forbidden'},now),/TRANSPORT_REFRESH_RESPONSE_INVALID/);
+});

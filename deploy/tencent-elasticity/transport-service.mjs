@@ -50,10 +50,15 @@ export async function serveTransport(config){
     probe:async()=>{
       for(const service of config.services){
         const envFile=`/run/bondbuddy/service/${service.service_id}.env`;
-        const program="const{Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:5000});try{console.log(JSON.stringify((await p.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0]))}finally{await p.end()}";
+        const stat=await lstat(envFile);requireThat(stat.isFile()&&!stat.isSymbolicLink()&&stat.uid===1000&&(stat.mode&0o777)===0o600,'TRANSPORT_PROBE_ENV');
+        const urls=(await readFile(envFile,'utf8')).split('\n').filter(line=>line.startsWith('DATABASE_URL='));
+        requireThat(urls.length===1,'TRANSPORT_PROBE_ENV');const expectedUrl=new URL(urls[0].slice('DATABASE_URL='.length));
+        const program="const{Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:5000});try{console.log(JSON.stringify((await p.query('SELECT system_identifier::text,current_database() AS database_name,current_user AS role_name FROM pg_control_system()')).rows[0]))}finally{await p.end()}";
         const {stdout:id}=await exec('/usr/bin/docker',['create','--pull','never','--network',config.execution_network,'--memory','128m','--pids-limit','64','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--env-file',envFile,'--entrypoint','node',config.images[service.service_id],'--input-type=module','-e',program],{timeout:5000,maxBuffer:4096});
         requireThat(/^[a-f0-9]{12,64}$/.test(id.trim()),'TRANSPORT_PROBE_ID');
-        try{const r=await exec('/usr/bin/docker',['start','-a',id.trim()],{timeout:10000,maxBuffer:4096});requireThat(JSON.parse(r.stdout).system_identifier===pg.system_identifier,'TRANSPORT_PROBE_IDENTITY');}
+        try{const r=await exec('/usr/bin/docker',['start','-a',id.trim()],{timeout:10000,maxBuffer:4096});const observed=JSON.parse(r.stdout);
+          requireThat(observed.system_identifier===pg.system_identifier&&observed.database_name===decodeURIComponent(expectedUrl.pathname.slice(1))&&
+            observed.role_name===decodeURIComponent(expectedUrl.username),'TRANSPORT_PROBE_IDENTITY');}
         finally{const r=await exec('/usr/bin/docker',['inspect','--format','{{.State.Running}}',id.trim()],{timeout:5000});if(r.stdout.trim()==='false')await exec('/usr/bin/docker',['rm',id.trim()],{timeout:5000});}
       }
     }});

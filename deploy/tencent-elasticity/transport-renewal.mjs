@@ -10,6 +10,18 @@ export const TRANSPORT_REFRESH_VERSION='execution-transport-refresh-v1';
 export const TRANSPORT_RENEW_BEFORE_MS=6*60*60*1000;
 export const TRANSPORT_ADMISSION_MARGIN_MS=2*60*60*1000;
 export const transportExpiry=c=>Date.parse(new X509Certificate(c.cert_pem).validTo);
+export function validateTransportRefreshResponse(request,response,now=Date.now()){
+  requireThat(request?.version===TRANSPORT_REFRESH_VERSION&&response?.version===TRANSPORT_REFRESH_VERSION&&
+    canonical(request.context?.identity)===canonical(response.identity)&&
+    ['current','refreshed','blocked'].includes(response.status)&&typeof response.admission_allowed==='boolean'&&
+    Object.keys(response).every(k=>['version','identity','status','not_after','admission_allowed','evidence_sha256'].includes(k)),
+    'TRANSPORT_REFRESH_RESPONSE_INVALID');
+  const expiresAt=response.not_after===null?null:Date.parse(response.not_after);
+  requireThat(expiresAt===null||(Number.isFinite(expiresAt)&&expiresAt<=now+86400000),'TRANSPORT_REFRESH_EXPIRY_INVALID');
+  const admissionAllowed=response.status!=='blocked'&&response.admission_allowed===true&&
+    expiresAt>now+TRANSPORT_ADMISSION_MARGIN_MS&&/^[a-f0-9]{64}$/.test(response.evidence_sha256??'');
+  return {admissionAllowed,expiresAt};
+}
 export async function replacePrivateJson(path,value){
   const tmp=`${path}.${randomUUID()}`;let f;
   try{f=await open(tmp,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);await f.writeFile(canonical(value));await f.sync();await f.close();f=null;await rename(tmp,path);}
