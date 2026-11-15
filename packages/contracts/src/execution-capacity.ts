@@ -46,6 +46,11 @@ export const ExecutionCapacitySnapshotSchema=obj({version:Type.Literal('executio
 export type ExecutionCapacitySnapshot=Static<typeof ExecutionCapacitySnapshotSchema>;
 export const ExecutionDrainProofSchema=obj({version:Type.Literal('execution-drain-v1'),identity:ExecutionNodeIdentitySchema,operation_id:id,node_revision:count,observed_at:Type.String(),active_leases:Type.Literal(0),active_model_calls:Type.Literal(0),native_processes:Type.Literal(0),unpersisted_results:Type.Literal(0),positive_session_receipts:count,accounted_unknown_calls:count,proof_sha256:hash});
 export type ExecutionDrainProof=Static<typeof ExecutionDrainProofSchema>;
+/** Explicit lost-node fencing is not evidence of graceful task completion. */
+export const ExecutionOperatorFenceProofSchema=obj({version:Type.Literal('execution-operator-fence-v1'),identity:ExecutionNodeIdentitySchema,operation_id:id,action:Type.Literal('stop'),node_state:Type.Literal('lost'),node_revision:count,
+ cloud_start_operation_id:id,cloud_start_provider_request_id:id,source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,node_preimage_sha256:hash,holder_preimage_sha256:hash,proof_sha256:hash});
+export type ExecutionOperatorFenceProof=Static<typeof ExecutionOperatorFenceProofSchema>;
+export const ExecutionStopAuthorizationSchema=Type.Union([obj({kind:Type.Literal('graceful-drain'),proof:ExecutionDrainProofSchema}),obj({kind:Type.Literal('operator-fence'),proof:ExecutionOperatorFenceProofSchema})]);
 export const ExecutionRunAcceptanceSchema=obj({operation_id:id,identity:ExecutionNodeIdentitySchema,provider_request_id:id,instance_ids:Type.Array(id,{minItems:1,maxItems:1}),client_token:id,
  launch_manifest_sha256:hash,launch_binding_sha256:hash,evidence_ref:Type.String({minLength:1,maxLength:4096}),evidence_sha256:hash});
 export type ExecutionRunAcceptance=Static<typeof ExecutionRunAcceptanceSchema>;
@@ -55,13 +60,24 @@ export type ExecutionCloudObservation=Static<typeof ExecutionCloudObservationSch
 export const ExecutionExpectedServiceSchema=obj({service_id:id,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1})});
 export const ExecutionLaunchRequestSchema=obj({account_id:id,region:id,instance_id:nullable(id),instance_count:Type.Literal(1),epoch,source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1}),services:Type.Array(ExecutionExpectedServiceSchema,{minItems:1,maxItems:16})});
 export type ExecutionLaunchRequest=Static<typeof ExecutionLaunchRequestSchema>;
-export const ExecutionCloudOperationSchema=obj({operation_id:id,identity:nullable(ExecutionNodeIdentitySchema),action:literals(EXECUTION_CLOUD_ACTIONS),state:literals(EXECUTION_OPERATION_STATES),revision:count,provider_request_id:nullable(id),proof_sha256:nullable(hash),request:nullable(ExecutionLaunchRequestSchema),client_token:id,retry_after:nullable(Type.String()),run_acceptance:Type.Optional(nullable(ExecutionRunAcceptanceSchema)),dispatched_at:Type.Optional(nullable(Type.String())),cloud_observation:Type.Optional(nullable(ExecutionCloudObservationSchema)),authorization_denial:Type.Optional(nullable(Type.Object({evidence_ref:Type.String(),evidence_sha256:hash,code:Type.Literal('UnauthorizedOperation'),provider_request_id:id,operation_id:id,account_id:id,region:id,client_token_sha256:hash,launch_manifest_sha256:hash,archive_binding:literals(['legacy_operation_token','bound_v1'] as const),payment_audit:ExecutionEvidenceReferenceSchema},{additionalProperties:false})))});
+export const ExecutionCloudOperationSchema=obj({operation_id:id,identity:nullable(ExecutionNodeIdentitySchema),action:literals(EXECUTION_CLOUD_ACTIONS),state:literals(EXECUTION_OPERATION_STATES),revision:count,provider_request_id:nullable(id),proof_sha256:nullable(hash),request:nullable(ExecutionLaunchRequestSchema),client_token:id,retry_after:nullable(Type.String()),stop_authorization:Type.Optional(nullable(ExecutionStopAuthorizationSchema)),run_acceptance:Type.Optional(nullable(ExecutionRunAcceptanceSchema)),dispatched_at:Type.Optional(nullable(Type.String())),cloud_observation:Type.Optional(nullable(ExecutionCloudObservationSchema)),authorization_denial:Type.Optional(nullable(Type.Object({evidence_ref:Type.String(),evidence_sha256:hash,code:Type.Literal('UnauthorizedOperation'),provider_request_id:id,operation_id:id,account_id:id,region:id,client_token_sha256:hash,launch_manifest_sha256:hash,archive_binding:literals(['legacy_operation_token','bound_v1'] as const),payment_audit:ExecutionEvidenceReferenceSchema},{additionalProperties:false})))});
 export type ExecutionCloudOperation=Static<typeof ExecutionCloudOperationSchema>;
 export const ExecutionCloudRejectionSchema=obj({code:literals(EXECUTION_RUN_CAPACITY_REJECTIONS),evidence_ref:Type.String({minLength:1,maxLength:4096}),evidence_sha256:hash,retry_after:Type.String()});
 export type ExecutionCloudRejection=Static<typeof ExecutionCloudRejectionSchema>;
 export type ExecutionCloudResult={run_acceptance?:ExecutionRunAcceptance;rejection_evidence?:ExecutionCloudRejection;state:'submitted'|'unknown'|'completed'|'rejected';provider_request_id:string|null;identity:ExecutionNodeIdentity|null;observation:ExecutionCloudObservation|null};
 
 const exactIdentity=(a:ExecutionNodeIdentity,b:ExecutionNodeIdentity)=>a.account_id===b.account_id&&a.region===b.region&&a.instance_id===b.instance_id&&a.epoch===b.epoch;
+/** The caller supplies its canonical SHA implementation; browser contracts do
+ * not import Node crypto. Drain's existing session-bound hash is unchanged. */
+export function executionStopAuthorizationMatches(op:ExecutionCloudOperation,canonicalHash:(value:unknown)=>string):boolean {
+ const a=op.stop_authorization;
+ if(op.action!=='stop'||!op.identity||!Value.Check(ExecutionStopAuthorizationSchema,a))return false;
+ const p=a.proof;
+ if(!exactIdentity(p.identity,op.identity)||p.operation_id!==op.operation_id||p.proof_sha256!==op.proof_sha256)return false;
+ if(a.kind==='graceful-drain')return a.proof.positive_session_receipts>0;
+ const {proof_sha256,...body}=a.proof;
+ return canonicalHash(body)===proof_sha256;
+}
 /** Each dedicated role has exactly one tag value; pool is verified separately. */
 export function executionSlotReadTag(poolTag:string,roleName:string) {
  if(!/^[a-z0-9-]{1,40}$/.test(poolTag)||!/^[-A-Za-z0-9_]{1,60}$/.test(roleName))throw Error('EXECUTION_SLOT_TAG_SCOPE');

@@ -2,7 +2,7 @@ import {canonical, planCapacity, requireThat, sha256, validateConfig} from './po
 import {bootstrapUserData} from './bootstrap.mjs';
 import {requireCostAdmission, costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
-import {executionCloudCompletionMatches,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
+import {executionCloudCompletionMatches,executionRunAcceptanceMatches,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
 /** @typedef {import('@bondbuddy/contracts').ExecutionCapacityControl} ExecutionCapacityControl */
 /** One existing ops invocation. No polling service, timer or independent task store. */
@@ -70,7 +70,9 @@ export class ExecutionPoolController {
     return this.dispatch(operation);
   }
   async dispatch(operation, material) {
+    requireThat(operation.action !== 'destroy', 'EXECUTION_DESTROY_UNSUPPORTED');
     if (operation.state !== 'intent') return operation;
+    if(operation.action==='stop')requireThat(executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))),'STOP_PROOF_REQUIRED');
     // Unique CAS winner marks uncertainty BEFORE the request. Crashes and client
     // timeouts never imply no cloud effect. Losing dispatchers cannot call SDK.
     const claimed = await this.control.claimCloudDispatch(operation.operation_id, operation.revision);
