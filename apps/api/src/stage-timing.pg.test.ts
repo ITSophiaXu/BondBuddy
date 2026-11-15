@@ -14,7 +14,7 @@ test('stage durations persist with outbox, survive long pauses and reach the sca
  const projectId=randomUUID(),runId=randomUUID(),hash='a'.repeat(64);
  try{
   await transaction(pool,async client=>{
-   await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,owner]);
+   await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'stage_timing']);
    await client.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic stage timing','update')",[projectId,owner]);
    await client.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[projectId,owner,hash]);
    const run=(await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'update',$4,'queued') RETURNING *",[runId,owner,projectId,hash])).rows[0];
