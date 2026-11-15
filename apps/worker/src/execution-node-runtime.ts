@@ -29,6 +29,7 @@ export async function enrollExecutionNodeFromEnv(pool:Pool,options:Parameters<ty
  if(options.platformProbe)capabilities.push('probe');
  await registerExecutionRuntime(pool,material.context,{capabilities,service_id:material.service_id,source_sha256:material.source_sha256,image_sha256:material.image_sha256,launch_manifest_sha256:material.launch_manifest_sha256,registration_token:material.registration_token,
   process_identity:{pid:String(process.pid),process_start:own.start,host_boot_id:(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim(),pid_namespace:await readlink('/proc/self/ns/pid'),namespace_init_start:init.start}});
+ return {context:material.context,service_id:material.service_id};
 }
 /** Positive child-tree inventory; unreadable process metadata never means zero. */
 export async function nativeExecutionChildren(){

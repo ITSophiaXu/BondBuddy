@@ -1,5 +1,6 @@
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren} from './execution-node-runtime.js';
+import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
 import { modelCallConcurrency } from './model-call-budget.js';
 // #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
 // General slots claim run and parse jobs through PostgreSQL leases; dedicated parse slots
@@ -82,6 +83,8 @@ export type WorkerRuntimeOptions = {
   log?: (event: Record<string, unknown>) => void;
   /** #35 heartbeat row (bb_worker_heartbeats) for readiness and the stale-worker alert. */
   workerId?: string; heartbeatMs?: number;
+  /** Trusted private transport health, independent of job lease renewal. */
+  executionTransport?:ExecutionTransportHealth;
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
   /** M3 discussions use their own leases and never create document runs. */
@@ -114,8 +117,8 @@ export class WorkerRuntime {
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
+    & Pick<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
@@ -269,6 +272,7 @@ export class WorkerRuntime {
   }
 
   private heartbeatTask:Promise<void>|null=null;
+  private transportRefreshTask:Promise<void>|null=null;
   private drainWorkSettled=false;
   private sessionFinished=false;
   private finishSession!:()=>void;
@@ -278,8 +282,14 @@ export class WorkerRuntime {
   async heartbeat(stopped = false) {
     try {
       if(executionNodeForPool(this.o.pool)){
+        const transport=this.o.executionTransport;
+        if(transport&&!this.transportRefreshTask){
+          const refresh=Promise.resolve().then(()=>transport.refresh()).catch(()=>{this.counters.errors++;});
+          this.transportRefreshTask=refresh;
+          void refresh.finally(()=>{if(this.transportRefreshTask===refresh)this.transportRefreshTask=null;}).catch(()=>{});
+        }
         const native=await nativeExecutionChildren();
-        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:!this.stopping,finished:stopped});
+        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:!this.stopping&&!!transport?.ready(),finished:stopped});
       } await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
     catch { this.counters.errors++; }
   }
@@ -292,7 +302,7 @@ export class WorkerRuntime {
         if(this.drainWorkSettled){
           try{
             await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:false,finished:true});
-            this.sessionFinished=true;this.finishSession();return;
+            this.sessionFinished=true;this.o.executionTransport?.close();this.finishSession();return;
           }catch{this.counters.errors++;this.emit({kind:'execution_session_finish_retry'});}
         }else if(!this.stopping){
           try{const state=await executionNodeState(this.o.pool);if(['draining','drained','stop_submitted','lost'].includes(state??''))void this.stop().catch(()=>{this.counters.errors++;});}catch{this.counters.errors++;}
@@ -478,7 +488,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
-  await enrollExecutionNodeFromEnv(pool,options);
+  const enrollment=await enrollExecutionNodeFromEnv(pool,options);
+  options.executionTransport=await executionTransportFromEnv(enrollment);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
   process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, assistant_slots: options.reviewAssistant?.slots ?? 0, model_call_concurrency: modelCallConcurrency(), interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);
   let shuttingDown = false;
