@@ -53,13 +53,14 @@ CREATE TABLE bb_execution_cloud_operations (
  account_id text NOT NULL,region text NOT NULL,instance_id text,
  epoch uuid NOT NULL,
  action text NOT NULL CHECK(action IN ('run','start','stop','destroy')),
- state text NOT NULL CHECK(state IN ('intent','submitted','unknown','completed','rejected')),
+ state text NOT NULL CHECK(state IN ('intent','submitted','unknown','completed','rejected','cancelled')),
  revision bigint NOT NULL DEFAULT 0,
  request jsonb,request_sha256 char(64) NOT NULL,policy_revision bigint,
  client_token text NOT NULL UNIQUE,
  provider_request_id text,
  proof_sha256 char(64),
  holder_preimage jsonb NOT NULL DEFAULT '[]'::jsonb,
+ node_preimage jsonb,reserved_node_preimage jsonb,
  cloud_observation jsonb,rejection_evidence jsonb,retry_after timestamptz,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  dispatched_at timestamptz,
@@ -185,6 +186,15 @@ BEGIN
    AND o.cloud_observation IS NOT NULL) INTO completed;
   IF NOT completed OR NEW.state<>'stopped' OR NEW.epoch<>OLD.epoch THEN RAISE EXCEPTION 'Stop outcome unresolved'; END IF;
  END IF;
+ IF NEW.epoch<>OLD.epoch AND OLD.state='starting' AND NEW.state='stopped' AND NEW.revision=OLD.revision+1
+  AND EXISTS(SELECT 1 FROM bb_execution_cloud_operations o WHERE o.operation_id=OLD.cloud_start_operation_id
+   AND o.action='start' AND o.state='cancelled' AND o.dispatched_at IS NULL AND o.provider_request_id IS NULL
+   AND o.reserved_node_preimage=to_jsonb(OLD) AND o.node_preimage-'revision'=to_jsonb(NEW)-'revision')
+  AND NOT EXISTS(SELECT 1 FROM bb_execution_node_sessions WHERE node_id=OLD.id AND epoch=OLD.epoch)
+  AND NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=OLD.id)
+  AND NOT EXISTS(SELECT 1 FROM bb_jobs WHERE execution_node_id=OLD.id AND lease_token IS NOT NULL)
+  AND NOT EXISTS(SELECT 1 FROM bb_review_messages WHERE execution_node_id=OLD.id AND lease_token IS NOT NULL)
+  THEN RETURN NEW; END IF;
  IF NEW.epoch<>OLD.epoch AND (OLD.state<>'stopped' OR EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=OLD.id)) THEN RAISE EXCEPTION 'Prior node epoch not safely stopped'; END IF;
  RETURN NEW;
 END $$;

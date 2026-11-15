@@ -106,11 +106,52 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
    if(!existing&&inventory+pending>=Number(policy.max_nodes))throw Error('EXECUTION_MAX_NODES_REACHED');
    if(existing&&(await client.query('SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1',[existing.id])).rowCount)throw Error('EXECUTION_PRIOR_PROCESS_NOT_STOPPED');
    await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request,request_sha256,client_token,policy_revision) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9,$10)",[operationId,request.account_id,request.region,request.instance_id,request.epoch,existing?'start':'run',request,sha(request),sha(operationId),policy.revision]);
-   if(existing)await client.query("UPDATE bb_execution_nodes SET epoch=$2,state='starting',revision=revision+1,source_sha256=$3,image_sha256=$4,capabilities=$5,cloud_start_operation_id=$6,expected_services=$7,launch_manifest_sha256=$8,stop_operation_id=NULL,drain_operation_id=NULL,drain_proof=NULL,registration_token_sha256=NULL WHERE id=$1",[existing.id,request.epoch,request.source_sha256,request.image_sha256,request.capabilities,operationId,JSON.stringify(request.services),request.launch_manifest_sha256]);
+   if(existing){
+    const before=(await client.query('SELECT to_jsonb(n) AS image FROM bb_execution_nodes n WHERE id=$1',[existing.id])).rows[0].image;
+    await client.query("UPDATE bb_execution_nodes SET epoch=$2,state='starting',revision=revision+1,source_sha256=$3,image_sha256=$4,capabilities=$5,cloud_start_operation_id=$6,expected_services=$7,launch_manifest_sha256=$8,stop_operation_id=NULL,drain_operation_id=NULL,drain_proof=NULL,registration_token_sha256=NULL WHERE id=$1",[existing.id,request.epoch,request.source_sha256,request.image_sha256,request.capabilities,operationId,JSON.stringify(request.services),request.launch_manifest_sha256]);
+    await client.query('UPDATE bb_execution_cloud_operations SET node_preimage=$2,reserved_node_preimage=(SELECT to_jsonb(n) FROM bb_execution_nodes n WHERE id=$3) WHERE operation_id=$1',[operationId,before,existing.id]);
+   }
    return opDto(await operation(client,operationId));
   }),
   loadOperation:async id=>{const row=await operation(pool,id);return row?opDto(row):null;},
   listPendingOperations:async()=> (await pool.query("SELECT * FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown') ORDER BY created_at,operation_id")).rows.map(opDto),
+  reauthorizeCloudIntent:async(id,revision,policyRevision)=>transaction(pool,async client=>{
+   const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
+   if(Number(p.revision)!==policyRevision||!p.managed_nodes||!p.budget_available||p.cooldown_until&&new Date(p.cooldown_until).getTime()>Date.now())cas();
+   const peek=await operation(client,id);if(!peek||!['run','start'].includes(peek.action))cas();
+   const existing=peek.instance_id?await node(client,identity(peek),true):null;
+   const op=await operation(client,id,true);
+   if(!op||op.state!=='intent'||Number(op.revision)!==revision||op.dispatched_at||op.provider_request_id||!op.request||op.request_sha256.trim()!==sha(op.request))cas();
+   if(existing&&(existing.state!=='starting'||existing.cloud_start_operation_id!==id||existing.source_sha256.trim()!==op.request.source_sha256||existing.image_sha256.trim()!==op.request.image_sha256||existing.launch_manifest_sha256.trim()!==op.request.launch_manifest_sha256||sha(existing.expected_services)!==sha(op.request.services)||sha([...existing.capabilities].sort())!==sha([...op.request.capabilities].sort())))cas();
+   if((await client.query("SELECT 1 FROM bb_execution_cloud_operations WHERE operation_id<>$1 AND state IN ('intent','submitted','unknown') LIMIT 1",[id])).rowCount)throw Error('EXECUTION_CLOUD_MUTATION_PENDING');
+   const inventory=Number((await client.query('SELECT count(*) AS n FROM bb_execution_nodes WHERE destroyed_at IS NULL')).rows[0].n);
+   if(inventory+(op.action==='run'?1:0)>Number(p.max_nodes))throw Error('EXECUTION_MAX_NODES_REACHED');
+   if(existing&&(await client.query('SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1',[existing.id])).rowCount)throw Error('EXECUTION_PRIOR_PROCESS_NOT_STOPPED');
+   await client.query('UPDATE bb_execution_cloud_operations SET policy_revision=$2,revision=revision+1 WHERE operation_id=$1',[id,p.revision]);
+   return opDto(await operation(client,id));
+  }),
+  cancelUndispatchedCloudIntent:async(id,revision,policyRevision)=>transaction(pool,async client=>{
+   const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
+   if(Number(p.revision)!==policyRevision)cas(); // A revoked budget must still permit safe cancellation.
+   const peek=await operation(client,id);if(!peek||!['run','start'].includes(peek.action))cas();
+   const existing=peek.instance_id?await node(client,identity(peek),true):null;
+   const op=await operation(client,id,true);
+   if(!op||op.state!=='intent'||Number(op.revision)!==revision||op.dispatched_at||op.provider_request_id)cas();
+   if(op.action==='run'&&existing||op.action==='start'&&(!existing||!op.node_preimage||!op.reserved_node_preimage))cas();
+   await client.query("UPDATE bb_execution_cloud_operations SET state='cancelled',revision=revision+1,completed_at=clock_timestamp() WHERE operation_id=$1",[id]);
+   if(existing){
+    // Restore the stopped predecessor only against the complete reservation image.
+    // The epoch trigger additionally checks no service, lease or model work began.
+    const restored=await client.query(`UPDATE bb_execution_nodes n SET epoch=prior.epoch,state=prior.state,revision=n.revision+1,
+     source_sha256=prior.source_sha256,image_sha256=prior.image_sha256,capabilities=prior.capabilities,
+     cloud_start_operation_id=prior.cloud_start_operation_id,expected_services=prior.expected_services,
+     launch_manifest_sha256=prior.launch_manifest_sha256,stop_operation_id=prior.stop_operation_id,
+     drain_operation_id=prior.drain_operation_id,drain_proof=prior.drain_proof,registration_token_sha256=prior.registration_token_sha256
+     FROM jsonb_populate_record(NULL::bb_execution_nodes,$2::jsonb) prior WHERE n.id=$1 AND to_jsonb(n)=$3::jsonb`,[existing.id,op.node_preimage,op.reserved_node_preimage]);
+    if(restored.rowCount!==1)cas();
+   }
+   return opDto(await operation(client,id));
+  }),
   claimCloudDispatch:async(id,revision)=>transaction(pool,async client=>{
    const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];
    const op=await operation(client,id,true);if(!op||op.state!=='intent'||Number(op.revision)!==revision)cas();

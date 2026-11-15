@@ -8,7 +8,7 @@ const count=Type.Integer({minimum:0});
 const nullable=<T extends TSchema>(s:T)=>Type.Union([s,Type.Null()]);
 export const EXECUTION_NODE_STATES=['starting','ready','draining','drained','stop_submitted','stopped','lost'] as const;
 export const EXECUTION_CLOUD_ACTIONS=['run','start','stop','destroy'] as const;
-export const EXECUTION_OPERATION_STATES=['intent','submitted','unknown','completed','rejected'] as const;
+export const EXECUTION_OPERATION_STATES=['intent','submitted','unknown','completed','rejected','cancelled'] as const;
 export const EXECUTION_DEMAND_EXCLUSIONS=['shared_plan_waiter','paused','payment_blocked','unknown_call','active_lease','unready_input','batch_window'] as const;
 export const EXECUTION_RUN_CAPACITY_REJECTIONS=['ResourceInsufficient.AvailabilityZoneSoldOut','ResourceInsufficient.CloudDiskSoldOut','ResourceInsufficient.InsufficientOfferingMinimum','ResourceInsufficient.SpecifiedInstanceType'] as const;
 export const EXECUTION_CAPABILITIES=['authoring','review','assistant','probe'] as const;
@@ -49,6 +49,11 @@ export interface ExecutionCapacityControl {
   reserveStart(request:ExecutionLaunchRequest,operationId:string,expectedPolicyRevision:number):Promise<ExecutionCloudOperation>;
   loadOperation(operationId:string):Promise<ExecutionCloudOperation|null>;
   listPendingOperations():Promise<ExecutionCloudOperation[]>;
+  /** After fresh controller demand/expense checks, renew only an intent never dispatched.
+   * The operation, immutable request, epoch and client token remain unchanged. */
+  reauthorizeCloudIntent(operationId:string,expectedRevision:number,expectedPolicyRevision:number):Promise<ExecutionCloudOperation>;
+  /** Cancel only a never-dispatched run/start. Warm starts restore the exact stopped predecessor. */
+  cancelUndispatchedCloudIntent(operationId:string,expectedRevision:number,expectedPolicyRevision:number):Promise<ExecutionCloudOperation>;
   claimCloudDispatch(operationId:string,expectedRevision:number):Promise<ExecutionCloudOperation>;
   beginDrain(identity:ExecutionNodeIdentity,operationId:string,expectedRevision:number):Promise<ExecutionNode>;
   drainProof(identity:ExecutionNodeIdentity,operationId:string):Promise<ExecutionDrainProof|null>;
