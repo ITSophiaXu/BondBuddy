@@ -10,8 +10,8 @@ import {replacePrivateJson} from './transport-renewal.mjs';
 import {renderPrivateTransportConfig} from './private-egress.mjs';
 
 const exec = promisify(execFile);
-async function docker(args) {
-  const {stdout} = await exec('/usr/bin/docker', args, {timeout: 20000, maxBuffer: 65536});
+async function docker(args, {timeout=20000}={}) {
+  const {stdout} = await exec('/usr/bin/docker', args, {timeout, maxBuffer: 65536});
   return stdout.trim();
 }
 async function metadataValue(path) {
@@ -70,9 +70,28 @@ export function selectExecutionNodeConfig(config, publicManifest) {
   return {...common,...matches[0],...(publicManifest?{source_sha256:publicManifest.source_sha256}:{})};
 }
 
-export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {
+export function createNodeAdapter(config, {runDocker:rawDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now, diagnostics}={}) {
 requireThat(config.runtime_uid === 1000 && /^[a-f0-9]{64}$/.test(config.image_sha256) && config.compose_file.startsWith('/opt/bondbuddy/'), 'NODE_ADAPTER_CONFIG');
 const launched=new Map();
+let currentService=null, composeArgs=null;
+const failureContainers=async()=>{
+  const known=new Map(launched);
+  if(composeArgs && currentService){
+    // Observe before the existing cleanup; this never starts/stops a container.
+    const id=await rawDocker([...composeArgs,'ps','-a','-q',currentService],{timeout:2000});
+    if(/^[a-f0-9]{12,64}$/.test(id))known.set(id,{id,service_id:currentService});
+    else if(id!=='')return null;
+  }
+  const entries=[...known.values()].slice(0,3);
+  if(!entries.length)return [];
+  const states=(await rawDocker(['inspect','--format','{{json .State}}',...entries.map(c=>c.id)],{timeout:2000})).split('\n');
+  if(states.length!==entries.length)return null;
+  return entries.map((c,index)=>({id:c.id,service:c.service_id,state:JSON.parse(states[index])}));
+};
+const runDocker=async args=>{
+  try{return await rawDocker(args);}
+  catch(error){await diagnostics?.capture(error,failureContainers);throw error;}
+};
 async function metadata() {
   const [instance_id, region] = await Promise.all([readMetadata('instance-id'), readMetadata('placement/region')]);
   requireThat(/^ins-[a-z0-9]+$/.test(instance_id) && region === config.region, 'NODE_METADATA_SCOPE');
@@ -156,6 +175,8 @@ const runtime = {
 
   },
   async startService(service, envelopePath) {
+    currentService=service.service_id;
+    diagnostics?.stage('service_env',service.service_id);
     // Compose overrides all scheduling/identity options. Arbitrary user shell
     // configuration and personal authentication variables are forbidden.
     const environment = enrollment.service_environments?.[service.service_id];
@@ -169,36 +190,48 @@ const runtime = {
     requireThat(url.hostname===config.private_pg.local_host && Number(url.port||5432)===config.private_pg.local_port,'NODE_PG_ENDPOINT_DRIFT');
     requireThat(/^[a-zA-Z0-9_-]{1,64}$/.test(config.execution_network),'NODE_CONTROLLED_NETWORK_REQUIRED');
     const checkProgram="const {Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:10000});try{const r=(await p.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0];console.log(JSON.stringify(r));}finally{await p.end()}";
+    diagnostics?.stage('pg_probe_create',service.service_id);
     const probeId=await runDocker(['create','--pull','never','--network',config.execution_network,'--memory','128m','--pids-limit','64',
       '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--env-file',envFile,
       '--entrypoint','node',config.images[service.service_id],'--input-type=module','-e',checkProgram]);
     requireThat(/^[a-f0-9]{12,64}$/.test(probeId),'NODE_PG_PREFLIGHT_ID');
     launched.set(probeId,{id:probeId,service_id:'pg-preflight'});
     try {
+      diagnostics?.stage('pg_probe_start',service.service_id);
       const actual=JSON.parse(await runDocker(['start','-a',probeId]));
       requireThat(actual.system_identifier===config.private_pg.system_identifier,'NODE_PG_IDENTITY_MISMATCH');
+    } catch(error) {
+      await diagnostics?.capture(error,failureContainers);
+      throw error;
     } finally {
+      diagnostics?.stage('pg_probe_cleanup',service.service_id);
       if(await runDocker(['inspect','--format','{{.State.Running}}',probeId])==='false'){
         await runDocker(['rm',probeId]);launched.delete(probeId);
       }
     }
 
+    diagnostics?.stage('compose_env',service.service_id);
     const composeEnv = '/run/bondbuddy/service/compose.env';
     const values = {BB_ELASTIC_IMAGE: config.images.authoring, BB_ELASTIC_REVIEW_IMAGE: config.images.review,BB_ELASTIC_NETWORK:config.execution_network,
       BB_ELASTIC_SERVICE_ENV: envFile, BB_ELASTIC_REGISTRATION_DIR: '/run/bondbuddy/enrollment'};
     await writeFile(composeEnv, Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n'), {mode: 0o600});
     const args = ['compose', '--project-name', 'bondbuddy-execution', '--env-file', composeEnv, '-f', config.compose_file];
+    composeArgs=args;
+    diagnostics?.stage('compose_up',service.service_id);
     try{await runDocker([...args,'up','--no-deps','--pull','never','-d',service.service_id]);}finally{
       // Even if the client lost the up response, discover the exact service ID
       // before returning. Failed/partial boot cannot leave an untracked claimant.
+      diagnostics?.stage('compose_discover',service.service_id);
       const observed=await runDocker([...args,'ps','-a','-q',service.service_id]);
       if(/^[a-f0-9]{12,64}$/.test(observed))launched.set(observed,{id:observed,service_id:service.service_id});
     }
+    diagnostics?.stage('compose_id',service.service_id);
     const id = await runDocker([...args, 'ps', '-q', service.service_id]);
     requireThat(/^[a-f0-9]{12,64}$/.test(id), 'NODE_CONTAINER_ID');
     return {id, service_id: service.service_id};
   },
   async verifyAllReady(contexts) {
+    diagnostics?.stage('ready_verification');
     requireThat(contexts.length === config.services.length && enrollment.identity, 'NODE_SERVICES_INCOMPLETE');
     // No supplier probe. The runtime's own preflight and PG expected-session
     // registration must prove every service ready under the exact epoch.
@@ -207,6 +240,7 @@ const runtime = {
     const program = `const {Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:10000});try{const r=(await p.query(${JSON.stringify(sql)},${JSON.stringify([i.account_id,i.region,i.instance_id])})).rows[0];console.log(JSON.stringify(r));}finally{await p.end()}`;
     const deadline=now()+60000;
     for(let attempt=0;attempt<60 && now()<=deadline;attempt++){
+      diagnostics?.stage('ready_probe');
       const result=JSON.parse(await runDocker(['exec',contexts[0].id,'node','--input-type=module','-e',program]));
       requireThat(result?.epoch===i.epoch && result.source_sha256===enrollment.source_sha256 && result.image_sha256===enrollment.image_sha256 &&
         result.launch_manifest_sha256===enrollment.launch_manifest_sha256 && result.system_identifier===config.private_pg.system_identifier,'NODE_PG_IDENTITY_DRIFT');
@@ -216,6 +250,7 @@ const runtime = {
     }
     throw Error('NODE_PG_READY_NOT_PROVEN');
   },
+  failureContainers,
   async disableClaims(contexts) {
     for (const c of new Map([...contexts,...launched.values()].map(c=>[c.id,c])).values()){
       const running=await runDocker(['inspect','--format','{{.State.Running}}',c.id]);

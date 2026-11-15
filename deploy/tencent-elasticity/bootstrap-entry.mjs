@@ -7,6 +7,7 @@ import {readPrivateJson} from './private-files.mjs';
 import {bootstrapNode, writePrivateEnvelope} from './bootstrap.mjs';
 import {requireThat, sha256} from './policy.mjs';
 import {acquireControlTick} from './control-tick-bound.mjs';
+import {createBootstrapFailureRecorder} from './bootstrap-failure.mjs';
 
 const exec = promisify(execFile);
 
@@ -57,21 +58,38 @@ export async function runBootstrapEntry({
     {timeout: 5000, maxBuffer: 4096}),
   acquireAdmission = () => acquireBootstrapAdmission(),
   writeEnvelope = (service, data) => writePrivateEnvelope('/run/bondbuddy/enrollment', service, data),
+  diagnostics = createBootstrapFailureRecorder(),
 } = {}) {
+  try {
+  diagnostics.stage('config_read');
   const config = await readConfig();
+  diagnostics.stage('manifest_read');
   const publicManifest = await readManifest();
+  diagnostics.stage('adapter_verify');
   requireThat(config.enabled === true && config.adapter_path.startsWith('/opt/bondbuddy/') &&
     /^[a-f0-9]{64}$/.test(config.adapter_sha256), 'BOOTSTRAP_ADAPTER_REQUIRED');
   requireThat(sha256(await readAdapter(config.adapter_path)) === config.adapter_sha256, 'BOOTSTRAP_ADAPTER_CHANGED');
+  diagnostics.stage('adapter_import');
   const module = await importAdapter(config.adapter_path);
-  const adapter = await module.createConfiguredNodeAdapter({publicManifest});
+  diagnostics.stage('adapter_configure');
+  const adapter = await module.createConfiguredNodeAdapter({publicManifest}, {diagnostics});
+  diagnostics.stage('bootstrap_enable');
   await enableBootstrap();
+  diagnostics.stage('admission');
   const release = await acquireAdmission();
   requireThat(typeof release === 'function', 'BOOTSTRAP_RATE_LIMITED');
   try {
+    diagnostics.stage('metadata');
     return await bootstrapNode({publicManifest, metadata: await adapter.metadata(), broker: adapter.broker, runtime: adapter.runtime,
-      writeEnvelope});
-  } finally {await release();}
+      writeEnvelope, diagnostics});
+  } catch (error) {
+    await diagnostics.capture(error,adapter.runtime.failureContainers);
+    throw error;
+  } finally {diagnostics.stage('admission_release');await release();}
+  } catch (error) {
+    await diagnostics.capture(error);
+    throw error;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
