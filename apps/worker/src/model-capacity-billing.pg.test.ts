@@ -80,6 +80,17 @@ async function fixture(kind: Kind) {
       if (result.permit) await result.permit.release();
     }
     await Promise.all(permits.map(permit => permit.release()));
+    // A completed assertion does not complete the synthetic business task.
+    // Cancel this run through its owner API before the next case can reclaim an
+    // expired lease from the shared per-file database.
+    if (runId) {
+      const row = (await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0];
+      if (row && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(row.state)) {
+        const cancelled = await send('POST', '/api/v1/runs/' + runId + '/cancel', {reason: 'synthetic-fixture-cleanup'});
+        assert.ok(cancelled.statusCode >= 200 && cancelled.statusCode < 300, cancelled.body);
+      }
+    }
+
     // A SIGKILL intentionally bypasses the child waiter finally. Remove only this
     // synthetic run's orphan queue entry; production recovery keeps its own TTL/fence.
     if (runId) await pool.query('DELETE FROM bb_model_capacity_waiters WHERE scope=$1', ['run:' + runId]);
@@ -354,42 +365,47 @@ test('an active sibling keeps billing while another call waits; releasing the la
   });
 
 test('SIGKILL during capacity wait leaves no billable waiting interval and a fresh lease is not permanently frozen',
-  {skip: !connection, timeout: 120000}, async () => {
-    const f = await fixture('generation');
+  {skip: !connection, timeout: 240000}, async () => {
+    let f: Awaited<ReturnType<typeof fixture>> | undefined;
     let child: ChildProcess | undefined;
     let exited: Promise<void> | undefined;
-    let childError = '';
-    let childReady = false;
+    let childError = '', childReady = false;
     const childStarted = Date.now();
     try {
-      await f.block();
+      // Windows bind-mounted imports have a separate cold-start budget. No job
+      // exists and no lease is held during this phase. Only after readiness do
+      // we create the run and send its lease over IPC; admission still has 15s.
       const source = [
         "import {Pool} from 'pg';",
         "import {CodexDurableJournal} from './apps/worker/dist/durable-probe-journal.js';",
-        "console.log('capacity-child-ready');",
+        "const command=new Promise(resolve=>process.once('message',resolve));",
+        "process.send({kind:'imports-ready'});",
+        "const {lease}=await command;",
         "const pool=new Pool({connectionString:process.env.BB_CAPACITY_TEST_DATABASE_URL});",
-        "const lease=JSON.parse(process.env.BB_CAPACITY_TEST_LEASE);",
         "const blobs={put:async()=>{},get:async()=>Buffer.alloc(0),getIfExists:async()=>null,getIfExistsBounded:async()=>null,exists:async()=>false,delete:async()=>{}};",
         "await new CodexDurableJournal({pool,blobs,lease,validateResult:()=>true}).acquireCallSlot();",
         "throw Error('Synthetic crash waiter unexpectedly obtained capacity');"
       ].join('\n');
       child = spawn(process.execPath, ['--input-type=module', '-e', source], {
         cwd: process.cwd(),
-        env: {...process.env, BB_CAPACITY_TEST_DATABASE_URL: connection!, BB_CAPACITY_TEST_LEASE: JSON.stringify(f.lease)},
-        stdio: ['ignore', 'pipe', 'pipe']
+        env: {...process.env, BB_CAPACITY_TEST_DATABASE_URL: connection!},
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc']
       });
-      f.children.push(child);
-      child.stdout?.on('data', bytes => { if (String(bytes).includes('capacity-child-ready')) childReady = true; });
+      child.on('message', (message: unknown) => { if ((message as {kind?: string})?.kind === 'imports-ready') childReady = true; });
       child.stderr?.on('data', bytes => { childError = (childError + String(bytes)).slice(-4000); });
       exited = new Promise<void>(resolve => child!.once('close', () => resolve()));
       await until(async () => {
         if (child!.exitCode !== null || child!.signalCode !== null) throw new Error('Synthetic child exited during imports: ' + childError);
         return childReady;
-      }, 'Synthetic child journal imports did not become ready', 60000);
-      console.log(JSON.stringify({kind: 'synthetic_crash_child_ready', startup_ms: Date.now() - childStarted}));
+      }, 'Synthetic child journal imports did not become ready', 180000);
+      console.log(JSON.stringify({kind: 'synthetic_crash_child_ready', startup_ms: Date.now() - childStarted, job_created: false}));
+      f = await fixture('generation');
+      f.children.push(child);
+      await f.block();
+      child.send({lease: f.lease});
       await until(async () => {
         if (child!.exitCode !== null || child!.signalCode !== null) throw new Error('Synthetic child exited: ' + childError);
-        return (await f.pool.query('SELECT 1 FROM bb_model_capacity_waiters WHERE scope=$1', ['run:' + f.runId])).rowCount! > 0;
+        return (await f!.pool.query('SELECT 1 FROM bb_model_capacity_waiters WHERE scope=$1', ['run:' + f!.runId])).rowCount! > 0;
       }, 'Child did not register its capacity waiter');
       await renew(f.pool, f.lease, 120);
       const before = await f.sample();
@@ -414,10 +430,9 @@ test('SIGKILL during capacity wait leaves no billable waiting interval and a fre
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
       if (exited) await exited;
-      await f.close();
+      if (f) await f.close();
     }
   });
-
 
 test('the process-local admission queue freezes billing before any PostgreSQL waiter is registered',
   {skip: !connection, timeout: 90000}, async () => {
