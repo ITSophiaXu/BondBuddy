@@ -52,13 +52,13 @@ RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
  && find /app -type f ! -perm -004 -exec chmod a+r {} + \
  && find /app -perm /022 -exec chmod go-w {} +
 
-# Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
+# Official stable codex-cli for the contained business adapter.
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
 # against the npm registry sha512 integrity. Credentials come from env only (never auth.json).
 FROM ${NODE_IMAGE} AS codex
-ARG CODEX_VERSION=0.167.0
-ARG CODEX_INTEGRITY_LINUX_X64=sha512-FNc7danfUng9Sp6w+Fh7kofNHHZpA6VMyNKWsWrS3OwHly69gywTWeiuwrUPXpJSho8Df4xqRsHfHRPzj7zYQg==
-ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-5cv+sybRWqpRJL6KCv3YSnIx1GHRmjek997C38n1Zfno4HomKDLkNSjWLDOOc2+ISlVNSRRnySWq4zKmzlY12g==
+ARG CODEX_VERSION=0.169.0
+ARG CODEX_INTEGRITY_LINUX_X64=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
+ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-NZ/DaQUpcQmxmqee7Z9uC1rzw3GhSbooawcaTe1LN5Yk+WlinUKGdTXJgClRT/9ogQEEM9TWxYzvxPfj5G/xFg==
 ARG TARGETARCH
 WORKDIR /tmp/codex
 RUN set -eu; \
