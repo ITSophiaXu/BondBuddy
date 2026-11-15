@@ -49,6 +49,16 @@ test('overlapping renewal versions select the unique greatest signed expiry and 
  assert.throws(()=>selectTransportRenewalVersion([{value:value(active)}],state,config,active),/TRANSPORT_RENEWAL_PENDING/);
  assert.equal(selectTransportRenewalVersion(versions,state,config,active,{now:()=>Date.now()+2*3600000}).transport_credentials,latest);
 });
+test('a valid replacement with under two hours remaining preserves transport but fences new admission',async t=>{
+ const {dir,credentials,expected}=await fixture(t),old=await shortLeaf(dir,credentials,{hours:.5}),next=await shortLeaf(dir,credentials,{hours:1});
+ const state={identity,provider_request_id:'ack',source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),launch_manifest_sha256:'c'.repeat(64)};
+ const config={services:[{service_id:'authoring'}],private_pg:{ca_sha256:expected.ca_sha256}};
+ const request={version:TRANSPORT_REFRESH_VERSION,context:{identity,session_id:'a3432123-84b5-4f11-8b51-94a29eac9999'},service_id:'authoring'};
+ let installed=0;
+ const refresh=createTransportRefresher({config,state,readActive:async()=>old,broker:async()=>({version:'execution-transport-envelope-v1',...state,transport_credentials:next}),
+   install:async()=>{installed++;},reload:async cert_sha256=>({cert_sha256}),probe:async()=>{}});
+ const result=await refresh.refresh(request);assert.equal(result.status,'refreshed');assert.equal(result.admission_allowed,false);assert.equal(installed,1);
+});
 test('newly issued node/epoch mTLS credentials are private; different identity, CA and symlink fail closed',async t=>{
   const {dir,credentials,expected}=await fixture(t),target=join(dir,'private');
   const files=await installPrivateTransport(target,credentials,expected);
