@@ -170,7 +170,7 @@ export class PgModelCallBudget implements ModelCallBudget {
             if(context){
               const valid=(await client.query(`SELECT 1 FROM bb_execution_nodes n WHERE n.id=$1 AND n.epoch=$2 AND n.state IN ('ready','draining') AND (
                EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=$3 AND j.execution_node_id=n.id AND j.execution_node_epoch=n.epoch AND j.execution_session_id=$4 AND j.state='running' AND j.lease_token=$5 AND j.lease_until>clock_timestamp()) OR
-               EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=$6 AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=$4 AND m.reply_status='running' AND m.lease_token=$5 AND m.lease_until>clock_timestamp()))`,[waiterNode.id,context.identity.epoch,admission?.kind==='job'?admission.id:null,context.session_id,admission?.token??null,admission?.kind==='assistant'?admission.id:null])).rowCount;
+               EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=$6 AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=$4 AND m.reply_status='running' AND m.lease_token::text=$5 AND m.lease_until>clock_timestamp()))`,[waiterNode.id,context.identity.epoch,admission?.kind==='job'?admission.id:null,context.session_id,admission?.token??null,admission?.kind==='assistant'?admission.id:null])).rowCount;
               if(!valid)throw Error('Execution model admission lease lost');
             }
             await client.query("UPDATE bb_model_capacity_waiters SET wait_until=now()+interval '30 seconds' WHERE token=$1",[token]);
@@ -180,7 +180,7 @@ export class PgModelCallBudget implements ModelCallBudget {
               WHERE w.wait_until>now() AND (w.execution_node_id IS NULL AND NOT p.managed_nodes OR n.state IN ('ready','draining')
                AND (SELECT count(*) FROM bb_model_capacity_holders h WHERE h.execution_node_id=n.id)<4 AND (
                 EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=w.admission_job_id AND j.execution_node_id=n.id AND j.execution_node_epoch=n.epoch AND j.execution_session_id=w.execution_session_id AND j.state='running' AND j.lease_token=w.admission_lease_token AND j.lease_until>clock_timestamp()) OR
-                EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=w.admission_message_id AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=w.execution_session_id AND m.reply_status='running' AND m.lease_token=w.admission_lease_token AND m.lease_until>clock_timestamp())))
+                EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=w.admission_message_id AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=w.execution_session_id AND m.reply_status='running' AND m.lease_token::text=w.admission_lease_token AND m.lease_until>clock_timestamp())))
               ORDER BY s.last_granted,w.ticket LIMIT 1`)).rows[0];
             if (head?.token === token) {
               const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];

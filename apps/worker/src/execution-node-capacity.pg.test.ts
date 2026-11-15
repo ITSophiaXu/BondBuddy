@@ -90,8 +90,8 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
  });
  await t.test('live child and expired heartbeat never release capacity; death is not billing replay',async()=>{
   const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});assert.ok(child.pid);
-  const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));await permits[1]!.bindProcess(child.pid!);
-  try{await pool.query("UPDATE bb_model_capacity_holders SET renewed_at=now()-interval '100 days'");await budgetA2.reconcileOwnExitedProcesses();assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,3);}
+  const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));
+  try{await permits[1]!.bindProcess(child.pid!);await pool.query("UPDATE bb_model_capacity_holders SET renewed_at=now()-interval '100 days'");await budgetA2.reconcileOwnExitedProcesses();assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,3);}
   finally{child.kill('SIGKILL');await closed;}
  });
  await Promise.all(permits.map(p=>p.release()));

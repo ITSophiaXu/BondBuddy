@@ -164,7 +164,7 @@ BEGIN
   AND j.lease_token=current_setting('bb.execution_lease_token',true)) OR
   EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=NEW.admission_message_id AND m.execution_node_id=n.id
   AND m.execution_node_epoch=n.epoch AND m.execution_session_id=s.session_id AND m.reply_status='running' AND m.lease_token IS NOT NULL AND m.lease_until>clock_timestamp()
-  AND m.lease_token=current_setting('bb.execution_lease_token',true)) INTO ok;
+  AND m.lease_token::text=current_setting('bb.execution_lease_token',true)) INTO ok;
  IF NOT ok THEN RAISE EXCEPTION 'Model admission lease missing' USING ERRCODE='55000'; END IF;
  UPDATE bb_execution_nodes SET idle_since=NULL WHERE id=n.id;
  RETURN NEW;
