@@ -31,6 +31,8 @@
 
 顺序：核网络关联 → 私网 TLS 入口配置审查 → 先证未认证客户端被拒绝且上游 PG 未连接 → 合法节点验证 mTLS/PG 身份与真实 SQL → bootstrap 允许 ready。路由或 TCP 监听健康不能跳过 SQL。旧诊断公网监听/安全组临时规则不沿用。
 
+网段选择需额外校准官方文档差异：[CreateVpc API](https://cloud.tencent.com/document/product/215/15774) 的字段说明及 SDK 写 `10.0.0.0/12`，而[控制台操作指南](https://cloud.tencent.com/document/product/215/36515) 写整个 `10.0.0.0–10.255.255.255`、掩码 12–28。首版选两份文档共同允许且实际无重叠的网段，不把未调用验证的范围写成 API 已通过。CreateVpc、CreateSubnet、CreateSecurityGroup 请求未声明 ClientToken；结果不明时先查准确创建记录，不套用 CVM RunInstances 的 token 契约盲重试。
+
 ## IAM 和 secret 发行
 
 | 身份 | 最小权限和发行边界 |
@@ -43,6 +45,8 @@
 实际 CAM policy 的 Resource 必须按该产品官方资源级授权格式及准确资源 ID 渲染；模板不猜 QCS ARN，不以 `Resource=*` 代替可收窄的 secret 权限。RunInstances 等创建前没有实例 ID 的动作，须核官方支持的地域/标签/角色等条件，并由同一控制入口核准参数和双节点保有量；不得伪称所有创建字段都能由 CAM 条件独立限制。无法表达的限制必须由已验参数/CAS 门守住，保留审查前像。
 
 官方 SSM `2019-09-23` 的 `GetSecretValue` 请求为 `{SecretName, VersionId}`，返回文本 `SecretString` 或 Base64 `SecretBinary`，二者最多一个非空。采用该节点获审的独立 secret 和固定发行版本；不得将另一节点 secret 命名成自己的，也不得无界读取全部版本。云产品“当前轮转版本”的 `SSM_Current` 语义不自动等于本业务登记代次。
+
+`PutSecretValue` 仅对用户自定义 secret 增加版本，最多 10 个版本；VersionId 最长 64 字节、字母/数字起首，其余允许字母/数字及 `-_.`，且没有 ClientToken。官方未承诺重复同版本写入幂等：发行者先持久化固定 operation/version 与内容，再精确 Get 读取目标版本；已存在且内存内容校验一致才复用，不同则拒绝。Put 返回不明也读同一版本确认，不另造新 token 或版本。旧版本清理必须先排除在途启动、回滚与未决操作引用，不能为腾版本删除仍被节点使用的凭据。获取返回的 SecretName/VersionId 必须匹配明确请求，不能假设 `SSM_Current` 会解析成某个自定义 operation ID。
 
 官方 STS `2018-08-13` 的 `GetCallerIdentity.AccountId` 是所属主账号，角色 `UserId` 为 `roleId:roleSessionName`；它不是实例 ID。实例 metadata 提供周期更新的角色临时凭据，只作本机获取服务权限和一致性核查，不能单独授权业务注册。secret 值、临时密钥和 PG 密码只进入内存或 0600 运行文件，不进入 UserData、镜像、日志或本文。
 
