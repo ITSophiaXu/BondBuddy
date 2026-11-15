@@ -1,0 +1,46 @@
+{
+  "version": "execution-expense-control-delta-v1",
+  "base_develop": "fa2f90fc871a45663de74b8a86f55a958e0a674b",
+  "existing_control_source": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+  "control_files": [
+    {
+      "path": "deploy/tencent-elasticity/expense-history.mjs",
+      "bytes": 5947,
+      "sha256": "f7cc23bd7a70047b1efc3b05a7234b619bca039e0b73f75fc9a057232c39e304"
+    },
+    {
+      "path": "deploy/tencent-elasticity/costcap.mjs",
+      "bytes": 16249,
+      "sha256": "fac646f4860379313927bec298664ff2e62b034e77a99fe0958957cb2e3c0a51"
+    },
+    {
+      "path": "deploy/tencent-elasticity/ops-handler.mjs",
+      "bytes": 11610,
+      "sha256": "41dec157e6b64e90b5b41733fbaf7f80c4ddf45993308c78ceb591e981d3863f"
+    },
+    {
+      "path": "deploy/tencent-elasticity/reconcile-entry.mjs",
+      "bytes": 4953,
+      "sha256": "28dd173565fab360c7fab1f8ed8f3552f9b55bb7dbe6290e3ad770150d6e5a1c"
+    }
+  ],
+  "unchanged_imports": [
+    "deploy/tencent-elasticity/policy.mjs",
+    "deploy/tencent-elasticity/private-files.mjs"
+  ],
+  "extra_npm_dependencies": [],
+  "new_native_imports": [
+    "node:fs/promises",
+    "node:path"
+  ],
+  "configuration_key": "external_expense_history",
+  "external_input_schema": "deploy/tencent-elasticity/expense-history.md",
+  "new_migrations": [],
+  "node_oci_rebuild_required": false,
+  "node_components": {
+    "authoring": "sha256:861a93b76a21edd03764a02d22cf4f3ad66579b9d1d6e79fcc21616c9b1c3576",
+    "review": "sha256:ea4f4de5d307485ecda4c22c6d105132bc51549b4b6bbe477e6d7db6f2a684a2"
+  },
+  "node_images_canonical_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
+  "scope": "Control deployment only; existing node OCI bytes and launch identity remain unchanged."
+}

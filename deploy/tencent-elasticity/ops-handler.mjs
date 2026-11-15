@@ -1,3 +1,4 @@
+import {readExpenseHistory} from './expense-history.mjs';
 import {randomUUID} from 'node:crypto';
 import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport, runParameters} from './tencent-cvm.mjs';
@@ -48,7 +49,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         const fresh=await refreshCloudQuote({configPath,config:baseConfig,transport:cloud.transport,
           capturedAt:ledger.captured_at,readConfig,now:dependencies.now??Date.now});
         config=fresh.config;controller.config=config;cloud.config=config;
-        return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config});
+        return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config,history:await readExpenseHistory(config)});
       });
       const controller = new ExecutionPoolController({control, cloud, config,costSnapshot});
       const enroll = async op => {
