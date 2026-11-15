@@ -75,3 +75,27 @@ test('grouped batch filters preserve owner date type search and channel restrict
  assert.deepEqual(d.batches({...f,channel:'production'}),[]);
  assert.deepEqual(d.batches({...f,search:'其他项目'}),[]);
 });
+
+test('integrated overview retains task status counts alongside queue and stage timing',()=>{
+ const succeeded:Row={...run,state:'succeeded'};
+ const event=(seq:number,state:string,seconds:number,payload?:Record<string,unknown>):Row=>({
+  run_id:'r1',seq,type:payload?'run.progress':'run.state_changed',state,
+  stage:payload?'provider_call':'claimed',
+  occurred_at:new Date(Date.parse(String(run.created_at))+seconds*1000).toISOString(),
+  ...(payload?{payload}:{}),
+ });
+ const d=make({bb_runs:[succeeded],bb_run_events:[
+  event(1,'queued',0),event(2,'running',2),
+  event(3,'running',3,{reason:'stage_started'}),
+  event(4,'running',6,{reason:'stage_completed',duration_ms:3000}),
+  event(5,'succeeded',12),
+ ]});
+ const html=overview(d,[succeeded]);
+ assert.match(html,/data-status-summary/);
+ assert.match(html,/data-status-kind="__total"/);
+ assert.match(html,/data-run-state="succeeded"[^>]*>[\s\S]*?<strong>1<\/strong>/);
+ assert.match(html,/平均排队/);
+ assert.match(html,/data-stage-duration-summary/);
+ assert.match(html,/模型调用/);
+ assert.match(html,/3 秒/);
+});
