@@ -62,6 +62,39 @@ test('pinned source history reaches the real producer and hard-48 admission; rep
   const missing=structuredClone(history);missing.ledger.nodes.pop();assert.throws(()=>produce(missing,pinned(missing)),/EXPENSE_HISTORY_COVERAGE/);
   const stale=structuredClone(history);stale.ledger.captured_at=time(-1);stale.ledger.nodes[0].destroyed_at=null;
   assert.throws(()=>produce(stale,pinned(stale)),/EXPENSE_HISTORY_STALE/);
+  // Same immutable bytes and pins span midnight only with an already-reviewed
+  // closed archive and explicit bounds for every independent liability.
+  const reusable=archive(20);
+  reusable.rollover_policy={mode:'closed_archive_conservative_carry_v1',review_sha256:h};
+  reusable.valid_until=time(72);
+  reusable.external_liabilities[0]={...reusable.external_liabilities[0],coverage_end:time(72),
+    carry_policy:'retain_and_accrue_daily_upper_bound',daily_upper_bound_cny:.4,
+    unknown_carry_upper_bound_cny:1.2,remaining_period_upper_bound_cny:.99};
+  const rc=pinned(reusable), originalPin=rc.external_expense_history.sha256;
+  t.mock.timers.setTime(now+2*3600000);
+  const midnight=produce(reusable,rc,{...current(),captured_at:time(2)});
+  assert.equal(midnight.external_liability_upper_bound_cny,2.59);
+  assert.equal(costAdmission(midnight,[],rc).allowed,true,'archive stays usable at exact Beijing midnight');
+  const nextLedger={...current(),captured_at:time(3)};
+  t.mock.timers.setTime(now+3*3600000);
+  const next=produce(reusable,rc,nextLedger);
+  assert.equal(next.spent_upper_bound_cny,0,'closed old-day running rows are priced by the current civil day');
+  assert.equal(next.external_liability_upper_bound_cny,2.59,'unknown and disk bound retained plus whole new-day upper bound');
+  assert.equal(costAdmission(next,[],rc).allowed,true,'same trusted archive remains usable after midnight');
+  assert.equal(rc.external_expense_history.sha256,originalPin,'no pin or approval is refreshed');
+  assert.deepEqual(produce(reusable,rc,nextLedger),next,'carry is deterministic, not accumulated per tick');
+  const noCarry=structuredClone(reusable);delete noCarry.external_liabilities[0].daily_upper_bound_cny;
+  assert.throws(()=>produce(noCarry,pinned(noCarry),nextLedger),/EXPENSE_HISTORY_CARRY_BOUND/);
+  const noCoverage=structuredClone(reusable);noCoverage.external_liabilities[0].coverage_end=time(2);
+  assert.throws(()=>produce(noCoverage,pinned(noCoverage),nextLedger),/EXPENSE_HISTORY_EXTERNAL_OVERLAP/);
+  const liveArchive=structuredClone(reusable);liveArchive.ledger.nodes[0].destroyed_at=null;
+  assert.throws(()=>produce(liveArchive,pinned(liveArchive),nextLedger),/EXPENSE_HISTORY_ARCHIVE_NOT_CLOSED/);
+  const unresolved=structuredClone(reusable);unresolved.ledger.operations[0].state='unknown';
+  assert.throws(()=>produce(unresolved,pinned(unresolved),nextLedger),/EXPENSE_HISTORY_ARCHIVE_NOT_CLOSED/);
+  const expired=structuredClone(reusable);expired.valid_until=time(2);
+  assert.throws(()=>produce(expired,pinned(expired),nextLedger),/EXPENSE_HISTORY_TIME/);
+  assert.throws(()=>produce(manual,mc,nextLedger),/EXPENSE_HISTORY_TIME/,'legacy daily receipt is never implicitly extended');
+  t.mock.timers.setTime(now);
   const directory=await mkdtemp(join(dirname(fileURLToPath(import.meta.url)),'.history-test-'));
   t.after(()=>rm(directory,{recursive:true,force:true}));
   const file=join(directory,'history.json');await writeFile(file,canonical(history),{mode:0o600});
