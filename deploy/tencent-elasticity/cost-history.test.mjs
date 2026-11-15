@@ -103,3 +103,9 @@ test('unbound Run intent never accrues past running debt; dispatched unknown Run
   run.dispatched_at=time(-4);const unknown=bound(ledger);close(unknown.spent_upper_bound_cny,12*1.2);close(unknown.unknown_liability_cny,4*1.2);
   run.state='cancelled';run.dispatched_at=null;const cancelled=bound(ledger);assert.equal(cancelled.spent_upper_bound_cny,0);assert.equal(cancelled.reserved_upper_bound_cny,0);
 });
+
+test('an open historical stopped tail cannot discount contradictory or unknown fresh inventory',()=>{
+  const ledger=fixture();
+  for(const state of ['RUNNING','PENDING','UNKNOWN'])assert.throws(()=>bound(ledger,state),/EXPENSE_CURRENT_STOP_UNCONFIRMED/);
+  close(bound(ledger).spent_upper_bound_cny,2*1.2+10*.4);
+});

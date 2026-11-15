@@ -112,6 +112,10 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
     requireThat(created<=until && until<=now+30000, 'EXPENSE_NODE_TIME');
     const cloud=inventory.find(i=>i.instance_id===n.identity.instance_id);
     const charging=chargingHistory(history,created,until);
+    // Closed historical savings stay intact, but an open stopped tail must
+    // agree with fresh inventory. Unexpected running or uncertainty closes
+    // admission instead of using an old Stop to discount current liability.
+    requireThat(n.destroyed_at!==null||charging.running||cloud?.instance_state==='STOPPED','EXPENSE_CURRENT_STOP_UNCONFIRMED');
     const upper=money(intervalCost(charging.intervals,start,until,running,stopped));
     const unresolved=history.filter(pending),dispatchedUnknown=unresolved.some(o=>o.dispatched_at);
     const prior=dispatchedUnknown?money(intervalCost(charging.intervals,created,Math.min(start,until),running,stopped)):0;
