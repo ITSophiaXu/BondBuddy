@@ -75,7 +75,8 @@ export function createControlAuthority({config,control,expenseLedger,cloud,crede
       operation.request.source_sha256===launchConfig.source_sha256&&operation.request.image_sha256===launchConfig.image_sha256,'AUTHORITY_OPERATION_SCOPE');
     const node=snapshot.nodes.find(n=>canonical(n.identity)===canonical(operation.identity));
     requireThat(node&&['starting','ready','draining'].includes(node.state)&&node.cloud_start_operation_id===operation.operation_id&&
-      node.launch_manifest_sha256===operation.request.launch_manifest_sha256&&snapshot.nodes.filter(n=>n.state!=='destroyed').length<=2,'AUTHORITY_NODE_SCOPE');
+      !node.destroyed_at&&node.launch_manifest_sha256===operation.request.launch_manifest_sha256&&
+      snapshot.nodes.filter(n=>!n.destroyed_at&&n.state!=='destroyed').length<=2,'AUTHORITY_NODE_SCOPE');
     };
     const verifyBinding=async()=>{
     await verifyPgBinding();
