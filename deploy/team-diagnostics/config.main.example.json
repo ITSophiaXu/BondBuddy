@@ -1,0 +1,13 @@
+{
+  "version": 3,
+  "node": "main",
+  "state_directory": "/var/lib/bondbuddy-diagnostics",
+  "compose_projects": ["bb-main"],
+  "explicit_containers": ["bb-elastic-execution-egress"],
+  "journal_units": [],
+  "database": "bondbuddy",
+  "check_execution_registry": true,
+  "expected_sources": ["main", "azure"],
+  "actors": {"bb-logs": "reader"},
+  "ingest_sources": {}
+}
