@@ -59,8 +59,13 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
     const snapshotId = `rule-context-snapshot-${suffix}`, evidenceId = `rule-context-evidence-${suffix}`;
     const reviewerGrantId = `rule-context-grant-${suffix}`, materialHash = sha(`material-${suffix}`);
     const poolLike = pool;
-    const app = createProductionServer({ pool: poolLike, allowedOrigin: origin, enableRunRuntime: true,
-      principal: async () => ({ userId: owner, csrfVerified: true }) });
+    const settings = { pool: poolLike, allowedOrigin: origin, enableRunRuntime: true,
+      principal: async () => ({ userId: owner, csrfVerified: true }) };
+    // The original unpriced input must reach the worker's missing-review gate unchanged.
+    const app = createProductionServer({ ...settings, historicalBillingFixture: true, enablePaidAuthoring: false });
+    // Keep the worker's out-of-request billing default on its original historical Pool.
+    const currentPool = new Pool({ connectionString: databaseUrl! });
+    const current = createProductionServer({ ...settings, pool: currentPool });
     try {
       for (const [id, label] of [[owner, 'owner'], [reviewerId, 'reviewer'], [grantorId, 'grantor']] as const) {
         await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `rulecontext${label}${suffix}`]);
@@ -150,11 +155,21 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
           payload: { input_revision: pinned.input_revision, input_hash: pinned.input_hash } });
         assert.equal(preflight.statusCode, 200, preflight.body);
         assert.ok((preflight.json() as { missing_inputs: string[] }).missing_inputs.includes('rule_pack:rule_applicability_overall_review_required'), preflight.body);
+        const currentExecution = await current.inject({ method: 'POST', url: '/api/v1/runs/execute', headers: { origin }, payload: {
+          execution_request_id: `current-rule-context-run-${suffix}`, project_id: projectId, input_revision: pinned.input_revision,
+          input_hash: pinned.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
+          storage_origin: 'cloud', workspace_id: 'synthetic-test' } });
+        assert.equal(currentExecution.statusCode, 422, currentExecution.body);
+        assert.equal(currentExecution.json().code, 'INPUT_REQUIRED', 'current admission still rejects the same unpriced legacy input');
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2', [owner, projectId])).rows[0].n, 0);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1', [owner])).rows[0].n, 0);
         const execution = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers: { origin }, payload: {
           execution_request_id: `rule-context-run-${suffix}`, project_id: projectId, input_revision: pinned.input_revision,
           input_hash: pinned.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
           storage_origin: 'cloud', workspace_id: 'synthetic-test' } });
         assert.equal(execution.statusCode, 202, execution.body);
+        assert.equal(execution.json().channel, 'production');
+        assert.equal(execution.json().billing_mode, 'platform_trial');
         const runId = (execution.json() as { run_id: string }).run_id;
         const errors: unknown[] = [];
         const outcome = await runPipelineOnce({ pool, blobs: azureBlobs(blobConnection, `bb-rule-context-${suffix}`),
@@ -317,6 +332,8 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.deepEqual(draftDrift, { status: 'needs_review', reasons: ['rule_applicability_context_pin_mismatch'] },
         'a changed project draft revision cannot pass an old context pin');
     } finally {
+      await current.close();
+      await currentPool.end();
       await app.close();
       await pool.end();
     }
