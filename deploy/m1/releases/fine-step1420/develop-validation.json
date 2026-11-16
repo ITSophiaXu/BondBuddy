@@ -56,7 +56,7 @@
     "sha256": "d4b0924f0da6fb4acbd147d2c6d6e9b1abb0b97cb9ac2a7f02786123e51de344",
     "scope": "main API/ops/web only; no worker payload installation"
   },
-  "selected_files": 50,
+  "selected_files": 51,
   "sensitive_pattern_scan": {
     "files_and_tar_members_checked": true,
     "matched_patterns": [],
@@ -66,5 +66,10 @@
       "signed URL",
       "database URL password"
     ]
+  },
+  "postdeploy_azure_parser_readonly": {
+    "path": "main-node-eight/postdeploy-azure-parser-readonly-20261116T072845Z.json",
+    "sha256": "8f44bb7a502e112e0418ae8fb0ef759744947017bf78cb4a7643ba23a8fd75de",
+    "scope": "parser observed running with zero restarts; no production actions"
   }
 }

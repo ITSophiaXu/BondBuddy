@@ -10,7 +10,7 @@ PR #1420 已合入 develop（bcba46f10cd651748606cbc397c02b437e49320d）。发�
 
 三个实际配置探针、容器配置与目标文件校验、健康、匿名鉴权、静态文件和公网检查均通过。07:20 UTC 使用现有日志管理员账号完成登录、权限检查、性能汇总和旧任务查询、登出及退出后拒绝访问，结果均符合预期。首次验收客户端使用错误 CSRF 请求头的 403 原始证据仍保留；改为实际接口要求的 X-BB-CSRF 后，logout 为 204，退出后 /api/v1/me 为 401。未修改账号权限。
 
-解析服务观察为 running，restart=unless-stopped；本批没有重启解析服务。
+07:28 UTC 最后只读核对解析服务为 running，restart_count=0、restart=unless-stopped，检查前后容器身份与状态一致；本批没有启停或重启解析服务。对应证据见 [最终解析服务检查](postdeploy-azure-parser-readonly-20261116T072845Z.json)。
 
 ## 尚未上线范围
 
