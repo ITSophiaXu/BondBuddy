@@ -1,7 +1,7 @@
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {expect,test,type Page} from '@playwright/test';
-import {PROJECT_FILE_UPDATE_PRICE} from '@bondbuddy/contracts';
+import {encodeBillingDto,PROJECT_FILE_UPDATE_PRICE} from '@bondbuddy/contracts';
 import {fixture,open,assertFixture,writes,serverSnapshot,fileIds,checkId,ids,base,cacheKey,replaceCurrent,changeSource,type State} from './consistency-selection-fixtures';
 import {captureConsistencySelection,installConsistencySelectionReference} from './consistency-selection-reference';
 
@@ -109,6 +109,8 @@ test.describe('consistency selection desktop journeys',()=>{
   });
 
   test('consistency selection: clearing local selection after a lost receipt still retries only the exact frozen original envelope',async({page})=>{
+    const wireBodies:string[]=[];
+    page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/checks/'+checkId+'/updates')wireBodies.push(request.postData()!);});
     const s=await open(page,fixture({dropUpdateOnce:true}));await chooseTwo(page);await page.locator('[data-fc-show-selected]').click();
     await page.locator('#fc-accept-top').click();const readsBeforeSubmit=s.checkReads;await dialog(page).locator('#fc-confirm-update').click();
     await expect.poll(()=>s.posts.length).toBe(1);await expect(page.locator('#fc-pending-action')).toBeVisible();
@@ -127,11 +129,14 @@ test.describe('consistency selection desktop journeys',()=>{
     await expect(page.locator('#fc-accept-top')).toBeDisabled();await expect(page.locator('#fc-accept')).toBeDisabled();
     await page.locator('[data-fc-clear-selection]').click();await expect(page.locator('[data-fc-result-version]')).toHaveCount(0);
     const cached=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)??'null'),cacheKey);
-    expect(cached.pendingUpdate.body).toEqual(original.body);expect(cached.pendingUpdate.checkId).toBe(original.checkId);expect(cached.chosen).toEqual([]);
+    expect(wireBodies).toHaveLength(1);const originalWire=wireBodies[0];
+    expect(JSON.parse(originalWire)).toEqual(encodeBillingDto('projectFileUpdateRequest',original.body));
+    expect(cached.pendingUpdate.body).toEqual(JSON.parse(originalWire));expect(cached.pendingUpdate.checkId).toBe(original.checkId);expect(cached.chosen).toEqual([]);
     expect(s.posts).toHaveLength(1);await page.locator('#fc-pending-action').click();await expect(dialog(page).locator(reference?'li':'.fc-confirm-filename')).toHaveText(names(s));
     await expect(dialog(page)).toContainText('9,000');await expect(dialog(page)).toContainText('重试沿用同一份已确认请求');
     await dialog(page).locator('#fc-confirm-update').click();await expect.poll(()=>s.posts.length).toBe(2);await expect(dialog(page)).toHaveCount(0);
     expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+    expect(wireBodies).toEqual([originalWire,originalWire]);
     expect(writes(s).map(c=>c.path)).toEqual([base+'/checks/'+checkId+'/updates',base+'/checks/'+checkId+'/updates']);
     expect(s.files.find(f=>f.latest&&f.file_id===s.checks[0].files[0].file_id)?.sequence).toBe(2);expect(s.source.sequence).toBe(4);
     await assertFixture(page);
