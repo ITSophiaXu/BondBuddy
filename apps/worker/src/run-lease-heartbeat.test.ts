@@ -39,3 +39,10 @@ test('stopping an in-flight renewal ignores its late success',async t=>{
   t.mock.timers.tick(100);heartbeat.stop();complete();await flush();
   t.mock.timers.tick(10000);assert.equal(calls,1);
 });
+
+test('the completion receipt waits for the last renewal to settle',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let complete!:()=>void,settled=false;
+ const heartbeat=startRunLeaseHeartbeat({intervalMs:10,renew:()=>new Promise<void>(r=>{complete=r;}),onLost:()=>assert.fail('unexpected loss')});
+ t.mock.timers.tick(10);const stopped=heartbeat.stop().then(()=>{settled=true;});
+ await flush();assert.equal(settled,false);complete();await stopped;assert.equal(settled,true);
+});

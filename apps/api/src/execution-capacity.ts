@@ -42,6 +42,20 @@ export async function executionClaimGate(client:PoolClient,pool:Pool){
 }
 export async function executionNodeState(pool:Pool){const c=contexts.get(pool);return c?(await node(pool,c.identity)).state:null;}
 
+/** Local completion is distinct from expiry. The owning consumer first closes
+ * its claim barrier, awaits all work and positively inventories its PID namespace.
+ * Lock the node before run/job rows, as admission and cloud fencing do. */
+export async function lockExecutionReleaseContext(client:PoolClient,pool:Pool){
+ const c=contexts.get(pool);if(!c)throw Error('EXECUTION_RELEASE_IDENTITY_REQUIRED');
+ const n=await node(client,c.identity,true);
+ const session=(await client.query('SELECT state FROM bb_execution_node_sessions WHERE session_id=$1 AND node_id=$2 AND epoch=$3',[c.session_id,n.id,c.identity.epoch])).rows[0];
+ if(!['ready','draining'].includes(n.state)||session?.state!=='active')return null;
+ const busy=await client.query(`SELECT 1 FROM bb_model_capacity_holders WHERE execution_session_id=$1
+   UNION ALL SELECT 1 FROM bb_model_capacity_waiters WHERE execution_session_id=$1 LIMIT 1`,[c.session_id]);
+ if(busy.rowCount)return null;
+ return {nodeId:n.id,epoch:c.identity.epoch,sessionId:c.session_id};
+}
+
 /** Bootstrap secret is pre-bound by the trusted controller after cloud Describe.
  * It is not a metadata assertion, machine-id, or credential copied into an image. */
 export async function registerExecutionRuntime(pool:Pool,c:ExecutionNodeContext,input:{source_sha256:string;image_sha256:string;registration_token:string;launch_manifest_sha256:string;service_id:string;capabilities:string[];process_identity:Record<string,string>}){

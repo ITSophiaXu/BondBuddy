@@ -1,5 +1,5 @@
 import {withPerformanceSpan} from './performance-trace.js';
-import {executionClaimGate} from './execution-capacity.js';
+import {executionClaimGate,lockExecutionReleaseContext} from './execution-capacity.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -1279,7 +1279,8 @@ export async function resolveOperatorReconciliation(pool:Pool,input:{runId:strin
   });
 }
 
-/** Graceful shutdown: expire our lease now so the next claim resumes from the checkpoint without waiting. */
+/** Expire only. Managed consumers retain the token until their local completion
+ * barrier calls completeManagedRunRelease; expiry is never proof of process death. */
 export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released') {
   await transaction(pool,async client=>{
     let locked;
@@ -1287,6 +1288,29 @@ export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released'
     await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
     await event(client,locked.r,'running',locked.j.stage,reason,undefined,'run.progress');
   });
+}
+
+/** Private worker handoff, never a user/operator timeout-recovery endpoint.
+ * The proof is supplied only after the current consumer has awaited its pipeline,
+ * renewal and other execution loops, blocked new claims, and counted no native
+ * processes. A restarted consumer cannot submit another session's receipt. */
+export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:{nativeProcesses:0;activeExecutions:0}) {
+ if(proof.nativeProcesses!==0||proof.activeExecutions!==0)throw Error('EXECUTION_RELEASE_NOT_QUIESCENT');
+ return transaction(pool,async client=>{
+  const context=await lockExecutionReleaseContext(client,pool);if(!context)return 'blocked' as const;
+  const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[lease.runId,lease.owner])).rows[0];
+  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[lease.jobId,lease.runId,lease.owner])).rows[0];
+  if(!r||!j||terminal.has(r.state)||j.state!=='running'||j.lease_token!==lease.token)return 'stale' as const;
+  if(j.execution_node_id!==context.nodeId||j.execution_node_epoch!==context.epoch||j.execution_session_id!==context.sessionId)throw Error('EXECUTION_RELEASE_OWNER_MISMATCH');
+  if(!j.lease_until||new Date(j.lease_until).getTime()>=Date.now())return 'blocked' as const;
+  const unknown=await providerCallNeedsReconciliation(client,j.id);
+  const stage=unknown?'provider_reconcile':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
+  const state=stage==='queued'?'queued':'paused';
+  await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,state,stage]);
+  await event(client,r,state,stage,unknown?'provider_reconciliation_required':'worker_retry_released',undefined,'run.state_changed',
+    {release_proof:'local_quiescence_v1',native_processes:0,active_executions:0,execution_session_id:context.sessionId});
+  return state;
+ });
 }
 
 /** Cloud death is a capacity fence, never authority to replay a supplier call.
