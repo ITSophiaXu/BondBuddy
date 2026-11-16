@@ -5,22 +5,35 @@ import { account, login, origin } from './live-helpers';
 
 test.skip(process.env.BB_E2E_LIVE !== '1', 'Requires a dedicated migrated API/database; no production or mocked API is used.');
 async function createProject(page: Page, name: string) {
-  await page.getByRole('link', { name: '新建更新项目', exact: true }).first().click();
-  await page.getByLabel('项目名称 必填', { exact: true }).fill(name);
+  await page.locator('#main .page-head').getByRole('link', { name: '新建项目', exact: true }).click();
   await page.getByLabel('发行人全称').fill('浏览器验收合成发行人有限公司');
+  const generatedName = '浏览器验收合成发行人有限公司-募集书更新';
+  await expect(page.locator('#generated-project-name')).toHaveText(generatedName);
+  await expect(page.locator('#create-form input[name="name"]')).toHaveCount(0);
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: generatedName, exact: true })).toBeVisible();
   const id = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!.split('?')[0]);
   await page.getByRole('button', { name:'编辑项目信息' }).click();
+  // Current creation auto-names projects; the saved project still supports explicit renaming.
+  await page.getByLabel('项目名称', { exact: true }).fill(name);
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(page.locator('#save-state')).toHaveText('已保存');
   return id;
 }
 async function patchExternally(page: Page, id: string, name: string) {
-  const project = await (await page.request.get(`/api/v1/projects/${id}`)).json();
+  const read = await page.evaluate(async id => {
+    const response = await fetch(`/api/v1/projects/${id}`, { credentials: 'same-origin' });
+    return { status: response.status, body: await response.json() };
+  }, id);
+  expect(read.status).toBe(200);
+  const project = read.body;
   const csrf = (await page.context().cookies()).find(cookie => cookie.name === 'bb_csrf')!.value;
-  const result = await page.request.patch(`/api/v1/projects/${id}`, {
-    headers: { Origin: origin, 'X-BB-CSRF': csrf, 'If-Match': String(project.draft_revision) }, data: { name }
-  });
-  expect(result.status()).toBe(200);
+  const status = await page.evaluate(async ({ id, name, csrf, revision }) => {
+    const result = await fetch(`/api/v1/projects/${id}`, { method: 'PATCH', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-BB-CSRF': csrf, 'If-Match': String(revision) }, body: JSON.stringify({ name }) });
+    return result.status;
+  }, { id, name, csrf, revision: project.draft_revision });
+  expect(status).toBe(200);
 }
 
 test('real login -> project -> autosave -> reload -> relogin; account B cannot read A', async ({ page, playwright }) => {
@@ -31,12 +44,12 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   await expect(page.getByText('还没有项目', { exact: true })).toBeVisible();
   await expect(page).toHaveTitle('BondBuddy · 债券项目工作空间');
   const id = await createProject(page, '合成验收 · 2026 募集书更新');
-  await page.getByLabel('项目名称 必填', { exact: true }).fill('合成验收 · 已重命名项目');
+  await page.getByLabel('项目名称', { exact: true }).fill('合成验收 · 已重命名项目');
   await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
   await expect(page.locator('#save-state')).toHaveText('已保存');
   await page.reload();
   await expect(page.getByLabel('发行人全称')).toHaveValue('浏览器验收合成发行人有限公司');
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('合成验收 · 已重命名项目');
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('合成验收 · 已重命名项目');
   await page.getByRole('link', { name: '任务进度与结果', exact: true }).click();
   await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
   await page.getByLabel('搜索项目名称或发行人').fill('不存在');
@@ -55,7 +68,7 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, b);
   await expect(page.getByText('还没有项目', { exact: true })).toBeVisible();
-  expect((await page.request.get(`/api/v1/projects/${id}`)).status()).toBe(404);
+  expect(await page.evaluate(async id => (await fetch(`/api/v1/projects/${id}`, { credentials: 'same-origin' })).status, id)).toBe(404);
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByText('无法访问这个项目，它可能已移除或不属于当前账号。', { exact: true })).toBeVisible();
   await expect(page.getByText('合成验收 · 已重命名项目', { exact: true })).toHaveCount(0);
@@ -66,16 +79,17 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
 test('server 409 retains input, blocks navigation and reloads only after an explicit discard', async ({ page, playwright }) => {
   await login(page, await account(playwright));
   const id = await createProject(page, '合成冲突样本');
+  const editingUrl = page.url();
   await patchExternally(page, id, '另一页面已经保存的名称');
-  await page.getByLabel('项目名称 必填', { exact: true }).fill('本页尚未保存的修改');
+  await page.getByLabel('项目名称', { exact: true }).fill('本页尚未保存的修改');
   await expect(page.locator('#save-state')).toHaveText('有版本冲突');
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('本页尚未保存的修改');
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('本页尚未保存的修改');
   await page.getByRole('link', { name: '任务进度与结果', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${id}$`));
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('本页尚未保存的修改');
+  await expect(page).toHaveURL(editingUrl);
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('本页尚未保存的修改');
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '放弃当前输入并加载最新资料' }).click();
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('另一页面已经保存的名称');
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('另一页面已经保存的名称');
   await expect(page.locator('#save-state')).toHaveText('已保存');
 });
 
@@ -83,15 +97,15 @@ test('network failure stays unsaved and access-cookie expiry refreshes the real 
   await login(page, await account(playwright));
   const id = await createProject(page, '合成网络样本');
   await page.route(`**/api/v1/projects/${id}`, route => route.request().method() === 'PATCH' ? route.abort('failed') : route.continue());
-  await page.getByLabel('项目名称 必填', { exact: true }).fill('断网时保留的输入');
+  await page.getByLabel('项目名称', { exact: true }).fill('断网时保留的输入');
   await expect(page.locator('#save-state')).toHaveText('保存未确认');
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('断网时保留的输入');
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('断网时保留的输入');
   await page.unroute(`**/api/v1/projects/${id}`);
   await page.getByRole('button', { name: '重试保存' }).click();
   await expect(page.locator('#save-state')).toHaveText('已保存');
   await page.context().clearCookies({ name: 'bb_session' });
   await page.reload();
-  await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('断网时保留的输入');
+  await expect(page.getByLabel('项目名称', { exact: true })).toHaveValue('断网时保留的输入');
   expect((await page.context().cookies()).some(cookie => cookie.name === 'bb_session')).toBe(true);
 });
 
