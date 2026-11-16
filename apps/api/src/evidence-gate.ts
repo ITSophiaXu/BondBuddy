@@ -30,7 +30,7 @@ export async function gateState(db: Pool | PoolClient) {
 
 async function persistPause(pool: Pool, reason: string) {
   await transaction(pool, async client => {
-    await client.query('LOCK TABLE bb_evidence_gate_events IN SHARE ROW EXCLUSIVE MODE');
+    await client.query('SELECT public.bb_lock_evidence_gate(true)');
     const alert = await raiseAlert(client, { kind: 'evidence_persist_failed', severity: 'critical', scope: 'model_calls', detail: { reason_code: reason } });
     if ((await gateState(client)).state !== 'paused')
       await client.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type,alert_id) VALUES($1,'paused',$2,'system',$3)", [uid(), reason, alert]);
@@ -54,7 +54,7 @@ export async function ensureExternalCallsAllowed(pool: Pool) {
 }
 /** Call inside the intent transaction so a concurrent pause is observed. */
 export async function assertGateOpen(client: PoolClient) {
-  await client.query('LOCK TABLE bb_evidence_gate_events IN SHARE MODE');
+  await client.query('SELECT public.bb_lock_evidence_gate(false)');
   if ((await gateState(client)).state === 'paused') throw pausedProblem();
 }
 
@@ -66,7 +66,7 @@ export async function guardEvidenceWrite<T>(pool: Pool, reason: string, fn: () =
 
 export async function resumeEvidenceGate(pool: Pool, actorId: string, reason: string) {
   return transaction(pool, async client => {
-    await client.query('LOCK TABLE bb_evidence_gate_events IN SHARE ROW EXCLUSIVE MODE');
+    await client.query('SELECT public.bb_lock_evidence_gate(true)');
     if ((await gateState(client)).state !== 'paused') throw new Problem(409, 'ALREADY_TERMINAL', 'Evidence gate is already open');
     await client.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type,actor_id) VALUES($1,'open',$2,'operator',$3)", [uid(), reason, actorId]);
     unpersistedPause = null;

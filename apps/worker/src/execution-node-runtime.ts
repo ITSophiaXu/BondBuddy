@@ -4,6 +4,7 @@ import type {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
 import {ExecutionRuntimeEnrollmentSchema,type ExecutionRuntimeEnrollment,type ExecutionNode} from '@bondbuddy/contracts';
 import {registerExecutionRuntime} from '@bondbuddy/api/execution-capacity';
+import {assertManagedDatabasePrivileges} from './managed-database-preflight.js';
 
 async function stat(pid:number){
  try{const raw=await readFile(`/proc/${pid}/stat`,'utf8'),parts=raw.slice(raw.lastIndexOf(')')+2).split(' ');return {parent:Number(parts[1]),start:parts[19]!,state:parts[0]!};}
@@ -27,6 +28,7 @@ export async function enrollExecutionNodeFromEnv(pool:Pool,options:Parameters<ty
  if(options.runKinds?.some(k=>['generation','update','qa'].includes(k)))capabilities.push('authoring');
  if(options.reviewAssistant)capabilities.push('assistant');
  if(options.platformProbe)capabilities.push('probe');
+ await assertManagedDatabasePrivileges(pool);
  await registerExecutionRuntime(pool,material.context,{capabilities,service_id:material.service_id,source_sha256:material.source_sha256,image_sha256:material.image_sha256,launch_manifest_sha256:material.launch_manifest_sha256,registration_token:material.registration_token,
   process_identity:{pid:String(process.pid),process_start:own.start,host_boot_id:(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim(),pid_namespace:await readlink('/proc/self/ns/pid'),namespace_init_start:init.start}});
  return {context:material.context,service_id:material.service_id};
