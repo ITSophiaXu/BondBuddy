@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from '@bondbuddy/api/test-authoring-source';
 import { type PrivateBlobs } from '@bondbuddy/api/data';
 import { claim, renew, action, pausedRuns, type RunKind } from '@bondbuddy/api/queue';
 import { readiness, recordWorkerHeartbeat, workerGroupsFromEnv } from '@bondbuddy/api/trial-guard';
@@ -38,15 +39,18 @@ test('worker filters reject invalid configuration and isolate review assistants'
 test('long review reserves only review capacity; updates run, claims are fenced and recovery stays in its group', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection, max: 12 });
   const owner = `isolation-${randomUUID()}`, origin = 'http://bondbuddy.test';
-  const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  const blobs = syntheticAuthoringBlobs();
+  const app = createServer({ pool, blobs, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const submit = async (kind: RunKind) => {
     const p = await send('POST', '/api/v1/projects', { name: 'Synthetic isolation', kind: 'update', issuer_name: null, market: null, offering: null });
     assert.equal(p.statusCode, 201, p.body);
-    const input = await send('POST', `/api/v1/projects/${p.json().project_id}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+    const input = await lockSyntheticAuthoringInput(app, p.json().project_id);
     assert.equal(input.statusCode, 201, input.body);
+    assert.equal(input.json().input_revision, 1, 'fixture retains its original first locked revision');
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, p.json().project_id, input.json());
     const response = await send('POST', '/api/v1/runs/execute', { execution_request_id: randomUUID(), project_id: p.json().project_id, input_revision: 1,
-      input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' });
+      input_hash: input.json().input_hash, quote_id: quoteId, task_kind: 'update', input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' });
     assert.equal(response.statusCode, 202, response.body);
     const id = response.json().run_id as string;
     // This fixture exercises the queue, independently of the business review-input gate.
