@@ -1,0 +1,388 @@
+{
+  "schema": "bb-diagnostics-node-deployment-receipt-v1",
+  "component_commit": "ac818a21241e9427f5bd8755d8aa5f4e0da1f304",
+  "bundle": "f3928f57c9f01a2f",
+  "target_account": "100006372392",
+  "region": "ap-beijing",
+  "instance_id": "ins-p4i0pcub",
+  "invocations": [
+    {
+      "phase": "inspect",
+      "invocation_id": "inv-gb90ehg5v9",
+      "run_request_id": "79619d50-6cd5-4cfa-aab4-2f37cfbcfb12",
+      "task_id": "invt-gb90ehg5va",
+      "status": "SUCCESS",
+      "exit_code": 0,
+      "output_dropped": 0,
+      "start_time": "2026-11-16T13:24:52Z",
+      "end_time": "2026-11-16T13:24:52Z"
+    },
+    {
+      "phase": "install",
+      "invocation_id": "inv-gb90k90tiu",
+      "run_request_id": "0bf4133d-3d9f-4b5e-8a90-6aa07285a0c6",
+      "task_id": "invt-gb90k90tiv",
+      "status": "SUCCESS",
+      "exit_code": 0,
+      "output_dropped": 0,
+      "start_time": "2026-11-16T13:30:59Z",
+      "end_time": "2026-11-16T13:30:59Z"
+    },
+    {
+      "phase": "activate",
+      "invocation_id": "inv-gb90tsg5ep",
+      "run_request_id": "f20e0269-8a0b-4d4b-a1a9-4b7f65f45a2d",
+      "task_id": "invt-gb90tsg5eq",
+      "status": "FAILED",
+      "exit_code": 1,
+      "output_dropped": 0,
+      "start_time": "2026-11-16T13:39:02Z",
+      "end_time": "2026-11-16T13:39:14Z"
+    },
+    {
+      "phase": "resume",
+      "invocation_id": "inv-eb91crgp3n",
+      "run_request_id": "fee6284f-b358-4c40-a975-9dd414423af6",
+      "task_id": "invt-eb91crgp3p",
+      "status": "SUCCESS",
+      "exit_code": 0,
+      "output_dropped": 0,
+      "start_time": "2026-11-16T13:57:07Z",
+      "end_time": "2026-11-16T13:57:26Z"
+    },
+    {
+      "phase": "health",
+      "invocation_id": "inv-cb91gcggcj",
+      "run_request_id": "d8bf00e6-cbdc-4401-afbc-773c8381a2ac",
+      "task_id": "invt-cb91gcggck",
+      "status": "SUCCESS",
+      "exit_code": 0,
+      "output_dropped": 0,
+      "start_time": "2026-11-16T14:00:58Z",
+      "end_time": "2026-11-16T14:00:58Z"
+    }
+  ],
+  "network_change": {
+    "performed_by": "owner through Tencent console",
+    "security_group": "sg-43pbfq0p",
+    "direction": "egress",
+    "destination": "10.2.0.5/32",
+    "protocol": "TCP",
+    "port": 22,
+    "comment": "BondBuddy日志上传",
+    "confirmed_at": "2026-11-16T21:55:44+08:00"
+  },
+  "activation": {
+    "activated": true,
+    "activated_at": 1794837445.8755438,
+    "application_containers_unchanged": true,
+    "backup": "/var/lib/bondbuddy/diagnostics-node-release-20261116-ac818a21241e/resume-preimage.json",
+    "bootstrap_gate_installed": true,
+    "bundle": "f3928f57c9f01a2f",
+    "business_files_changed": [],
+    "business_files_unchanged": true,
+    "business_topology": "Id=bondbuddy-execution-bootstrap.service\nRequires=system.slice docker.service sysinit.target bondbuddy-diagnostics-ready.service\nWants=network-online.target\nBefore=shutdown.target multi-user.target\nAfter=docker.service systemd-journald.socket system.slice bondbuddy-diagnostics-ready.service basic.target sysinit.target network-online.target\n\nId=bondbuddy-execution-pg.service\nRequires=sysinit.target system.slice -.mount\nWants=tmp.mount network-online.target\nBefore=shutdown.target\nAfter=systemd-tmpfiles-setup.service basic.target systemd-journald.socket sysinit.target tmp.mount docker.service system.slice network-online.target -.mount\n",
+    "first_sync": [
+      {
+        "backlog": true,
+        "checked_at": 1794837427.5886366,
+        "errors": [],
+        "last_sequence": 14536,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": true
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837433.621994,
+        "errors": [],
+        "last_sequence": 15540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837436.714541,
+        "errors": [],
+        "last_sequence": 16540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837437.5653129,
+        "errors": [],
+        "last_sequence": 17540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837438.4336286,
+        "errors": [],
+        "last_sequence": 18540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837439.2901883,
+        "errors": [],
+        "last_sequence": 19540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837440.2015693,
+        "errors": [],
+        "last_sequence": 20540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837441.1120186,
+        "errors": [],
+        "last_sequence": 21540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837442.0773559,
+        "errors": [],
+        "last_sequence": 22540,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": true,
+        "checked_at": 1794837442.9858153,
+        "errors": [],
+        "last_sequence": 23557,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      },
+      {
+        "backlog": false,
+        "checked_at": 1794837444.0033758,
+        "errors": [],
+        "last_sequence": 24135,
+        "node": "ins-p4i0pcub",
+        "upload_backlog": false
+      }
+    ],
+    "instance_id": "ins-p4i0pcub",
+    "ready_gate_active": true,
+    "schema": "bb-diagnostics-node-activation-v1",
+    "steps": [
+      "preimage_saved",
+      "first_history_acknowledged",
+      "ready_gate_active",
+      "bootstrap_and_timer_gated",
+      "timer_enabled"
+    ],
+    "timer_enabled_active": true
+  },
+  "health": {
+    "read_only": true,
+    "time": 1794837657.7249846,
+    "units": {
+      "bondbuddy-diagnostics-ready.service": {
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "ActiveState": "active",
+        "SubState": "exited",
+        "UnitFileState": "static",
+        "ActiveEnterTimestamp": "Mon 2026-11-16 21:57:25 CST"
+      },
+      "bondbuddy-diagnostics-collect.service": {
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "UnitFileState": "static",
+        "ActiveEnterTimestamp": ""
+      },
+      "bondbuddy-diagnostics-collect.timer": {
+        "LastTriggerUSec": "Mon 2026-11-16 22:00:54 CST",
+        "Result": "success",
+        "ActiveState": "active",
+        "SubState": "waiting",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Mon 2026-11-16 21:57:25 CST"
+      }
+    },
+    "status": [
+      {
+        "backlog": false,
+        "checked_at": 1794837654.0619602,
+        "containers": [
+          {
+            "name": "bondbuddy-execution-review-1",
+            "processes": [
+              "PID                 PPID                ELAPSED             STAT                COMMAND",
+              "2709                2685                5342                Ssl                 node"
+            ],
+            "project": "bondbuddy-execution",
+            "service": "review",
+            "state": "running",
+            "stream": "57a76f61d100b0a656196f78a30b3198323a41700dedf3d5c0ef6d082908ee3e"
+          },
+          {
+            "name": "bondbuddy-execution-authoring-1",
+            "processes": [
+              "PID                 PPID                ELAPSED             STAT                COMMAND",
+              "2418                2394                5343                Ssl                 node"
+            ],
+            "project": "bondbuddy-execution",
+            "service": "authoring",
+            "state": "running",
+            "stream": "28a15d8b1fb2671a2d5372b3232df47afd517b545c966982601dd9d43aec7a9f"
+          }
+        ],
+        "errors": [],
+        "last_sequence": 24496,
+        "node": "ins-p4i0pcub",
+        "retention_days": 180
+      }
+    ],
+    "checkpoints": {
+      "sequence:ins-p4i0pcub": 24496,
+      "uploaded": 24496
+    },
+    "records_by_service": {
+      "authoring": 9201,
+      "bondbuddy-execution-bootstrap.service": 87,
+      "bondbuddy-execution-pg.service": 11662,
+      "review": 3546
+    },
+    "business_files_unchanged": true,
+    "application_containers_unchanged": true
+  },
+  "future_new_instances": "Not integrated or verified; each future physical instance requires its own enrollment, node-local key and controlled bootstrap configuration.",
+  "reader_verification": {
+    "checked_at": 1794837577.1571653,
+    "account": "bb-logs",
+    "source": "ins-p4i0pcub",
+    "capabilities": {
+      "commands": [
+        "sources",
+        "services",
+        "status",
+        "logs",
+        "collections",
+        "db",
+        "runs",
+        "run",
+        "attempt",
+        "content",
+        "exec-log",
+        "processes"
+      ],
+      "history": "all retained evidence with pagination",
+      "role": "reader",
+      "shell": false,
+      "version": 3,
+      "writes": false
+    },
+    "services": [
+      {
+        "source": "ins-p4i0pcub",
+        "service": "review",
+        "state": "running",
+        "stale": false,
+        "stream": "57a76f61d100b0a656196f78a30b3198323a41700dedf3d5c0ef6d082908ee3e"
+      },
+      {
+        "source": "ins-p4i0pcub",
+        "service": "authoring",
+        "state": "running",
+        "stale": false,
+        "stream": "28a15d8b1fb2671a2d5372b3232df47afd517b545c966982601dd9d43aec7a9f"
+      }
+    ],
+    "history": {
+      "pages": 25,
+      "records": 24351,
+      "snapshot_max_id": 833655,
+      "complete_to_snapshot": true,
+      "duplicate_ids": 0,
+      "all_record_hashes_verified": true,
+      "by_service": {
+        "review": 3526,
+        "authoring": 9116,
+        "bondbuddy-execution-bootstrap.service": 87,
+        "bondbuddy-execution-pg.service": 11622
+      },
+      "earliest": {
+        "review": "2026-11-16T09:53:56.757365859Z",
+        "authoring": "2026-11-16T09:53:54.994374242Z",
+        "bondbuddy-execution-bootstrap.service": "2026-11-16T04:15:45.116875000Z",
+        "bondbuddy-execution-pg.service": "2026-11-16T04:15:45.217324000Z"
+      },
+      "latest": {
+        "review": "2026-11-16T13:59:28.333987476Z",
+        "authoring": "2026-11-16T13:59:23.691561209Z",
+        "bondbuddy-execution-bootstrap.service": "2026-11-16T12:32:14.492559000Z",
+        "bondbuddy-execution-pg.service": "2026-11-16T13:59:32.436922000Z"
+      },
+      "log_bodies_saved": false
+    },
+    "denials": [
+      {
+        "command": "ingest",
+        "rejected": true,
+        "exit_code": 2
+      },
+      {
+        "command": "--collect",
+        "rejected": true,
+        "exit_code": 2,
+        "server_side": true
+      },
+      {
+        "command": "sh",
+        "rejected": true,
+        "exit_code": 2
+      },
+      {
+        "command": "logs authoring --source ins-p4i0pcub; id",
+        "rejected": true,
+        "exit_code": 2
+      }
+    ],
+    "coverage": [
+      {
+        "source": "azure",
+        "missing": false,
+        "stale": false,
+        "pending_records": 0,
+        "errors": [],
+        "backlog": false,
+        "checked_at": 1794837679.8566728
+      },
+      {
+        "source": "ins-p4i0pcub",
+        "missing": false,
+        "stale": false,
+        "pending_records": 0,
+        "errors": [],
+        "backlog": false,
+        "checked_at": 1794837686.0619493
+      },
+      {
+        "source": "main",
+        "missing": false,
+        "stale": false,
+        "pending_records": 0,
+        "errors": [],
+        "backlog": false,
+        "checked_at": 1794837681.8713014
+      }
+    ],
+    "uncovered_execution_nodes": [],
+    "execution_registry_error": null,
+    "completed_at": 1794837693.5993218
+  }
+}

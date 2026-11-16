@@ -1,0 +1,17 @@
+{
+  "target_account": "100006372392",
+  "region": "ap-beijing",
+  "instance_id": "ins-p4i0pcub",
+  "component_commit": "ac818a21241e9427f5bd8755d8aa5f4e0da1f304",
+  "component_bundle": "f3928f57c9f01a2f",
+  "runtime_archive_sha256": "565d87c395ab7b15d297453e2e4247e08e89b01240abf538cf8963b5c93b277d",
+  "request_bytes": 52525,
+  "request_sha256": "90fcbf0442e9b5f59028435706b1fec4fed393181dc827070dcdbf63d720491c",
+  "script_bytes": 39242,
+  "script_sha256": "8268c164b33b9da09c1d5ece5d0faed4374d3c61ffd8fe7a28befdcd010d3375",
+  "base64_content_bytes": 52324,
+  "preimage_invocation": "inv-gb90ehg5v9",
+  "scope": "Independent diagnostic files and node-local upload key only; no activation, SSH reload, application restart, business configuration, IAM, cloud lifecycle or database changes",
+  "rollback": "Installer file preimages are retained in the returned install.backup; no service has been activated, retain the archive and node-local key for recovery",
+  "dispatched": false
+}

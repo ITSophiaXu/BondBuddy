@@ -1,0 +1,16 @@
+{
+  "schema": "bb-diagnostics-maintenance-request-v1",
+  "target_account": "100006372392",
+  "region": "ap-beijing",
+  "instance_id": "ins-p4i0pcub",
+  "request_file": "inspect-request.json",
+  "request_bytes": 7790,
+  "request_sha256": "61bcad292545a27e29e0b1b33fd43998fd5c54df016d367a28b2a7b9def0f62c",
+  "script_bytes": 5687,
+  "script_sha256": "5ba170fe6e18fb4cbf4acad10f1c63d26ed4e66f9a6ac8c9ede774a5da6e70b3",
+  "source_sha256": "9bbea2ff51bcd3e4a5b2760a1bcc2e5c682aab209f8fa7d768404e1966be2daf",
+  "diagnostic_component_commit": "ac818a21241e9427f5bd8755d8aa5f4e0da1f304",
+  "scope": "Read-only preimage; no install, key generation, restart, cloud lifecycle, IAM or scheduler changes",
+  "dispatch_status": "Prepared only; not dispatched",
+  "window": "Reuse the existing authorized unified node-maintenance window; do not start a stopped node for this inspection"
+}

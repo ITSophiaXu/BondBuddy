@@ -1,0 +1,14 @@
+{
+  "target_account": "100006372392",
+  "region": "ap-beijing",
+  "instance_id": "ins-p4i0pcub",
+  "request_file": "resume-request.json",
+  "request_sha256": "af67aea8f193f6677abbdeb4eaec7dbda03df3736ea1d820baeaad446b57730c",
+  "request_bytes": 14492,
+  "script_sha256": "0106d264b14f8bcc5bdcd6a27ff05caf16249a88cda4489a3685233160e82f1c",
+  "script_bytes": 10717,
+  "source_sha256": "5c862b2046ed60d6c064e6305cb99290eb80b8f2823b494cf64808466e149bfb",
+  "component_commit": "ac818a21241e9427f5bd8755d8aa5f4e0da1f304",
+  "bundle": "f3928f57c9f01a2f",
+  "scope": "Resume acknowledged history after verified failed activation; gate bootstrap and timer on first sync; no application restart, cloud lifecycle, IAM or network modifications."
+}
