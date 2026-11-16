@@ -19,7 +19,8 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     query:async order=>receipts.get(order.id)!,
     verifyCallback:async(headers,raw)=>{const signature=String(headers['x-synthetic-signature']??'');
       if(signature.length!==64||!timingSafeEqual(Buffer.from(signature),Buffer.from(sign(raw))))throw Error('bad synthetic signature');return JSON.parse(raw);}};
-  const app=createServer({pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
+  // The signed callback regression replays the historical bonus-pack contract.
+  const app=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const callback=(receipt:VerifiedPayment,valid=true)=>{const raw=JSON.stringify(receipt);return send('POST','/api/v1/payments/alipay/callback',raw,{'content-type':'application/json','x-synthetic-signature':valid?sign(raw):'0'.repeat(64)});};
   try{
@@ -77,7 +78,8 @@ test('subscription mode closes legacy bonus-pack sales while replaying original 
     create:async order=>{creates++;receipts.set(order.id,{orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return{checkoutUrl:'https://synthetic.invalid/transition/'+order.id};},
     query:async order=>receipts.get(order.id)!,verifyCallback:async()=>{throw Error('Synthetic test uses verified provider seam');}};
   const settings={pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})};
-  let app=createServer({...settings,enableSubscriptionBilling:false,enableOutcomePricing:false});
+  // Only the setup creates historical orders; all later replay/new-sale assertions use current HTTP.
+  let app=createServer({...settings,historicalBillingFixture:true,enableSubscriptionBilling:false,enableOutcomePricing:false});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[actor,'synthetic_transition_'+actor.slice(0,8)]);
@@ -87,6 +89,15 @@ test('subscription mode closes legacy bonus-pack sales while replaying original 
     const paid=paidResponse.json(),pending=pendingResponse.json();
     await applyVerifiedPayment(pool,provider,{...receipts.get(paid.order_id)!,state:'paid',transactionId:'synthetic-transition-paid'});
     await app.close();app=createServer({...settings,enableSubscriptionBilling:true});
+    const retiredToggles=createServer({...settings,enableSubscriptionBilling:false,enableOutcomePricing:false});
+    try{
+      const disabledConfig=await retiredToggles.inject({method:'GET',url:'/api/v1/credits/recharge-config',headers:{origin:'http://bondbuddy.test'}});
+      assert.equal(disabledConfig.statusCode,200);assert.equal(disabledConfig.json().enabled,false);
+      const rejected=await retiredToggles.inject({method:'POST',url:'/api/v1/credits/recharge-orders',payload:{...paidRequest,request_id:randomUUID()},headers:{origin:'http://bondbuddy.test'}});
+      assert.equal(rejected.statusCode,503,rejected.body);assert.equal(rejected.json().code,'PAYMENT_UNAVAILABLE');
+      assert.equal(creates,2,'retired feature toggles cannot create a new provider order');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[actor])).rows[0].n,2);
+    }finally{await retiredToggles.close();}
     const config=(await send('GET','/api/v1/credits/recharge-config')).json();assert.equal(config.enabled,false);assert.deepEqual(config.packs,[]);assert.deepEqual(config.providers,[]);
     for(const pack_id of ['cny200','cny500','cny2000','cny10000']){
       const blocked=await send('POST','/api/v1/credits/recharge-orders',{...paidRequest,request_id:randomUUID(),pack_id});
