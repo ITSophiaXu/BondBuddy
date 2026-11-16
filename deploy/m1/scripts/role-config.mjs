@@ -1,6 +1,8 @@
 // Deployment metadata only; private env is data, never executable shell code.
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateConfirmationSources } from './confirmation-source-policy.mjs';
 import { execFileSync } from 'node:child_process';
 import { hash, atomicJSON, optionalJSON } from './role-state.mjs';
 const fail = () => { throw new Error('invalid role configuration'); };
@@ -64,6 +66,9 @@ try {
     const mounts = JSON.parse(readFileSync(0, 'utf8')).filter(m => m.Destination === '/var/lib/postgresql/data');
     if (mounts.length !== 1 || mounts[0].Type !== 'volume' || mounts[0].Name !== expected) fail();
   } else if (mode === 'validate') {
+    const verifyConfirmationSources = role === 'execution' && confirmationRole !== 'disabled'
+      ? validateConfirmationSources({ directory: fileURLToPath(new URL('../', import.meta.url)),
+          integrityMode: values.BB_INTEGRITY_MODE, overrideFile: file, overrideSha256: digest }) : null;
     const c = JSON.parse(readFileSync(0, 'utf8')), s = c.services;
     if (!c.networks.backend.internal || c.name !== project) fail();
     if (role === 'execution' && (s.postgres || s.migrate || s.api || s.web || s['pg-tunnel'].ports?.length)) fail();
@@ -170,6 +175,8 @@ try {
       }
       for(const name of ['worker','worker-review','worker-parse']) if(s[name].environment.BB_UPLOAD_CONFIRMATION_ENABLED!=='0') fail();
     }
+    // Source bytes must still match after all candidate and probe streams were checked.
+    verifyConfirmationSources?.();
     // Adopt only a fully validated configuration, before the caller can mutate Docker.
     // One atomic authoritative file includes both environment identity and the validated PG.
     if (file && (!saved || role === 'main' && !saved.pg_volume)) atomicJSON(bindingPath, {...binding, ...(role === 'main' ? {pg_volume:c.volumes.pgdata} : {})});

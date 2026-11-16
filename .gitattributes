@@ -63,3 +63,7 @@
 /knowledge/nafmii/drafts/ppn/writing-20261013/*.md text eol=lf
 /knowledge/nafmii/drafts/ppn/writing-20261013/*.json text eol=lf
 /knowledge/nafmii/drafts/ppn/writing-20261013/writing-framework.md linguist-generated=true
+
+# Verified vendored source and notices keep their original archive bytes.
+/deploy/m1/scripts/vendor/** -text linguist-vendored=true
+/deploy/m1/scripts/vendor/PLAYWRIGHT-LICENSE whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
