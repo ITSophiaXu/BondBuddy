@@ -335,6 +335,42 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
     assert.throws(() => loadCodexAdapterConfig({ ...env, ...override }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });
 
+test('file authoring permits image input for view_image without changing the model or ordinary tool boundaries', async () => {
+  const config = loadCodexAdapterConfig({
+    BB_CODEX_AUTH_MODE: 'copilot_enterprise', BB_COPILOT_OAUTH_FILE: '/run/secrets/bb-copilot-oauth',
+    BB_CODEX_PROVIDER: 'copilot_enterprise', BB_CODEX_MODEL: 'gpt-6-sol',
+    BB_CODEX_BASE_URL: 'https://api.enterprise.githubcopilot.com', BB_CODEX_REASONING_EFFORT: 'max',
+    BB_CODEX_CONFIG_VERSION: 'copilot-gpt6-v1',
+  });
+  const options = { cwd: '/synthetic/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null };
+  const fileArgs = buildCodexArgs(config, { ...options, fileAuthoring: true });
+  const catalogSetting = (args: string[]) => args.filter((value, index) => args[index - 1] === '-c' && value.startsWith('model_catalog_json=')).at(-1);
+  assert.equal(catalogSetting(fileArgs), 'model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
+  assert.ok(fileArgs.includes('model="gpt-6-sol"'));
+  assert.ok(fileArgs.includes('model_provider="copilot_enterprise"'));
+  assert.ok(fileArgs.includes('model_reasoning_effort="max"'));
+  assert.ok(fileArgs.includes('web_search="disabled"'));
+  assert.ok(fileArgs.includes('approval_policy="never"'));
+  for (const feature of ['view_image', 'shell_tool', 'unified_exec']) {
+    assert.ok(fileArgs.some((value, index) => value === feature && fileArgs[index - 1] === '--enable'));
+    assert.ok(!fileArgs.some((value, index) => value === feature && fileArgs[index - 1] === '--disable'));
+  }
+  assert.ok(!fileArgs.includes('--image'), 'file tools read task-scoped images; this is not the attachment mode');
+  const catalog = JSON.parse(await readFile(new URL('../../../deploy/m1/codex-file-authoring-model-catalog.json', import.meta.url), 'utf8'));
+  assert.equal(catalog.models.length, 1);
+  assert.equal(catalog.models[0].slug, config.model_id);
+  assert.deepEqual(catalog.models[0].input_modalities, ['text', 'image']);
+  assert.deepEqual(catalog.models[0].experimental_supported_tools, []);
+  assert.equal(catalog.models[0].supports_search_tool, false);
+  for (const imageFile of [undefined, '/synthetic/input.png']) {
+    const args = buildCodexArgs(config, { ...options, ...(imageFile ? { imageFile } : {}) });
+    assert.equal(catalogSetting(args), `model_catalog_json="/opt/bondbuddy/${imageFile ? 'codex-image-model-catalog.json' : 'codex-model-catalog.json'}"`);
+    for (const feature of ['view_image', 'shell_tool', 'unified_exec'])
+      assert.ok(args.some((value, index) => value === feature && args[index - 1] === '--disable'));
+  }
+  assert.throws(() => buildCodexArgs(config, { ...options, fileAuthoring: true, imageFile: '/synthetic/input.png' }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
 for (const credential of ['env', 'command'] as const) {
   for (const mode of ['ordinary', 'materials', 'image', 'file'] as const) {
     test(`explicit 1M context survives ${credential} credentials in ${mode} calls`, () => {
