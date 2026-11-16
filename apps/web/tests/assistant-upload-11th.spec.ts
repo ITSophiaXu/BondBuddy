@@ -93,7 +93,7 @@ test('a restored pending attachment retains its changed full input and blocks th
 });
 
 for (const width of [1440, 390]) test(`assistant upload component comparison before and after refresh at ${width}`, async ({ page }) => {
-  const directory = process.env.BB_ELEVENTH_EVIDENCE_DIR ?? process.env.BB_UX_EVIDENCE_DIR;
+  const directory = process.env.BB_ASSISTANT_UPLOAD_11TH_EVIDENCE_DIR ?? process.env.BB_ELEVENTH_EVIDENCE_DIR ?? process.env.BB_UX_EVIDENCE_DIR;
   test.skip(!directory, 'Explicit evidence directory is required for component comparison');
   const reference = process.env.BB_ELEVENTH_REFERENCE === '1', finish = reference ? await installEleventhReference(page, ['project-assistant']) : undefined;
   await page.setViewportSize({ width, height: 960 }); const state = await assistantFixture(page); await page.clock.pauseAt(new Date(Date.parse(now) + 60_000)); state.dropPut = true; await mountAssistant(page);
