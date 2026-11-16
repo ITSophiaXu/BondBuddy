@@ -63,7 +63,21 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000,leg
   await c.query("UPDATE bb_runs SET state='failed',stage='failed' WHERE id=$1",[run]);
  });
  const succeed=async(run:string)=>{
-  const lease=await claim(pool,60,{runKinds:['generation']});assert.ok(lease);assert.equal(lease.runId,run);
+  // SKIP LOCKED can temporarily miss a queued run while the independent telemetry
+  // writer commits its FK check. Poll like the worker, without extending this test's timeout.
+  const claimDeadline=performance.now()+5000;
+  let lease=await claim(pool,60,{runKinds:['generation']});
+  while(!lease&&performance.now()<claimDeadline){
+   await new Promise(resolve=>setTimeout(resolve,25));
+   lease=await claim(pool,60,{runKinds:['generation']});
+  }
+  if(!lease){
+   const queued=(await pool.query(`SELECT r.id,r.state run_state,r.stage run_stage,j.id job_id,j.state job_state,
+    j.stage job_stage,j.attempts,j.lease_token IS NOT NULL has_lease,j.lease_until,j.error_code
+    FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.owner_user_id=$1 ORDER BY j.created_at`,[user])).rows;
+   assert.fail(`Expected queued run ${run} to become claimable within 5000ms: ${JSON.stringify(queued)}`);
+  }
+  assert.equal(lease.runId,run);assert.equal(lease.attempts,1,'empty polls must not consume a job attempt');
   const documentBytes=makeSyntheticDocxFixture({text:'合成恢复回归底稿：发行人总资产100万元。'}),noteBytes=makeSyntheticDocxFixture({text:'合成恢复回归编制说明。'});
   const document=await promoteWordArtifact(pool,lease,documentBytes,blobs,'generated_pair_v1'),note=await promoteWordArtifact(pool,lease,noteBytes,blobs,'generated_pair_v1');
   assert.equal(document.status,'available');assert.equal(note.status,'available');
