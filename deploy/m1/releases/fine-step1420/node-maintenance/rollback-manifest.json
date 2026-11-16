@@ -1,0 +1,7 @@
+{
+  "bytes": 3777,
+  "sha256": "77c2dac23a1439e81e28149efedeefe23713a4381e0f316d534d1c7c4f5fd963",
+  "command_sha256": "57fdeed7a104eee1ef05f841ef020a9c51fc0e72c7ded8aab7c01c508921e806",
+  "never_dispatch_with_running_consumers": true,
+  "requires_control_rollback_and_positive_drain": true
+}
