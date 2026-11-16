@@ -1,0 +1,90 @@
+{
+  "schema": "bondbuddy-scoped-release-source-v1",
+  "feature_pr": 1420,
+  "feature_url": "https://github.com/ITSophiaXu/BondBuddy/pull/1420",
+  "feature_commits": [
+    "1ebd17e62ac29ae98b776a157861fc56430cf08e",
+    "d5a11cebc0de89eff965cf0d186f5a9d91ac6500"
+  ],
+  "base_commit": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+  "source_commit": "511dfd0aa13a05a106194b8857b3a0ce28819441",
+  "source_tree": "fab7af5949de0733df595c5c0c0af807da0bac4f",
+  "patch_path": "deploy/m1/releases/fine-step1420/source.patch",
+  "patch_sha256": "6cfae71fb4d563097fe0f6a6abc6074942911553d7370cefa9b0325dcebc7cba",
+  "patch_bytes": 503515,
+  "source_relation": "a0 baseline plus existing deployed queue/capacity/diagnostic overlays and only PR1420 telemetry; per-component sparse payloads, never whole-tree deployment",
+  "master_relation": "master contains only cherry-picked PR1420 plus this reconstruction recipe; master tree is not the runtime source tree",
+  "migration": {
+    "only_filename": "0185_performance_spans.sql",
+    "sha256": "20f7e159dca10fc86137f03e93d79a073c1787b4e6455693314a4f0d83dc347b",
+    "run_directory_migrator": false,
+    "unrelated_0180_through_0184": false
+  },
+  "reconstruction": {
+    "method": "temporary GIT_INDEX_FILE: read-tree base_commit; apply --cached --binary source.patch; write-tree",
+    "verified_tree": "fab7af5949de0733df595c5c0c0af807da0bac4f"
+  },
+  "production_parent_images": {
+    "main/api": {
+      "image_id": "sha256:36bac383007cdf4aa772bbc093acac35fed00b9069627a2609422d7b4b7a16cf",
+      "image_parent": null,
+      "container_id_observed": "ab3795adf56cb9f5240c17cb9bfa4b67182f01f56d80860f6f1c0fea18094776",
+      "image_user": "node",
+      "architecture": "amd64",
+      "os": "linux",
+      "runtime_file_count": 2071
+    },
+    "main/ops": {
+      "image_id": "sha256:ed057a891d87c22e380344e80292e0ac93d7b77b75f0df8c3943b7347bbc752b",
+      "image_parent": null,
+      "container_id_observed": "ee3676b89ee5d8adf4b56558837c5f7a757fe17ca7797b813cffc20dec392833",
+      "image_user": "node",
+      "architecture": "amd64",
+      "os": "linux",
+      "runtime_file_count": 2030
+    },
+    "main/web": {
+      "image_id": "sha256:533ee1048eca715b96dad31b698416297b130419f2df442ab90c7f54e21e057e",
+      "image_parent": null,
+      "container_id_observed": "4225b41862bf5f45a6ad2ad155106168c24440fcf98eff048d2c6104d6677f20",
+      "image_user": "101",
+      "architecture": "amd64",
+      "os": "linux",
+      "runtime_file_count": 16
+    },
+    "azure/worker": {
+      "image_id": "sha256:e1ce3a98ca971cebe08adb8b07eed633878fa32451582be5242e0ec4f82e00d4",
+      "image_parent": "sha256:2989be7d12ece1187cd742d6279405e648f8f2844c7d3da695fcf5b64252b870",
+      "container_id_observed": "e34d797a875de7c790b85372bf8d5cbdf2520329fe29aee938fb38dbc5472b3c",
+      "image_user": "node",
+      "architecture": "amd64",
+      "os": "linux",
+      "runtime_file_count": 2177
+    },
+    "azure/worker-review": {
+      "image_id": "sha256:05d9c63d459736c44d3ebd1983e65baa1e097fd9efe78a2264583ebdb88e80b7",
+      "image_parent": "sha256:4b835cb3052c461c0df463894e496f46dee27e8edcea40f79eb05598ab5cf1dc",
+      "container_id_observed": "e44cc779586c6cda6a0ade84cc90f51a54f113d2ab3b5cc92d8eac31cbfdc215",
+      "image_user": "node",
+      "architecture": "amd64",
+      "os": "linux",
+      "runtime_file_count": 2154
+    }
+  },
+  "production_observations": {
+    "main": {
+      "observed_at": "2026-11-16T00:25:40.094709+00:00",
+      "raw_inventory_sha256": "f779c378e1dc93293fa0d2c9e0bc98fc2bb3e47924185ecbbe82daf30d0278a6"
+    },
+    "azure": {
+      "observed_at": "2026-11-16T00:26:07.216875+00:00",
+      "raw_inventory_sha256": "96bb1811ee74cafedfd454b84a69df090d993fc3fb657d262ef045f89e3ecb91"
+    }
+  },
+  "execution_authorization": {
+    "draft_pr_only": true,
+    "production_execution_enabled_by_recipe": false,
+    "current_batch_release_gate_required": true,
+    "older_gate_exceptions_inherited": false
+  }
+}
