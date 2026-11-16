@@ -1,6 +1,7 @@
 import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
-import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren} from './execution-node-runtime.js';
+import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren,nativeExecutionProcesses} from './execution-node-runtime.js';
+import {ManagedRunRetries} from './managed-run-retries.js';
 import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
 import { modelCallConcurrency } from './model-call-budget.js';
 // #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
@@ -15,7 +16,7 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, completeManagedRunRelease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
@@ -114,6 +115,7 @@ export class WorkerRuntime {
   private readonly workAbort = new AbortController();
   private readonly runLeases = new Map<number, Lease>();
   private readonly parseLeases = new Map<number, MaterialParseLease>();
+  private readonly retries=new ManagedRunRetries(nativeExecutionProcesses,lease=>completeManagedRunRelease(this.o.pool,lease,{nativeProcesses:0,activeExecutions:0}));
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
@@ -178,6 +180,11 @@ export class WorkerRuntime {
 
   private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
 
+  private enterExecution(){return executionNodeForPool(this.o.pool)?this.retries.enter():()=>{};}
+  private async flushRetries(){
+    try{await this.retries.flush();}catch{this.counters.errors++;this.emit({kind:'run_retry_release',outcome:'blocked'});}
+  }
+
   /** General slots alternate claims; dedicated slots claim only their assigned work. */
   private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false) {
     let turn = slot;
@@ -185,6 +192,9 @@ export class WorkerRuntime {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
+        await this.flushRetries();
+        const leave=this.enterExecution();if(!leave)break;
+        let completedLease:Lease|null=null;
         try {
           if(kind==='run'&&!interactiveOnly&&this.o.runKinds.includes('generation')){
             for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates,advanceWorkpaperBatch])try{await advance(this.o.pool);}
@@ -197,14 +207,15 @@ export class WorkerRuntime {
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
               onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
-              onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
+              onLease: lease => { if (lease) {completedLease=lease;this.runLeases.set(slot, lease);} else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
+          if(outcome==='retry'&&completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
           if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
         } catch (error) {
           this.counters.errors++;
           this.emit({ slot, kind, outcome: 'error', error: error instanceof Error ? error.message.slice(0, 64).replace(/[^A-Za-z0-9_ .:-]/g, '') : 'unknown' });
-        }
+        }finally{leave();}
       }
       turn++;
       if (!worked) { this.counters.idle++; await sleep(this.o.pollMs, this.stopSignal.signal); }
@@ -214,9 +225,10 @@ export class WorkerRuntime {
   /** One probe at a time, outside the run/parse slots, so a probe never takes a user job's slot. */
   private async probeLoop(probe: NonNullable<WorkerRuntimeOptions['platformProbe']>) {
     while (!this.stopping) {
+      const leave=this.enterExecution();if(!leave){await sleep(this.o.pollMs,this.stopSignal.signal);continue;}
       let outcome = 'idle';
       try { outcome = await runPlatformProbeOnce({ pool: this.o.pool, blobs: this.o.blobs, config: probe.config }); }
-      catch { this.counters.errors++; outcome = 'error'; }
+      catch { this.counters.errors++; outcome = 'error'; }finally{leave();}
       if (outcome !== 'idle') { this.counters.probe++; this.emit({ kind: 'platform_probe', outcome }); }
       if (outcome === 'idle' || outcome === 'error') await sleep(probe.pollMs ?? 5000, this.stopSignal.signal);
     }
@@ -224,9 +236,10 @@ export class WorkerRuntime {
 
   private async assistantLoop(options: NonNullable<WorkerRuntimeOptions['reviewAssistant']>) {
     while (!this.stopping) {
+      const leave=this.enterExecution();if(!leave){await sleep(this.o.pollMs,this.stopSignal.signal);continue;}
       let outcome = 'idle';
       try { outcome = await runReviewAssistantOnce({ pool: this.o.pool, blobs: this.o.blobs, signal: this.workAbort.signal, config: options.config }); }
-      catch { this.counters.errors++; outcome = 'error'; }
+      catch { this.counters.errors++; outcome = 'error'; }finally{leave();}
       if (outcome !== 'idle') { this.counters.assistant++; this.emit({ kind: 'review_assistant', outcome }); }
       if (outcome === 'idle' || outcome === 'error') await sleep(options.pollMs ?? this.o.pollMs, this.stopSignal.signal);
     }
@@ -298,9 +311,10 @@ export class WorkerRuntime {
   private async heartbeatLoop() {
     const managed=!!executionNodeForPool(this.o.pool);
     while (!this.stopping || managed&&!this.sessionFinished) {
+      if(managed)await this.flushRetries();
       await this.heartbeat();
       if(managed){
-        if(this.drainWorkSettled){
+        if(this.drainWorkSettled&&!this.retries.pendingCount){
           try{
             await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:false,finished:true});
             this.sessionFinished=true;this.o.executionTransport?.close();this.finishSession();return;

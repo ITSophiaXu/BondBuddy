@@ -1,6 +1,7 @@
 import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
 import {DeferredQaJournal} from './deferred-qa-journal.js';
+import {startRunLeaseHeartbeat} from './run-lease-heartbeat.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
@@ -631,7 +632,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const onOuterAbort = () => abort.abort();
   deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
   // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
-  const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
+  const heartbeat = startRunLeaseHeartbeat({renew:()=>renew(pool,lease,leaseSeconds),intervalMs:Math.max(1000,leaseSeconds*400),onLost:()=>abort.abort()});
   let currentStage: string | undefined;
   let traceEntered=false;
   const failRun=async(options:{errorCode?:string;failedStage?:string}):Promise<RunPipelineOutcome>=>{
@@ -660,6 +661,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
       if (lease.attempts < maxAttempts) {
+        // Join any renewal before expiring: a renewal already waiting on the
+        // job lock must not extend the deadline after our release receipt.
+        await heartbeat.stop();
         await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
         return 'retry';
       }
@@ -855,7 +859,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     if(traceEntered)throw error;
     return handleError(error);
   } finally {
-    clearInterval(heartbeat);
+    await heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
     deps.onLease?.(null);
   }
