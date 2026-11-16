@@ -1,4 +1,4 @@
-import {readFile, mkdir, lstat, open, rename} from 'node:fs/promises';
+import {readFile, mkdir, lstat, open, rename, chmod} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {gunzipSync} from 'node:zlib';
@@ -57,9 +57,11 @@ export function businessOverlayCompose(base, directory, files) {
 
 async function directory(path) {
   const parent = dirname(path); if(parent !== '/opt')await directory(parent);
-  await mkdir(path,{mode:0o755}).catch(e=>{if(e.code!=='EEXIST')throw e;});
+  let created=false;
+  try {await mkdir(path,{mode:0o755});created=true;}catch(e){if(e.code!=='EEXIST')throw e;}
+  if(created)await chmod(path,0o755); // systemd/cloud-init commonly use umask 0077.
   const st=await lstat(path);
-  requireThat(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o022)===0,'BUSINESS_OVERLAY_DIRECTORY');
+  requireThat(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o755,'BUSINESS_OVERLAY_DIRECTORY');
 }
 async function file(path, expected) {
   const st=await lstat(path);
@@ -68,7 +70,7 @@ async function file(path, expected) {
 }
 async function write(path, bytes) {
   const f=await open(path, constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o644);
-  try {await f.writeFile(bytes);await f.sync();} finally {await f.close();}
+  try {await f.chmod(0o644);await f.writeFile(bytes);await f.sync();} finally {await f.close();}
 }
 export async function installBusinessOverlay(descriptor, config, {fetchImpl=fetch}={}) {
   if(!config.business_overlay_sha256)return null;
