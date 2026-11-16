@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {expect,test,type Page,type Route} from '@playwright/test';
 import type {ProjectFileVersion,ProspectusVersions} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
+import type {UploadRecoveryRecord} from '../src/upload-recovery';
 
 // Synthetic HTTP fixtures exercise project navigation and version ownership only.
 const root='workbench-root',source='workbench-source',now='2026-10-25T02:00:00Z';
@@ -14,7 +15,8 @@ const material=(id:string):Dto<'MaterialResponse'>=>({material_id:id,material_ve
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
 async function setup(page:Page,options:{workspace?:boolean;taskFailure?:boolean;taskGate?:Promise<void>;retainedRootCurrent?:boolean}={}){
-  const state={calls:[] as {method:string;path:string;body:unknown}[],selected:'source-v1',selectionRevision:2,taskFailure:options.taskFailure??false,filesFailure:false,registryFailure:false,importStatus:200,imports:[] as Record<string,unknown>[],uploadRequests:0,putRequests:0,completeRequests:0,uploaded:false,completed:false,dropCompleteOnce:false,dropPutOnce:false,fileReplies:0,holdUpload:undefined as Promise<void>|undefined,holdFiles:undefined as Promise<void>|undefined};
+  const state={calls:[] as {method:string;path:string;body:unknown}[],selected:'source-v1',selectionRevision:2,taskFailure:options.taskFailure??false,filesFailure:false,registryFailure:false,importStatus:200,imports:[] as Record<string,unknown>[],uploadRequests:0,putRequests:0,completeRequests:0,uploaded:false,completed:false,completeFailures:0,dropPutOnce:false,declaration:undefined as Dto<'UploadCreateRequest'>|undefined,fileReplies:0,holdUpload:undefined as Promise<void>|undefined,holdFiles:undefined as Promise<void>|undefined};
+  const importedMaterial=()=>({...material('imported-material'),...state.declaration});
   const versions=()=>({project_id:source,current_version_id:state.selected,selection_revision:state.selectionRevision,inactive_material_ids:[],versions:[version('source-v2',2),version('source-v1',1)]});
   const files=():Dto<'ProjectFilesResponse'>=>({project_id:root,items:[{file_id:state.selected==='source-v1'?'source-material-1':'source-material-2',file_key:'prospectus',project_id:source,source:'material',filename:state.selected==='source-v1'?'募集说明书_V1.docx':'募集说明书_V2.docx',version:1,display_version:state.selected==='source-v1'?1:2,sha256:sha,created_at:now,folder:'2',run_id:null,current:true,latest:true,version_count:2},{file_id:'issuer-material',file_key:'project-file:issuer-file',project_id:root,source:'material',filename:'发行人基本情况.docx',version:1,display_version:1,sha256:sha,created_at:now,folder:'4.1',run_id:null,current:false,latest:true,version_count:1}]});
   await page.route('**/api/v1/**',async route=>{
@@ -40,11 +42,11 @@ async function setup(page:Page,options:{workspace?:boolean;taskFailure?:boolean;
       state.selected=input.version_id;state.selectionRevision++;return json(route,200,versions());
     }
     if(path===`/projects/${root}/materials/issuer-material`)return json(route,200,material('issuer-material'));
-    if(path===`/projects/${root}/materials/imported-material`&&method==='GET')return state.completed&&new URL(req.url()).searchParams.get('version')==='1'?json(route,200,material('imported-material')):json(route,404,{code:'NOT_FOUND'});
+    if(path===`/projects/${root}/materials/imported-material`&&method==='GET')return state.completed&&new URL(req.url()).searchParams.get('version')==='1'?json(route,200,importedMaterial()):json(route,404,{code:'NOT_FOUND'});
     if(path===`/projects/${root}/materials/issuer-material/download`)return route.fulfill({status:200,contentType:mime,body:bytes});
-    if(path===`/projects/${root}/materials/uploads`){state.uploadRequests++;await state.holdUpload;return json(route,201,{upload_id:'upload-id',state:'uploading',upload_url:'/api/v1/synthetic-upload',expires_at:'2030-01-01T00:00:00Z',max_bytes:100000});}
+    if(path===`/projects/${root}/materials/uploads`){state.uploadRequests++;state.declaration=body as Dto<'UploadCreateRequest'>;await state.holdUpload;return json(route,201,{upload_id:'upload-id',state:'uploading',upload_url:'/api/v1/synthetic-upload',expires_at:'2030-01-01T00:00:00Z',max_bytes:100000});}
     if(path==='/synthetic-upload'){state.putRequests++;state.uploaded=true;if(state.dropPutOnce){state.dropPutOnce=false;return route.abort('failed');}return route.fulfill({status:204});}
-    if(path===`/projects/${root}/materials/uploads/upload-id/complete`){state.completeRequests++;if(!state.uploaded)return json(route,422,{code:'MATERIAL_UNREADABLE'});state.completed=true;if(state.dropCompleteOnce){state.dropCompleteOnce=false;return route.abort('failed');}return json(route,200,material('imported-material'));}
+    if(path===`/projects/${root}/materials/uploads/upload-id/complete`){state.completeRequests++;if(!state.uploaded)return json(route,422,{code:'MATERIAL_UNREADABLE'});state.completed=true;if(state.completeFailures>0){state.completeFailures--;return route.abort('failed');}return json(route,200,importedMaterial());}
     if(path===`/projects/${root}/project-files/imports`){state.imports.push(body as Record<string,unknown>);return json(route,state.importStatus,state.importStatus===200?{}:{code:state.importStatus===409?'INPUT_REVISION_CONFLICT':'DATA_UNAVAILABLE'});}
     return json(route,404,{code:'NOT_FOUND'});
   });
@@ -179,22 +181,48 @@ for(const status of [503,408,429])test(`uncertain import ${status} survives clos
   await page.evaluate(()=>{location.hash='tasks';});await expect(page).toHaveURL(/#tasks$/);
 });
 
-for(const missingReceipt of ['complete','put'] as const)test(`import reconciles a lost ${missingReceipt} receipt before sending bytes again`,async({page})=>{
-  const state=await setup(page);if(missingReceipt==='complete')state.dropCompleteOnce=true;else state.dropPutOnce=true;
+async function importRecoveryRecord(page:Page){
+  const records=await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('bondbuddy:upload-recovery:v1:synthetic-owner:workbench-root:project-file-import:')).map(key=>JSON.parse(localStorage.getItem(key)!)));
+  expect(records).toHaveLength(1);return records[0] as UploadRecoveryRecord;
+}
+
+for(const missingReceipt of ['complete','put'] as const)for(const recovery of ['automatic','manual'] as const)test('import reconciles a lost '+missingReceipt+' receipt with '+recovery+' recovery before sending bytes again',async({page})=>{
+  await page.clock.install();
+  const state=await setup(page);state.dropPutOnce=missingReceipt==='put';state.completeFailures=recovery==='manual'?4:missingReceipt==='complete'?1:0;
+  let release!:()=>void;state.holdUpload=new Promise<void>(resolve=>{release=resolve;});
   await page.getByRole('button',{name:'上传关联文件',exact:true}).click();
   let dialog=page.getByRole('dialog');await dialog.locator('[name=type]').selectOption('issuer');
-  await dialog.locator('[name=file]').setInputFiles({name:'上传回执丢失.docx',mimeType:mime,buffer:bytes});
+  const file={name:'上传回执丢失.docx',mimeType:mime,buffer:bytes};
+  await dialog.locator('[name=file]').setInputFiles(file);
+  await expect.poll(()=>state.uploadRequests).toBe(1);
+  const original=await importRecoveryRecord(page);
+  const context=original.context as {request_id:string;document_type:string;expected_latest_version_id:string};
+  expect(context).toEqual({request_id:expect.any(String),document_type:'issuer',expected_latest_version_id:'issuer-v1'});expect(context.request_id).not.toBe('');
+  expect(original.declaration).toEqual({filename:file.name,media_type:mime,byte_size:bytes.length,sha256:sha,role:'other'});
+  expect(state.declaration).toEqual(original.declaration);expect(state.putRequests).toBe(0);
+  release();
 
-  await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
-  expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.imports).toHaveLength(0);
-  expect(state.completeRequests).toBe(missingReceipt==='complete'?1:0);expect(state.completed).toBe(missingReceipt==='complete');
-  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByRole('button',{name:'继续确认关联文件',exact:true}).click();dialog=page.getByRole('dialog');
-  await dialog.getByRole('button',{name:'重试保存项目文件',exact:true}).click();
+  // complete retries transport failures three times; an uncertain PUT probes those same stored bytes.
+  const firstAttempts=recovery==='manual'?4:missingReceipt==='complete'?2:1;
+  await expect.poll(async()=>{await page.clock.runFor(2000);return state.completeRequests;}).toBe(firstAttempts);
+  if(recovery==='manual'){
+    await expect(dialog.locator('[role=status]')).toContainText('保存结果尚未确认');
+    await expect(dialog.locator('[name=file]')).toBeDisabled();await expect(dialog.locator('[name=type]')).toBeDisabled();
+    expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.imports).toHaveLength(0);expect(state.completed).toBe(true);
+    const pending=await importRecoveryRecord(page);
+    expect(pending).toMatchObject({id:original.id,uploadId:'upload-id',declaration:original.declaration,context,stage:missingReceipt==='complete'?'confirming':'bytes_unknown'});
+    await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('button',{name:'继续确认关联文件',exact:true}).click();dialog=page.getByRole('dialog');
+    await expect(dialog.locator('[name=type]')).toHaveValue('issuer');
+    expect(await dialog.locator('[name=file]').evaluate(input=>(input as HTMLInputElement).files?.[0]?.name)).toBe(file.name);
+    await dialog.getByRole('button',{name:'重试保存项目文件',exact:true}).click();
+  }
   await expect(dialog).not.toBeVisible();
-  expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.completeRequests).toBe(missingReceipt==='complete'?2:1);
-  expect(state.imports).toHaveLength(1);expect(state.completed).toBe(true);
-  expect(state.imports[0].material).toEqual({source_project_id:root,material_id:'imported-material',material_version:1,sha256:sha});
+  expect(state.uploadRequests).toBe(1);expect(state.putRequests).toBe(1);expect(state.completeRequests).toBe(firstAttempts+(recovery==='manual'?1:0));
+  expect(state.completed).toBe(true);expect(state.imports).toEqual([{...context,material:{source_project_id:root,material_id:'imported-material',material_version:1,sha256:sha}}]);
+  expect(state.calls.filter(c=>c.path.endsWith('/complete'))).toEqual(Array.from({length:state.completeRequests},()=>({method:'POST',path:'/projects/'+root+'/materials/uploads/upload-id/complete',body:{byte_size:bytes.length,sha256:sha}})));
+  expect(state.calls.filter(c=>c.method!=='GET').map(c=>c.path)).toEqual(['/projects/'+root+'/materials/uploads','/synthetic-upload',...Array(state.completeRequests).fill('/projects/'+root+'/materials/uploads/upload-id/complete'),'/projects/'+root+'/project-files/imports']);
+  await expect(page.locator('#pw-import-recovery')).toBeEmpty();
 });
 
 test('navigation and closing are guarded while a file upload is in progress',async({page})=>{
