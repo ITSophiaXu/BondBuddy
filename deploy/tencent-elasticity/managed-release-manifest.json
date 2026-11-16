@@ -507,8 +507,9 @@
     },
     {
       "path": "packages/contracts/dist/index.js",
-      "bytes": 98540,
-      "sha256": "2fb47693049a9530996b341ab582dd9a90fe0eaf20c21e5582f97406ffc47afc"
+      "bytes": 98584,
+      "sha256": "72b056d9f42e30c598a062b2dc6997297cc6ed2232de455e3ab630307935437a",
+      "payload_file": "deploy/tencent-elasticity/control-overlay-artifacts/packages/contracts/dist/index.js"
     },
     {
       "path": "packages/contracts/dist/workpaper-progressive.js",
