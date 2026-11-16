@@ -17,6 +17,7 @@ import { date, esc } from './ui';
 import './project-execution.css';
 import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAuthoringEvents, authoringVisibleEvents } from './authoring-progress';
 import { taskProgress } from './task-progress';
+import { executionRecovery, recoveryMaterialId, recoverySupportSummary, type ExecutionRecovery } from './execution-recovery';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { readContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
 import { syncFormatTemplateMode } from './source-format-template';
@@ -90,18 +91,18 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
   if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
-  if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
+  if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“准备新一轮”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
     : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
-  if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
+  if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点“准备新一轮”，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
-  if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“继续修改”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';
+  if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“准备新一轮”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
-  if (reason === 'authoring_material_unreadable') return '有材料无法读取，请先停止本次任务并点击“继续修改”，替换文件后重新编制。';
+  if (reason === 'authoring_material_unreadable') return '有材料无法读取，请先停止本次任务并点击“准备新一轮”，替换文件后重新编制。';
   if (reason === 'authoring_no_verified_changes') return '本轮未形成有依据的正文修改，尚未交付新成果。请核对本次材料和更新要求。';
   if (runtimeMessage(reason)) return runtimeMessage(reason)!;
   if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
@@ -183,6 +184,9 @@ export class ProjectExecution {
   private creditDialog?: HTMLDialogElement;
   private creditPromptShown = false;
   private progressMessage = '';
+  private recoveryRun?: string;
+  private recoveryFeedback = '';
+  private supportFallback = '';
   private materials: Material[] = [];
   private sourceStamp = '';
   private materialReady = false;
@@ -455,7 +459,7 @@ export class ProjectExecution {
       materialDetails.querySelector('#materials-state-label')!.textContent = materialsLocked ? '材料已锁定，仅可查看' : this.nextRequested ? '为下一轮补充材料' : '开始更新前可补充';
       materialDetails.querySelector('#materials-title')!.textContent = materialsLocked ? '查看项目材料' : '提供项目材料';
       materialDetails.querySelector('#materials-state-description')!.textContent = materialsLocked
-        ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
+        ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : `本次编制材料已锁定。需要补充材料时，请点击“${this.run && ['failed','rejected','cancelled'].includes(this.run.state) ? '准备新一轮' : '继续修改'}”，用于下一轮编制。`
         : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始更新前补齐材料；开始后材料锁定，仅可查看。';
     }
     this.conversation.setEditingVisible(!editsFrozen && !this.restoring && !activeRun && (!this.run || this.nextRequested));
@@ -532,6 +536,12 @@ export class ProjectExecution {
           : run.stage === 'billing_reconcile' ? '正在核对积分账务，已保存进度和已有成果；核对完成后继续，已请求停止的任务会优先结束。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     const needsRecharge = !!this.charge?.progress?.credit_exhausted && !!activeRun;
+    if (this.recoveryRun !== run?.run_id) { this.recoveryRun = run?.run_id; this.recoveryFeedback = ''; this.supportFallback = ''; }
+    const recovery = run ? executionRecovery(run, { reason: this.reason, stale: !!this.progressMessage, repeatedPause: !!repeatedPause, needsRecharge }) : undefined;
+    const prepareLabel = run && ['failed', 'rejected', 'cancelled'].includes(run.state) ? '准备新一轮' : '继续修改';
+    const progress = run && this.progressMessage
+      ? `<section class="task-progress" aria-label="最近已知任务状态"><div class="task-progress-heading"><div><strong role="status">最新任务状态暂不可获取</strong><p>最近已知状态：${esc(states[run.state])} · 任务记录更新于 ${esc(date(run.updated_at))}。当前无法确认后台的最新进展。</p></div></div></section>`
+      : run ? taskProgress(run, 'update', authoringStatus(run, this.events, this.charge?.progress) ?? failedWordProgress) : '';
     if (!needsRecharge) { this.creditPromptShown = false; this.creditDialog?.close(); }
     if (needsRecharge && !this.creditPromptShown) {
       this.creditPromptShown = true;
@@ -546,29 +556,40 @@ export class ProjectExecution {
     const executionProgressHost = this.host.querySelector<HTMLElement>('#execution-progress')!;
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
+    const selection = focusedId === 'run-support-fallback' && document.activeElement instanceof HTMLTextAreaElement
+      ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] as const : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
-    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
+    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${progress}${recovery ? this.recoveryHtml(recovery, summary) : summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
-      <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
-      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
-        ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
-          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun && !this.nextRequested ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
+      <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : `本次材料已锁定。点击“${prepareLabel}”只准备下一轮草稿，不恢复或重新执行原任务；明确开始后按新任务的适用规则计费，旧成果保留。`}</p>
+      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause && this.reason !== 'word_size_repair_exhausted'
+        ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续原任务</button>'
+          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun && !this.nextRequested ? `<button class="button secondary" type="button" id="prepare-next-version">${prepareLabel}</button>` : ''}<button class="text-button" type="button" id="show-project-materials">${recovery?.kind === 'materials' ? '查看需处理材料' : '查看材料'}</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}?${esc(withProjectContext(new URLSearchParams()).toString())}">查看此前成功成果</a>` : ''}`;
     const creditDetails = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details');
     if (creditDetails) creditDetails.open = creditDetailsOpen;
     if (creditSummaryFocused) executionProgressHost.querySelector<HTMLElement>('.authoring-credit-meter summary')?.focus({preventScroll:true});
     else if (focusedId) executionProgressHost.querySelector<HTMLElement>('#'+CSS.escape(focusedId))?.focus({preventScroll:true});
+    if(selection) executionProgressHost.querySelector<HTMLTextAreaElement>('#run-support-fallback')?.setSelectionRange(...selection);
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume'],['pause-run','pause']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
-      if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
+      if (button) { button.disabled = this.busy || action === 'resume' && !!this.progressMessage; button.addEventListener('click', () => { void this.changeRun(action); }); }
     }
     const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
-    if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
+    if (recheckPaused) { recheckPaused.disabled = this.busy || !!this.progressMessage; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
     const prepare=this.host.querySelector<HTMLButtonElement>('#prepare-next-version');
-    if(prepare){prepare.disabled=editsFrozen||this.busy||this.starting;prepare.addEventListener('click',()=>{void this.prepareNextVersion();});}
-    this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
+    if(prepare){prepare.disabled=editsFrozen||this.busy||this.starting||!!this.progressMessage;prepare.addEventListener('click',()=>{void this.prepareNextVersion();});}
+    this.host.querySelector('#show-project-materials')?.addEventListener('click', () => {
+      const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true;
+      const material=this.recoveryMaterial();
+      const control=material ? document.querySelector<HTMLElement>(`[data-delete-material="${CSS.escape(material.material_id)}"], [data-source-material="${CSS.escape(material.material_id)}"]`) : null;
+      const target=control?.closest<HTMLElement>('.material-file-row') ?? document.querySelector<HTMLElement>('#materials-title');
+      if(target){target.tabIndex=-1;target.focus({preventScroll:true});target.scrollIntoView({block:'start'});}
+    });
+    this.host.querySelector<HTMLButtonElement>('#refresh-run-status')?.addEventListener('click', () => { void this.refreshOriginalRun(); });
+    this.host.querySelector<HTMLButtonElement>('#copy-run-support')?.addEventListener('click', () => { void this.copyRecoverySummary(); });
     const artifactId = (run?.state === 'succeeded' || testCompleted) ? run?.artifact_id : undefined;
     if (artifactId && artifactId !== this.deliveryId) {
       this.delivery?.dispose(); this.deliveryId = artifactId;
@@ -592,6 +613,41 @@ export class ProjectExecution {
       void this.delivery.render(artifactId);
     } else if (!artifactId && this.deliveryId) { this.delivery?.dispose(); this.deliveryId = undefined; this.locateResult = undefined; this.host.querySelector('#execution-delivery')!.innerHTML = ''; }
   }
+  private recoveryMaterial() {
+    const id=recoveryMaterialId(this.reason),input=this.input;
+    if(!id||!input||input.input_revision!==this.run?.input_revision||input.input_hash!==this.run.input_hash)return;
+    const version=this.reason?.split(':')[2];
+    return this.materials.find(material=>material.material_id===id&&(!version||Number(version)===material.material_version)&&input.material_versions.some(pin=>
+      pin.material_id===material.material_id&&pin.material_version===material.material_version));
+  }
+  private recoveryHtml(recovery:ExecutionRecovery, summary?:string) {
+    const material=recovery.kind==='materials'?this.recoveryMaterial():undefined;
+    const support=['support','refresh'].includes(recovery.kind);
+    return `<div class="execution-summary execution-recovery" data-execution-recovery="${recovery.kind}"><h3>建议下一步：${esc(recovery.title)}</h3>
+      ${summary&&!this.progressMessage?`<p data-recovery-reason>${esc(summary)}</p>`:''}<p>${esc(recovery.instruction)}</p>
+      ${recovery.kind==='materials'?`<p class="muted">${material?`对应本轮材料：${esc(material.filename)} · 版本 ${material.material_version}`:'本轮未返回可准确定位的文件，请结合材料区状态核对，不自动替换任何文件。'}</p>`:''}
+      <div class="form-actions"><button class="button secondary" type="button" id="refresh-run-status" ${this.busy||this.polling?'disabled':''}>${this.polling?'正在核对原任务…':'刷新原任务状态'}</button>${support?'<button class="button secondary" type="button" id="copy-run-support">复制定位摘要</button>':''}</div>
+      ${support?'<p class="muted">定位摘要不含材料正文，可交给你已使用的支持渠道核对。</p>':''}
+      <p class="muted" role="status">${esc(this.recoveryFeedback)}</p>${this.supportFallback?`<label class="execution-support-fallback">复制不可用，请手动选取摘要<textarea id="run-support-fallback" readonly rows="6" aria-label="任务定位摘要">${esc(this.supportFallback)}</textarea></label>`:''}</div>`;
+  }
+  private async refreshOriginalRun() {
+    if(!this.run||this.busy||this.starting||this.restoring||this.polling)return;
+    this.recoveryFeedback='';
+    const refresh=this.poll();this.render();await refresh;
+  }
+  private async copyRecoverySummary() {
+    const run=this.run;if(!run)return;
+    const text=recoverySupportSummary(run,states[run.state],!!this.progressMessage);
+    try {
+      await navigator.clipboard.writeText(text);
+      if(!this.active||this.run?.run_id!==run.run_id)return;
+      this.supportFallback='';this.recoveryFeedback='定位摘要已复制；原任务和材料未改变。';
+    } catch {
+      if(!this.active||this.run?.run_id!==run.run_id)return;
+      this.supportFallback=text;this.recoveryFeedback='浏览器未允许自动复制，可手动选取下方摘要。';
+    }
+    this.render();
+  }
   private returnToPreviousResult() {
     if (this.pendingExecution || this.inputReadUncertain || this.busy || this.starting) return;
     const runId = this.run?.run_id;
@@ -613,7 +669,7 @@ export class ProjectExecution {
     history.replaceState(null,'',location.pathname+location.search+path+(query.size?'?'+query:''));
   }
   private async prepareNextVersion() {
-    if(this.nextRequested||!this.run||this.pendingExecution||this.inputReadUncertain||this.busy||this.starting||this.otherActiveRun||!['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state))return;
+    if(this.nextRequested||!this.run||this.pendingExecution||this.inputReadUncertain||this.progressMessage||this.busy||this.starting||this.otherActiveRun||!['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state))return;
     this.nextRequested=true;
     this.nextBasisRead++;this.nextBasisLoading=false;
     this.preparationAfter=Math.max(this.knownLatestInput,this.input?.input_revision??0,this.draft.project.input_revision??0,this.run.input_revision);
@@ -686,7 +742,7 @@ export class ProjectExecution {
     if(this.active&&generation===this.generation){this.quote=quote;if(int64(quote.balance.available)===0n)this.awaitingCredits=true;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume' | 'pause') {
-    if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
+    if (!this.run || action === 'resume' && (!!this.progressMessage || this.reason === 'word_size_repair_exhausted') || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
     const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
@@ -881,7 +937,7 @@ export class ProjectExecution {
   }
   private async recheckPaused() {
     const run = this.run;
-    if (!run || run.state !== 'paused' || run.stage !== 'capability_not_ready' || this.samePauseAfterResume(run)) return;
+    if (!run || run.state !== 'paused' || run.stage !== 'capability_not_ready' || this.samePauseAfterResume(run) || this.reason === 'word_size_repair_exhausted' || this.progressMessage) return;
     this.resumeVerified = false;
     await this.action(async () => {
       const input = await this.api.inputRevision(this.id, run.input_revision, this.controller.signal);
@@ -1109,7 +1165,7 @@ export class ProjectExecution {
     try {
       const run = await this.api.run(id, this.controller.signal);
       if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
-      if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      if (run.run_id !== id || run.project_id !== this.id || run.input_revision !== this.run.input_revision || run.input_hash !== this.run.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
       const delivered=run.state==='succeeded'&&this.run.state!=='succeeded';
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
