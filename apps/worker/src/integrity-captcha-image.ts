@@ -44,12 +44,14 @@ export async function readCaptchaImage(controls:Controls,observer:CaptchaImageOb
  let version:CaptchaImageVersion={src:'',sequence:0},http_status:number|undefined,broken=false,unchanged=false;
  while(Date.now()<deadline){
   signal.throwIfAborted();
-  unchanged=false;
   if(!await controls.popup.isVisible())return {status:'gone'};
   const state=await controls.image.evaluate(e=>{const i=e as HTMLImageElement;return {src:i.currentSrc||i.src,complete:i.complete,width:i.naturalWidth,height:i.naturalHeight};}).catch(()=>undefined);
   if(!state){await controls.image.page().waitForTimeout(100);continue;}
   const request=observer.get(controls.frame,state.src);
-  version={src:state.src,sequence:request?.sequence??0};http_status=request?.http_status;
+  const sequence=request?.sequence??0;
+  // A late screenshot timeout must not erase the pixels already observed for this request.
+  if(version.src!==state.src||version.sequence!==sequence){version={src:state.src,sequence};unchanged=false;}
+  http_status=request?.http_status;
   if(http_status===403||http_status===429)return {status:'image_failed',detail:http_status===403?'CAPTCHA_IMAGE_ACCESS_DENIED':'CAPTCHA_IMAGE_RATE_LIMITED',http_status,retryable:false,version};
   const newRequest=!previous||version.src!==previous.src||version.sequence!==previous.sequence;
   broken=!!state.src&&state.complete&&(!state.width||!state.height);
@@ -65,7 +67,8 @@ export async function readCaptchaImage(controls:Controls,observer:CaptchaImageOb
      const sha256=digest(png);
      version={...version,sha256};
      unchanged=!newRequest&&sha256===previous?.sha256;
-     if(current?.loaded&&current.src===version.src&&(latest?.sequence??0)===version.sequence&&!latest?.pending&&(newRequest||sha256!==previous?.sha256))return {status:'ready',png,version:{...version,sha256}};
+     const changedPixels=previous?.sha256!==undefined&&sha256!==previous.sha256;
+     if(current?.loaded&&current.src===version.src&&(latest?.sequence??0)===version.sequence&&!latest?.pending&&(newRequest||changedPixels))return {status:'ready',png,version:{...version,sha256}};
     }
    }
   }
