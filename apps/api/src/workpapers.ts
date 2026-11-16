@@ -1,3 +1,4 @@
+import {SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import {workpaperChapters,workpaperAdmissionOrder,WORKPAPER_MAX_PARALLEL} from '@bondbuddy/contracts';
 import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import {registerGenerationProgress} from './generation-progress.js';
@@ -28,7 +29,6 @@ import {workpaperDocx,explanationParagraphs} from './workpaper-docx.js';
 export {workpaperDocx} from './workpaper-docx.js';
 export {loadWorkpaperTemplate} from './workpaper-templates.js';
 import {parseWorkpaperXlsx,previewWorkpaperXlsx} from './workpaper-catalogue.js';
-import {workpaperItemProgress} from './workpaper-item-progress.js';
 type Db=Pool|PoolClient;
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 const xlsx='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -77,20 +77,7 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const items=(await db.query(`SELECT i.item_id,i.run_id,i.state,i.attempt,i.error,
     i.manifest->'input'->'workpaper'->'entry' AS entry,i.manifest->'input'->'workpaper'->'decision' AS input_decision,
     coalesce(i.manifest->'input'->'template'<>'null'::jsonb,false) AS has_template,
-    r.state run_state,r.stage,r.created_at AS run_created_at,r.updated_at AS run_updated_at,latest.occurred_at AS last_event_at,
-    phase.stage AS progress_stage,phase.reason AS progress_reason,
-    coalesce(r.state='running' AND j.state='running' AND (j.lease_token IS NULL OR j.lease_until IS NULL OR j.lease_until<=now()),false) AS lease_interrupted,
-    w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
-    LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
-    LEFT JOIN bb_run_events latest ON latest.owner_user_id=r.owner_user_id AND latest.run_id=r.id AND latest.seq=r.event_cursor
-    LEFT JOIN LATERAL (
-      SELECT e.stage,e.payload->>'reason' AS reason FROM bb_run_events e
-      WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.state='running'
-        AND (e.payload->>'reason' IN ('m4_reading_materials','m4_document_working','m4_writing_files','m4_registering_artifacts')
-          OR e.stage IN ('queued','claimed','input_lock','materials_ready','provider_call','word_delivery','validation','validating','delivering','settlement_pending')
-            AND e.payload->>'reason' IS DISTINCT FROM 'authoring_activity')
-      ORDER BY e.seq DESC LIMIT 1
-    ) phase ON r.state IN ('queued','preparing','running','validating','delivering','settlement_pending')
+    r.state run_state,r.stage,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
     LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 ORDER BY i.ordinal`,[owner,batch])).rows;
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_workpaper_items i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state='succeeded'
@@ -106,7 +93,7 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
     ...(b.progressive_plan?{progressive:{...b.progressive_plan,phase:b.progressive_phase},pause_reason:b.pause_reason}:{}),
     ...(items.length?{template_mode:items.every(i=>i.has_template)?'selected' as const:items.every(i=>!i.has_template)?'automatic' as const:'mixed' as const}:{}),
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
-    items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current,progress=workpaperItemProgress(i);return {entry:i.entry,decision:i.output_decision??i.input_decision??undefined,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),...(progress?{progress}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
+    items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.entry,decision:i.output_decision??i.input_decision??undefined,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
       artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:workpaperDownloadFilename(i.entry),pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:workpaperDownloadFilename(i.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
 }
 export async function readWorkpapers(db:Db,owner:string,id:string):Promise<BillingWireDto<WorkpaperWorkspace,'workpaperWorkspace'>>{
@@ -132,7 +119,7 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
     AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
-  if(active.length>=(b.progressive_plan?.max_parallel??b.max_parallel??1)||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
+  if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
     throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
 }
 
@@ -165,7 +152,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
     if(blocked){
       await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务遇到共享材料、模型服务或结算问题，请先处理该任务，再继续文件包。',pause_reason='shared_blocked',revision=revision+1 WHERE id=$1",[b.id]);return true;
     }
-    if(active>=(b.progressive_plan?.max_parallel??b.max_parallel??1))return false;
+    if(active>=SHARED_BATCH_CAPACITY)return false;
     const eligible=b.progressive_phase==='trial'?b.progressive_plan.trial_item_ids:b.progressive_phase==='retry_failed'?b.progressive_retry_items:null;
     const queued=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal",[b.id,eligible?JSON.stringify(eligible):null])).rows;
     const grouped=queued.some(i=>i.manifest.input.workpaper?.execution==='grouped_batch_v1');
@@ -198,8 +185,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       const ids=[...new Set([b.project_id,m.execution_scope_project_id,m.input.source_material!.source_project_id])].sort();
       const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
       if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
-      if(b.max_parallel||b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
-      else await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));
+      await assertProgressiveWorkpaperAdmission(c,b,next,m);
       for(const pin of [m.input.source_material!,...m.input.materials])await readM4MaterialPin(c,b.owner_user_id,pin);
       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
       const auto=isAutomaticPriceVersion(b.price_version);
