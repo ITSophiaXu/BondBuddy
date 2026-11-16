@@ -36,6 +36,26 @@ test('main factory defaults general and accepts exactly one bounded small confir
   assert.throws(()=>new WorkerRuntime({...small,uploadConfirmationSmallSlot:true}));
 });
 
+test('release harness builds valid business and isolated parser roles through the real runtime factory',async()=>{
+ const {workerParseService,configureConfirmationMode,describeConfirmationRuntime}=await import(new URL('../../../scripts/release-smoke/upload-confirmation-preflight.mjs',import.meta.url).href);
+ const business={...env,BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_CODEX_MODEL:'synthetic-real-model-config',BB_CODEX_AUTHORING_TIMEOUT_MS:'18000000',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth'};
+ const parser=workerParseService('tested-worker',business,business),compose={services:{worker:{environment:{...business},volumes:['parse:/var/lib/bondbuddy/parse-staging','auth:/run/secrets/bb-copilot-oauth:ro']},'worker-parse':parser,'upload-confirmation':{}}};
+ const factory=(environment:NodeJS.ProcessEnv)=>workerRuntimeOptionsFromEnv({} as Pool,{} as PrivateBlobs,environment);
+ configureConfirmationMode(compose,'legacy');const legacy=factory(compose.services.worker.environment);
+ assert.deepEqual(legacy.kinds,['run','parse']);assert.equal(legacy.uploadConfirmationEnabled,true);assert.equal(legacy.uploadConfirmationLane,'general');assert.equal(legacy.uploadConfirmationSmallSlot,false);assert.doesNotThrow(()=>new WorkerRuntime(legacy));
+ configureConfirmationMode(compose,'size-split');const run=factory(compose.services.worker.environment),small=factory(parser.environment);
+ assert.deepEqual(run.kinds,['run']);assert.equal(run.uploadConfirmationEnabled,false);assert.equal(run.uploadConfirmationLane,'general');assert.equal(run.uploadConfirmationSmallSlot,false);assert.doesNotThrow(()=>new WorkerRuntime(run));
+ assert.deepEqual(small.kinds,['parse']);assert.equal(small.concurrency,1);assert.equal(small.parseSlots,0);assert.equal(small.interactiveSlots,0);assert.equal(small.uploadConfirmationEnabled,true);assert.equal(small.uploadConfirmationLane,'small');assert.equal(small.uploadConfirmationSmallSlot,false);assert.doesNotThrow(()=>new WorkerRuntime(small));
+ for(const key of ['BB_CODEX_MODEL','BB_CODEX_AUTHORING_TIMEOUT_MS','BB_COPILOT_OAUTH_FILE'] as const){assert.equal(compose.services.worker.environment[key],business[key]);assert.equal(parser.environment[key],undefined);}
+ assert.equal(parser.image,'tested-worker');assert.deepEqual(parser.volumes,['confirmation-small:/var/lib/bondbuddy/parse-staging']);assert.deepEqual(compose.services.worker.volumes,['parse:/var/lib/bondbuddy/parse-staging','auth:/run/secrets/bb-copilot-oauth:ro']);
+ assert.throws(()=>factory({...parser.environment,BB_WORKER_JOB_KINDS:'run,parse'}),/filtered confirmation lane/);
+ assert.throws(()=>factory({...compose.services.worker.environment,BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}),/Reserved upload confirmation slot/);
+ const command=['sh','-c','/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js'],image={Id:'tested-worker',Config:{Cmd:command}},actual={Image:image.Id,Config:{Cmd:command,Env:Object.entries(parser.environment).map(([k,v])=>k+'='+v)},HostConfig:{ReadonlyRootfs:true,Memory:1024*1024*1024},Mounts:[{Type:'volume',Name:'synthetic-confirmation-small',Destination:'/var/lib/bondbuddy/parse-staging'}]};
+ const observed=describeConfirmationRuntime('worker-parse',actual,image);assert.equal(observed.jobKinds,'parse');assert.equal(observed.modelConfiguration,false);assert.equal(observed.credentialMounts,false);assert.equal(observed.spoolDirectory,parser.environment.BB_UPLOAD_SPOOL_DIR);assert.equal(observed.stagingVolume,'synthetic-confirmation-small');
+ for(const credential of ['COPILOT_TOKEN','BB_COPILOT_OAUTH_FILE','BB_OPENAI_API_KEY','BB_ANTHROPIC_API_KEY'])assert.equal(describeConfirmationRuntime('worker-parse',{...actual,Config:{...actual.Config,Env:[...actual.Config.Env,credential+'=synthetic']}},image).modelConfiguration,true);
+ assert.equal(describeConfirmationRuntime('worker-parse',{...actual,Mounts:[...actual.Mounts,{Type:'bind',Destination:'/run/secrets/bb-copilot-oauth'}]},image).credentialMounts,true);
+});
+
 test('dedicated spool locks exclude a second process and only clean managed private files',async()=>{
   const root=await mkdtemp(join(tmpdir(),'bb-confirmation-lock-'));
   let release:(()=>Promise<void>)|undefined;

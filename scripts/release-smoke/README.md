@@ -4,6 +4,12 @@
 
 ## 运行
 
+### 上传确认服务证据（依赖五流程与双证据前置）
+
+本改动切片依赖 #1031、#1032、#1042 及其发布测试前置；这些依赖齐备前不可独立运行或合并。目标提交的原始 Dockerfile 含 `upload-confirmation` 时，测试会构建并记录第四个业务镜像。原五流程前，用固定财务样本中的 small PDF 与 19,431,101 字节 large PDF，依次检查原业务 WorkerRuntime general 和纯解析 worker-parse small＋独立 large 两种确认方式。size-split 的业务 worker 只消费 run 并关闭上传确认，保留原真实模型配置；worker-parse 复用同一被测 worker 镜像，只有 parse、一个小文件确认循环、独立暂存卷且无模型环境或凭据。每种方式的十分钟截止时间在开始前保存，恢复不刷新；已创建上传不新建 session、不重传 PUT，接受状态不明或服务被替换时保留现场并失败。检查实际容器 ID/镜像 ID/源码标签/入口命令、lane 日志、最终 HTTP 材料回执及只读 PG outbox 结果。独立确认服务使用 512 MiB、专用磁盘卷、128 MiB spool，无模型配置或凭据。预检项目仅上传，不提交模型任务；原五项授权样本、流程和质量凭据仍独立完整执行，随后使用 size-split 确认。
+
+最终验证器从待验 commit 读取能力及预检控制器哈希。新版本缺少确认镜像或两模式实测记录即拒绝，不能靠删除报告字段退回旧规则。所有新增控制器仍由同候选源码哈希绑定。业务镜像只复用已测试的不可变 ID；导出缺失确认镜像时不得重建。main、execution 及回滚按验证后的实际服务选择检查镜像；旧版本按原始 Dockerfile 的真实能力选旧清单，再单独判断配置过渡是否兼容。原截止时间内只读等待已接受上传的持久化与日志证据，HTTP 200 不代表日志已经刷新。代码与小单元通过不能代替真实服务测试。
+
 需要 Node 22+、Git、Docker（Linux containers）、Compose、Buildx、Playwright 浏览器，以及可用于现有适配器的 Copilot 授权。Mac 可用 Docker Desktop / Colima，Windows 在 PowerShell 使用 Docker Desktop 的 WSL 2 Linux 后端；业务容器始终是 Linux。
 
 Docker context 按环境变量 `BB_RELEASE_DOCKER_CONTEXT`、本机配置 `dockerContext`、恢复报告中记录的 context、`docker context show` 的顺序选择。接受本机 Unix socket 和 Windows 本机 named pipe，拒绝 SSH/TCP 远程 Docker 以及远程 named pipe。仅网页端口5288绑定在本机回环地址，数据库与存储不发布端口。
@@ -79,12 +85,12 @@ npm run test:release -- --resume /absolute/path/to/scripts/release-smoke/.runtim
 
 `--resume` 跳过已经通过的用例，已记录 run ID 的用例只读取原任务并重试成果检查。首次提交前失败的用例可能新建测试项目。继续检查前自动保存报告副本，每次尝试使用独立证据目录，保留原始失败和 trace。
 
-全部通过后自动清理本次容器和测试卷，保留本机报告、trace、下载成果和镜像缓存，释放 5288 端口供下次执行。需要手动查看测试账号时加 `--keep`。清理失败会返回非零，报告仍保留各业务流程已通过的事实。
+全部通过后自动启用本次 Compose 配置声明的所有 profile，清理本次容器和测试卷，包括 worker-parse、upload-confirmation 及各自暂存卷；保留本机报告、trace、下载成果和镜像缓存，释放 5288 端口供下次执行。需要手动查看测试账号时加 `--keep`。清理失败会返回非零，报告仍保留各业务流程已通过的事实。
 
 失败或未完成时保留环境，不自动停止业务任务。此时先用 `--resume` 继续检查原任务；不要直接另开一次测试抢占相同端口。确认无需保留后，使用报告中的准确 project 和该次 Compose 文件清理：
 
 ```sh
-DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json down --volumes
+DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json --profile upload-size-split down --volumes
 ```
 
 不要使用全局 prune。当前脚本只提供发布前检查及退出码，不自动发布或更改生产部署规则。

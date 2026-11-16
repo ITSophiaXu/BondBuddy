@@ -39,6 +39,39 @@ async function fixture(){
   return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),own:()=>actor=owner,reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
 }
 
+test('release confirmation SQL executes against migrated schema and counts only owned project attempts',options,async()=>{
+ const {CONFIRMATION_SQL,assertConfirmationReceipt}=await import(new URL('../../../scripts/release-smoke/upload-confirmation-evidence.mjs',import.meta.url).href);
+ const f=await fixture();try{
+  const u=await f.upload(),upload={uploadId:u.id,sha256:u.declaration.sha256,bytes:u.bytes.length,filename:'synthetic.docx'};
+  const read=async(owner=f.owner,projectId=f.id,uploadId=u.id)=>(await f.pool.query<{model_calls:number}>(CONFIRMATION_SQL,[owner,projectId,uploadId])).rows;
+  assert.deepEqual(await read(),[],'the real query must parse before confirmation exists');
+  assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
+  const initial=await read();assert.equal(initial.length,1);assert.equal(initial[0].model_calls,0);
+  assertConfirmationReceipt(upload,initial[0],f.owner,f.id);
+  const otherProject=randomUUID(),foreignProject=randomUUID(),foreignOwner='foreign-'+randomUUID();
+  await f.pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic other project','update'),($3,$4,'Synthetic foreign project','update')",[otherProject,f.owner,foreignProject,foreignOwner]);
+  // Persist synthetic observations only; no worker or provider call is started.
+  const job=async(owner:string,projectId:string)=>{
+   const runId=randomUUID(),jobId=randomUUID(),hash='a'.repeat(64);
+   await f.pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[projectId,owner,hash]);
+   await f.pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'update',$4,'failed')",[runId,owner,projectId,hash]);
+   await f.pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state) VALUES($1,$2,$3,'update','synthetic','failed')",[jobId,owner,runId]);
+   return async(status:string)=>{const attemptId=randomUUID();await f.pool.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status) VALUES($1,$2,$3,$1,1,$4)",[attemptId,owner,jobId,status]);};
+  };
+  await (await job(f.owner,otherProject))('completed');
+  await (await job(foreignOwner,foreignProject))('completed');
+  const isolated=await read();assert.equal(isolated.length,1);assert.equal(isolated[0].model_calls,0);
+  assertConfirmationReceipt(upload,isolated[0],f.owner,f.id);
+  assert.deepEqual(await read(foreignOwner),[]);assert.deepEqual(await read(f.owner,otherProject),[]);assert.deepEqual(await read(f.owner,f.id,randomUUID()),[]);
+  const attempt=await job(f.owner,f.id);let count=0;
+  for(const status of ['completed','failed','pending_reconcile','confirmed_not_sent']){
+   await attempt(status);const rows=await read();assert.equal(rows.length,1);assert.equal(rows[0].model_calls,++count);
+   assert.throws(()=>assertConfirmationReceipt(upload,rows[0],f.owner,f.id),/Upload-only preflight executed a model/);
+  }
+ }finally{await f.close();}
+});
+
 test('small and large claims partition the exact 16 MiB boundary before taking a lease',options,async()=>{
  const f=await fixture();try{
   const large=await f.upload(Buffer.alloc(UPLOAD_CONFIRMATION_SMALL_MAX_BYTES+1,120),'large.docx');
