@@ -7,7 +7,7 @@ test('default QA entry retains active recognition and its exact run across navig
   preparation.state='queued';preparation.stage='queued';preparation.result=null;
   state.workspace.runs=[preparation];state.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:true};
   await install(page,state);const url=`/#qa?project=${projectId}`;
-  await page.goto(url);await expect(page.getByRole('region',{name:'进行中的问答任务'})).toContainText('识别问题清单');
+  await page.goto(url);await expect(page.getByRole('region',{name:'进行中的问答任务'})).toContainText('处理问题清单 · 排队中');
   await expect(page.locator('#qa-history option')).toHaveCount(2);
   await page.getByRole('link',{name:'查看进度与操作'}).click();await expect(page).toHaveURL(new RegExp('run='+prepareId));
   await expect(page.locator('#qa-document-body')).toContainText('排队');

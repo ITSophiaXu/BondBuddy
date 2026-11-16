@@ -66,7 +66,12 @@ test('document QA: PDF source upload starts only free preparation',async({page})
   expect(s.uploads[0].media_type).toBe('application/pdf');
   expect(s.prepares[0].source.pin.sha256).toBe(s.uploads[0].sha256);
   expect(s.answers).toEqual([]);expect(s.drafts).toEqual([]);
-  await expect(page.locator('.qa-run-head')).toContainText('免费');
+  await expect(page.locator('.qa-run-head')).toContainText('问题整理，包含在回复任务内');
+  await expect(page.locator('.qa-run-head')).toContainText('本次尚未扣费');
+  expect(s.accepted.get(`prepare:${s.prepares[0].request_id}`)).toMatchObject({
+    run:{operation:'prepare',manifest:{operation:'prepare',points:0},reserved_points:0,charged_points:0},
+    generic:{reservation_id:null}
+  });
   await expect(page.locator('.qa-missing-list')).toHaveCount(0);
   expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
 });
