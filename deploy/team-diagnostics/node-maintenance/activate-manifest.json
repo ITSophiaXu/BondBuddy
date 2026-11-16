@@ -1,0 +1,14 @@
+{
+  "target_account": "100006372392",
+  "region": "ap-beijing",
+  "instance_id": "ins-p4i0pcub",
+  "request_file": "activate-request.json",
+  "request_sha256": "0f980cc2a7516d1cf87235baaeabb87c7bda9727dce5b230f77b4796e06c320d",
+  "request_bytes": 12398,
+  "script_sha256": "e25932f0b71d244aa3a2b66870e1852a286a14ea0442c4f0cb4ce4fe044bd953",
+  "script_bytes": 9145,
+  "source_sha256": "91119208cd4e68ad4308f06cf0c2804904f5cebd1e9747ce124346feddd1aef2",
+  "component_commit": "ac818a21241e9427f5bd8755d8aa5f4e0da1f304",
+  "bundle": "f3928f57c9f01a2f",
+  "scope": "Backfill and enable current-node diagnostics only. No business restart, cloud lifecycle or bootstrap modifications."
+}
