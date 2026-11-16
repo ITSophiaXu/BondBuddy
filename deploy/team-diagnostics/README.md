@@ -54,7 +54,7 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 1. 在本批固定版本审阅并填写三个 `config.*.example.json`。主站范围为 `bb-main` 加精确登记的弹性出口；Azure范围为 `bb-execution`；腾讯执行节点范围为 `bondbuddy-execution`。逐个核对实际标签与需要采集的systemd单元。弹性配置的 `node` 必须填写登记表中的真实 `instance_id`；未来节点模板也需包含本采集组件、配置及该节点专用上传身份。
 2. 在主站管理员会话安装：`python3 install.py install /root/approved-main-config.json`。程序安装固定内容哈希目录、受限入口、sudoers、SSH配置和定时服务，校验配置并输出备份目录；**不会启用定时器、reload SSH或重启任何应用服务**。
 3. 生成诊断投影SQL：`python3 database.py > /root/diagnostic-views.sql`。由管理员用已核实的当前主站PostgreSQL容器执行该SQL。它只建立 `bb_diagnostics` 视图和 `bb_diagnostics_reader` 读取角色，不改业务状态、账务或应用迁移。应用较旧、可选表不存在时在 `collections` 中明确列为 unavailable；新表不会自动获得权限。通过psql验证该角色可读视图、不能读 `bb_users` 原表或写业务表。
-4. 每位开发自行产生key，只交公钥。管理员执行 `python3 install.py account bb-log-alice /root/alice.pub`。迁移原账号则指定 `bb-logs` 和现有团队公钥。不生成或转交个人私钥，不给开发docker/sudo/adm组权限；诊断组的唯一sudo入口会再次校验具体账号的reader角色。
+4. 每位开发自行产生key，只交公钥。管理员执行 `python3 install.py account bb-log-alice /root/alice.pub`。迁移原账号则指定 `bb-logs` 和现有团队公钥；执行前保存 `getent passwd bb-logs` 的原登录shell及旧读取器sudo配置。账号命令会锁定密码并改用新受限shell，这些账号调整不在安装器文件回滚范围内。不生成或转交个人私钥，不给开发docker/sudo/adm组权限；诊断组的唯一sudo入口会再次校验具体账号的reader角色。
 5. 每个采集节点使用独立机器key，在主站执行 `python3 install.py account bb-ingest-node1 /root/node1.pub --role ingest --source INSTANCE_ID`；Azure来源使用 `azure`。此操作同时登记预期来源。节点上的上传私钥、known_hosts和 `upload-ssh.example.conf` 安装成root所有、私钥0600；地址只使用本批已批准的主站路径。开发拿不到上传key。新实例必须在受控入池时完成同一登记，不能继承另一实例的来源身份。
 6. 各节点安装经核对的配置。主站个人key就绪后，由发布者显式 reload SSH；节点和主站执行 `systemctl daemon-reload`、`systemctl enable --now bondbuddy-diagnostics-collect.timer`，再执行一次 `/usr/local/sbin/bb-diagnostics --collect --require-synced`。这些是**待发布操作**，本开发chat未执行。迁移v2时 `90-bondbuddy-diagnostics.conf` 优先于旧95配置；验证成功后撤销旧读取器sudo授权，保留其备份供回滚。
 7. 将 `execution-bootstrap.drop-in.conf` 安装到实际 `bondbuddy-execution-bootstrap.service.d/`，随执行节点模板固定版本。它在新节点入池前要求首次中央归档确认。正常排空节点后、物理停机/销毁前，再执行 `--collect --require-synced` 并核对回执；失败应保留节点排查。突然断电/销毁仍可能丢失最后一次同步后的日志，不能把15秒周期声称为零丢失保证。
@@ -65,7 +65,7 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 ## 撤销与回滚
 
 - 撤销个人：从root配置的 `actors` 删除该账号并删除对应 `/etc/bondbuddy-diagnostics/keys/账号` 公钥文件；下一条命令即被拒绝，不修改历史审计，不删除人员的其他账号。
-- 回滚本组件：停用本组件timer，使用安装回执里的路径执行 `python3 install.py rollback /var/lib/bondbuddy-diagnostics/install-backups/时间`，校验sshd/sudoers后由发布者reload SSH与systemd。归档和审计保留，不删除源日志、不重启业务容器。诊断视图可暂留；如撤销DB访问，仅撤销专用角色授权，不drop业务表。
+- 回滚本组件：停用本组件timer，使用安装回执里的路径执行 `python3 install.py rollback /var/lib/bondbuddy-diagnostics/install-backups/时间`。账号/公钥登记不随文件回滚撤销；迁移过的 `bb-logs` 需用 `usermod --shell 已备份的原shell bb-logs` 恢复原shell，并恢复发布时另行备份的旧读取器sudo授权。新建账号继续保持禁用或受限，不恢复密码登录。校验sshd/sudoers后由发布者reload SSH与systemd，并用原只读账号验证。归档和审计保留，不删除源日志、不重启业务容器。诊断视图可暂留；如撤销DB访问，仅撤销专用角色授权，不drop业务表。
 - 安装旧配置不能修复v2的服务遗漏；回滚后须如实恢复“覆盖不完整”状态。
 
 ## 验证
