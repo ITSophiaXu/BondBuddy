@@ -692,7 +692,7 @@
     {
       "path": "deploy/tencent-elasticity/compose.yaml",
       "bytes": 3384,
-      "sha256": "58c9908491557c4a12410ba8b649e049f8ab3dad598a931217b8ff48150c11fe",
+      "sha256": "9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd",
       "payload_file": "deploy/tencent-elasticity/compose.yaml",
       "scope": "execution-host"
     }
@@ -1050,7 +1050,7 @@
       "authoring": 2,
       "review": 2
     },
-    "pids_limit_per_container": 256,
+    "pids_limit_per_container": 512,
     "source_snapshots": [
       {
         "path": "deploy/tencent-elasticity/node-eight-sources/api-execution-capacity.ts",
