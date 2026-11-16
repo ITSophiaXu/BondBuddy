@@ -300,20 +300,50 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
       const rotatingPaid=await fixture({paid:true,error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
       const held=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows[0];
       assert.equal(held.state,'held');
-      const usageBefore=(await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[rotatingPaid.attempt])).rows;
+      const usageRows=async(attempt:string)=>(await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[attempt])).rows;
+      const evidenceRows=async(attempt:string)=>{
+        const [usage,provider]=await Promise.all([
+          pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id',[attempt]),
+          pool.query('SELECT * FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY id',[attempt])]);
+        return {usage:usage.rows,provider:provider.rows};
+      };
+      const recoveryAudit=async(attempt:string)=>(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[rotatingPaid.lease.jobId])).rows[0].checkpoint.operator_reconciliations[attempt];
+      const usageBefore=await usageRows(rotatingPaid.attempt),evidenceBefore=await evidenceRows(rotatingPaid.attempt);
+      assert.equal(usageBefore.length,1);assert.equal(usageBefore[0].call_status,'pending_reconcile');
       assert.equal(await rotatingPaid.recover(),true);
+      // bb_call_usage is a view: call_status reflects the explicit recovery
+      // disposition, while supplier usage and the original observations stay immutable.
+      const disposedUsage=usageBefore.map(value=>({...value,call_status:'failed'}));
+      assert.deepEqual(await usageRows(rotatingPaid.attempt),disposedUsage,'normal rotation changes only the attempt disposition, never unknown usage');
+      const rotationAudit=await recoveryAudit(rotatingPaid.attempt);
+      assert.deepEqual(rotationAudit,{actor:'worker_file_authoring_recovery',reason_code:'file_authoring_context_rotation',
+        attempt_id:rotatingPaid.attempt,logical_call_id:rotatingPaid.logical,decision:'retry_unknown_usage',recovery_state:'queued',deadline_at:deadline});
       assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows,[held],
         'normal rotation does not release, replace, reset or charge the original reservation');
       const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
       const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
+      const nextUsageBefore=await usageRows(next.attempt),nextEvidenceBefore=await evidenceRows(next.attempt);
+      assert.equal(nextUsageBefore.length,1);assert.equal(nextUsageBefore[0].call_status,'pending_reconcile');
       const clock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);
       try{assert.equal(await next.recover(),true);}finally{clock.mock.restore();}
       assert.deepEqual(await row(rotatingPaid.lease.runId),{state:'failed',stage:'failed'});
       const released=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows;
       assert.equal(released.length,1);assert.equal(released[0].id,held.id);assert.equal(released[0].state,'released');assert.ok(released[0].finalized_at);
       assert.equal(await creditBalanceExact(pool,owner).then(x=>x.available),balanceBefore.available,'the ordinary failure transaction releases/refunds authoring credits');
-      assert.deepEqual((await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[rotatingPaid.attempt])).rows,usageBefore,
-        'terminal credit settlement cannot rewrite earlier unknown supplier usage');
+      assert.deepEqual(await usageRows(rotatingPaid.attempt),disposedUsage,'terminal settlement cannot change the prior disposed attempt or its unknown usage');
+      assert.deepEqual(await usageRows(next.attempt),nextUsageBefore.map(value=>({...value,call_status:'failed'})),
+        'deadline exhaustion changes only the latest attempt disposition, never unknown usage');
+      assert.deepEqual(await evidenceRows(rotatingPaid.attempt),evidenceBefore,'earlier raw supplier and usage observations remain byte-for-byte unchanged');
+      assert.deepEqual(await evidenceRows(next.attempt),nextEvidenceBefore,'deadline failure preserves the latest raw supplier and usage observations');
+      assert.deepEqual(await recoveryAudit(rotatingPaid.attempt),rotationAudit,'terminal settlement cannot replace the earlier rotation authorization');
+      assert.deepEqual(await recoveryAudit(next.attempt),{actor:'worker_file_authoring_recovery',reason_code:'file_authoring_context_deadline_exhausted',
+        attempt_id:next.attempt,logical_call_id:next.logical,decision:'fail_run',recovery_state:'failed',deadline_at:deadline});
+      for(const attempt of [rotatingPaid.attempt,next.attempt]){
+        assert.deepEqual((await pool.query('SELECT status,usage_status FROM bb_model_call_attempts WHERE id=$1',[attempt])).rows,
+          [{status:'failed',usage_status:'unknown'}]);
+        assert.deepEqual((await pool.query('SELECT usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[attempt])).rows,
+          [{usage_status:'unknown',input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null,conflicting_measurements:0}]);
+      }
     }
     const paid=await fixture({paid:true,error:localFailure,capture:'saved'});
     const reservationBefore=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[paid.lease.runId])).rows;
