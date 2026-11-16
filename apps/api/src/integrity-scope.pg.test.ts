@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {Pool} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,PREVIOUS_AUTOMATIC_PRICE_VERSION,integrityRoundPoints,INTEGRITY_SELECTABLE_SITES,OUTCOME_PRICE_VERSION} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,PREVIOUS_AUTOMATIC_PRICE_VERSION,integrityRoundPoints,INTEGRITY_SELECTABLE_SITES,integritySelectableSitesForSubjects,OUTCOME_PRICE_VERSION} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {transaction} from './data.js';
 import {grantCredits,creditBalance} from './billing.js';
@@ -27,7 +27,7 @@ test('integrity workspace and quotation both honor the active paid v3 subscripti
   });
   await applyVerifiedPayment(pool,provider,{orderId:order,merchantId:provider.merchantId,amountFen:19900,currency:'CNY',transactionId:'synthetic-integrity-protection-payment',state:'paid',payerCash:{amountFen:19900,currency:'CNY'}});
   const workspace=await app.inject(base);assert.equal(workspace.statusCode,200,workspace.body);assert.equal(workspace.json().price.price_version,PREVIOUS_AUTOMATIC_PRICE_VERSION);
-  const draft={subjects:[{id:'issuer',kind:'company',name:'Synthetic protected issuer',identifier:'',role:'issuer',province:'',city:''}],site_ids:['tax'],notes:''};
+  const draft={subjects:[{id:'issuer',kind:'company',name:'Synthetic protected issuer',identifier:'',role:'issuer',province:'',city:''}],site_ids:['pbc'],notes:''};
   const saved=await app.inject({method:'POST',url:base+'/draft',headers:{origin:'http://scope.test'},payload:{expected_revision:0,draft}});assert.equal(saved.statusCode,200,saved.body);assert.equal(saved.json().price.price_version,PREVIOUS_AUTOMATIC_PRICE_VERSION);
   const quote=await app.inject({method:'POST',url:base+'/quote',headers:{origin:'http://scope.test'},payload:{expected_revision:1,round_id:'protected-v3-round'}});assert.equal(quote.statusCode,200,quote.body);assert.equal(quote.json().price_version,PREVIOUS_AUTOMATIC_PRICE_VERSION);assert.equal(quote.json().points,'22738');
  }finally{await app.close();await pool.end();}
@@ -74,14 +74,15 @@ test('automatic integrity pricing preserves all selected websites in one idempot
  const pool=new Pool({connectionString:database}),owner='integrity-all-sites-owner',project='integrity-all-sites-project';
  const app=createServer({pool,enableSubscriptionBilling:true,paymentProviders:[],principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://scope.test'});
  const send=(path:string,payload:unknown)=>app.inject({method:'POST',url:`/api/v1/projects/${project}/integrity/${path}`,payload:payload as any,headers:{origin:'http://scope.test'}});
- const sites=INTEGRITY_SELECTABLE_SITES.map(site=>site.id),points=integrityRoundPoints(sites.length);
- const draft={subjects:[{id:'issuer',kind:'company',name:'Synthetic full-scope issuer',identifier:'',role:'issuer',province:'河北',city:'沧州'}],site_ids:sites,notes:''};
+ const subjects=[{id:'issuer',kind:'company',name:'Synthetic full-scope issuer',identifier:'',role:'issuer',province:'河北',city:'沧州'}];
+ const sites=integritySelectableSitesForSubjects(subjects).map(site=>site.id),points=integrityRoundPoints(sites.length);
+ const draft={subjects,site_ids:sites,notes:''};
  try{
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_integrity_all_sites']);
   await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic all-site integrity','generation')",[project,owner]);
-  assert.ok(sites.length>20);
+  assert.ok(sites.length>2);
   const quotes=[];
-  for(const [index,count] of [20,21,sites.length].entries()){
+  for(const [index,count] of [1,2,sites.length].entries()){
    const selected={...draft,site_ids:sites.slice(0,count)};
    const saved=await send('draft',{expected_revision:index,draft:selected});assert.equal(saved.statusCode,200,saved.body);
    assert.deepEqual(saved.json().draft.site_ids,selected.site_ids);

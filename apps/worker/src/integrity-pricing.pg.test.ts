@@ -5,7 +5,7 @@ import {setTimeout} from 'node:timers/promises';
 import Fastify from 'fastify';
 import {PNG} from 'pngjs';
 import {Pool} from 'pg';
-import {AUTOMATIC_TASK_SKUS,PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,INTEGRITY_PRICE,INTEGRITY_SELECTABLE_SITES,integrityPricingScope,integrityScopeMeasurement,integrityRoundPoints,integrityObservedTimeValid,type IntegrityInput,type IntegrityDraft} from '@bondbuddy/contracts';
+import {AUTOMATIC_TASK_SKUS,PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,INTEGRITY_PRICE,integritySelectableSitesForSubjects,integrityPricingScope,integrityScopeMeasurement,integrityRoundPoints,integrityObservedTimeValid,type IntegrityInput,type IntegrityDraft} from '@bondbuddy/contracts';
 import {Problem,publicProblem,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
 import {registerIntegrity} from '../../api/dist/integrity.js';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
@@ -43,7 +43,7 @@ async function setup(mode:Mode,splitFunding=false){
  const base=`/api/v1/projects/${project}/integrity`;
  const post=async(path:string,payload:unknown)=>{const r=await app.inject({method:'POST',url:base+path,payload:payload as any});assert.equal(r.statusCode,200,r.body);return r.json();};
  const draft:IntegrityDraft={subjects:[{id:'issuer',kind:'company',name:'Synthetic integrity issuer',identifier:'',role:'issuer',province:'山东',city:'东营'}],
-  site_ids:mode==='automatic'?INTEGRITY_SELECTABLE_SITES.map(s=>s.id):['gsxt'],notes:'Synthetic website responses only'};
+  site_ids:mode==='automatic'?integritySelectableSitesForSubjects([{name:'Synthetic integrity issuer',kind:'company',province:'山东',city:'东营'}]).map(s=>s.id):['bankruptcy'],notes:'Synthetic website responses only'};
  await post('/draft',{expected_revision:0,draft});
  let roundId=uid();
  async function publishManaged(){
@@ -92,7 +92,7 @@ async function setup(mode:Mode,splitFunding=false){
 for(const mode of ['legacy','reviewed','automatic','automatic-v2','automatic-v3','managed','coverage'] as const)test(`integrity ${mode}: accepted quote reaches actual Word delivery, settles once, and exports free`,{skip:!database||!python,timeout:120000},async()=>{
  const h=await setup(mode);
  try{
-  const started=await h.start(),expected={legacy:5000,reviewed:5321,automatic:6165,'automatic-v2':22738,'automatic-v3':22738,managed:3606,coverage:3900}[mode];assert.equal(started.points,expected);
+  const started=await h.start(),expected={legacy:5000,reviewed:5321,automatic:integrityRoundPoints(h.draft.site_ids.length),'automatic-v2':22738,'automatic-v3':22738,managed:3606,coverage:3900}[mode];assert.equal(started.points,expected);
   const {run,input}=await h.read(started.run_id),m=input.manifest as IntegrityInput;
   assert.equal(await integrityInputGate(h.pool,run,input),null,'API-created quote must pass worker input lock');
   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:200000-expected,frozen:expected});
@@ -104,7 +104,7 @@ for(const mode of ['legacy','reviewed','automatic','automatic-v2','automatic-v3'
    assert.equal(await integrityPriceValid(h.pool,run,{...m,draft:{...m.draft,notes:'Changed scope'}}),false);
    h.pauseNext=true;assert.equal(await h.execute(),'paused');assert.equal(h.collections,0);
    await h.pool.query("UPDATE bb_scope_quotations SET status='expired',closed_at=clock_timestamp(),closure_reason='Synthetic expiry after acceptance' WHERE id=$1",[m.scope_quote_id]);
-   if(mode==='automatic')await h.publishManaged(); // Newly published prices must not reprice accepted 22,738-point work.
+   if(mode==='automatic')await h.publishManaged(); // Newly published prices must not reprice the accepted scope.
    await action(h.pool,h.owner,started.run_id,'resume',uid());
   }
   assert.equal(await h.execute(),'succeeded');assert.ok(h.collections>0);
@@ -143,7 +143,7 @@ test('integrity automatic failures and cancellation release exactly once; a rele
   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:200000,frozen:0});
   const cancelled=await h.read(retry.run_id);assert.deepEqual(await integrityInputGate(h.pool,cancelled.run,cancelled.input),failure);
   const final=await h.start();h.unavailable=false;assert.equal(await h.execute(),'succeeded');
-  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:193835,frozen:0});
+  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:200000-integrityRoundPoints(h.draft.site_ids.length),frozen:0});
   assert.equal((await h.pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[h.owner])).rows[0].n,1);
  }finally{await h.close();}
 });
@@ -174,8 +174,8 @@ test('integrity rejects mismatched reservation, missing scope binding and change
 test('historical zero-source web searches require matching durable provider actions, never model claims',{skip:!database,timeout:60000},async()=>{
  const h=await setup('legacy');
  try{
-  const started=await h.start(),subject=h.draft.subjects[0],query=subject.name+' site:www.gsxt.gov.cn',events=[{observed_at:new Date().toISOString(),item:{type:'web_search',id:'actual-query',status:'completed',action:{type:'search',query},results:[]}}];
-  const records=integrityRecords(subject,['gsxt'],null,events,new Date().toISOString());assert.equal(records[0].status,'needs_manual');assert.equal(records[0].sources.length,0);
+  const started=await h.start(),subject=h.draft.subjects[0],query=subject.name+' site:pccz.court.gov.cn',events=[{observed_at:new Date().toISOString(),item:{type:'web_search',id:'actual-query',status:'completed',action:{type:'search',query},results:[]}}];
+  const records=integrityRecords(subject,['bankruptcy'],null,events,new Date().toISOString());assert.equal(records[0].status,'needs_manual');assert.equal(records[0].sources.length,0);
   assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,records),false,'a claimed search alone cannot settle');
   const sqlReady=async()=>(await h.pool.query('SELECT bb_integrity_query_evidence_ready($1,$2,$3::jsonb) ready',[h.owner,started.run_id,JSON.stringify(records)])).rows[0].ready;
   assert.equal(await sqlReady(),false);
@@ -190,7 +190,7 @@ test('historical zero-source web searches require matching durable provider acti
   for(const invalid of [{...event,item:{...event.item,id:''}},{...event,item:{...event.item,status:null}},{...event,item:{...event.item,action:{...event.item.action,type:null}}},{...event,observed_at:'2026-02-31T00:00:00Z'},{...event,observed_at:'2026-11-11 00:00:00Z'}]){
    await save('completed',false,[invalid]);assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,records),false);assert.equal(await sqlReady(),false,'JS and SQL reject malformed journal events');
   }
-  for(const scope of ['www.gsxt.gov.cn:443','user@www.gsxt.gov.cn']){
+  for(const scope of ['pccz.court.gov.cn:443','user@pccz.court.gov.cn']){
    const scopedQuery=subject.name+' site:'+scope,scopedRecords=records.map(record=>({...record,query:scopedQuery}));
    await save('completed',false,[{...event,item:{...event.item,action:{type:'search',query:scopedQuery}}}]);
    assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,scopedRecords),false);
@@ -199,7 +199,7 @@ test('historical zero-source web searches require matching durable provider acti
   await save('completed',true);assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,records),false);assert.equal(await sqlReady(),false,'a row with a mismatched content hash is never evidence');
   await save('completed',false,[{observed_at:event.observed_at,item:{type:event.item.type,id:event.item.id,action:{query}}}]);assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,records),true);assert.equal(await sqlReady(),true,'missing optional status and action type are historically valid');
   await save('completed');assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,records),true);assert.equal(await sqlReady(),true,'an authentic search can legitimately return zero sources');
-  const unmatched=records.map(r=>({...r,query:'Another company site:www.gsxt.gov.cn'}));assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,unmatched),false);
+  const unmatched=records.map(r=>({...r,query:'Another company site:pccz.court.gov.cn'}));assert.equal(await integrityQueryEvidenceReady(h.pool,h.owner,started.run_id,unmatched),false);
   await action(h.pool,h.owner,started.run_id,'cancel',uid());
  }finally{await h.close();}
 });
