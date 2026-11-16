@@ -40,6 +40,34 @@ def view_name(kind):
     return kind.replace('-', '_')
 
 
+def event_view_sql(kind):
+    """Keep large event tables' sort/join columns typed and excluded payloads unread."""
+    table, fields = SPECS[kind]
+    body = 'jsonb_build_object(' + ','.join("'" + f + "',t." + f for f in fields.split()) + ')'
+    if kind == 'outbox':
+        key, at, attempt = 't.id', 't.created_at', 'NULL::text'
+        job = "COALESCE(e.job_id,CASE WHEN t.aggregate_type='job' THEN t.aggregate_id END)"
+        run = "COALESCE(j.run_id,e.run_id,CASE WHEN t.aggregate_type='run' THEN t.aggregate_id END)"
+        project = 'COALESCE(j.project_id,r.project_id)'
+        joins = f"""LEFT JOIN public.bb_observability_events e ON t.aggregate_type='observability' AND e.id=t.aggregate_id
+          LEFT JOIN public.bb_jobs j ON j.id={job}
+          LEFT JOIN public.bb_runs r ON r.id={run}"""
+    elif kind == 'run-events':
+        key, at, attempt = "t.id || ':' || t.seq::text", 't.occurred_at', 'NULL::text'
+        job, run, project = 'NULL::text', 't.run_id', 'r.project_id'
+        joins = 'LEFT JOIN public.bb_runs r ON r.id=t.run_id'
+    else:
+        assert kind == 'events'
+        key, at, attempt = 't.id', 't.created_at', 'NULL::text'
+        job, run = 't.job_id', 'COALESCE(t.run_id,j.run_id)'
+        project = 'COALESCE(t.project_id,j.project_id,r.project_id)'
+        joins = f'LEFT JOIN public.bb_jobs j ON j.id=t.job_id LEFT JOIN public.bb_runs r ON r.id={run}'
+    return f'''CREATE OR REPLACE VIEW bb_diagnostics.{view_name(kind)} WITH(security_barrier=true) AS
+      SELECT {key} AS key,{at} AS at,t.owner_user_id AS owner_id,{project} AS project_id,
+        {run} AS run_id,{job} AS job_id,{attempt} AS attempt_id,{body} AS body
+      FROM public.{table} t {joins}'''
+
+
 def install_sql():
     # This is an administrator installation script, deliberately outside application migrations.
     parts = ["BEGIN; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';",
@@ -79,6 +107,8 @@ def install_sql():
           LEFT JOIN public.bb_model_call_attempts a ON a.id={attempt}
           LEFT JOIN public.bb_jobs j ON j.id={job}
           LEFT JOIN public.bb_runs r ON r.id={run}'''
+        if kind in ('outbox', 'run-events', 'events'):
+            sql = event_view_sql(kind)
         parts.append(f"DO $install$ BEGIN IF to_regclass('public.{table}') IS NOT NULL THEN EXECUTE $view${sql}$view$; END IF; END $install$;")
         parts.append(f"INSERT INTO bb_diagnostics.availability VALUES('{kind}',to_regclass('public.{table}') IS NOT NULL) ON CONFLICT(kind) DO UPDATE SET available=excluded.available;")
     # Blob references are restricted to active owners/projects and content not purged by policy.

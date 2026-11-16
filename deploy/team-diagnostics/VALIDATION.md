@@ -1,8 +1,14 @@
 # 团队只读诊断 v3 开发验证与交接
 
+## 生产查询超时修复验证（2026-11-16）
+
+初次上线后实际读取发现 `outbox` 在10秒查询上限下超时；`run-events` / `events` 同类表达式也重复序列化整行。三类投影改用原生时间、关联键和固定字段，不读取 outbox 的大 payload 或 lease_token，不增加业务表权限、不延长查询超时、不添加业务索引。
+
+修复验证：`node test-integration.mjs` 7组通过、0失败、0跳过，使用192份当前迁移；新增20,000条每条约44KB payload的合成 outbox，验证2秒查询上限、跨页无重复、用户过滤及字段排除。25类投影与真实Azurite内容检查通过。`test_diagnostics.SecurityTests` 11项通过、0失败、0跳过。原真实SSH测试所覆盖的认证/传输代码未在本修复中修改。生产查询与部署结果另见 Issue #1460。
+
 日期：2026-11-16。关联 [Issue #1460](https://github.com/ITSophiaXu/BondBuddy/issues/1460)。开发基线：`652d4b86f14a7015a67a720326e0c38ea4d23de0`，独立分支 `feat/team-log-read-access-20261116`。
 
-状态：开发和自测完成；代码完成，尚未部署，待统一发布。线上 `bb-logs` 仍为原 v2 配置；尚未进行生产安装、数据库授权、SSH reload、业务重启或用户验收。本组件没有产品网页，不将命令行验证称为已交付统一本地产品验收版。
+本文保留首次开发验证结果。用户随后明确授权合并 develop 并部署本组件；实际部署版本、节点覆盖与验证结果见 [Issue #1460](https://github.com/ITSophiaXu/BondBuddy/issues/1460)。本组件没有产品网页，不将命令行验证称为已交付统一本地产品验收版。
 
 ## 自动化证据
 
