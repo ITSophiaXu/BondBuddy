@@ -177,13 +177,27 @@ export class TencentCvm {
   }
   async describeRun(operation) {
     requireThat(executionRunAcceptanceMatches(operation,operation.run_acceptance),'RUN_ACCEPTANCE_UNPROVEN');
+    requireThat(operation.identity.account_id===this.config.account_id&&operation.identity.region===this.config.region,'OPERATION_SCOPE');
+    await this.assertAccount();
+    const status=await this.transport.call('cvm','DescribeInstancesStatus',{InstanceIds:[operation.identity.instance_id]});
+    requireThat(status.RequestId&&status.InstanceStatusSet?.length===1&&status.InstanceStatusSet[0].InstanceId===operation.identity.instance_id,'RUN_STATUS_SCOPE');
+    // An accepted singleton can still be provisioning before its launch fields
+    // exist. Preserve the submitted reservation; this observation cannot prove
+    // completion or authorize credentials. Full launch checks still follow.
+    if(status.InstanceStatusSet[0].InstanceState==='PENDING') {
+      const safe={instance_state:'PENDING',latest_operation:null,latest_operation_state:null,
+        latest_operation_request_id:null,stop_charging_mode:null,observed_at:new Date(this.now()).toISOString()};
+      const bytes=canonical({...safe,operation_id:operation.operation_id,identity:operation.identity,
+        provider_request_id:operation.provider_request_id,status_request_id:status.RequestId});
+      const evidence=await this.archive(bytes);
+      requireThat(evidence.sha256===sha256(bytes)&&evidence.ref,'RUN_CREATION_EVIDENCE');
+      return {...safe,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};
+    }
     const i=await this.describe(operation.identity.instance_id),slot=this.config.role_names.indexOf(i.role_name);
     requireRetainedRequest(this.config,i.instance_id,operation.request);
     const config=nodeLaunchConfig(this.config,i.instance_id);
     requireThat(slot>=0&&i.create_operation_id===operation.operation_id&&i.launch_binding_sha256===operation.run_acceptance.launch_binding_sha256&&
       sha256(canonical(runParameters(config,operation.request,operation.client_token,bootstrapUserData(config,operation.request,slot),slot,operation.operation_id)))===operation.request.launch_manifest_sha256,'RUN_CREATION_SCOPE');
-    const status=await this.transport.call('cvm','DescribeInstancesStatus',{InstanceIds:[operation.identity.instance_id]});
-    requireThat(status.InstanceStatusSet?.length===1&&status.InstanceStatusSet[0].InstanceId===operation.identity.instance_id,'RUN_STATUS_SCOPE');
     const safe={instance_state:i.instance_state,latest_operation:i.latest_operation,latest_operation_state:i.latest_operation_state,
       latest_operation_request_id:i.latest_operation_request_id,stop_charging_mode:i.stop_charging_mode,observed_at:new Date(this.now()).toISOString(),
       run_creation:{operation_id:operation.operation_id,identity:operation.identity,launch_manifest_sha256:operation.request.launch_manifest_sha256,
