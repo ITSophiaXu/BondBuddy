@@ -125,8 +125,11 @@ export class ProjectAssistant {
   private viewConflict=false;
   private conversationRequest?:{projectId?:string;key:string};
   private projects:Dto<'ProjectListResponse'>['items']=[];
-  private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
-    this.open=true;this.formOpen=false;this.changed();},'submit');};
+  private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;
+    this.open=true;this.formOpen=false;this.paint();
+    void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
+      this.changed();if(this.open)this.host.querySelector<HTMLTextAreaElement>('[data-composer]')?.focus();},'submit');
+  };
   constructor(private api:ApiClient,private owner:string){
     this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{signal:this.controller.signal,coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
     this.dock.type='button';this.dock.className='ba-dock';this.dock.dataset.assistantDock='';
