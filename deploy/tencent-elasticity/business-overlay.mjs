@@ -65,7 +65,7 @@ async function directory(path) {
 }
 async function file(path, expected) {
   const st=await lstat(path);
-  requireThat(st.isFile()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o022)===0&&st.size===expected.bytes&&
+  requireThat(st.isFile()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o644&&st.size===expected.bytes&&
     sha256(await readFile(path))===expected.sha256,'BUSINESS_OVERLAY_INSTALLED');
 }
 async function write(path, bytes) {
@@ -80,6 +80,8 @@ export async function installBusinessOverlay(descriptor, config, {fetchImpl=fetc
   requireThat(sha256(base)===config.compose_sha256,'NODE_COMPOSE_CHANGED');
   await directory(ROOT);
   const target=join(ROOT,descriptor.sha256), compose=businessOverlayCompose(base,target,descriptor.files);
+  // Keep the original Compose directory so relative seccomp/profile paths retain their meaning.
+  const composeFile=join(dirname(config.compose_file),`compose.business-${descriptor.sha256}.yaml`);
   let installed=false;
   try {await lstat(target);installed=true;}catch(e){if(e.code!=='ENOENT')throw e;}
   if(!installed){
@@ -94,12 +96,12 @@ export async function installBusinessOverlay(descriptor, config, {fetchImpl=fetc
     const files=businessOverlayFiles(archive,descriptor), stage=join(ROOT,`.${randomUUID()}`);
     await directory(stage);
     for(const [path,bytes] of files){await directory(dirname(join(stage,path)));await write(join(stage,path),bytes);}
-    await write(join(stage,'compose.yaml'),Buffer.from(compose));
     await rename(stage,target);
     const f=await open(ROOT,constants.O_RDONLY|constants.O_DIRECTORY);try{await f.sync();}finally{await f.close();}
   }
   await directory(target);
   for(const entry of descriptor.files)await file(join(target,entry.path),entry);
-  await file(join(target,'compose.yaml'),{bytes:Buffer.byteLength(compose),sha256:sha256(compose)});
-  return {compose_file:join(target,'compose.yaml'),compose_sha256:sha256(compose)};
+  try {await lstat(composeFile);}catch(e){if(e.code!=='ENOENT')throw e;await write(composeFile,Buffer.from(compose));}
+  await file(composeFile,{bytes:Buffer.byteLength(compose),sha256:sha256(compose)});
+  return {compose_file:composeFile,compose_sha256:sha256(compose)};
 }
