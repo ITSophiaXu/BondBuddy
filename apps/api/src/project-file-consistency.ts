@@ -1,4 +1,4 @@
-import {assertBatchAdmission} from './batch-admission.js';
+import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -135,14 +135,14 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
     const running=items.filter(i=>i.run_id).map(i=>i.run_id);
     const states=(await c.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[b.owner_user_id,running])).rows;
     if(states.length!==running.length)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
-    if(states.filter(r=>!terminal.includes(r.state)).length>=(b.max_parallel??1)){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
+    if(states.filter(r=>!terminal.includes(r.state)).length>=SHARED_BATCH_CAPACITY){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
     if(states.some(r=>terminal.includes(r.state)&&r.state!=='succeeded')){await c.query("UPDATE bb_project_file_update_batches SET state='paused',updated_at=now() WHERE id=$1",[b.id]);return true;}
     if(!next&&states.some(r=>!terminal.includes(r.state)))return false;
     if(!next){await c.query("UPDATE bb_project_file_update_batches SET state='complete',updated_at=now() WHERE id=$1",[b.id]);return true;}
     await c.query('SAVEPOINT begin_file_patch');
     try{
       const p=await project(c,b.owner_user_id,b.project_id,true);
-      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id,b.max_parallel??1);
+      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id);
       await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');

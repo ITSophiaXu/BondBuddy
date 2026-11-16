@@ -101,7 +101,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     if(input.prospectus&&(prospectusIndex<0||!evidence[prospectusIndex]?.snapshot.spans.some(s=>s.text.trim())))return {kind:'fail',code:'MATERIAL_UNREADABLE'};
     const projectContext={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length})),introduction:prospectusIndex<0?[]:evidence[prospectusIndex].snapshot.spans.filter(s=>s.text.trim()).slice(0,12).map(s=>({span_id:s.id,text:s.text.slice(0,1200)}))};
     let outcomes:(StageOutcome|undefined)[];
-    try{outcomes=await boundedItems(input.questions,old?.max_parallel??1,ctx.signal,async(question):Promise<StageOutcome>=>{
+    try{outcomes=await boundedItems(input.questions,4,ctx.signal,async(question):Promise<StageOutcome>=>{
      const questionCtx={...ctx,checkpoint:{...ctx.checkpoint},values:new Map(ctx.values)};
      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
      if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:saved.answer};}
@@ -120,7 +120,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({deferRunOutcome:old?.max_parallel===4,name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
+     const outcome=await (options.model??codexModelStage)({deferRunOutcome:true,name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
       // An explicit unanswered question can finish without a citation. Its model
       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
