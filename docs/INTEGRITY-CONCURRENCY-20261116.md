@@ -22,6 +22,7 @@
 - `node --test apps/api/dist/integrity-concurrency.pg.test.js`：4 passed / 0 failed / 0 skipped。真实 Fastify、数据库、队列领取、任务列表与积分账本，材料均为 synthetic。覆盖两种启动顺序、原报价和输入保持、免费导出、后续版本编号、重复请求只预留一次、并发新轮互斥、跨账号隔离、canonical 双向边界、DB 直接插入保护、诚信历史项目首次募集书上传/冻结/报价/执行。
 - `npm run check:contracts` 通过：32 项报价/诚信展示/底稿用例、29 项 OCR v2、11 项发行人绑定用例；179 个公共与 12 个内部合成示例、4 个生命周期示例。
 - 全部 workspace 构建通过（contracts、domain、rule-pack-registry、rule-applicability-context、API、worker、web）；最终 API/worker/web 构建退出码 0。
+- 现有诚信回执 1/1、诚信报价范围 4/4、底稿渐进批次 9/9 通过；M4 回归 5/7 通过，其 2 项旧范围/价格断言失败见下表；authoring-task-kind 旧无报价分支失败亦见下文。该扩展命令合计 22 passed / 3 failed / 0 skipped；最终新增并发文件另行以 4/4 结果为准。
 - `git diff --check` 通过。
 
 本次没有调用真实模型或官网，不将 API/数据库合成验证声称为模型质量、网站可访问性或用户验收。
