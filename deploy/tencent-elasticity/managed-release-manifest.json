@@ -476,8 +476,9 @@
     },
     {
       "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
-      "bytes": 22304,
-      "sha256": "ba33f4d90d37aa229f982a900a24962558234eabbca31019962db2d6535ee047"
+      "bytes": 23400,
+      "sha256": "e9986aeb2b2e5e4482267f0786c9d2e7e3a5e378cf04823e140dbb2bf7190e15",
+      "source_commit": "475c8dd2d58a8caed30bc9fb4ed725f02285efe4"
     },
     {
       "path": "deploy/tencent-elasticity/transport-issuer.mjs",
