@@ -21,6 +21,7 @@ COPY product-prototype/public/subscription-billing.css product-prototype/public/
 COPY apps apps
 # Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
 COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
+COPY scripts/pr-gate/workspace-scenes.mjs scripts/pr-gate/workspace-scenes.d.mts scripts/pr-gate/
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
 COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
 COPY product-prototype/public/navigation-responsive.css product-prototype/public/
