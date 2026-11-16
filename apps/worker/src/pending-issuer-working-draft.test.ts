@@ -18,7 +18,12 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
   process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
   const pool=new Pool({connectionString:databaseUrl});
   const owner=`pending-owner-${randomUUID()}`,origin='http://bondbuddy.test';
-  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const settings={pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
+  // Keep the original unpriced production input so the worker's issuer gate is exercised.
+  const app=createServer({...settings,historicalBillingFixture:true,enablePaidAuthoring:false});
+  // Keep the worker's out-of-request billing default on its original historical Pool.
+  const currentPool=new Pool({connectionString:databaseUrl});
+  const current=createServer({...settings,pool:currentPool});
   const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin},payload:payload as any});
   try{
     const projectResponse=await send('/api/v1/projects',{name:'Synthetic pending issuer',kind:'update',
@@ -136,10 +141,24 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
     assert.equal(twoRun.statusCode,202,twoRun.body);
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
     assert.equal(reached,2,'the same-subject set passes the test input gate');
+    const beforeCurrent=(await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n;
+    const currentProduction=await current.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},payload:{
+      execution_request_id:randomUUID(),project_id:project,input_revision:2,input_hash:two.input_hash,task_kind:'update',
+      input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'}});
+    assert.equal(currentProduction.statusCode,422,currentProduction.body);
+    assert.equal(currentProduction.json().code,'INPUT_REQUIRED','current admission still rejects the unchanged unpriced legacy input');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n,beforeCurrent);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,0);
     const production=await submitTwo(null);
     assert.equal(production.statusCode,202,production.body);
+    assert.equal(production.json().channel,'production');
+    assert.equal(production.json().billing_mode,'platform_trial');
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
     assert.equal(reached,2,'production remains closed to unreviewed identity');
+    assert.deepEqual((await pool.query('SELECT state,stage FROM bb_runs WHERE id=$1',[production.json().run_id])).rows[0],
+      {state:'paused',stage:'capability_not_ready'});
+    assert.equal((await pool.query("SELECT payload->>'reason' reason FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1",
+      [production.json().run_id])).rows[0].reason,'issuer_identity_source_missing_unreviewed_or_conflicting');
     const third=randomUUID();
     await addEvidence(third,'合成发行人乙',2);
     await appendIssuerIdentitySourceRecord({pool},{ownerUserId:owner,projectId:project,materialId:material,materialVersion:1,
@@ -156,7 +175,7 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
       [owner,project])).rows[0].manifest;
     assert.equal(conflictManifest.test_issuer_candidate,undefined,'a true issuer conflict has no candidate');
   }finally{
-    await app.close();await pool.end();
+    await current.close();await currentPool.end();await app.close();await pool.end();
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
     if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
   }
