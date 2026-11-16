@@ -23,6 +23,7 @@ import { CODEX_EXEC_LOG_MAX_BYTES } from '@bondbuddy/api/exec-logs';
 import type { ProbeJournal } from './deepseek-probe.js';
 
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
+import { MODEL_GATEWAY_MODES, formatModelGatewayExecLogSection, modelGatewayRequestLog, startModelGateway, type ModelGateway, type ModelGatewayMode, type ModelGatewayTrace } from './model-gateway.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 /** Bounded per-attempt stdout/stderr capture, including section markers. */
@@ -30,6 +31,9 @@ export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = CODEX_EXEC_LOG_MAX_BYTES;
 const EXEC_LOG_STDOUT_MARKER = Buffer.from('[stdout]\n');
 const EXEC_LOG_STDERR_MARKER = Buffer.from('\n[stderr]\n');
 const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MARKER.length;
+/** Exec-log room kept for the #994 gateway appendix when measurement is enabled. */
+const MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES = 512 * 1024;
+const modelGatewayExecLogReserve = (maxBytes: number) => maxBytes >= 4 * 1024 * 1024 ? MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES : 0;
 /** A completed turn produced a known-invalid file, not an unknown provider outcome. */
 export class CodexOutputValidationError extends Error {}
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
@@ -63,6 +67,9 @@ export type CodexAdapterConfig = {
   proxy_env?: Record<string, string>;
   /** Trusted managed-runtime configuration; never derived from model input. */
   protected_runtime_files?: boolean;
+  /** #994 operator switch. 'measure' routes the child's provider requests through a
+   * per-process loopback pass-through that records sizes only. Absent means off. */
+  model_gateway?: ModelGatewayMode;
 };
 
 // codex honours HTTPS_PROXY for its supplier requests; the worker only reaches the internet
@@ -168,6 +175,8 @@ export class CodexAdapterError extends Error {
 // the adapter never reads or logs their values.
 export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): CodexAdapterConfig {
   if (env.BB_CODEX_RETAIN_INVALID_OUTPUT && !['0', '1'].includes(env.BB_CODEX_RETAIN_INVALID_OUTPUT)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  const gatewayMode = env.BB_MODEL_GATEWAY_MODE || 'off';
+  if (!(MODEL_GATEWAY_MODES as readonly string[]).includes(gatewayMode)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const commandMode = env.BB_CODEX_AUTH_MODE === 'copilot_enterprise';
   if (env.BB_CODEX_AUTH_MODE && !commandMode) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (commandMode && (env.BB_CODEX_AUTH_FILE || env.BB_CODEX_CREDENTIAL_ENV)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -195,6 +204,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     path_env: env.BB_CODEX_PATH ?? '/usr/local/bin:/usr/bin:/bin',
     proxy_env: codexProxyEnv(env),
     protected_runtime_files: !!env.BB_EXECUTION_ENROLLMENT_FILE,
+    ...(gatewayMode === 'measure' ? { model_gateway: 'measure' as const } : {}),
   };
   if (commandMode && (!env.BB_CODEX_CONFIG_VERSION || config.model_provider !== 'copilot_enterprise' || config.model_id !== 'gpt-6-sol' || config.base_url !== 'https://api.enterprise.githubcopilot.com' || config.reasoning_effort !== 'max')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   assertCodexConfig(config);
@@ -213,6 +223,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
     (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes >= EXEC_LOG_MARKER_BYTES && c.exec_log_max_bytes <= CODEX_EXEC_LOG_MAX_BYTES)) &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && (c.protected_runtime_files === undefined || typeof c.protected_runtime_files === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
+    (c.model_gateway === undefined || (MODEL_GATEWAY_MODES as readonly string[]).includes(c.model_gateway)) &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 }
@@ -334,11 +345,13 @@ export type CodexProcessResult = {
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed';
 };
 
-/** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact. */
-export function createCodexExecLogCapture(maxBytes: number) {
+/** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact.
+ * reserveBytes keeps room for a trusted appendix (the #994 gateway section) inside maxBytes. */
+export function createCodexExecLogCapture(maxBytes: number, reserveBytes = 0) {
   if (!count(maxBytes) || maxBytes < EXEC_LOG_MARKER_BYTES || maxBytes > CODEX_EXEC_LOG_MAX_BYTES) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  if (!count(reserveBytes) || reserveBytes > maxBytes - EXEC_LOG_MARKER_BYTES) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const stdout: Buffer[] = [], stderr: Buffer[] = [];
-  const contentMaxBytes = maxBytes - EXEC_LOG_MARKER_BYTES;
+  const contentMaxBytes = maxBytes - EXEC_LOG_MARKER_BYTES - reserveBytes;
   let used = 0, truncated = false;
   const append = (target: Buffer[], text: string) => {
     if (truncated) return;
@@ -351,17 +364,33 @@ export function createCodexExecLogCapture(maxBytes: number) {
   return {
     stdout: (text: string) => append(stdout, text),
     stderr: (text: string) => append(stderr, text),
-    finish: (): { bytes: Buffer; truncated: boolean } => ({
-      bytes: Buffer.concat([EXEC_LOG_STDOUT_MARKER, ...stdout, EXEC_LOG_STDERR_MARKER, ...stderr]),
+    finish: (appendix?: Buffer): { bytes: Buffer; truncated: boolean } => ({
+      bytes: Buffer.concat([EXEC_LOG_STDOUT_MARKER, ...stdout, EXEC_LOG_STDERR_MARKER, ...stderr,
+        ...(appendix && appendix.length <= reserveBytes ? [appendix] : [])]),
       truncated
     })
   };
 }
 
+function writeModelGatewayLog(line: Record<string, unknown>) {
+  try { process.stdout.write(JSON.stringify({ at: new Date().toISOString(), ...line }) + '\n'); } catch { /* telemetry cannot affect the call */ }
+}
+
+/** Ensure the child reaches its loopback gateway directly, never through the egress proxy. */
+function withLoopbackNoProxy(env: Record<string, string>) {
+  for (const name of ['NO_PROXY', 'no_proxy']) {
+    const entries = (env[name] ?? '').split(',').map(e => e.trim()).filter(Boolean);
+    if (!entries.includes('127.0.0.1')) entries.push('127.0.0.1');
+    env[name] = entries.join(',');
+  }
+}
+
 // One codex process. Stdout is parsed incrementally; a bounded stderr prefix is inspected
 // for status markers. When captureExecLog is set the private caller may persist the full
 // bounded stdout/stderr evidence; it is never logged to the process output.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void> }): Promise<CodexProcessResult> {
+// With c.model_gateway='measure' the provider requests pass through a per-process loopback
+// gateway (#994) whose content-free measurements are appended to that evidence.
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   return withPerformanceSpan('model.exec', { adapter: 'codex_exec', model_id: c.model_id, model_provider: c.model_provider }, async span => {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
@@ -372,20 +401,46 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     env.BB_COPILOT_OAUTH_FILE = c.credential.oauth_file;
     env.NODE_USE_ENV_PROXY = '1';
   }
-  const args = buildCodexArgs(c, o);
+  let args = buildCodexArgs(c, o);
+  const gatewayLog = o.gatewayLog ?? writeModelGatewayLog;
+  let gateway: ModelGateway | null = null;
+  if (c.model_gateway === 'measure' && !o.signal?.aborted) {
+    try {
+      gateway = await startModelGateway({ upstreamBaseUrl: c.base_url, proxyEnv: c.proxy_env,
+        onRecord: record => { const line = modelGatewayRequestLog(record, o.trace); if (line) gatewayLog(line); } });
+      args = buildCodexArgs({ ...c, base_url: gateway.baseUrl }, o);
+      withLoopbackNoProxy(env);
+    } catch (error) {
+      // Measurement is optional: the call proceeds on the direct provider route.
+      await gateway?.close().catch(() => undefined);
+      gateway = null; args = buildCodexArgs(c, o);
+      gatewayLog({ kind: 'model_gateway', event: 'start_failed', ...(o.trace ?? {}),
+        error: error instanceof Error && /^[A-Z0-9_]{1,64}$/.test(error.message) ? error.message : 'MODEL_GATEWAY_START_FAILED' });
+    }
+  }
+  const closeGateway = async (): Promise<Buffer | undefined> => {
+    if (!gateway) return undefined;
+    const g = gateway; gateway = null;
+    await g.close().catch(() => undefined);
+    const summary = g.summary();
+    gatewayLog({ ...summary, kind: 'model_gateway', event: 'summary', ...(o.trace ?? {}) });
+    const reserve = modelGatewayExecLogReserve(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES);
+    return reserve ? formatModelGatewayExecLogSection(summary, g.records(), reserve) : undefined;
+  };
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
   const performance = createModelProcessPerformance(span);
   const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
   // Cancellation can win while the durable intent is being written. In that
   // case do not launch a process, even briefly, with an already-aborted signal.
-  if (o.signal?.aborted) { r.stop = 'cancelled'; performance.finish('cancelled', { result_status: 'cancelled_before_spawn' }); return r; }
+  if (o.signal?.aborted) { await closeGateway(); r.stop = 'cancelled'; performance.finish('cancelled', { result_status: 'cancelled_before_spawn' }); return r; }
   return new Promise<CodexProcessResult>(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
-    catch { r.stop = 'spawn_failed'; performance.finish('failed', { result_status: r.stop }); resolveResult(r); return; }
+    catch { r.stop = 'spawn_failed'; performance.finish('failed', { result_status: r.stop }); void closeGateway().finally(() => resolveResult(r)); return; }
     let bytes = 0, buffer = '', stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
-    const capture = o.captureExecLog ? createCodexExecLogCapture(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES) : null;
+    const execLogMaxBytes = c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES;
+    const capture = o.captureExecLog ? createCodexExecLogCapture(execLogMaxBytes, gateway ? modelGatewayExecLogReserve(execLogMaxBytes) : 0) : null;
     // Never persist a credential value that the child might echo. Only env credentials
     // have a readable value here; file/command credentials stay opaque.
     const credentialValue = c.credential.kind === 'env' ? process.env[c.credential.name] : undefined;
@@ -493,8 +548,11 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       performance.finish(r.stop === 'cancelled' ? 'cancelled' : r.stop === 'timeout' || r.stop === 'broken' ? 'interrupted'
         : r.stop || r.turn_failed || r.saw_error || code !== 0 ? 'failed' : r.turn_completed ? 'succeeded' : 'interrupted',
         { result_status: r.stop ?? (r.turn_completed ? 'turn_completed' : 'turn_incomplete') });
-      if (capture) r.exec_log = capture.finish();
-      resolveResult(r);
+      // The child has exited, so every gateway request has finished or is being torn down.
+      void closeGateway().catch(() => undefined).then(appendix => {
+        if (capture) r.exec_log = capture.finish(appendix);
+        resolveResult(r);
+      });
     });
     void (async () => {
       try { if (child.pid) await o.onSpawn?.(child.pid); if (!r.stop) child.stdin!.end(o.prompt); }
@@ -754,6 +812,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
         const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
+          trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.

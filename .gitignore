@@ -113,6 +113,7 @@ docs/acceptance/reporting-period-hints-20261105/*
 !docs/runbooks/
 docs/runbooks/*
 !docs/runbooks/m1-split-deployment.md
+!docs/runbooks/model-gateway-measure.md
 !deploy/m1/.env.main.example
 !deploy/m1/.env.execution.example
 !docs/acceptance/issue-1123-prospectus-browser-fixture-20261112.md
