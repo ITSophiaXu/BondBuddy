@@ -222,7 +222,7 @@ class PdfPages:
             if mode == "ocr" and data.get("rendering") != {"source_sha256": self.source_hash, "page": page, "engine": identity["engine"]}:
                 raise PdfPageError("PDF_CACHE_INVALID")
             return data
-        except (KeyError, TypeError, json.JSONDecodeError, OSError) as error:
+        except (KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError, OSError) as error:
             raise PdfPageError("PDF_CACHE_INVALID") from error
 
     def _existing_ocr(self, page):

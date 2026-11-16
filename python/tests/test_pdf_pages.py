@@ -234,6 +234,34 @@ class PdfPagesTests(unittest.TestCase):
                         action()
                 self.assertEqual(pdf.read(1, ocr='never')['mode'], 'native')
 
+    def test_partial_native_page_rejects_invalid_utf8_forced_ocr_cache(self):
+        native_pdf(self.source, ['Financial statement header'])
+        with patch.object(pages, 'ocr_runtime_identity', return_value=RUNTIME), patch.object(pages, 'render_ocr_page', side_effect=ocr_result):
+            with self.open() as pdf:
+                native = pdf.read(1, ocr='never')
+                self.assertEqual(native['image_count'], 0)
+                self.assertEqual(native['records'][0]['text'], 'Financial statement header')
+                forced = pdf.read(1, ocr='force')
+                self.assertEqual(forced['records'][0]['text'], 'Revenue 123,456.78')
+                path, _ = pdf._cache_path(1, 'ocr')
+                path.write_bytes(b'\xff')
+            with self.open() as pdf, patch.object(pages, 'render_ocr_page', side_effect=AssertionError('corrupt cache must fail explicitly')):
+                for name, action in (('read_auto', lambda: pdf.read(1)), ('read_force', lambda: pdf.read(1, ocr='force')),
+                                     ('search', lambda: pdf.search('123,456.78'))):
+                    with self.subTest(action=name), self.assertRaisesRegex(pages.PdfPageError, '^PDF_CACHE_INVALID$'):
+                        action()
+                self.assertEqual(pdf.read(1, ocr='never'), native)
+
+    def test_native_page_rejects_invalid_utf8_cache_on_read_and_search(self):
+        with self.open() as pdf:
+            pdf.read(1, ocr='never')
+            path, _ = pdf._cache_path(1, 'native')
+            path.write_bytes(b'\xff')
+        with self.open() as pdf:
+            for name, action in (('read', lambda: pdf.read(1)), ('search', lambda: pdf.search('Revenue'))):
+                with self.subTest(action=name), self.assertRaisesRegex(pages.PdfPageError, '^PDF_CACHE_INVALID$'):
+                    action()
+
     def test_snapshot_relocation_reuses_ocr_without_absolute_cache_paths(self):
         scanned_pdf(self.source)
         with patch.object(pages, 'ocr_runtime_identity', return_value=RUNTIME), patch.object(pages, 'render_ocr_page', side_effect=ocr_result) as render:
