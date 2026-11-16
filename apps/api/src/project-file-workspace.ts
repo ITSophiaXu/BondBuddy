@@ -1,3 +1,4 @@
+import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
 import {assertBatchAdmission} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
@@ -60,7 +61,8 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,co
 
 /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
 export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
-  return transaction(pool,async c=>{
+  const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
+  const result=await transaction(pool,async c=>{
     const row=(await c.query(`SELECT b.* FROM bb_project_file_batches b JOIN bb_projects p ON p.owner_user_id=b.owner_user_id AND p.id=b.project_id
       WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!row)return false;
@@ -94,7 +96,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
     const run=await startPinnedM4Run(c,owner,t,request,inputManifestHash({batch:row.id,index:next,attempt:item.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
     item.run_id=run.id;
     await c.query("UPDATE bb_project_file_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);
-    await event(c,owner,row.project_id,'project.file_generation_started',{batch_id:row.id,run_id:run.id});return true;
+    await event(c,owner,row.project_id,'project.file_generation_started',{batch_id:row.id,run_id:run.id});
+    dispatch.value={scope:{ownerUserId:owner,projectId:run.project_id,runId:run.id,batchId:row.id,workItemId:String(next),itemAttempt:item.attempt},batchCreatedAt:row.created_at,operation:'project_file_generation'};return true;
     }catch(error){
       await c.query('ROLLBACK TO SAVEPOINT start_file');
       if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((error as {code?:string}).code??'')){
@@ -104,6 +107,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
       await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
     }
   });
+  recordCommittedPerformanceDispatch(pool,dispatch.value,startedAt,new Date());
+  return result;
 }
 
 export async function createProjectFileBatch(c:PoolClient,user:string,projectId:string,b:Static<typeof projectFileSchemas.ProjectFileBatchRequest>,commercial=false){

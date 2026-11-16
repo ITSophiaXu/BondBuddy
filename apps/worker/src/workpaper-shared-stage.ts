@@ -1,3 +1,4 @@
+import {withPerformanceSpan,startPerformanceSpan,type PerformanceSpanHandle} from '@bondbuddy/api/performance-trace';
 import {workpaperChapters} from '@bondbuddy/contracts';
 import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -23,14 +24,16 @@ import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {prepareProgressiveGroup,progressiveItemPlanIdentity,progressivePlanGroup,WORKPAPER_PLAN_GROUP_SIZE} from './workpaper-progressive-groups.js';
 import {workpaperMethodHash} from './workpaper-method.js';
+import {withModelStagePerformance} from './model-performance.js';
 
 const MAX_SNAPSHOT=64*1024*1024;
 export type SharedSource={version:'workpaper-source-v1';source:ProjectFileText;tables:unknown[];images:{id:string;name:string;sha256:string;data?:string;key?:string;page?:number}[]};
 const hash=(v:unknown)=>inputManifestHash(v);
 async function python(ctx:StageContext,args:string[],helper:'bondbuddy_workpaper_batch.py'|'bondbuddy_workpaper_progressive_render.py'='bondbuddy_workpaper_batch.py'){
-  try{return await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+  const operation=args[0]==='extract'?'material.extract':args[0]==='validate'?'document.quality_check':'document.render';
+  try{return await withPerformanceSpan(operation,{operation:args[0]},()=>promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
     ['-B',join(projectFilesRoot,'python',helper),...args],
-    {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384});
+    {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384}));
   }catch(error){
     const code=/^(?:BB_WORKPAPER_ERROR=|ValueError: )(WORKPAPER_[A-Z_]+)\s*$/m.exec(String((error as {stderr?:unknown}).stderr??''))?.[1];
     if(code)throw new WorkpaperOperationError(code);
@@ -122,12 +125,18 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
   const batchInput={entries:plannedManifests.map(m=>m.input.workpaper!.entry),issuer_name:input.manifest.input.fields.issuer_name,
     requirements:input.manifest.input.supplemental_requirements??'',templates:plannedManifests.map(m=>({item_id:m.input.workpaper!.entry.id,template_id:m.knowledge?.template?.id}))};
   let phase:'source'|'plan'|'render'='source';
+  let sourceWait:PerformanceSpanHandle|undefined,planWait:PerformanceSpanHandle|undefined,sourcePolls=0,planPolls=0;
   try{
     const sourceGate=await ctx.validateBeforeModelCall?.();if(sourceGate)return sourceGate;
     const readSource=async()=>(await ctx.pool.query('SELECT * FROM bb_workpaper_shared_sources WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rows[0];
-    let sourceRow=await readSource();
+    let sourceRow=await withPerformanceSpan('material.cache_lookup',{cache_kind:'workpaper_source',batch_id:batch},async span=>{
+      const value=await readSource();span.annotate({cache_status:value?'hit':'miss'});return value;
+    });
     const sourceAuthor=manifests[0]!.input.workpaper!.entry.id;
+    const sourceWasCached=!!sourceRow;
+    if(!sourceRow&&task.entry.id!==sourceAuthor)sourceWait=startPerformanceSpan('workpaper.source_wait',{batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,wait_reason:'shared_source',owns_worker_slot:true});
     while(!sourceRow&&task.entry.id!==sourceAuthor){
+      sourcePolls++;
       ctx.signal.throwIfAborted();
       const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state,
         (r.state IN ('failed','cancelled','rejected','succeeded','test_completed') AND j.state=r.state AND j.lease_token IS NULL AND j.lease_until IS NULL
@@ -139,18 +148,23 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
         WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,sourceAuthor])).rows[0];
       if(!author)throw Error('INPUT_REVISION_CONFLICT');
       if(author.settled_terminal){
+        sourceWait?.end('failed',{poll_count:sourcePolls,error_code:'WORKPAPER_SOURCE_BLOCKED'});
         await pauseSharedWorkpaperBatch(ctx.pool,owner,batch,{itemId:task.entry.id,runId:ctx.run.id,jobId:ctx.lease.jobId,leaseToken:ctx.lease.token});
         return {kind:'fail',code:'WORKPAPER_SOURCE_BLOCKED'};
       }
-      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state))
-        return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_source_unavailable'};
+      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state)){
+        sourceWait?.end('paused',{poll_count:sourcePolls});return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_source_unavailable'};
+      }
       await delay(100,undefined,{signal:ctx.signal});sourceRow=await readSource();
     }
+    sourceWait?.end('succeeded',{poll_count:sourcePolls});
+    const sourceReused=!!sourceRow;
     if(!sourceRow){
+      const sourceOutcome=await withPerformanceSpan('workpaper.source_prepare',{batch_id:batch,work_item_id:task.entry.id},async span=>{
       await recordM4Progress(ctx,'m4_reading_materials');
-      const pin=input.manifest.input.source_material!,material=input.materials.find(m=>hash(m.pin)===hash(pin));
+      const pin=(input.manifest as M4DocumentManifest).input.source_material!,material=input.materials.find(m=>hash(m.pin)===hash(pin));
       if(!material)throw Error('WORKPAPER_SOURCE_UNAVAILABLE');
-      const sourceGate=await ctx.validateBeforeModelCall?.();if(sourceGate)return sourceGate;
+      const sourceGate=await ctx.validateBeforeModelCall?.();if(sourceGate){span.end(sourceGate.kind==='pause'?'paused':sourceGate.kind==='fail'?'failed':'interrupted');return sourceGate;}
       const bytes=await ctx.blobs.getIfExistsBounded(material.objectKey,M4_FILE_MAX);
       if(!bytes||digest(bytes)!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');
       const path=join(dir,material.mediaType==='application/pdf'?'source.pdf':'source.docx');
@@ -166,8 +180,14 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
       }
       await ctx.pool.query(`INSERT INTO bb_workpaper_shared_sources(owner_user_id,batch_id,input_hash,snapshot,snapshot_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,[owner,batch,identity,snapshot,hash(snapshot)]);
       sourceRow=(await ctx.pool.query('SELECT * FROM bb_workpaper_shared_sources WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rows[0];
+      });
+      if(sourceOutcome)return sourceOutcome;
     }
-    if(sourceRow.input_hash.trim()!==identity||hash(sourceRow.snapshot)!==sourceRow.snapshot_hash.trim())throw Error('INPUT_REVISION_CONFLICT');
+    await withPerformanceSpan(sourceReused?'workpaper.source_reuse':'workpaper.source_validate',
+      {batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,cache_status:sourceReused?(sourceWasCached?'hit':'waited'):'miss'},span=>{
+        if(sourceRow.input_hash.trim()!==identity||hash(sourceRow.snapshot)!==sourceRow.snapshot_hash.trim())throw Error('INPUT_REVISION_CONFLICT');
+        if(sourceReused)span.end('reused');
+      });
     const source=sourceRow.snapshot as SharedSource;
     await jsonFile(dir,'source-data.json',source);await jsonFile(dir,'batch-input.json',batchInput);
     const preparePlan=async(cwd:string,planInput:Record<string,unknown>)=>{
@@ -186,19 +206,27 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
       return outcome;
     };
     phase='plan';
-    let saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
+    let saved=await withPerformanceSpan('workpaper.plan_cache_lookup',{batch_id:batch,work_item_id:task.entry.id},async span=>{
+      const value=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];span.annotate({cache_status:value?'hit':'miss'});return value;
+    });
+    const planWasCached=!!saved;
+    if(!progressive&&!saved&&task.entry.id!==sourceAuthor)planWait=startPerformanceSpan('workpaper.plan_wait',{batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,logical_call_id:logicalCallId,wait_reason:'shared_plan',owns_worker_slot:true});
     while(!progressive&&!saved&&task.entry.id!==sourceAuthor){
+      planPolls++;
       ctx.signal.throwIfAborted();
       const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state FROM bb_workpaper_items i
         JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
         LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
         WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,sourceAuthor])).rows[0];
       if(!author)throw Error('INPUT_REVISION_CONFLICT');
-      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state))
-        return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_authoring_unavailable'};
+      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state)){
+        planWait?.end('paused',{poll_count:planPolls});return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_authoring_unavailable'};
+      }
       await delay(100,undefined,{signal:ctx.signal});
       saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
     }
+    planWait?.end('succeeded',{poll_count:planPolls});
+    let planReused=!!saved,producerLogicalCallId=progressive?undefined:logicalCallId;
     const grouping=task.execution==='grouped_batch_v1'?{phase:'remaining' as const,chapters:workpaperChapters(manifests.map(m=>m.input.workpaper!.entry)),trial_item_ids:[],max_parallel:4 as const}:rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined;
     const group=progressive?progressivePlanGroup(manifests,grouping,task.entry.id):null;
     const itemAttempt=Number(rows.find(r=>r.manifest.input.workpaper.entry.id===task.entry.id)?.attempt??1);
@@ -209,6 +237,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
       if(prepared.kind==='outcome')return handleModelOutcome(prepared.outcome,prepared.logicalCallId);
       if(prepared.kind==='item_failed')return {kind:'fail',code:'VALIDATION_FAILED'};
       if(prepared.kind==='ready'){
+        planReused=true;producerLogicalCallId='workpaper-group-'+group.id.slice(0,40);
         saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
         if(!saved||saved.plan_hash.trim()!==prepared.planHash)throw Error('INPUT_REVISION_CONFLICT');
       }
@@ -218,7 +247,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     if(!saved){
       const observer=m4ActionObserver(ctx,'document');
       try{
-        const outcome=await model({name:progressive?'workpaper_progressive_plan_v1':'workpaper_shared_plan_v1',logicalCallId,config:{...config,max_schema_reasks:0,max_output_bytes:MAX_SNAPSHOT},
+        const outcome=await withModelStagePerformance('workpaper.plan_prepare',{batch_id:batch,work_item_id:task.entry.id,author_run_id:ctx.run.id,logical_call_id:logicalCallId},()=>model({name:progressive?'workpaper_progressive_plan_v1':'workpaper_shared_plan_v1',logicalCallId,config:{...config,max_schema_reasks:0,max_output_bytes:MAX_SNAPSHOT},
           schema:WorkpaperSharedPlanSchema,validate:v=>checkedSharedPlan(v,source,plannedManifests),resultSchemaVersion:'workpaper-shared-plan-v1',templateVersion:method,
           buildPrompt:async()=>skill.content,onActivity:e=>observer.onEvent(e),
           fileWorkspace:{prepare:cwd=>preparePlan(cwd,batchInput),collect:async cwd=>{
@@ -236,7 +265,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
             }
             return plan;
           }}
-        }).run(ctx);
+        }).run(ctx));
         if(outcome.kind!=='done'){
           return handleModelOutcome(outcome,logicalCallId);
         }
@@ -246,14 +275,20 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
         await jsonFile(dir,'batch-plan.json',outcome.value);
         await python(ctx,['validate',join(dir,'source-data.json'),join(dir,'batch-input.json'),join(dir,'batch-plan.json')]);
         // Store only after the durable model journal has accepted the result.
-        await ctx.pool.query(`INSERT INTO ${planTable}(owner_user_id,batch_id,input_hash,method_hash,source_hash,plan,plan_hash,author_run_id${progressive?',item_id':''})
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8${progressive?',$9':''}) ON CONFLICT DO NOTHING`,[owner,batch,planIdentity,method,hash(source),outcome.value,hash(outcome.value),ctx.run.id,...(progressive?[task.entry.id]:[])]);
+        await withPerformanceSpan('workpaper.plan.persist',{batch_id:batch,work_item_id:task.entry.id,author_run_id:ctx.run.id,logical_call_id:logicalCallId},()=>ctx.pool.query(`INSERT INTO ${planTable}(owner_user_id,batch_id,input_hash,method_hash,source_hash,plan,plan_hash,author_run_id${progressive?',item_id':''})
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8${progressive?',$9':''}) ON CONFLICT DO NOTHING`,[owner,batch,planIdentity,method,hash(source),outcome.value,hash(outcome.value),ctx.run.id,...(progressive?[task.entry.id]:[])]));
         saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
       }finally{await observer.drain();}
     }
-    if(saved.input_hash.trim()!==planIdentity||saved.source_hash.trim()!==hash(source)||saved.plan_hash.trim()!==hash(saved.plan))throw Error('INPUT_REVISION_CONFLICT');
-    if(saved.method_hash.trim()!==method)return {kind:'pause',stage:'capability_not_ready',reason:'m4_document_method_changed'};
-    if(!checkedSharedPlan(saved.plan,source,plannedManifests))throw Error('WORKPAPER_PLAN_INVALID');
+    const planGate=await withPerformanceSpan<StageOutcome|undefined>(planReused?'workpaper.plan_reuse':'workpaper.plan_validate',
+      {batch_id:batch,work_item_id:task.entry.id,author_run_id:saved.author_run_id,
+        ...(producerLogicalCallId?{logical_call_id:producerLogicalCallId}:{}),cache_status:planReused?(planWasCached?'hit':planWait?'waited':'group'):'miss'},span=>{
+        if(saved.input_hash.trim()!==planIdentity||saved.source_hash.trim()!==hash(source)||saved.plan_hash.trim()!==hash(saved.plan))throw Error('INPUT_REVISION_CONFLICT');
+        if(saved.method_hash.trim()!==method){span.end('paused');return {kind:'pause',stage:'capability_not_ready',reason:'m4_document_method_changed'};}
+        if(!checkedSharedPlan(saved.plan,source,plannedManifests))throw Error('WORKPAPER_PLAN_INVALID');
+        if(planReused)span.end('reused');
+      });
+    if(planGate)return planGate;
     const plan=saved.plan as WorkpaperSharedPlan,item=plan.items.find(i=>i.item_id===task.entry.id)!;
     const beforeRender=await ctx.validateBeforeModelCall?.();if(beforeRender)return beforeRender;
     phase='render';
@@ -292,6 +327,8 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     return {kind:'done',value:{version:'codex-m4-document-v1',input_hash:ctx.run.input_hash.trim(),skill_sha256:skill.sha256,method_hash:method,internal_note:true,
       workpaper_decision:decision,files,project_file_links:{links,source_sha256:source.source.sha256,target_sha256:digest(outputBytes),warnings:source.source.warnings}} satisfies M4DocumentResult};
   }catch(error){
+    sourceWait?.end(ctx.signal.aborted?'cancelled':'failed',{poll_count:sourcePolls});
+    planWait?.end(ctx.signal.aborted?'cancelled':'failed',{poll_count:planPolls});
     if(progressive){
       if(ctx.signal.aborted)return {kind:'stopped'};
       if(phase!=='source'&&isWorkpaperItemError(error))return {kind:'fail',code:phase==='render'?'WORD_DELIVERY_UNAVAILABLE':'VALIDATION_FAILED'};
@@ -303,5 +340,5 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     const planned=(await ctx.pool.query('SELECT 1 FROM bb_workpaper_shared_plans WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rowCount;
     if(!planned)await pauseSharedWorkpaperBatch(ctx.pool,owner,batch);
     throw error;
-  }finally{await rm(dir,{recursive:true,force:true});}
+  }finally{sourceWait?.end(ctx.signal.aborted?'cancelled':'interrupted',{poll_count:sourcePolls,wait_reason:'scope_ended'});planWait?.end(ctx.signal.aborted?'cancelled':'interrupted',{poll_count:planPolls,wait_reason:'scope_ended'});await rm(dir,{recursive:true,force:true});}
 }

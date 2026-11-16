@@ -1,4 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
+import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
+import { withModelStagePerformance } from './model-performance.js';
 import { digest } from '@bondbuddy/api/data';
 import { checkpointStage, pauseAtCheckpoint } from '@bondbuddy/api/queue';
 import { FORMAT_JSON_MAX } from './file-authoring-format.js';
@@ -44,9 +46,9 @@ export async function deliverWithSizeRepair(ctx:StageContext,options:{
         if(saved.version!=='word-size-repair-v1' || saved.input_hash!==ctx.run.input_hash.trim()
           || !isDeepStrictEqual(saved.candidate,JSON.parse(JSON.stringify(previous))))throw Error('INPUT_REVISION_CONFLICT');
         reportRef=saved.report as QualityReportRef;
-        report=parseWordQualityReport((await readAuthoringFile(ctx,reportRef)).toString('utf8'),true);
+        report=await withPerformanceSpan('authoring.repair.report_replay',{repair_round:round,cache_hit:true},async()=>parseWordQualityReport((await readAuthoringFile(ctx,reportRef)).toString('utf8'),true));
       }else{
-        const outcome=await options.attempt(ctx,round);
+        const outcome=await withModelStagePerformance('authoring.delivery.attempt',{repair_round:round},()=>options.attempt(ctx,round));
         if(outcome.kind!=='fail' || outcome.code!=='WORD_QUALITY_REJECTED' || !outcome.checkpoint?.quality_gate)return outcome;
         reportRef=(outcome.checkpoint.quality_gate as {report:QualityReportRef}).report;
         report=parseWordQualityReport((await readAuthoringFile(ctx,reportRef)).toString('utf8'),true);
@@ -67,7 +69,7 @@ export async function deliverWithSizeRepair(ctx:StageContext,options:{
         return {kind:'pause',stage:'capability_not_ready',reason:'word_size_repair_exhausted'};
       ctx.signal.throwIfAborted();
       if(await (options.pause??pauseAtCheckpoint)(ctx.pool,ctx.lease))return {kind:'stopped'};
-      const result=await options.repair(ctx,{round:round+1,previous,report,reportRef});
+      const result=await withModelStagePerformance('authoring.repair',{repair_round:round+1},()=>options.repair(ctx,{round:round+1,previous,report,reportRef}));
       if(result.kind!=='done')return result;
       ctx.values.set('model_generation',result.value);
       if(await (options.pause??pauseAtCheckpoint)(ctx.pool,ctx.lease))return {kind:'stopped'};

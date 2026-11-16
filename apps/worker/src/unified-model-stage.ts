@@ -1,4 +1,6 @@
 import { digest } from '@bondbuddy/api/data';
+import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
+import { withModelStagePerformance } from './model-performance.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput, UnifiedInputPending, type UnifiedInput, type UnifiedMaterial } from './unified-input.js';
@@ -166,10 +168,10 @@ async function revisionModelPlan(ctx: StageContext, input: UnifiedInput, pin: Re
     };
     if (Buffer.byteLength(JSON.stringify(payload)) > 750000) throw new UnifiedInputPending('revision_context_too_large');
     const check = ajv.compile(revisionSchema);
-    const result = await (options.model ?? codexModelStage)({ name: `review_revision_${index}`, logicalCallId: `review-revision-v1-${index}`,
+    const result = await withModelStagePerformance('unified.review_revision',{batch_index:index,logical_call_id:`review-revision-v1-${index}`},()=>(options.model ?? codexModelStage)({ name: `review_revision_${index}`, logicalCallId: `review-revision-v1-${index}`,
       config: options.config ?? loadCodexAdapterConfig, buildPrompt: async () => `${revisionRules}\n输入数据：\n${JSON.stringify(payload)}`,
       schema: revisionSchema, validate: value => Boolean(check(value)) && validate(value as RevisionResult),
-      resultSchemaVersion:'review-revision-result-v1',templateVersion:'review-revision-v1' }).run(ctx);
+      resultSchemaVersion:'review-revision-result-v1',templateVersion:'review-revision-v1' }).run(ctx));
     if (result.kind !== 'done') return result;
     const value = result.value as RevisionResult;
     // The normal adapter validates before committing a result; replay/injected adapters must retain that boundary.
@@ -207,7 +209,7 @@ async function revisionModelPlan(ctx: StageContext, input: UnifiedInput, pin: Re
 export function unifiedModelGenerationStage(options: { model?: typeof codexModelStage; load?: typeof loadUnifiedInput; config?: ReturnType<typeof loadCodexAdapterConfig>; direct?: boolean } = {}): RunStage {
   return { name: 'model_generation', replay: true, run: async ctx => {
     try {
-      const input = await (options.load ?? loadUnifiedInput)(ctx);
+      const input = await withPerformanceSpan('unified.input.load',{},()=>(options.load ?? loadUnifiedInput)(ctx));
       if (input.manifest.authoring.review_revision) return await revisionModelPlan(ctx,input,input.manifest.authoring.review_revision,options);
       // Short prompt IDs reduce repeated UUID/token overhead. Exact immutable source
       // identities are restored in the plan before Word generation and provenance storage.
@@ -245,7 +247,10 @@ export function unifiedModelGenerationStage(options: { model?: typeof codexModel
           buildPrompt: async () => `${instructions}\n${instruction}\n输入数据：\n${JSON.stringify(payload)}`,
           ...(direct?{materialTools}:{}),
           schema, validate: value => Boolean(check(value)) && validate(value), resultSchemaVersion: `unified-${id.split('_')[0]}-${version}`, templateVersion: `unified-authoring-${version}` });
-        const result = await stage.run(ctx);
+        const operation=id.split('_')[0]??'batch';
+        const result = await withModelStagePerformance(`unified.${['read','update','outline','draft'].includes(operation)?operation:'batch'}`,
+          {logical_call_id:`unified-${version}-${id}`,batch_index:calls-1,
+            ...(id.includes('_part_')?{parent_logical_call_id:`unified-${version}-${id.replace(/_part_\d+$/,'')}`,fallback_reason:'confirmed_timeout_split'}:{})},()=>stage.run(ctx));
         if (result.kind !== 'done') return { stopped: true, outcome: result };
         return result.value as T;
       };

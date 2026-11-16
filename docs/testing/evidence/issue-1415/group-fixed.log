@@ -1,0 +1,19 @@
+{"variant":"fixed","started_at":"2026-11-15T14:57:23.049Z"}
+GROUP_VARIANT_TEST_START 2026-11-15T14:57:23Z
+TAP version 13
+# Subtest: confirmed chapter groups share one call, isolate invalid items, retry only failures, fall back safely and serialize with lease renewal
+ok 1 - confirmed chapter groups share one call, isolate invalid items, retry only failures, fall back safely and serialize with lease renewal
+  ---
+  duration_ms: 227297.310331
+  type: 'test'
+  ...
+# {"boundary":"synthetic model; real API/PG/Python/private storage","files":5,"first_delivery_from_submission_ms":16277,"total_with_failed_item_retry_ms":52508,"source_extractions":1,"model_calls":3,"group_calls":1,"single_calls":2,"renewal_interleavings":1}
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 233581.516744
