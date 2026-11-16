@@ -167,7 +167,7 @@ for(const width of [1440,390])test(`financial material guidance follows project 
   await expect(guide).toBeVisible();await expect(guide.locator('li')).toHaveText(['2024年度审计报告（含财务报表及附注）','2025年度审计报告（含财务报表及附注）','2026年1—6月财务报表']);
   await expect(page.locator('.material-file-row')).toHaveCount(0);
   const box=await guide.boundingBox(),picker=await page.locator('[data-material-role=audit] .material-role-heading').boundingBox();expect(box!.y).toBeGreaterThanOrEqual(picker!.y+picker!.height);
-  if(process.env.BB_GUIDANCE_EVIDENCE){const dir='test-evidence/financial-guidance-20261010';await mkdir(dir,{recursive:true});await page.locator('[data-material-role=audit]').screenshot({path:`${dir}/implementation-${width}.png`});}
+  if(process.env.BB_GUIDANCE_EVIDENCE){const dir=test.info().outputPath('test-evidence/financial-guidance-20261010');await mkdir(dir,{recursive:true});await page.locator('[data-material-role=audit]').screenshot({path:`${dir}/implementation-${width}.png`});}
   await page.getByRole('button',{name:'编辑项目信息'}).click();await page.getByLabel('发行方式',{exact:true}).selectOption('public');
   await page.getByLabel('最新报告期年份').selectOption('2027');await page.getByRole('radio',{name:'年末',exact:true}).check();
   await expect.poll(()=>s.project.update_details!.reporting_cutoff).toBe('2027-12-31');

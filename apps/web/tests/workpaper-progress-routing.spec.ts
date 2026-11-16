@@ -44,14 +44,14 @@ for(const width of [1440,390])test(`ZIP preparation counts, elapsed time and pac
   await page.clock.fastForward(121_000);await expect(feedback).toContainText('已等待 2:01');
   await expect(feedback).toContainText('等待时间较长');await expect(feedback).not.toContainText('%');
   await targetPanel(page).locator('summary').click();
-  await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-download-progress-20261031'),{recursive:true});
   await feedback.scrollIntoViewIfNeeded();
-  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-preparing-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-download-progress-20261031/implementation-preparing-${width}.png`)});
   phase='packaging';await page.clock.fastForward(2000);
   await expect(feedback).toContainText('248 / 248 份文件已准备，正在完成打包');
   await expect(bar).not.toHaveAttribute('value');await expect(feedback).not.toContainText('100%');
   await expect(bar).toHaveCSS('animation-name','wp-download-wait');
-  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-packaging-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-download-progress-20261031/implementation-packaging-${width}.png`)});
   await page.evaluate(()=>{(window as any).oldDownloadFeedback=document.getElementById('wp-download-feedback');});
   await page.getByRole('link',{name:'返回本项目文件',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
@@ -157,13 +157,13 @@ for(const width of [1440,390])test(`project list opens and expands the exact bat
   await expect(page.locator('[data-run-id]')).toHaveCount(1);
   await expect(page.locator(`[data-run-id="${s.task.run_id}"]`)).toContainText('批量生成底稿');
   await expect(page.locator(`[data-run-id="${s.task.run_id}"]`)).toContainText('120 / 248 份完成');
-  await mkdir('test-evidence/workpaper-download-batch-20261029',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-download-batch-20261029/task-${width}.png`,fullPage:true});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-download-batch-20261029'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-download-batch-20261029/task-${width}.png`),fullPage:true});
   await page.locator(`[data-run-id="${s.task.run_id}"]`).getByRole('link',{name:'查看结果'}).click();
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}.*step=workpapers&view=results&batch=requested-batch`));
   await assertTarget(page);await expect(page.locator('[data-wp-batch-id="newer-batch"] details')).not.toHaveAttribute('open','');
-  await mkdir('test-evidence/workpaper-progress-routing',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-progress-routing/implementation-${width}.png`});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-progress-routing'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-progress-routing/implementation-${width}.png`)});
   await page.reload();await assertTarget(page);
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);expect(s.original.errors).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
@@ -181,8 +181,8 @@ test('ZIP download shows waiting state and a usable save link if automatic downl
   await expect(page.getByRole('button',{name:'正在准备下载…'})).toBeDisabled();
   await expect(page.locator('#wp-download-feedback')).toContainText('正在准备下载');release();
   const save=targetPanel(page).locator('#wp-download-feedback').getByRole('link',{name:'保存文件'});await expect(save).toBeInViewport();
-  await mkdir('test-evidence/workpaper-download-batch-20261029',{recursive:true});
-  await page.screenshot({path:'test-evidence/workpaper-download-batch-20261029/download-ready.png'});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-download-batch-20261029'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath('test-evidence/workpaper-download-batch-20261029/download-ready.png')});
   await page.clock.install();await page.clock.fastForward(6000);await expect(save).toBeVisible();
   const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('底稿文件包.zip');
   expect(reads).toBe(1);expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
@@ -212,9 +212,9 @@ for(const [knownLength,width] of [[true,1440],[true,390],[false,1440]] as const)
   if(knownLength){await expect(bar).toHaveAttribute('value','1048576');await expect(bar).toHaveAttribute('max','2097152');}
   else await expect(bar).not.toHaveAttribute('value');
   if(!knownLength){await page.emulateMedia({reducedMotion:'reduce'});await expect(bar).toHaveCSS('animation-name','none');}
-  await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-download-progress-20261031'),{recursive:true});
   await feedback.scrollIntoViewIfNeeded();
-  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-transferring-${width}-${knownLength}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-download-progress-20261031/implementation-transferring-${width}-${knownLength}.png`)});
   await page.evaluate(()=> (window as any).zipFinish());await expect(feedback.getByRole('link',{name:'保存文件'})).toBeVisible();
   await expect(feedback.getByRole('progressbar')).toHaveCount(0);
   await page.clock.install();await page.clock.fastForward(60_000);await expect(feedback.getByRole('link',{name:'保存文件'})).toBeVisible();
@@ -262,8 +262,8 @@ for(const width of [1440,390])test(`existing batch prototype comparison ${width}
   await page.goto('/@fs/'+resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/'));
   await page.locator('#wp-start').click();await page.locator('#wp-batches summary').click();
   await page.locator('#wp-batches .wp-batch').evaluate(el=>el.scrollIntoView({block:'start'}));
-  await mkdir('test-evidence/workpaper-progress-routing',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-progress-routing/prototype-${width}.png`});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-progress-routing'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-progress-routing/prototype-${width}.png`)});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
@@ -272,8 +272,8 @@ for(const width of [1440,390])test(`download prototype comparison ${width}`,asyn
   for(const scene of ['preparing','packaging','transferring']){
     await page.goto('/@fs/'+resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/')+'?download='+scene);
     const feedback=page.locator('#wp-download-feedback');await expect(feedback).toBeVisible();await feedback.scrollIntoViewIfNeeded();
-    await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
-    await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/prototype-${scene}-${width}.png`});
+    await mkdir(test.info().outputPath('test-evidence/workpaper-download-progress-20261031'),{recursive:true});
+    await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-download-progress-20261031/prototype-${scene}-${width}.png`)});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   }
 });

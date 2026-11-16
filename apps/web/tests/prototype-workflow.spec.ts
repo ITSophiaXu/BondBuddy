@@ -246,7 +246,7 @@ for (const width of [1440, 390]) {
     await expect(preview).toHaveText('合成发行人有限公司-上交所-普通私募公司债-募集书更新');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if(process.env.BB_NAME_EVIDENCE){
-      const dir='test-evidence/project-auto-name-20261011';await mkdir(dir,{recursive:true});
+      const dir=test.info().outputPath('test-evidence/project-auto-name-20261011');await mkdir(dir,{recursive:true});
       await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});
       await page.screenshot({path:`${dir}/implementation-${width}.png`});
     }
