@@ -1,6 +1,6 @@
 """Create-only probe for the exact existing ops service plus five timing mounts."""
 import copy,hashlib,importlib.util,json,os,pathlib,subprocess,sys
-ROOT=pathlib.Path('/var/lib/bondbuddy/timing1478-20261116');PRIVATE=ROOT/'private'
+ROOT=pathlib.Path('/var/lib/bondbuddy/timing1488-20261116');PRIVATE=ROOT/'private'
 SUPPORT=ROOT/'public/main-cutover-adapter.py'
 SUPPORT_SHA='00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67'
 def need(ok,code):

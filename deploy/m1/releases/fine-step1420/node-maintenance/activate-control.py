@@ -3,12 +3,12 @@ No database, billing, cloud operation, worker image, API/web/parser changes.
 Unknown outcomes retain owned pending state for explicit reconciliation.
 """
 import copy,datetime,fcntl,hashlib,json,os,pathlib,stat,subprocess,sys,time
-ROOT=pathlib.Path('/var/lib/bondbuddy/timing1478-20261116');P=ROOT/'private'
+ROOT=pathlib.Path('/var/lib/bondbuddy/timing1488-20261116');P=ROOT/'private'
 STATE=pathlib.Path('/var/lib/bondbuddy/migration-908/state-main');PENDING=STATE/'pending-release.json'
 AUTH=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/authority.json');CODE=pathlib.Path('/opt/bondbuddy-elastic-control/deploy/tencent-elasticity')
 OLD={'bootstrap.mjs':'71efa66df88f9a30a8230bcd06af1559af786f339fddcd0c2f5e1d86589e3fe9','business-overlay.mjs':'60afbcc278f3bac460235240bc2cff03600f61d42b992dbed0fed49ef32609ca'}
 NEW={'bootstrap.mjs':'8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e','business-overlay.mjs':'75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4'}
-OWNER='timing1478-recovery-control';MANIFEST='b67f02c36da474d211af8292ee2f7761d04541316e2206f6cd905a4def74119b'
+OWNER='timing1488-recovery-control';MANIFEST='b67f02c36da474d211af8292ee2f7761d04541316e2206f6cd905a4def74119b'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def sha(b):return hashlib.sha256(b).hexdigest()
