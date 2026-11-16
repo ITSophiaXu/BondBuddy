@@ -12,6 +12,7 @@
 - 公共契约：72/72通过；179个公开合成例、12个内部库例及4个生命周期例通过。执行check:examples中的全部脚本，未改公共枚举或schema。
 - 浏览器：11个不同场景全部通过，包括已有7种处理失败、桌面/移动加密提示2种、原型2种。新增2个测试初轮因未等待合成提交完成失败，修正测试竞态后2/2复跑通过；产品逻辑未因此改动。
 - contracts、domain、rule-pack-registry、rule-applicability-context、worker构建通过，web类型检查及Vite正式打包通过。
+- API `tsc -p apps/api/tsconfig.json --noEmit` 类型检查通过。
 - 全仓默认build在本次全新工作区有既有API/worker跨包测试产物循环：API测试引用worker dist，缺少声明时TS7016，生成声明后API emit又遇TS5055覆盖输入。未修改API或构建配置来规避，不能将默认全仓build记为通过。
 - Windows，Node 22.14.0；真实Python准备模块与本机Edge。浏览器采用本分支实际Vite页面、合成HTTP边界，没有生产API/数据库/模型调用。
 
