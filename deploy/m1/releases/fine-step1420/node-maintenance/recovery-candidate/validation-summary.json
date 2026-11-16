@@ -1,0 +1,15 @@
+{
+  "archive_sha256": "8776d6abebc19efa6643a649b69428bccc56f11d0646d66a00bf9141efdd4ed5",
+  "exact_oci_roles": 2,
+  "oci_import_pass": true,
+  "linux_recovery_tests": 20,
+  "linux_recovery_pass": true,
+  "helper_tests": 7,
+  "helper_pass": 7,
+  "user_data_bytes": [
+    16376,
+    16376
+  ],
+  "production_installed": false,
+  "models_called": false
+}
