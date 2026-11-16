@@ -1,3 +1,4 @@
+import {installBusinessOverlay} from './business-overlay.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {mkdir, chown, writeFile, chmod, readFile, lstat} from 'node:fs/promises';
@@ -109,6 +110,8 @@ const runtime = {
     requireThat(canonical(e.services) === canonical(config.services) &&
       sha256(canonical(config.images)) === e.image_sha256, 'NODE_IMAGE_BUNDLE');
     requireThat(sha256(await import('node:fs/promises').then(fs => fs.readFile(config.compose_file))) === config.compose_sha256, 'NODE_COMPOSE_CHANGED');
+    const businessCompose = await installBusinessOverlay(e.business_overlay, config);
+    if(businessCompose)config = {...config, ...businessCompose};
     for (const service of e.services) {
       await verifyInstalledExecutionImage(config.images[service.service_id],runDocker);
     }
