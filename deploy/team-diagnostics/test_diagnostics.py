@@ -184,6 +184,12 @@ class SecurityTests(unittest.TestCase):
         with mock.patch.object(broker,'audit') as audit, self.assertRaises(ValueError):
             broker.dispatch({'actors':{'machine':'ingest'}},'machine',['logs'])
         audit.assert_not_called()
+    def test_ingest_disk_guard_preserves_remote_unacknowledged_logs(self):
+        config={'actors':{'machine':'ingest'},'ingest_sources':{'machine':'azure'},'state_directory':'/not-used'}
+        with mock.patch.object(broker,'audit'), mock.patch.object(broker.shutil,'disk_usage',return_value=mock.Mock(free=1)), mock.patch.object(broker.archive,'connect') as connect:
+            with self.assertRaisesRegex(RuntimeError,'headroom'):
+                broker.dispatch(config,'machine',['ingest'],stdin=io.BytesIO(b'{}'))
+            connect.assert_not_called()
     def test_failed_audit_blocks_data_access(self):
         with mock.patch.object(broker,'audit',side_effect=OSError()),mock.patch.object(broker,'Database') as db,self.assertRaises(OSError):
             broker.dispatch({'actors':{'dev':'reader'}},'dev',['content','prompt','p','--reason','debug'])

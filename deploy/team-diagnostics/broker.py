@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import time
 import datetime
 
@@ -134,6 +135,11 @@ def dispatch(config, actor, args, stdin=None):
     if action == 'ingest':
         body = stdin.read(6*1024*1024+1)
         if len(body) > 6*1024*1024: raise ValueError('Ingestion batch exceeds limit')
+        # Remote uploads share the host disk with applications. Reserve headroom
+        # before SQLite/WAL growth, just as local collection does.
+        reserve = config.get('minimum_free_bytes',512*1024*1024)
+        if shutil.disk_usage(config['state_directory']).free < reserve + 3*len(body) + 16*1024*1024:
+            raise RuntimeError('Insufficient central archive headroom')
         db = archive.connect(path, write=True)
         try: return archive.ingest(db, config['ingest_sources'][actor], json.loads(body))
         finally: db.close()
