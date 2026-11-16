@@ -2,12 +2,13 @@ import {constants} from 'node:fs';
 import {open, mkdir} from 'node:fs/promises';
 import {canonical, sha256, requireThat} from './policy.mjs';
 
-export async function readPrivateJson(path) {
+export async function readPrivateJson(path, {maxBytes = 65536} = {}) {
   requireThat(path?.startsWith('/'), 'PRIVATE_PATH_REQUIRED');
+  requireThat(Number.isSafeInteger(maxBytes) && maxBytes > 0 && maxBytes <= 262144, 'PRIVATE_FILE_BOUND');
   const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await f.stat();
-    requireThat(stat.isFile() && (stat.mode & 0o777) === 0o600 && stat.uid === process.getuid() && stat.size <= 65536, 'PRIVATE_FILE_PERMISSIONS');
+    requireThat(stat.isFile() && (stat.mode & 0o777) === 0o600 && stat.uid === process.getuid() && stat.size <= maxBytes, 'PRIVATE_FILE_PERMISSIONS');
     return JSON.parse(await f.readFile('utf8'));
   } finally { await f.close(); }
 }

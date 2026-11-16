@@ -21,7 +21,7 @@ export async function readExpenseHistory(config) {
       [0, process.getuid()].includes(stat.uid), 'EXPENSE_HISTORY_DIRECTORY');
     if (path === '/') break;
   }
-  const history = await readPrivateJson(pin.file);
+  const history = await readPrivateJson(pin.file, {maxBytes: 262144});
   requireThat(sha256(canonical(history)) === pin.sha256, 'EXPENSE_HISTORY_HASH');
   return history;
 }
