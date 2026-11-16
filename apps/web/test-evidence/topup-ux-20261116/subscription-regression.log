@@ -1,0 +1,132 @@
+
+> @bondbuddy/web@0.1.0 test
+> playwright test subscription-account.spec.ts
+
+
+Running 70 tests using 1 worker
+
+(node:17436) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/subscription-account.spec.ts:92:1 › Alipay return ignores URL success claims, verifies only the original order and retains the receipt (956ms)
+  ✓   2 tests/subscription-account.spec.ts:123:50 › returned expired order never claims crediting or offers its old checkout link (294ms)
+  ✓   3 tests/subscription-account.spec.ts:123:50 › returned failed order never claims crediting or offers its old checkout link (283ms)
+  ✓   4 tests/subscription-account.spec.ts:132:1 › an unrelated paid response cannot replace the original pending return order (306ms)
+  ✓   5 tests/subscription-account.spec.ts:141:1 › payment prototype covers pending and paid states at the same desktop and mobile viewport sizes (559ms)
+  ✓   6 tests/subscription-account.spec.ts:165:1 › Alipay automatic queries are bounded and manual retry keeps the original order (800ms)
+  ✓   7 tests/subscription-account.spec.ts:186:1 › Alipay return restores only the saved original task context for the authenticated owner (468ms)
+  ✓   8 tests/subscription-account.spec.ts:202:1 › return to a different owner or unavailable order never displays crediting or creates a payment (292ms)
+  ✓   9 tests/subscription-account.spec.ts:212:1 › missing or ambiguous return order stays on the branded recovery page without querying a guessed order (160ms)
+  ✓  10 tests/subscription-account.spec.ts:222:1 › signed-out payment return survives reload and login before showing authenticated crediting (534ms)
+  ✓  11 tests/subscription-account.spec.ts:236:1 › late original-order verification cannot repaint after navigation (362ms)
+  ✓  12 tests/subscription-account.spec.ts:248:1 › closing the selected unpaid order allows a new amount only after the original is confirmed closed (628ms)
+  ✓  13 tests/subscription-account.spec.ts:265:1 › continuing the displayed order updates its payment link without a hash change or a replacement charge (704ms)
+  ✓  14 tests/subscription-account.spec.ts:297:68 › existing order can be continued when new checkout is disabled (612ms)
+  ✓  15 tests/subscription-account.spec.ts:297:68 › existing order can be continued when new checkout is provider-removed (629ms)
+  ✓  16 tests/subscription-account.spec.ts:315:1 › continuing an unavailable payment shows payment-only recovery and keeps new purchases hidden (441ms)
+  ✓  17 tests/subscription-account.spec.ts:331:1 › unknown checkout reports a closed channel without silently dropping the retry or replacing its request (611ms)
+  ✓  18 tests/subscription-account.spec.ts:345:54 › unconfirmed payment closure (pending) retains the same order and prevents replacement (618ms)
+  ✓  19 tests/subscription-account.spec.ts:345:54 › unconfirmed payment closure (unknown) retains the same order and prevents replacement (625ms)
+  ✓  20 tests/subscription-account.spec.ts:357:1 › payment winning a close race displays the paid result and never creates a replacement (463ms)
+  ✓  21 tests/subscription-account.spec.ts:367:1 › durably rejected subscription request can be acknowledged after reload before choosing a topup (698ms)
+  ✓  22 tests/subscription-account.spec.ts:383:1 › paid close race resumes the named insufficient-points task exactly once (458ms)
+  ✓  23 tests/subscription-account.spec.ts:401:1 › confirmed closure remains final when the following account refresh is unavailable (425ms)
+  ✓  24 tests/subscription-account.spec.ts:417:50 › leaving during the close payment history refresh preserves the chosen navigation (491ms)
+  ✓  25 tests/subscription-account.spec.ts:417:50 › leaving during the refresh payment history refresh preserves the chosen navigation (475ms)
+  ✓  26 tests/subscription-account.spec.ts:447:1 › subscription account shows point rights and disables unavailable payment capabilities (467ms)
+  ✓  27 tests/subscription-account.spec.ts:473:1 › account ignores obsolete quotation deep links and retains credit history without fetching scope records (287ms)
+  ✓  28 tests/subscription-account.spec.ts:483:34 › server-confirmed payment polling automatically resumes the named task once (554ms)
+  ✓  29 tests/subscription-account.spec.ts:483:34 › server-confirmed payment polling preserves cancelled waiting task (369ms)
+  ✓  30 tests/subscription-account.spec.ts:507:1 › checkout retries one selected plan and never sends a client-controlled price or grants points on return (488ms)
+  ✓  31 tests/subscription-account.spec.ts:524:1 › account removes the task catalog while full-review consumption history stays in points (357ms)
+  ✓  32 tests/subscription-account.spec.ts:533:1 › a protected paid v2 month retains its original historical consumption without a price table (370ms)
+  ✓  33 tests/subscription-account.spec.ts:541:1 › small topup uses exact fen and preserves the non-subscription entry (799ms)
+  ✘  34 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1440px (378ms)
+(node:18112) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  35 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1024px (516ms)
+(node:18234) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  36 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 900px (619ms)
+  ✓  37 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 390px (494ms)
+  ✓  38 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 320px (507ms)
+  ✓  39 tests/subscription-account.spec.ts:599:1 › unknown topup survives reload and another tab without offering a replacement purchase (956ms)
+  ✓  40 tests/subscription-account.spec.ts:619:1 › manual renewal uses the renewal endpoint and restores its original plan after an unknown response (648ms)
+  ✓  41 tests/subscription-account.spec.ts:629:1 › a paid storage event does not turn a stale tab retry into a second topup (801ms)
+  ✓  42 tests/subscription-account.spec.ts:646:1 › wallet and subscription period distinguish task holds from pending cash-refund credits (405ms)
+  ✓  43 tests/subscription-account.spec.ts:660:1 › stopping automatic renewal preserves the current period and all remaining credits (483ms)
+  ✓  44 tests/subscription-account.spec.ts:677:1 › subscription payment and task points remain distinct during an eligible full-period refund (386ms)
+  ✓  45 tests/subscription-account.spec.ts:689:1 › an original subscription outside the latest 50 periods retains its original expiry and full-period refund rules (464ms)
+  ✓  46 tests/subscription-account.spec.ts:704:40 › unavailable original period (404) does not classify an order as permanent recharge or allow the wrong refund (402ms)
+  ✓  47 tests/subscription-account.spec.ts:704:40 › unavailable original period (503) does not classify an order as permanent recharge or allow the wrong refund (409ms)
+  ✓  48 tests/subscription-account.spec.ts:720:1 › a verified recharge order explicitly returning null retains permanent credits and editable refund amount (288ms)
+  ✓  49 tests/subscription-account.spec.ts:729:1 › losing original order detail closes an existing refund dialog until its period is verified again (423ms)
+  ✓  50 tests/subscription-account.spec.ts:740:1 › a mismatched order detail cannot supply another order period or imply permanent validity (278ms)
+  ✓  51 tests/subscription-account.spec.ts:749:1 › a mandate authorization link is not displayed as a completed automatic renewal (660ms)
+  ✓  52 tests/subscription-account.spec.ts:773:1 › a verified paid order returns only to its valid named waiting task without another amount click (324ms)
+  ✓  53 tests/subscription-account.spec.ts:791:1 › a paid order does not resume a task owned by another account (319ms)
+  ✓  54 tests/subscription-account.spec.ts:805:1 › subscription preview shares the account layout and keeps its interactive example entirely local (1.9s)
+  ✓  55 tests/subscription-account.spec.ts:839:1 › quote-only authoring recovery pre-fills the exact topup gap in yuan without rewriting the task (323ms)
+  ✓  56 tests/subscription-account.spec.ts:851:1 › pending cancellation refreshes the original mandate across reload and forbids reauthorization until confirmed (734ms)
+  ✓  57 tests/subscription-account.spec.ts:868:1 › account refresh keeps the simplified layout without reintroducing the task price table (516ms)
+  ✓  58 tests/subscription-account.spec.ts:879:1 › account polling keeps the expanded billing rules open while reading (370ms)
+  ✓  59 tests/subscription-account.spec.ts:891:1 › account polling and focus refresh preserve active recharge and refund controls (328ms)
+  ✓  60 tests/subscription-account.spec.ts:921:1 › account refresh preserves the actual quality explanation textarea during IME composition (558ms)
+  ✓  61 tests/subscription-account.spec.ts:949:1 › topup preview follows each edit exactly and rejects invalid input without a payment request (744ms)
+  ✓  62 tests/subscription-account.spec.ts:964:1 › annual checkout displays the full 10-percent-discount price and monthly releases while preserving an unknown original cycle (868ms)
+  ✓  63 tests/subscription-account.spec.ts:983:1 › a default paid checkout ends on the overview while an explicit history link retains order and refund detail (740ms)
+  ✓  64 tests/subscription-account.spec.ts:998:1 › annual renewal shows the next whole-year charge and cancelling preserves the remaining monthly entitlement (1.8s)
+  ✓  65 tests/subscription-account.spec.ts:1051:3 › professional monthly upgrade previews original paid-value credit and opens the new contract only after payment (762ms)
+  ✓  66 tests/subscription-account.spec.ts:1051:3 › professional monthly to annual previews original paid-value credit and opens the new contract only after payment (1.2s)
+  ✓  67 tests/subscription-account.spec.ts:1051:3 › partially used monthly to annual previews original paid-value credit and opens the new contract only after payment (699ms)
+  ✓  68 tests/subscription-account.spec.ts:1073:1 › stale change summary terminates only the rejected key and shows new actual payment before retry (571ms)
+  ✓  69 tests/subscription-account.spec.ts:1081:60 › unknown subscription change retains the original request and quote across reload (646ms)
+  ✓  70 tests/subscription-account.spec.ts:1081:60 › mandatePending subscription change retains the original request and quote across reload (654ms)
+
+
+  1) tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1440px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 44
+    Received:    40
+
+      574 |     const box=(await control.boundingBox())!;
+      575 |     expect(box.x).toBeGreaterThanOrEqual(card.x);expect(box.x+box.width).toBeLessThanOrEqual(card.x+card.width);
+    > 576 |     expect(box.height).toBeGreaterThanOrEqual(44);
+          |                        ^
+      577 |   }
+      578 |   expect(choiceBox.y).toBeGreaterThanOrEqual(fieldBox.y+fieldBox.height);
+      579 |   expect(choiceBox.y-fieldBox.y-fieldBox.height).toBeLessThanOrEqual(12);
+        at /Users/chrisliu/.codex/worktrees/topup-ux-1310/BondBuddy/apps/web/tests/subscription-account.spec.ts:576:24
+
+    Error Context: ../../../../../../../../var/folders/3t/xycb93311cv9cslhvvq1tk7m0000gn/T/bondbuddy-web-test-results/subscription-account-topup-54c4e-ices-and-checkout-at-1440px/error-context.md
+
+  2) tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1024px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 44
+    Received:    40
+
+      574 |     const box=(await control.boundingBox())!;
+      575 |     expect(box.x).toBeGreaterThanOrEqual(card.x);expect(box.x+box.width).toBeLessThanOrEqual(card.x+card.width);
+    > 576 |     expect(box.height).toBeGreaterThanOrEqual(44);
+          |                        ^
+      577 |   }
+      578 |   expect(choiceBox.y).toBeGreaterThanOrEqual(fieldBox.y+fieldBox.height);
+      579 |   expect(choiceBox.y-fieldBox.y-fieldBox.height).toBeLessThanOrEqual(12);
+        at /Users/chrisliu/.codex/worktrees/topup-ux-1310/BondBuddy/apps/web/tests/subscription-account.spec.ts:576:24
+
+    Error Context: ../../../../../../../../var/folders/3t/xycb93311cv9cslhvvq1tk7m0000gn/T/bondbuddy-web-test-results/subscription-account-topup-12f21-ices-and-checkout-at-1024px/error-context.md
+
+  2 failed
+    tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1440px ─
+    tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1024px ─
+  68 passed (43.0s)
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/chrisliu/.codex/worktrees/topup-ux-1310/BondBuddy/apps/web
+npm error workspace @bondbuddy/web@0.1.0
+npm error location /Users/chrisliu/.codex/worktrees/topup-ux-1310/BondBuddy/apps/web
+npm error command failed
+npm error command sh -c playwright test subscription-account.spec.ts

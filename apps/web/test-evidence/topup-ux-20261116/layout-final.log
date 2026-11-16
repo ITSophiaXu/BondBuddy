@@ -1,0 +1,17 @@
+
+> @bondbuddy/web@0.1.0 test
+> playwright test subscription-account.spec.ts --grep topup groups|subscription preview shares
+
+
+Running 6 tests using 1 worker
+
+(node:20116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1440px (599ms)
+  ✓  2 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 1024px (503ms)
+  ✓  3 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 900px (500ms)
+  ✓  4 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 390px (492ms)
+  ✓  5 tests/subscription-account.spec.ts:556:44 › topup groups amount choices and checkout at 320px (491ms)
+  ✓  6 tests/subscription-account.spec.ts:805:1 › subscription preview shares the account layout and keeps its interactive example entirely local (1.8s)
+
+  6 passed (5.6s)

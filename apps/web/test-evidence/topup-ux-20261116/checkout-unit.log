@@ -1,0 +1,30 @@
+✔ a durably rejected subscription request permits an observed topup but stale tabs cannot replace its key (2.942833ms)
+✔ an exact subscription rejection cannot release accepted orders or unrelated checkout kinds (0.282834ms)
+✔ a rejected legacy subscription intent keeps its exact key and becomes a readable final intent (0.113459ms)
+✔ subscription change recovery keeps the quote and cycle after an unknown checkout (0.178916ms)
+✔ only a permanent server quote rejection releases a change intent while preserving its old-key barrier (0.185708ms)
+✔ unknown checkout retains its original key and body across reload, time and general errors (0.183542ms)
+✔ concurrent tabs reuse one intent; a changed plan, provider or amount never reuses its key (0.190875ms)
+✔ subscription renewal recovery keeps the original subscription endpoint and plan (0.115875ms)
+✔ annual checkout recovery preserves its cycle and never reuses its key for a monthly purchase (0.145958ms)
+✔ pre-cycle monthly checkout keeps its exact original body when explicitly choosing monthly (0.143291ms)
+✔ an accepted subscription order keeps its historical amount and points across catalog changes (0.147333ms)
+✔ recovery from another task keeps the first payment task context (0.31275ms)
+✔ only a matching server-confirmed terminal order permits a new explicitly observed purchase (0.183084ms)
+✔ corrupted or lossy storage and mismatched acknowledgements do not permit another payment (0.1245ms)
+✔ an existing number-v1 intent retries its original numeric request without a new key or silent conversion (0.1305ms)
+✔ version-2 order snapshots preserve int64 values above the safe-number limit and reject lossy acknowledgements (0.131875ms)
+✔ a zero pending scope is never presented as a free executable result (0.471458ms)
+✔ only an explicitly ready zero price confirms original-scope or purchased coverage (0.089458ms)
+✔ ready scope expiration is checked independently of its server status, including malformed expiry (0.058334ms)
+✔ closed scope states retain distinct labels and cannot be reclassified by expiration (0.053417ms)
+✔ already admitted price receipts keep their amount after scope expiry and historical points keep their unit (10.305875ms)
+✔ automatic task readiness and points receipts remain separate from legacy cash prices (0.145959ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 137.990709

@@ -1,0 +1,114 @@
+
+> check:contracts
+> npm run check:examples -w @bondbuddy/contracts
+
+
+> @bondbuddy/contracts@0.1.0 check:examples
+> node --test dist/outcome-pricing.test.js dist/integrity-presentation.test.js dist/workpapers.test.js dist/workpaper-naming.test.js && node dist/check-examples.js && node dist/check-data-lifecycle.js && npm run check:ocr-v2 && npm run check:generation-issuer-binding
+
+✔ captcha image failures stay specific in shared web and export copy without exposing diagnostics (1.575834ms)
+✔ diagnostics preserve exact failure causes and validate without breaking historical records (0.470958ms)
+✔ historical unknown errors never acquire invented HTTP or authentication causes (0.438375ms)
+✔ certificate, required stylesheet and rate-limit failures are actionable without exposing raw diagnostics (0.157708ms)
+✔ display limitations omit legacy collection diagnostics without changing original scope or evidence (0.081208ms)
+✔ adverse records, ambiguous identities, ordinary notices and unrelated hits remain distinct (0.122458ms)
+✔ trial-03 prices use integer fen and unpriced integrity is unavailable rather than free (1.040042ms)
+✔ one target progresses 9.8 → 39 → 99 by valid owned tier, not by repeated charges (0.439666ms)
+✔ same goal reply and necessary draft merge once at the final tier (0.104792ms)
+✔ a different goal or genuinely new financial identity cannot consume unrelated coverage (0.236333ms)
+✔ 9.9 check upgrades to 19.9 sync with a 10-yuan difference; financial review is separate (0.283959ms)
+✔ financial work charges 249, 498, then 499 for one, two, then three new main periods (0.110334ms)
+✔ financial same-group split work and already-owned periods are deduplicated (0.127208ms)
+✔ financial incremental receipts reach the same 499 cap and a one-yuan period is still valid coverage (0.146708ms)
+✔ full-price financial periods are independent; only discounted or included coverage pins prior receipts (0.171667ms)
+✔ necessary restatement and repair are included; another independently commissioned 99 target totals 348 (0.147ms)
+✔ complete financial group is 499 and owned complete group never charges for the original target (0.132667ms)
+✔ included work requires an explicit valid parent receipt for the same coverage identity (0.166042ms)
+✔ exact independent output reuse costs zero and different output identity is charged separately (0.094667ms)
+✔ unknown and unsupported scope remain nonexecutable, distinct from valid included zero (0.271916ms)
+✔ public plan excludes ownership; malformed counts, duplicate receipt ids and work ids are rejected (0.392625ms)
+✔ legacy outcome metadata preserves the submitted amount and all historical version schemas read v1 (0.187375ms)
+✔ catalogue annotations are removed with their contents, including nested Chinese and ASCII parentheses (0.745417ms)
+✔ legal entity qualifiers and the approved filing document type survive (0.473291ms)
+✔ downloads of a retained batch recover the original title instead of reusing a flattened legacy path (0.372625ms)
+✔ long Chinese paths stay within the Windows byte limit, including folders, category and explanation suffix (1.222542ms)
+✔ all documents survive collisions after annotation removal or length shortening (1190.366541ms)
+✔ reserved names, traversal components and duplicate import suffixes stay safe (0.287125ms)
+✔ direct start and a retained legacy paid request validate identically in browser and API (1.36475ms)
+✔ start cannot omit its mode or mix an independent assessment into a direct request (0.328667ms)
+✔ direct start retains pinned source, catalogue, request and price bounds (0.244333ms)
+✔ catalogue preview and import share bounded optional source mappings (12.234042ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1245.249542
+validated 179 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants
+Validated 4 synthetic data-lifecycle examples
+
+> @bondbuddy/contracts@0.1.0 check:ocr-v2
+> node --test dist/ocr-v2.test.js
+
+✔ synthetic JSON example has strict schemas and a reproducible image/hash domain (5.612417ms)
+✔ 70 physical pages require bounded batches, then exact verified contiguous aggregation (38.166542ms)
+✔ 74 physical pages require bounded batches, then exact verified contiguous aggregation (35.575583ms)
+✔ failed physical page retries alone; prior successful pages reuse without counting them again (2.618125ms)
+✔ unknown, not-started and measured failed attempts remain distinct from successful checkpoints (0.5835ms)
+✔ checkpoint and reuse identity bind owner (0.586459ms)
+✔ checkpoint and reuse identity bind project (0.462875ms)
+✔ checkpoint and reuse identity bind material ID (0.473334ms)
+✔ checkpoint and reuse identity bind material version (0.399083ms)
+✔ checkpoint and reuse identity bind material hash (0.514917ms)
+✔ checkpoint and reuse identity bind physical page count (0.40575ms)
+✔ checkpoint and reuse identity bind processor (0.462083ms)
+✔ checkpoint and reuse identity bind engine (0.398875ms)
+✔ checkpoint and reuse identity bind engine version (0.395125ms)
+✔ checkpoint and reuse identity bind language (0.417666ms)
+✔ checkpoint and reuse identity bind language data (0.3495ms)
+✔ checkpoint and reuse identity bind orientation model (0.410041ms)
+✔ checkpoint and reuse identity bind OCR options (0.407417ms)
+✔ checkpoint and reuse identity bind renderer (0.437125ms)
+✔ checkpoint and reuse identity bind renderer version (0.349375ms)
+✔ checkpoint and reuse identity bind DPI (0.373917ms)
+✔ checkpoint and reuse identity bind pixel budget (0.461417ms)
+✔ checkpoint and reuse identity bind render options (0.374958ms)
+✔ single-page identity cannot be relabelled or referenced by a different result/request hash (1.442625ms)
+✔ page records, table/box provenance, uncertainty and image bytes are checked before reuse (1.588667ms)
+✔ batch validation rejects missing, duplicate, extra outcomes and mismatched request/context (1.302291ms)
+✔ bounded requests reject unsupported, malformed and scope-bypassing inputs (0.724125ms)
+✔ platform source preflight stays within first five physical pages; full OCR still needs explicit run pins (0.818708ms)
+✔ v1 shape, 50-page ceiling, optional consumption and user-asserted correction remain unchanged (24.537458ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 314.633458
+
+> @bondbuddy/contracts@0.1.0 check:generation-issuer-binding
+> node --test dist/generation-issuer-binding.test.js
+
+✔ same legal issuer may compile consolidated and parent statements; accounting scopes remain separate (0.90675ms)
+✔ subsidiaries cited in issuer notes are localized and excluded without an issuer verification review (0.069ms)
+✔ a subsidiary-only report cannot determine the legal issuer (0.100416ms)
+✔ same display name with distinct verified legal entity IDs is a conflict, never majority-resolved (0.091041ms)
+✔ every selected issuer-role material needs exactly one explicit disposition (0.139416ms)
+✔ missing subject or unresolved OCR/parser doubt stays pending (0.135584ms)
+✔ a new material or parse pin cannot reuse observations from an old snapshot (0.080417ms)
+✔ withdrawal blocks reuse and cannot be reversed on the same binding version (0.079833ms)
+✔ approval checks the whole same-version review history, not only its last event (0.87325ms)
+✔ the authoritative selected input manifest detects omitted materials even if the snapshot omits them too (0.148334ms)
+✔ owner/project/input revision/hash must match the authoritative server input ref (0.070291ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 116.209458
