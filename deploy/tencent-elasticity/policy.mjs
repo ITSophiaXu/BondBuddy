@@ -41,7 +41,7 @@ export function validateConfig(c, {apply = false, expenditure = true} = {}) {
   requireThat(/^\d{1,20}$/.test(c.account_id) && /^[a-z0-9-]{1,40}$/.test(c.pool_tag), 'OWNERSHIP_SCOPE');
   requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) && c.max_owned === 2, 'POOL_BOUND');
   requireThat(['single_node_validation', 'two_node_validation', 'automatic'].includes(c.phase), 'PHASE_REQUIRED');
-  requireThat([4, 8].includes(c.global_model_limit) && c.node_model_limit === 4, 'CAPACITY_BOUND');
+  requireThat([4, 8].includes(c.global_model_limit) && [4,8].includes(c.node_model_limit), 'CAPACITY_BOUND');
   requireThat(c.compute_cny_per_hour === 0.8 && c.compute_cap_cny_per_hour === 1.6, 'COMPUTE_QUOTE');
   requireThat(Number.isSafeInteger(c.scale_up_wait_seconds) && c.scale_up_wait_seconds >= 30 &&
     Number.isSafeInteger(c.idle_seconds) && c.idle_seconds >= 60 &&
@@ -64,7 +64,7 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   validateConfig(config);
   const hold = reason => ({kind: 'hold', reason});
   if (!config.enabled || !snapshot.policy.managed_nodes) return hold('disabled');
-  if (snapshot.policy.node_model_limit !== 4 || ![4, 8].includes(snapshot.policy.global_model_limit) ||
+  if (snapshot.policy.node_model_limit !== config.node_model_limit || ![4, 8].includes(snapshot.policy.global_model_limit) ||
       snapshot.policy.global_model_limit !== config.global_model_limit || snapshot.policy.max_nodes !== 2) return hold('policy_mismatch');
   if (snapshot.pending_cloud_reservations) return hold('pending_cloud_operation');
   if (inventory.length > 2) return hold('inventory_drift');

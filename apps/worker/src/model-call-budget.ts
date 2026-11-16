@@ -19,9 +19,24 @@ export interface ModelCallBudget {
 export type ModelCallAdmission={kind:'job'|'assistant';id:string;token:string};
 const namespace = 0x42424d43;
 const budgets = new WeakMap<Pool, ModelCallBudget>();
+/** Private operational evidence: never serialize an exception/message or request bytes. */
+export function modelCancellationDiagnostic(reason: unknown, source: 'capacity_renewal' | 'task_signal' | 'capacity_signal', phase: 'renewal' | 'before_spawn' | 'native', scope?: string) {
+  const error = reason as { code?: unknown; message?: unknown; cancellation?: { original_error_code: string | null; error_class: string } } | null;
+  const safeCode = (value: unknown) => typeof value === 'string' && (/^[0-9A-Z]{5}$/.test(value) || ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','ENOTFOUND'].includes(value)) ? value : null;
+  const code = safeCode(error?.cancellation?.original_error_code) ?? safeCode(error?.code);
+  const errorClass = error?.message === 'Connection terminated due to connection timeout' ? 'pg_connect_timeout' : error?.message === 'Query read timeout' ? 'pg_query_timeout' : error?.message === 'Model capacity holder lost' ? 'holder_missing' : reason instanceof DOMException && reason.name === 'AbortError' ? 'abort' : reason instanceof Error ? 'error' : 'unavailable';
+  const preservedClass = error?.cancellation?.error_class;
+  return { kind: 'model_cancellation', source, phase,
+    original_error_code: code,
+    error_class: preservedClass && ['pg_connect_timeout','pg_query_timeout','holder_missing','abort','error','unavailable'].includes(preservedClass) ? preservedClass : errorClass,
+    ...(scope && /^[A-Za-z0-9:_-]{1,180}$/.test(scope) ? { scope } : {}) };
+}
+export function reportModelCancellation(diagnostic: ReturnType<typeof modelCancellationDiagnostic>) {
+  try { process.stderr.write(JSON.stringify(diagnostic) + '\n'); } catch { /* evidence cannot alter cancellation */ }
+}
 export function modelCallConcurrency(env: NodeJS.ProcessEnv = process.env) {
   const value = env.BB_MODEL_CALL_CONCURRENCY ?? '4';
-  if (!/^[1-4]$/.test(value)) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
+  if (!/^[1-8]$/.test(value)) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
   return Number(value);
 }
 async function processIdentity(pid: number): Promise<{start:string;group:number} | null> {
@@ -54,9 +69,9 @@ async function groupOrHomeAlive(group: number | null, home: string | null) {
   return false;
 }
 
-/** Global four-slot semaphore in the sole PG, shared by authoring/review/assistants.
+/** Durable bounded semaphore in the sole PG, shared by authoring/review/assistants.
  * Scope rotation prevents a large batch from monopolizing permits. Waiters hold
- * no checked-out connection/transaction, and only four per process can register.
+ * no checked-out connection/transaction, and at most the configured per-process bound can register.
  * Active holders have NO TTL: loss of renewal aborts the process, and its row is
  * retained until actual process exit. Historical unknown billing stays in the
  * existing journal, independently of active capacity. */
@@ -67,9 +82,9 @@ export class PgModelCallBudget implements ModelCallBudget {
   private readonly sessions: Pool;
   private readonly host = hostname();
   constructor(private readonly pool: Pool, private readonly limit: number = 4) {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 4) throw new Error('Invalid model call concurrency');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 8) throw new Error('Invalid model call concurrency');
     this.sessions = new Pool({ ...pool.options, max: limit, application_name: 'bondbuddy_model_budget',
-      connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 1000, allowExitOnIdle: true });
+      connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 30000, allowExitOnIdle: true });
     this.sessions.on('error', () => { /* a failed operation is fail-closed */ });
   }
   private async enter(scope: string, signal?: AbortSignal) {
@@ -178,7 +193,7 @@ export class PgModelCallBudget implements ModelCallBudget {
               LEFT JOIN bb_execution_nodes n ON n.id=w.execution_node_id AND n.epoch=w.execution_node_epoch
               JOIN bb_execution_capacity_policy p ON p.singleton
               WHERE w.wait_until>now() AND (w.execution_node_id IS NULL AND NOT p.managed_nodes OR n.state IN ('ready','draining')
-               AND (SELECT count(*) FROM bb_model_capacity_holders h WHERE h.execution_node_id=n.id)<4 AND (
+               AND (SELECT count(*) FROM bb_model_capacity_holders h WHERE h.execution_node_id=n.id)<p.node_model_limit AND (
                 EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=w.admission_job_id AND j.execution_node_id=n.id AND j.execution_node_epoch=n.epoch AND j.execution_session_id=w.execution_session_id AND j.state='running' AND j.lease_token=w.admission_lease_token AND j.lease_until>clock_timestamp()) OR
                 EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=w.admission_message_id AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=w.execution_session_id AND m.reply_status='running' AND m.lease_token::text=w.admission_lease_token AND m.lease_until>clock_timestamp())))
               ORDER BY s.last_granted,w.ticket LIMIT 1`)).rows[0];
@@ -189,7 +204,7 @@ export class PgModelCallBudget implements ModelCallBudget {
               if(context&&(!node||node.epoch!==context.identity.epoch||!['ready','draining'].includes(node.state)||!admission))throw Error('Execution node capacity fenced');
               const slot = (policy.budget_available||!!node)&&(await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
                 WHERE (SELECT count(*) FROM bb_model_capacity_holders)<$1 AND NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders h WHERE h.slot=g.slot) LIMIT 1`,[policy.global_model_limit])).rows[0]?.slot;
-              const nodeSlot=node?(await client.query('SELECT g.slot FROM generate_series(1,4) g(slot) WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1 AND node_slot=g.slot) LIMIT 1',[node.id])).rows[0]?.slot:null;
+              const nodeSlot=node?(await client.query('SELECT g.slot FROM generate_series(1,$2::integer) g(slot) WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1 AND node_slot=g.slot) LIMIT 1',[node.id,policy.node_model_limit])).rows[0]?.slot:null;
               if (slot !== undefined && slot!==false && (!node||nodeSlot!==undefined)) {
                 if(admission)await client.query("SELECT set_config('bb.execution_lease_token',$1,true)",[admission.token]);
                 await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,parent_pid,parent_start,execution_host,host_boot_id,pid_namespace,namespace_init_start,
@@ -211,7 +226,12 @@ export class PgModelCallBudget implements ModelCallBudget {
         try {
           const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET renewed_at=now() WHERE token=$1 AND host_id=$2',[token,this.host]);
           if (!result.rowCount) throw new Error('Model capacity holder lost');
-        } catch { controller.abort(new Error('Model capacity holder lost')); throw new Error('Model capacity holder lost'); }
+        } catch (error) {
+          const diagnostic = modelCancellationDiagnostic(error, 'capacity_renewal', 'renewal', scope);
+          reportModelCancellation(diagnostic);
+          const lost = Object.assign(new Error('Model capacity holder lost'), { cancellation: diagnostic });
+          controller.abort(lost); throw lost;
+        }
       };
       let renewing = false;
       timer = setInterval(() => {

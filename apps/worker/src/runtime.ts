@@ -127,7 +127,7 @@ export class WorkerRuntime {
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       uploadConfirmationEnabled: false, uploadConfirmationLane: 'general', uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
-    if (this.o.reviewAssistant && (!Number.isInteger(this.o.reviewAssistant.slots ?? 1) || (this.o.reviewAssistant.slots ?? 1) < 1 || (this.o.reviewAssistant.slots ?? 1) > 4)) throw new Error('Invalid assistant slots');
+    if (this.o.reviewAssistant && (!Number.isInteger(this.o.reviewAssistant.slots ?? 1) || (this.o.reviewAssistant.slots ?? 1) < 1 || (this.o.reviewAssistant.slots ?? 1) > 8)) throw new Error('Invalid assistant slots');
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
     if (options.factCandidateProducer && options.runStages) {
@@ -451,7 +451,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
     ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
-    ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: { slots: intEnv(env, 'BB_REVIEW_ASSISTANT_SLOTS', 1, 1, 4) } } : {}),
+    ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: { slots: intEnv(env, 'BB_REVIEW_ASSISTANT_SLOTS', 1, 1, 8) } } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
     ...(targetPeriodCandidateProducer ? { produceTargetPeriodCandidates: async request =>
