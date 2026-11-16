@@ -1076,5 +1076,22 @@
       "business_archive_unchanged": true,
       "recovery": "Existing operator fence Stop, confirm exact acknowledgement and STOPPED/STOP_CHARGING, then one normal warm Start with new epoch. Preserve all prior sessions and unresolved calls."
     }
+  },
+  "managed_retry_recovery": {
+    "refs": [
+      1361,
+      1467
+    ],
+    "implementation_commit": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+    "base_public_archive_sha256": "5328117c25bcbe0729e753fa1f11576878c2a7bd2885278a9ae85c2bcc9745d3",
+    "descriptor": "deploy/tencent-elasticity/recovery-artifacts/descriptor.json",
+    "archive_sha256": "2d86f1351c8c7cf1b49609d7ff442b06344a0c45aa003b5ca0efb4a64a7e7654",
+    "archive_bytes": 233259,
+    "public_files": 31,
+    "helper_sha256": "60afbcc278f3bac460235240bc2cff03600f61d42b992dbed0fed49ef32609ca",
+    "migration": "db/migrations/0189_terminal_recovery_audit.sql",
+    "model_wait_activity_included": false,
+    "role_specific_pipelines": true,
+    "model_adapter_and_journal_unchanged": true
   }
 }
