@@ -7,32 +7,35 @@
     "d5a11cebc0de89eff965cf0d186f5a9d91ac6500"
   ],
   "base_commit": "a0a051111dc583db9b39459a5f215e63a8c522e5",
-  "source_commit": "511dfd0aa13a05a106194b8857b3a0ce28819441",
-  "source_tree": "fab7af5949de0733df595c5c0c0af807da0bac4f",
+  "source_commit": "c402fde4d8d974e9b5ec30b6ae587d6ebb1f9a76",
+  "source_tree": "dc5ebe29251c6af8500f329ae39ea067bed05b27",
   "patch_path": "deploy/m1/releases/fine-step1420/source.patch",
-  "patch_sha256": "6cfae71fb4d563097fe0f6a6abc6074942911553d7370cefa9b0325dcebc7cba",
-  "patch_bytes": 503515,
-  "source_relation": "a0 baseline plus existing deployed queue/capacity/diagnostic overlays and only PR1420 telemetry; per-component sparse payloads, never whole-tree deployment",
-  "master_relation": "master contains only cherry-picked PR1420 plus this reconstruction recipe; master tree is not the runtime source tree",
+  "patch_sha256": "2ec92f09b735cb37a7ec6e6318257083f003ba5fa31210eacef7773738d4e3d7",
+  "patch_bytes": 600634,
+  "source_relation": "Per-component composition: main/api and azure/worker use exact currently deployed four-way capacity sources plus only PR1420 telemetry; other three roles preserve prior verified PR1420 payload bytes. Never deploy either full tree.",
+  "master_relation": "master contains scoped PR1420 code, PR1436 test correction and both reconstruction recipes; component source trees are explicitly pinned below",
   "migration": {
     "only_filename": "0185_performance_spans.sql",
     "sha256": "20f7e159dca10fc86137f03e93d79a073c1787b4e6455693314a4f0d83dc347b",
     "run_directory_migrator": false,
-    "unrelated_0180_through_0184": false
+    "unrelated_0181_through_0184": false
   },
   "reconstruction": {
     "method": "temporary GIT_INDEX_FILE: read-tree base_commit; apply --cached --binary source.patch; write-tree",
-    "verified_tree": "fab7af5949de0733df595c5c0c0af807da0bac4f"
+    "verified_tree": "dc5ebe29251c6af8500f329ae39ea067bed05b27"
   },
   "production_parent_images": {
     "main/api": {
       "image_id": "sha256:36bac383007cdf4aa772bbc093acac35fed00b9069627a2609422d7b4b7a16cf",
       "image_parent": null,
-      "container_id_observed": "ab3795adf56cb9f5240c17cb9bfa4b67182f01f56d80860f6f1c0fea18094776",
+      "container_id_observed": "134d2948c8432434ddd8614aad52de42b05efef2b32d02b2994865bc7d4aae67",
       "image_user": "node",
       "architecture": "amd64",
       "os": "linux",
-      "runtime_file_count": 2071
+      "runtime_file_count": 2072,
+      "base_image_file_count": 2071,
+      "preserved_code_mounts": 11,
+      "code_mount_observation_sha256": "f916826934ce22ca961bf0bb0ef0248dbcb0198e1a7db19cebae47cb6bb18e22"
     },
     "main/ops": {
       "image_id": "sha256:ed057a891d87c22e380344e80292e0ac93d7b77b75f0df8c3943b7347bbc752b",
@@ -55,16 +58,19 @@
     "azure/worker": {
       "image_id": "sha256:e1ce3a98ca971cebe08adb8b07eed633878fa32451582be5242e0ec4f82e00d4",
       "image_parent": "sha256:2989be7d12ece1187cd742d6279405e648f8f2844c7d3da695fcf5b64252b870",
-      "container_id_observed": "e34d797a875de7c790b85372bf8d5cbdf2520329fe29aee938fb38dbc5472b3c",
+      "container_id_observed": "04e3c8210183c6cffd602019c9e2f97955766ed487713209a8c6f918ef3cfbdc",
       "image_user": "node",
       "architecture": "amd64",
       "os": "linux",
-      "runtime_file_count": 2177
+      "runtime_file_count": 2180,
+      "base_image_file_count": 2177,
+      "preserved_code_mounts": 18,
+      "code_mount_observation_sha256": "c85daa1915f39fcd8432db4e622205a2a66e35af465a1491e204d5d68f3fc37b"
     },
     "azure/worker-review": {
       "image_id": "sha256:05d9c63d459736c44d3ebd1983e65baa1e097fd9efe78a2264583ebdb88e80b7",
       "image_parent": "sha256:4b835cb3052c461c0df463894e496f46dee27e8edcea40f79eb05598ab5cf1dc",
-      "container_id_observed": "e44cc779586c6cda6a0ade84cc90f51a54f113d2ab3b5cc92d8eac31cbfdc215",
+      "container_id_observed": "efdb9af504c625b0a83f0d8cecc4ccbbeed69465c6face46cc3103e418fecafc",
       "image_user": "node",
       "architecture": "amd64",
       "os": "linux",
@@ -86,5 +92,33 @@
     "production_execution_enabled_by_recipe": false,
     "current_batch_release_gate_required": true,
     "older_gate_exceptions_inherited": false
-  }
+  },
+  "source_recipes": {
+    "current": {
+      "source_commit": "c402fde4d8d974e9b5ec30b6ae587d6ebb1f9a76",
+      "source_tree": "dc5ebe29251c6af8500f329ae39ea067bed05b27",
+      "base_commit": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+      "patch_path": "deploy/m1/releases/fine-step1420/source.patch",
+      "patch_sha256": "2ec92f09b735cb37a7ec6e6318257083f003ba5fa31210eacef7773738d4e3d7"
+    },
+    "prior": {
+      "source_commit": "511dfd0aa13a05a106194b8857b3a0ce28819441",
+      "source_tree": "fab7af5949de0733df595c5c0c0af807da0bac4f",
+      "base_commit": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+      "patch_path": "deploy/m1/releases/fine-step1420/prior-source.patch",
+      "patch_sha256": "6cfae71fb4d563097fe0f6a6abc6074942911553d7370cefa9b0325dcebc7cba"
+    }
+  },
+  "component_source_recipes": {
+    "main/api": "current",
+    "main/ops": "prior",
+    "main/web": "prior",
+    "azure/worker": "current",
+    "azure/worker-review": "prior"
+  },
+  "preserved_deployed_capacity_migrations": [
+    "0180_batch_four_way.sql",
+    "0186_shared_batch_capacity.sql"
+  ],
+  "regression_test_pr": 1436
 }

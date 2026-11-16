@@ -1,5 +1,5 @@
 diff --git a/apps/api/package.json b/apps/api/package.json
-index fae8cae5..5608c5cd 100644
+index fae8cae585e68eb544fa545e709ac35b1312734b..5608c5cd072feff26e4605f553d5eac5e14a6817 100644
 --- a/apps/api/package.json
 +++ b/apps/api/package.json
 @@ -4,6 +4,7 @@
@@ -10,11 +10,74 @@ index fae8cae5..5608c5cd 100644
      "./upload-spool": {"types":"./dist/upload-spool.d.ts","default":"./dist/upload-spool.js"},
      "./integrity-billing-evidence": {"types":"./dist/integrity-billing-evidence.d.ts","default":"./dist/integrity-billing-evidence.js"},
      "./upload-confirmation": {"types":"./dist/upload-confirmation.d.ts","default":"./dist/upload-confirmation.js"},
+diff --git a/apps/api/src/batch-admission.ts b/apps/api/src/batch-admission.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..21cfc2c070c40497009f84f4723354ca7c861dee
+--- /dev/null
++++ b/apps/api/src/batch-admission.ts
+@@ -0,0 +1,14 @@
++import type {PoolClient} from 'pg';
++import {conflict} from './data.js';
++export const SHARED_BATCH_CAPACITY=4;
++const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
++/** Caller holds the frozen batch row; canonical scope serializes all admissions. */
++export async function assertBatchAdmission(c:PoolClient,owner:string,scope:string,batch:string,item:string){
++  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR NO KEY UPDATE NOWAIT',[owner,scope])).rowCount)
++    throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
++  const active=(await c.query(`SELECT bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
++    FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
++    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,scope,terminal])).rows;
++  if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!==batch||r.membership?.[1]===item))
++    throw conflict('PROJECT_RUN_ACTIVE','已有业务任务执行中。');
++}
+diff --git a/apps/api/src/data.ts b/apps/api/src/data.ts
+index 4406073e058952ab2e96f6c9d85ad8b9a1865984..87b625332da0e22e2284a5228929de936acfa2e3 100644
+--- a/apps/api/src/data.ts
++++ b/apps/api/src/data.ts
+@@ -108,7 +108,10 @@ export const inputDto = (i: any) => {
+ };
+ export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), channel: r.channel ?? 'production', test_grant_id: r.test_grant_id ?? null, uncovered_items: r.uncovered_items ?? [], state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: r.channel==='non_production_test'?'non_billable_test':r.billing_mode ?? 'platform_trial', reservation_id: r.reservation_id ?? null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
+ export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
+-  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
++  // Project identity keys are immutable. Serialize state/input writers without
++  // blocking sibling metadata foreign-key KEY SHARE locks (or upgrading two
++  // already-held KEY SHARE locks into a delivery/admission deadlock).
++  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR NO KEY UPDATE OF p' : ''}`, [owner,id]);
+   if (!result.rows[0]) throw missing();
+   return result.rows[0];
+ }
+@@ -116,7 +119,7 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
+ export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:string,p:{id:string;kind:string;execution_scope_project_id?:string|null}){
+   const scope=p.execution_scope_project_id||p.id;
+   if(!p.execution_scope_project_id&&p.kind!=='review'&&!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1',[owner,scope])).rowCount)return;
+-  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
++  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
+   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
+   if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
+     WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
 diff --git a/apps/api/src/log-ops.ts b/apps/api/src/log-ops.ts
-index 2c6bf8f2..e75aea40 100644
+index 2c6bf8f27ae9fb7134a69507685e03438006190b..804811a80177fefba8bf22f4ba72fcf0d8068081 100644
 --- a/apps/api/src/log-ops.ts
 +++ b/apps/api/src/log-ops.ts
-@@ -945,7 +945,9 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
+@@ -684,7 +684,7 @@ export function scrubSecrets(text: string) {
+ }
+ 
+ /** Scrub, store the body in private Blob only, then register the reference row. */
+-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
++export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version?: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
+   const scrubbed = scrubSecrets(input.body);
+   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
+   const intentId = uid();
+@@ -696,6 +696,8 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
+       // cannot delete an in-flight write even when it passes its grace period.
+       await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
+       await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
++      // saveSnapshotRef verifies the trusted readback before its short version
++      // lock. The intent remains protected across IO without blocking siblings.
+       const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: input.redactionVersion ?? SCRUB_VERSION, blobs }, client);
+       await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
+       return id;
+@@ -945,7 +947,9 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
    let browserPurged = 0;
    for (const owner of policy.ownerScope ?? [undefined])
      browserPurged += await purgeBrowserErrorContent(pool, policy.contentRetentionDays, now, owner);
@@ -25,9 +88,60 @@ index 2c6bf8f2..e75aea40 100644
  }
  
  // ---------------------------------------------------------------- operator access
+diff --git a/apps/api/src/m4-workspace.ts b/apps/api/src/m4-workspace.ts
+index 16a6e6efade6765bccfcb0668887acf78932319d..919c3833c82706b0e621029621df0507c2b80d10 100644
+--- a/apps/api/src/m4-workspace.ts
++++ b/apps/api/src/m4-workspace.ts
+@@ -62,7 +62,7 @@ async function bindHandoff(db:PoolClient,owner:string,topicId:string,b:M4Handoff
+   // overlapping transactions into a retryable conflict instead of a deadlock.
+   const ids=[...new Set([t.project_id,pin.source_project_id,scope,b.target_project_id])].sort();
+   let locked:any[];
+-  try{locked=(await db.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE NOWAIT`,[owner,ids])).rows;}
++  try{locked=(await db.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT`,[owner,ids])).rows;}
+   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','项目正在保存或提交任务，请稍后重试采用来源。');throw error;}
+   if(locked.length!==ids.length)throw missing();
+   const source=locked.find(p=>p.id===pin.source_project_id)!,target=locked.find(p=>p.id===b.target_project_id)!;
+@@ -321,7 +321,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
+   const sourceId=manifest.input.source_material?.source_project_id||manifest.input.edit_base?.source_project_id||t.source_project_id;
+   const scopeIds=[...new Set([manifest.execution_scope_project_id,...(sourceId?[sourceId]:[])])].sort();
+   let scopeProjects:any[];
+-  try{scopeProjects=(await c.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE NOWAIT`,[owner,scopeIds])).rows;}
++  try{scopeProjects=(await c.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT`,[owner,scopeIds])).rows;}
+   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','来源项目正在保存或提交任务，请稍后重新核对并执行。');throw error;}
+   if(scopeProjects.length!==scopeIds.length)throw missing();
+   if(sourceId){const source=scopeProjects.find(p=>p.id===sourceId)!;if((source.execution_scope_project_id||source.id)!==manifest.execution_scope_project_id)stale();}
+diff --git a/apps/api/src/observability.ts b/apps/api/src/observability.ts
+index ed853d9ad8a75b294cdbb310a32d61ba5fb35f39..44e4afabdb65800a9ceacc29acd85db987fa6dae 100644
+--- a/apps/api/src/observability.ts
++++ b/apps/api/src/observability.ts
+@@ -91,15 +91,22 @@ export async function recordLogicalJob(client:PoolClient,input:{owner:string;pro
+ export async function rejectOperation(pool:Pool,input:Parameters<typeof recordOperation>[1]) {
+   await transaction(pool,client=>recordOperation(client,{...input,status:'rejected'}));
+ }
+-export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:string;runId?:string;kind:'user_prompt'|'model_request'|'structured_input';version:number;objectKey:string;sha256:string;redactionVersion:string;inputRevision?:number;inputHash?:string;templateVersion?:string;rulePackVersion?:string;modelParametersVersion?:string;blobs:PrivateBlobs}, lockedClient?:PoolClient) {
++export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:string;runId?:string;kind:'user_prompt'|'model_request'|'structured_input';version?:number;objectKey:string;sha256:string;redactionVersion:string;inputRevision?:number;inputHash?:string;templateVersion?:string;rulePackVersion?:string;modelParametersVersion?:string;blobs:PrivateBlobs}, lockedClient?:PoolClient) {
+   if(!input.objectKey.startsWith(`users/${input.owner}/projects/${input.projectId}/snapshots/`)||!/^[A-Za-z0-9_-]{1,128}$/.test(input.objectKey.slice(`users/${input.owner}/projects/${input.projectId}/snapshots/`.length))||!/^[a-f0-9]{64}$/.test(input.sha256)||!safeCode.test(input.redactionVersion))throw new Error('Invalid private snapshot metadata');
+   const bytes=await input.blobs.get(input.objectKey);
+   if(digest(bytes)!==input.sha256)throw new Error('Snapshot hash mismatch');
+   const persist=async (client:PoolClient)=>{
++    // The trusted Blob read/hash above is always performed before version
++    // serialization. There is no caller-supplied "verified" shortcut.
++    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
++      [JSON.stringify(['prompt-snapshot-version',input.owner,input.projectId,input.kind])]);
++    const version=input.version??Number((await client.query(`SELECT COALESCE(max(version),0)::int+1 AS version
++      FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind=$3`,
++      [input.owner,input.projectId,input.kind])).rows[0].version);
+     if(input.inputRevision){const rev=await client.query('SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[input.owner,input.projectId,input.inputRevision,input.inputHash]);if(!rev.rowCount)throw missing();}
+     if(input.runId){const run=await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND ($4::integer IS NULL OR input_revision=$4)',[input.owner,input.projectId,input.runId,input.inputRevision??null]);if(!run.rowCount)throw missing();}
+     const id=uid();
+-    await client.query('INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash,template_version,rule_pack_version,model_parameters_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId,input.runId??null,input.kind,input.version,input.objectKey,input.sha256,input.redactionVersion,input.inputRevision??null,input.inputHash??null,input.templateVersion??null,input.rulePackVersion??null,input.modelParametersVersion??null]);
++    await client.query('INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash,template_version,rule_pack_version,model_parameters_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId,input.runId??null,input.kind,version,input.objectKey,input.sha256,input.redactionVersion,input.inputRevision??null,input.inputHash??null,input.templateVersion??null,input.rulePackVersion??null,input.modelParametersVersion??null]);
+     await emitInternal(client,internalEvent({kind:'prompt.snapshot_saved',owner:input.owner,projectId:input.projectId,runId:input.runId,traceId:input.runId??id,promptSnapshotRef:id}));
+     return id;
+   };
 diff --git a/apps/api/src/performance-data.ts b/apps/api/src/performance-data.ts
 new file mode 100644
-index 00000000..e8a72177
+index 0000000000000000000000000000000000000000..e8a72177957715e387efc4e1711a0315d8b616dd
 --- /dev/null
 +++ b/apps/api/src/performance-data.ts
 @@ -0,0 +1,123 @@
@@ -156,7 +270,7 @@ index 00000000..e8a72177
 +}
 diff --git a/apps/api/src/performance-dispatch.ts b/apps/api/src/performance-dispatch.ts
 new file mode 100644
-index 00000000..3c0dfbf2
+index 0000000000000000000000000000000000000000..3c0dfbf2fb9adad626a732e2522021b6223d1e40
 --- /dev/null
 +++ b/apps/api/src/performance-dispatch.ts
 @@ -0,0 +1,16 @@
@@ -178,7 +292,7 @@ index 00000000..3c0dfbf2
 +}
 diff --git a/apps/api/src/performance-lifecycle.ts b/apps/api/src/performance-lifecycle.ts
 new file mode 100644
-index 00000000..25292371
+index 0000000000000000000000000000000000000000..2529237130e7922e2c5a265e6cb382d4b93e0dfa
 --- /dev/null
 +++ b/apps/api/src/performance-lifecycle.ts
 @@ -0,0 +1,36 @@
@@ -220,7 +334,7 @@ index 00000000..25292371
 +}
 diff --git a/apps/api/src/performance-routes.ts b/apps/api/src/performance-routes.ts
 new file mode 100644
-index 00000000..c3b0ba90
+index 0000000000000000000000000000000000000000..c3b0ba905a7d4a88c84ce6b662c53b664a3f43ad
 --- /dev/null
 +++ b/apps/api/src/performance-routes.ts
 @@ -0,0 +1,28 @@
@@ -254,7 +368,7 @@ index 00000000..c3b0ba90
 +}
 diff --git a/apps/api/src/performance-store.ts b/apps/api/src/performance-store.ts
 new file mode 100644
-index 00000000..86e5a8e2
+index 0000000000000000000000000000000000000000..86e5a8e218c30336bffa2798c358fcc199d4dfe0
 --- /dev/null
 +++ b/apps/api/src/performance-store.ts
 @@ -0,0 +1,60 @@
@@ -320,7 +434,7 @@ index 00000000..86e5a8e2
 +}
 diff --git a/apps/api/src/performance-trace.ts b/apps/api/src/performance-trace.ts
 new file mode 100644
-index 00000000..bf2bf5c0
+index 0000000000000000000000000000000000000000..bf2bf5c0ae96f09cc31238c0ce9196e062d4e4b4
 --- /dev/null
 +++ b/apps/api/src/performance-trace.ts
 @@ -0,0 +1,189 @@
@@ -515,7 +629,7 @@ index 00000000..bf2bf5c0
 +export function recordPerformanceObservations(pool:Pool,scope:PerformanceTraceScope,observations:ReadonlyArray<PerformanceObservation>):void {try{runtime(pool).observe(scope,observations);}catch{}}
 diff --git a/apps/api/src/performance.pg.test.ts b/apps/api/src/performance.pg.test.ts
 new file mode 100644
-index 00000000..50475198
+index 0000000000000000000000000000000000000000..50475198d022777615174dcb8cf2efb0ee31bd38
 --- /dev/null
 +++ b/apps/api/src/performance.pg.test.ts
 @@ -0,0 +1,190 @@
@@ -711,7 +825,7 @@ index 00000000..50475198
 +});
 diff --git a/apps/api/src/performance.test.ts b/apps/api/src/performance.test.ts
 new file mode 100644
-index 00000000..161684d1
+index 0000000000000000000000000000000000000000..161684d10d712328cd4fb308331ffe6c15829559
 --- /dev/null
 +++ b/apps/api/src/performance.test.ts
 @@ -0,0 +1,106 @@
@@ -822,15 +936,16 @@ index 00000000..161684d1
 + assert.equal(typeof [...c.spans.values()].find(p=>p.step_key==='fractional.step')?.duration_ms,'number');
 +});
 diff --git a/apps/api/src/project-file-consistency.ts b/apps/api/src/project-file-consistency.ts
-index 46c16df1..ea0e60b7 100644
+index 46c16df16e997f9264040d07b6b747e466dc4b08..49db54e8111921dc4001d717f2a7946d3633f431 100644
 --- a/apps/api/src/project-file-consistency.ts
 +++ b/apps/api/src/project-file-consistency.ts
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
 +import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
++import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
  import type {Pool,PoolClient} from 'pg';
  import type {FastifyInstance,FastifyRequest} from 'fastify';
  import type {Static} from '@sinclair/typebox';
-@@ -126,7 +127,8 @@ async function prepareUpdateItems(c:PoolClient,owner:string,id:string,checkId:st
+@@ -126,26 +128,32 @@ async function prepareUpdateItems(c:PoolClient,owner:string,id:string,checkId:st
    return items;
  }
  export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
@@ -840,7 +955,27 @@ index 46c16df1..ea0e60b7 100644
      const b=(await c.query(`SELECT b.* FROM bb_project_file_update_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
        WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
      if(!b)return false;
-@@ -146,6 +148,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
+     const items=b.items as UpdateItem[],next=items.find(i=>!i.run_id);
+     const running=items.filter(i=>i.run_id).map(i=>i.run_id);
+     const states=(await c.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[b.owner_user_id,running])).rows;
+-    if(states.some(r=>!terminal.includes(r.state))){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
+-    if(states.some(r=>r.state!=='succeeded')){await c.query("UPDATE bb_project_file_update_batches SET state='paused',updated_at=now() WHERE id=$1",[b.id]);return true;}
++    if(states.length!==running.length)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
++    if(states.filter(r=>!terminal.includes(r.state)).length>=SHARED_BATCH_CAPACITY){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
++    if(states.some(r=>terminal.includes(r.state)&&r.state!=='succeeded')){await c.query("UPDATE bb_project_file_update_batches SET state='paused',updated_at=now() WHERE id=$1",[b.id]);return true;}
++    if(!next&&states.some(r=>!terminal.includes(r.state)))return false;
+     if(!next){await c.query("UPDATE bb_project_file_update_batches SET state='complete',updated_at=now() WHERE id=$1",[b.id]);return true;}
+     await c.query('SAVEPOINT begin_file_patch');
+     try{
+-      const p=await project(c,b.owner_user_id,b.project_id,true);await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
++      const p=await project(c,b.owner_user_id,b.project_id,true);
++      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id);
++      await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
+       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
+       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
+-      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id,next.scope_acceptance_id);
++      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id,next.scope_acceptance_id,uid());
+       next.run_id=r.id;next.error=null;
        await c.query('INSERT INTO bb_project_file_acceptances(owner_user_id,check_run_id,file_version_id,issue_ids,run_id) VALUES($1,$2,$3,$4,$5)',
          [b.owner_user_id,b.check_run_id,next.manifest.file_version_id,JSON.stringify(next.issue_ids),r.id]);
        await c.query("UPDATE bb_project_file_update_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[b.id,JSON.stringify(items)]);
@@ -848,7 +983,7 @@ index 46c16df1..ea0e60b7 100644
      }catch(e){
        await c.query('ROLLBACK TO SAVEPOINT begin_file_patch');
        if(e instanceof Problem&&e.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((e as {code?:string}).code??'')){
-@@ -156,6 +159,8 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
+@@ -156,6 +164,8 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
      }
      return true;
    });
@@ -858,15 +993,16 @@ index 46c16df1..ea0e60b7 100644
  export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
    const base='/api/v1/projects/:project_id/project-files',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};
 diff --git a/apps/api/src/project-file-workspace.ts b/apps/api/src/project-file-workspace.ts
-index e014db10..0279ca2b 100644
+index e014db1064c536ed98b19428fc9b5ad8d9babcf4..dbbe071c1226d824f37282f2dd82b1fcc77a45bf 100644
 --- a/apps/api/src/project-file-workspace.ts
 +++ b/apps/api/src/project-file-workspace.ts
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
 +import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
++import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
  import type {Pool,PoolClient} from 'pg';
  import type {FastifyInstance,FastifyRequest} from 'fastify';
  import type {Static} from '@sinclair/typebox';
-@@ -59,7 +60,8 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,co
+@@ -59,33 +61,32 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,co
  
  /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
  export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
@@ -876,7 +1012,40 @@ index e014db10..0279ca2b 100644
      const row=(await c.query(`SELECT b.* FROM bb_project_file_batches b JOIN bb_projects p ON p.owner_user_id=b.owner_user_id AND p.id=b.project_id
        WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
      if(!row)return false;
-@@ -95,7 +97,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
+     const items=row.items as BatchItem[];
+-    let next=-1;
++    let next=-1,active=0;
+     for(const [i,item] of items.entries()){
+-      if(!item.run_id){next=i;break;}
++      if(!item.run_id){if(next<0)next=i;continue;}
+       const r=(await c.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[row.owner_user_id,item.run_id])).rows[0];
+-      if(!r||!terminal.includes(r.state)){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
++      if(!r)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
++      if(!terminal.includes(r.state)){active++;continue;}
+       if(r.state!=='succeeded'){
+         item.error='该文件任务未完成，请核对任务状态后继续。';
+         await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
+       }
+     }
++    if(active>=SHARED_BATCH_CAPACITY||next<0&&active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
+     if(next<0){await c.query("UPDATE bb_project_file_batches SET state='complete',updated_at=now() WHERE id=$1",[row.id]);return true;}
+     const item=items[next],m=item.manifest,owner=row.owner_user_id;
+-    const active=(await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+-      WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
+-      AND NOT(r.state=ANY($3::text[])) LIMIT 1`,[owner,m.execution_scope_project_id,terminal])).rowCount;
+-    if(active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
+     await c.query('SAVEPOINT start_file');
+     try{
+     const ids=[...new Set([m.execution_scope_project_id,m.input.source_material!.source_project_id])];
+-    const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[owner,ids])).rows;
++    const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[owner,ids])).rows;
+     if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目已归档或来源不可用，请恢复后继续。');
+-    if((await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,m.execution_scope_project_id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有任务正在执行。');
++    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type);
+     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
+     if(!t)throw missing();
+     const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);
+@@ -95,7 +96,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
      const run=await startPinnedM4Run(c,owner,t,request,inputManifestHash({batch:row.id,index:next,attempt:item.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
      item.run_id=run.id;
      await c.query("UPDATE bb_project_file_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);
@@ -886,7 +1055,7 @@ index e014db10..0279ca2b 100644
      }catch(error){
        await c.query('ROLLBACK TO SAVEPOINT start_file');
        if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((error as {code?:string}).code??'')){
-@@ -105,6 +108,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
+@@ -105,6 +107,8 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
        await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
      }
    });
@@ -895,8 +1064,49 @@ index e014db10..0279ca2b 100644
  }
  
  export async function createProjectFileBatch(c:PoolClient,user:string,projectId:string,b:Static<typeof projectFileSchemas.ProjectFileBatchRequest>,commercial=false){
+diff --git a/apps/api/src/provider-results.ts b/apps/api/src/provider-results.ts
+index 303787e076ec83638d5c97ef9cd6e08f93c71471..068bf3965cdb2c7478527df0262a663585bbb39b 100644
+--- a/apps/api/src/provider-results.ts
++++ b/apps/api/src/provider-results.ts
+@@ -256,7 +256,7 @@ export async function recordProviderCallObservation(
+   blobs: PrivateBlobs,
+   observation: ProviderCallObservation,
+   validateResult: ProviderResultValidator,
+-  options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean } = {}
++  options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean; deferRunOutcome?:boolean } = {}
+ ): Promise<ProviderObservationResult> {
+   assertObservation(observation);
+   const eventErrorCode = MODEL_ADAPTER_ERROR_CODES.find(code => code === observation.error_code);
+@@ -265,6 +265,11 @@ export async function recordProviderCallObservation(
+   const hash=observationHash(observation);
+   return transaction(pool,async client=>{
+     const {r,job}=await lockIdentity(client,observation,options.lease);
++    if(options.deferRunOutcome){
++      const frozen=(await client.query("SELECT 1 FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2 AND operation='answer'",[r.owner_user_id,r.id])).rowCount;
++      if(!options.lease||job.subtype!=='project_qa_v1'||!observation.logical_call_id.startsWith('qa-')||!frozen)
++        throw new Problem(409,'CAPABILITY_NOT_READY','Deferred provider outcome requires a frozen parallel question run');
++    }
+     const a=(await client.query('SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.logical_call_id,observation.attempt_no])).rows[0];
+     if (!a || a.id!==observation.call_id || a.model_id!==observation.model_id || a.prompt_snapshot_id!==observation.prompt_snapshot_ref || observation.trace_id!==r.id) throw missing();
+     if (a.provider_request_id && observation.provider_request_id && a.provider_request_id!==observation.provider_request_id) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
+@@ -331,6 +336,15 @@ export async function recordProviderCallObservation(
+       await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
+       await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
+       await appendCallFinished(client,observation,'succeeded');
++    } else if (options.deferRunOutcome) {
++      // Keep the lease for accepted siblings. Attempt, cost and unknown evidence
++      // above are durable; the question stage closes admission and drains before
++      // returning the aggregate outcome. Crash recovery reuses those attempts.
++      await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{deferred_provider_calls}',
++        COALESCE(checkpoint->'deferred_provider_calls','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb)),updated_at=now() WHERE id=$1`,
++        [job.id,a.id,JSON.stringify({logical_call_id:observation.logical_call_id,attempt_no:observation.attempt_no,status:nextAttemptStatus,error_code:observation.error_code,usage_status:usageStatus})]);
++      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_call_deferred','run.progress',eventErrorCode);
++      await appendCallFinished(client,observation,failed?'failed':'paused');
+     } else if (providerBlocked) {
+       const reason = observation.error_code === 'MODEL_PROVIDER_BALANCE_EXHAUSTED' ? 'provider_balance_exhausted' :
+         observation.error_code === 'MODEL_PROVIDER_AUTH_FAILED' ? 'provider_auth_failed' : 'provider_rate_limited';
 diff --git a/apps/api/src/queue.test.ts b/apps/api/src/queue.test.ts
-index 8e141899..ee6434a2 100644
+index 8e141899e01607504a35a21c909d2666c2c3f128..ee6434a25e10e4f8b7bdba02c2909b5c547ea305 100644
 --- a/apps/api/src/queue.test.ts
 +++ b/apps/api/src/queue.test.ts
 @@ -18,7 +18,8 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
@@ -910,7 +1120,7 @@ index 8e141899..ee6434a2 100644
    try{
      const project=(await send('POST','/api/v1/projects',{name:'Synthetic resume gate',kind:'update',issuer_name:null,market:'sse',offering:'private'})).json().project_id;
 diff --git a/apps/api/src/queue.ts b/apps/api/src/queue.ts
-index 37300419..ce850586 100644
+index 373004194bb75f350caf9b7e801240586e52521b..ce8505863f33a6f7afb22c7406dfaf7389f5895f 100644
 --- a/apps/api/src/queue.ts
 +++ b/apps/api/src/queue.ts
 @@ -1,3 +1,4 @@
@@ -1031,7 +1241,7 @@ index 37300419..ce850586 100644
  }
  
 diff --git a/apps/api/src/server.ts b/apps/api/src/server.ts
-index 9bec66d9..58341355 100644
+index 9bec66d961e39aeba8f52941722fa5f8e88b529f..583413559e6c3c9563d316c12b11c994bd7bc97e 100644
 --- a/apps/api/src/server.ts
 +++ b/apps/api/src/server.ts
 @@ -46,6 +46,7 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
@@ -1050,16 +1260,131 @@ index 9bec66d9..58341355 100644
    installBillingPermissions(app,{db,owner});
    installBillingPriceAdmin(app,db,owner);
    installTaskRefunds(app,{db,owner});
+diff --git a/apps/api/src/shared-task-capacity.test.ts b/apps/api/src/shared-task-capacity.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4744ae051c72b3531ca1c215c6da932d99c1b82b
+--- /dev/null
++++ b/apps/api/src/shared-task-capacity.test.ts
+@@ -0,0 +1,18 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import type {PoolClient} from 'pg';
++import {assertBatchAdmission} from './batch-admission.js';
++
++function client(memberships:(string[]|null)[]){
++ return {query:async(sql:string)=>sql.includes('SELECT 1 FROM bb_projects')
++  ?{rowCount:1,rows:[{}]}:{rowCount:memberships.length,rows:memberships.map(membership=>({membership}))}} as unknown as PoolClient;
++}
++test('ordinary generation and update batches can admit four exact siblings, with no fifth or cross-batch escape',async()=>{
++ for(const kind of ['generation','patch']){
++  for(let active=0;active<4;active++)await assertBatchAdmission(client(Array.from({length:active},(_,i)=>[kind+':b','item-'+i,'1'])),'owner','scope',kind+':b','next');
++  await assert.rejects(assertBatchAdmission(client(Array.from({length:4},(_,i)=>[kind+':b','item-'+i,'2'])),'owner','scope',kind+':b','next'),{code:'PROJECT_RUN_ACTIVE'});
++  await assert.rejects(assertBatchAdmission(client([[kind+':other','item','4']]),'owner','scope',kind+':b','next'),{code:'PROJECT_RUN_ACTIVE'});
++  await assert.rejects(assertBatchAdmission(client([[kind+':b','next','4']]),'owner','scope',kind+':b','next'),{code:'PROJECT_RUN_ACTIVE'});
++  await assert.rejects(assertBatchAdmission(client([null]),'owner','scope',kind+':b','next'),{code:'PROJECT_RUN_ACTIVE'});
++ }
++});
+diff --git a/apps/api/src/workpaper-progressive.pg.test.ts b/apps/api/src/workpaper-progressive.pg.test.ts
+index 94ce30eacd0784e03766ff85e2a4f669f9ec6645..39b01b8b8f3e5c85fe9a717239166b09b0a2b71d 100644
+--- a/apps/api/src/workpaper-progressive.pg.test.ts
++++ b/apps/api/src/workpaper-progressive.pg.test.ts
+@@ -15,11 +15,24 @@ import {claim,promoteWordArtifact,finish} from './queue.js';
+ import {registerM4Artifacts} from './m4-workspace.js';
+ 
+ const configured=!!process.env.BB_TEST_DATABASE_URL;
+-async function fixture(key:string,chapters=9,automatic=false,credits=3000000){
++async function fixture(key:string,chapters=9,automatic=false,credits=3000000,legacy=false){
+  const pool=new Pool({connectionString:await isolatedTestDatabase(undefined,'progressive-'+key)}),user=randomUUID();let actor:string=user;
+  const objects=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,Buffer.from(b));},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
+   getIfExistsBounded:async(k,max)=>{const b=objects.get(k);return b&&b.length<=max?b:null;},exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
+- const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,enableRunRuntime:true,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
++ const apiPool=legacy?new Proxy(pool,{get(target,key){
++  if(key==='connect')return async()=>{const client=await target.connect();return new Proxy(client,{get(c,k){
++   if(k==='query')return async(sql:any,values?:any[])=>{
++    if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_batches')){
++     values![13].max_parallel=2;
++     sql=sql.replace('progressive_phase) VALUES','progressive_phase,max_parallel) VALUES').replace('$14,$15)','$14,$15,NULL)');
++    }
++    return c.query(sql,values);
++   };
++   const value=Reflect.get(c,k);return typeof value==='function'?value.bind(c):value;
++  }});};
++  const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
++ }}):pool;
++ const origin='http://bondbuddy.test',app=createServer({pool:apiPool,blobs,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,enableRunRuntime:true,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+  const errors:string[]=[];app.addHook('onError',async(_req,_reply,e)=>{errors.push(e.message);});
+  const send=(method:string,path:string,body?:unknown)=>{const family=billingWireRoute(method,path);return app.inject({method:method as any,url:path,payload:(family?.request&&body!==undefined?encodeBillingDto(family.request,body):body) as any,headers:{origin,...(Buffer.isBuffer(body)?{'content-type':'application/octet-stream'}:{})}});};
+  const ok=async(method:string,path:string,body?:unknown)=>{const r=await send(method,path,body);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}; ${errors.join(' | ')}`);return r.json();};
+@@ -63,7 +76,7 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000){
+  return {pool,user,project,path,base,cat,request,start,read,action,fail,succeed,send,ok,close,setActor:(id:string)=>{actor=id;}};
+ }
+ 
+-test('progressive API: immutable chapter order, two admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
++test('progressive API: immutable chapter order, four admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
+  const f=await fixture('trial');
+  try{
+   const plan=workpaperProgressiveSelection(f.cat.entries,f.request.item_ids,f.request.progressive.chapter_order);
+@@ -71,8 +84,8 @@ test('progressive API: immutable chapter order, two admitted items, confirmation
+   let batch=await f.start();assert.equal(batch.progressive?.phase,'trial');assert.deepEqual(batch.items.map(i=>i.entry.id),plan.ordered_item_ids);
+   assert.equal(batch.progressive?.trial_item_ids.length,8);assert.equal((await f.start()).batch_id,batch.batch_id);
+   await assert.rejects(f.pool.query("UPDATE bb_workpaper_batches SET progressive_plan=jsonb_set(progressive_plan,'{max_parallel}','3') WHERE id=$1",[batch.batch_id]),{code:'23514'});
+-  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);assert.equal(await advanceWorkpaperBatch(f.pool),false);
+-  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,2);
++  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);assert.equal(await advanceWorkpaperBatch(f.pool),false);
++  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
+   const inserted=(await f.pool.query('SELECT i.manifest,t.project_id FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.id=i.batch_id JOIN bb_m4_topics t ON t.id=b.topic_id WHERE i.batch_id=$1 AND i.item_id=$2',[batch.batch_id,plan.trial_item_ids[2]])).rows[0];
+   // Direct database admission cannot bypass the bounded scheduler, even with an
+   // otherwise authentic frozen third-item input and the same canonical project.
+@@ -292,3 +305,18 @@ test('progressive automatic billing admits only affordable files, retains full s
+   await advanceWorkpaperBatch(f.pool);
+  }finally{await f.close();}
+ });
++
++
++test('historical frozen two-way input uses shared four-way capacity without changing its input or confirmation fence',{skip:!configured,timeout:60000},async()=>{
++ const f=await fixture('legacy-two',9,false,3000000,true);
++ try{
++  let batch=await f.start();assert.equal(batch.progressive?.max_parallel,2);
++  assert.equal((await f.pool.query('SELECT max_parallel FROM bb_workpaper_batches WHERE id=$1',[batch.batch_id])).rows[0].max_parallel,null);
++  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);
++  assert.equal(await advanceWorkpaperBatch(f.pool),false);
++  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
++  assert.equal(batch.progressive?.max_parallel,2);
++  assert.equal(batch.progressive?.phase,'trial');
++  await f.action(batch,{action:'pause'});assert.equal(await advanceWorkpaperBatch(f.pool),false);
++ }finally{await f.close();}
++});
 diff --git a/apps/api/src/workpapers.ts b/apps/api/src/workpapers.ts
-index 9a727bf9..12c50077 100644
+index 9a727bf92916ea9c77cf28d90067a7ee687dc1aa..d024c4ef7758cfa88c572724fafe8a2268f13ff5 100644
 --- a/apps/api/src/workpapers.ts
 +++ b/apps/api/src/workpapers.ts
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,6 @@
 +import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
++import {SHARED_BATCH_CAPACITY} from './batch-admission.js';
++import {workpaperChapters,workpaperAdmissionOrder,WORKPAPER_MAX_PARALLEL} from '@bondbuddy/contracts';
  import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
  import {registerGenerationProgress} from './generation-progress.js';
  import {workpaperPreview} from './workpaper-preview.js';
-@@ -123,7 +124,8 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
+@@ -108,22 +111,23 @@ const independentWorkpaperFailures=new Set(['MODEL_OUTPUT_SCHEMA_INVALID','VALID
+  * The database trigger repeats this check at insertion and every state transition. */
+ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m:M4DocumentManifest){
+   const scope=m.execution_scope_project_id;
+-  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
++  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR NO KEY UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
+     throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
+   const frozen=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+-    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued' AND b.progressive_plan IS NOT NULL`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
++    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued'`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
+   if(!frozen)throw conflict('INPUT_REVISION_CONFLICT','底稿输入已变化。');
+-  const active=(await c.query(`SELECT r.id,bb_progressive_workpaper_identity(r.owner_user_id,r.project_id,r.input_revision,r.id) AS membership
++  const active=(await c.query(`SELECT r.id,bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
+     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+     WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
+     AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
+-  if(active.length>=2||active.some(r=>r.membership?.[0]!==b.id||r.membership?.[1]===item.item_id))
++  if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
+     throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
+ }
  
  /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
  export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
@@ -1069,7 +1394,45 @@ index 9a727bf9..12c50077 100644
      const b=(await c.query(`SELECT b.* FROM bb_workpaper_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
        WHERE (b.state IN ('queued','running') OR b.progressive_plan IS NOT NULL AND b.state IN ('paused','cancelled') AND EXISTS(
          SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
-@@ -190,13 +192,16 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
+@@ -139,7 +143,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
+     let active=0,blocked=false;
+     for(const item of running){
+       if(!terminal.includes(item.run_state)){active++;if(['paused','awaiting_input'].includes(item.run_state))blocked=true;continue;}
+-      const sharedFailure=b.progressive_plan&&['failed','rejected'].includes(item.run_state)&&!independentWorkpaperFailures.has(item.failure_code);
++      const sharedFailure=(b.progressive_plan||b.max_parallel)&&['failed','rejected'].includes(item.run_state)&&!independentWorkpaperFailures.has(item.failure_code);
+       await c.query('UPDATE bb_workpaper_items SET state=$3,error=$4 WHERE batch_id=$1 AND item_id=$2',[b.id,item.item_id,item.run_state==='succeeded'?'succeeded':'failed',item.run_state==='succeeded'?null:sharedFailure?'该文件因共享材料、模型服务或结算问题未完成；条件恢复后可重试受阻文件并继续。':'该文件未完成，其他底稿继续处理；可在本批结束后重试。']);
+       if(sharedFailure)blocked=true;
+     }
+@@ -150,9 +154,13 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
+     if(blocked){
+       await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务遇到共享材料、模型服务或结算问题，请先处理该任务，再继续文件包。',pause_reason='shared_blocked',revision=revision+1 WHERE id=$1",[b.id]);return true;
+     }
+-    if(active>=(b.progressive_plan?2:1))return false;
++    if(active>=SHARED_BATCH_CAPACITY)return false;
+     const eligible=b.progressive_phase==='trial'?b.progressive_plan.trial_item_ids:b.progressive_phase==='retry_failed'?b.progressive_retry_items:null;
+-    const next=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal LIMIT 1",[b.id,eligible?JSON.stringify(eligible):null])).rows[0];
++    const queued=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal",[b.id,eligible?JSON.stringify(eligible):null])).rows;
++    const grouped=queued.some(i=>i.manifest.input.workpaper?.execution==='grouped_batch_v1');
++    const plan=b.progressive_plan?{...b.progressive_plan,phase:b.progressive_phase}:grouped?{phase:'remaining' as const,chapters:workpaperChapters((await c.query('SELECT manifest FROM bb_workpaper_items WHERE batch_id=$1 ORDER BY ordinal',[b.id])).rows.map(i=>i.manifest.input.workpaper.entry)),trial_item_ids:[],max_parallel:4 as const}:undefined;
++    const nextId=workpaperAdmissionOrder(queued.map(i=>i.item_id),plan)[0];
++    const next=queued.find(i=>i.item_id===nextId);
+     if(!next){
+       if(active)return false;
+       const unfinished=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued'",[b.id])).rows[0].n);
+@@ -177,10 +185,9 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
+     try{
+       const m=next.manifest as M4DocumentManifest;
+       const ids=[...new Set([b.project_id,m.execution_scope_project_id,m.input.source_material!.source_project_id])].sort();
+-      const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
++      const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
+       if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
+-      if(b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
+-      else await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));
++      await assertProgressiveWorkpaperAdmission(c,b,next,m);
+       for(const pin of [m.input.source_material!,...m.input.materials])await readM4MaterialPin(c,b.owner_user_id,pin);
+       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
+       const auto=isAutomaticPriceVersion(b.price_version);
+@@ -190,13 +197,16 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
        await c.query("UPDATE bb_workpaper_items SET run_id=$3,state='running',error=NULL WHERE batch_id=$1 AND item_id=$2",[b.id,next.item_id,run.id]);
        await c.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,$3,$4,$5)',[b.owner_user_id,b.id,next.item_id,next.attempt,run.id]);
        await c.query("UPDATE bb_workpaper_batches SET state='running',revision=revision+1,error=NULL WHERE id=$1",[b.id]);
@@ -1087,8 +1450,25 @@ index 9a727bf9..12c50077 100644
  }
  
  export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,user:string,id:string,b:Static<typeof WorkpaperStartSchema>,templateInputs?:{templates:Record<string,{template:import('@bondbuddy/contracts').M4TemplateRef;material:import('@bondbuddy/contracts').M4MaterialPin}>;materials:import('@bondbuddy/contracts').M4MaterialPin[]},additionalMaterials:import('@bondbuddy/contracts').M4MaterialPin[]=[]){
+@@ -243,14 +253,14 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
+       const batchId=uid(),topicId=uid(),child=uid(),scope=p.execution_scope_project_id||id;
+       await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id) VALUES($1,$2,$3,'generation',$4,$5,$6,$7)",[child,user,'底稿 · '+p.name,p.issuer_name,p.market,p.offering,scope]);
+       await c.query("INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface) VALUES($1,$2,$3,$4,$5,$6,$7,'materials')",[topicId,user,child,id,'底稿 · '+p.name,'workpaper:'+batchId,hash]);
+-      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode,progressive_plan,progressive_phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13,$14,$15)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed',progressive?{chapters:progressive.chapters,trial_item_ids:progressive.trial_item_ids,max_parallel:2}:null,progressive?'trial':null]);
++      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode,progressive_plan,progressive_phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13,$14,$15)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed',progressive?{chapters:progressive.chapters,trial_item_ids:progressive.trial_item_ids,max_parallel:WORKPAPER_MAX_PARALLEL}:null,progressive?'trial':null]);
+       // Shared extraction currently reads only the prospectus. System-template
+       // batches with supplements use the existing material-aware per-file path.
+       for(const [ordinal,entry] of selected.entries()){
+         const decision=decisions.find(d=>d.item_id===entry.id);
+         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
+           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:templateInputs?.templates[entry.id]?.material??null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry,!!templateInputs),
+-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:progressive?'progressive_item_v1' as const:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
++          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:progressive?'progressive_item_v1' as const:'grouped_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
+             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
+         let explanation=null;
+         if(decision&&decision.status!=='generate'){
 diff --git a/apps/web/src/admin-inspection-detail.ts b/apps/web/src/admin-inspection-detail.ts
-index f07c8fb2..d6780ddc 100644
+index f07c8fb21a50c8d86ca6917e3ee727739c3b7031..d6780ddcf3c12e92d1bb67f0b00927f1a07bca8b 100644
 --- a/apps/web/src/admin-inspection-detail.ts
 +++ b/apps/web/src/admin-inspection-detail.ts
 @@ -1,7 +1,7 @@
@@ -1111,7 +1491,7 @@ index f07c8fb2..d6780ddc 100644
  
  function batchDetail(data:Inspection,b:Row,tab:string){
 diff --git a/apps/web/src/admin-inspection-main.ts b/apps/web/src/admin-inspection-main.ts
-index 193669bc..9f2f38e3 100644
+index 193669bc09b74569a4fb76506946a4d2709ca83b..9f2f38e3eccec07b881c01fc58f9761fb8a7ad1c 100644
 --- a/apps/web/src/admin-inspection-main.ts
 +++ b/apps/web/src/admin-inspection-main.ts
 @@ -5,6 +5,9 @@ import {Inspection,emptyFilters,label,str,time} from './admin-inspection-model.j
@@ -1168,7 +1548,7 @@ index 193669bc..9f2f38e3 100644
  function closeDetail(){const id=detail;detail='';draw();[...root.querySelectorAll<HTMLButtonElement>('[data-detail]')].find(b=>b.dataset.detail===id)?.focus();}
  document.addEventListener('keydown',e=>{if(detail&&e.key==='Escape')closeDetail();if(detail&&e.key==='Tab'){const list=[...root.querySelectorAll<HTMLElement>('.drawer button,.drawer summary,.drawer [tabindex="0"]')];const first=list[0],last=list.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 diff --git a/apps/web/src/admin-inspection-render.ts b/apps/web/src/admin-inspection-render.ts
-index f10a4170..f5e8ccf7 100644
+index f10a417077c637792c0dc864e86078dac0e46b1e..f5e8ccf747923faafaa70fdeda65216b10dd5768 100644
 --- a/apps/web/src/admin-inspection-render.ts
 +++ b/apps/web/src/admin-inspection-render.ts
 @@ -34,12 +34,25 @@ export function taskTable(data:Inspection,runs:Row[],page=0,compact=false){const
@@ -1200,7 +1580,7 @@ index f10a4170..f5e8ccf7 100644
  export function overview(data:Inspection,runs:Row[],filters:Filters=emptyFilters()){const failed=runs.filter(r=>r.state==='failed'),paused=runs.filter(r=>r.state==='paused'),attention=runs.filter(r=>data.attention(r)),ended=runs.filter(r=>terminal.has(str(r.state))&&!['cancelled','test_completed'].includes(str(r.state))),success=runs.filter(r=>r.state==='succeeded'),users=new Set(runs.map(r=>r.owner_user_id)),stale=runs.filter(r=>data.stale(r));const cards=[['有执行记录的账号',users.size,'当前筛选范围，含内部 / 测试使用'],['底层执行次数',runs.length,'底稿按条目执行计数，重试另计'],['执行完成率',ended.length?(success.length/ended.length*100).toFixed(1)+'%':'—',`完成 ${success.length} / 终态 ${ended.length}（不含取消和测试）`],['失败执行',failed.length,`${paused.length} 个已暂停 · ${stale.length} 个活动任务无新记录`]];if(data.snapshot.source==='historical_evidence'){cards[0]=['历史记录中的账号',users.size,'包含客户与验收测试账号'];cards[1]=['已载入的历史任务',runs.length,'仅代表本次可取得的个案'];cards[2]=['运营完成率','待取数','历史个案不能代表产品整体运营'];cards[3]=['当前失败任务','待取数','需要读取最新任务状态'];}const kinds=[...new Set(runs.map(r=>data.kind(r)))];return `<div class="metrics">${cards.map(([t,v,n])=>`<section class="metric"><span>${t}</span><strong>${v}</strong><small>${n}</small></section>`).join('')}</div><div class="overview-grid"><section class="panel"><h3>执行次数分布</h3><p class="muted">按独立执行记录计数；一次底稿批次可产生数百次条目执行。批次数见下方，不能把执行次数当作用户提交次数。</p>${kinds.map(k=>{const n=runs.filter(r=>data.kind(r)===k).length;return `<button class="bar-row" data-kind="${esc(k)}"><span>${esc(k==='workpaper'?'底稿条目执行':label(k))}</span><i><b style="width:${Math.max(1,n/Math.max(1,runs.length)*100)}%"></b></i><strong>${n}</strong></button>`;}).join('')||'<p class="muted">暂无任务</p>'}</section><section class="panel"><h3>排障入口</h3><p>从账号找到具体任务，查看当时输入和执行证据。</p><p class="muted">异常暂停不会计入失败终态，请从“需关注”或“已暂停”进入。“完成”也不能证明内容或模板符合预期。</p><div class="actions">${button(`查看需关注任务（${attention.length}）`,'data-attention')}${button(`查看已暂停任务（${paused.length}）`,'data-paused')}${button('查看失败任务','data-failed')}${button('查看无新记录任务','data-stale')}</div></section></div>${timingSummary(data,runs)}${recentExecutions(data,runs,filters)}`;}
  export function users(data:Inspection,runs:Row[],filters:Filters){const q=filters.search.toLowerCase();const list=data.rows('bb_users').filter(u=>!filters.user||u.id===filters.user).filter(u=>!q||[u.username,u.id,u.phone_masked].some(x=>str(x).toLowerCase().includes(q)));return `<section class="panel"><h3>真实账号 <small>${list.length} 个 · 任务统计受筛选和读取范围影响</small></h3><div class="table-scroll"><table><thead><tr><th>用户</th><th>状态</th><th>注册时间</th><th>项目</th><th>执行次数</th><th>失败执行</th><th>最近提交</th><th></th></tr></thead><tbody>${list.map(u=>{const rs=runs.filter(r=>r.owner_user_id===u.id);return `<tr><td><button class="task-name" data-user="${esc(u.id)}">${esc(u.username??u.id)}</button><small>${esc(u.phone_masked??'手机号未记录')}${u.account_classification?' · '+esc(u.account_classification):''}</small><small class="mono">${esc(u.id)}</small></td><td>${badge(u.status)}</td><td>${esc(time(u.created_at))}</td><td>${data.rows('bb_projects').filter(p=>p.owner_user_id===u.id).length}</td><td>${rs.length}</td><td>${rs.filter(r=>r.state==='failed').length}</td><td>${esc(time(rs[0]?.created_at))}</td><td><button class="link" data-user="${esc(u.id)}">查看任务 →</button></td></tr>`;}).join('')}</tbody></table></div></section>`;}
 diff --git a/apps/web/src/admin-inspection-timing.test.ts b/apps/web/src/admin-inspection-timing.test.ts
-index 2411fbd7..1858e34f 100644
+index 2411fbd774a58bb9e8487e111f07d20bbaff7f4a..1858e34fed928ef4fd8030c107b750b61a21cafa 100644
 --- a/apps/web/src/admin-inspection-timing.test.ts
 +++ b/apps/web/src/admin-inspection-timing.test.ts
 @@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
@@ -1272,7 +1652,7 @@ index 2411fbd7..1858e34f 100644
 + assert.deepEqual(executionTiming(run,rows,captured).stages,[{stage:'input_lock',ms:2000}]);
 +});
 diff --git a/apps/web/src/admin-inspection-timing.ts b/apps/web/src/admin-inspection-timing.ts
-index 6da2188d..e6967b57 100644
+index 6da2188d00c8724cd4006a8b4d7f74a68013ffef..e6967b57f68163ff1d8884d2373abc7c6198945f 100644
 --- a/apps/web/src/admin-inspection-timing.ts
 +++ b/apps/web/src/admin-inspection-timing.ts
 @@ -10,6 +10,7 @@ export interface ExecutionTiming {
@@ -1308,7 +1688,7 @@ index 6da2188d..e6967b57 100644
  export function duration(ms:number|null):string {
 diff --git a/apps/web/src/admin-performance-api.ts b/apps/web/src/admin-performance-api.ts
 new file mode 100644
-index 00000000..144ea955
+index 0000000000000000000000000000000000000000..144ea95561e450b12051d33ed07c44f3304ce480
 --- /dev/null
 +++ b/apps/web/src/admin-performance-api.ts
 @@ -0,0 +1,42 @@
@@ -1356,7 +1736,7 @@ index 00000000..144ea955
 +}
 diff --git a/apps/web/src/admin-performance-model.ts b/apps/web/src/admin-performance-model.ts
 new file mode 100644
-index 00000000..79bf032b
+index 0000000000000000000000000000000000000000..79bf032b741c094a3910fdb964df93c0104683f9
 --- /dev/null
 +++ b/apps/web/src/admin-performance-model.ts
 @@ -0,0 +1,133 @@
@@ -1495,7 +1875,7 @@ index 00000000..79bf032b
 +}
 diff --git a/apps/web/src/admin-performance-render.ts b/apps/web/src/admin-performance-render.ts
 new file mode 100644
-index 00000000..1307856b
+index 0000000000000000000000000000000000000000..1307856b4ecabbc938a3da15f0259576a23030d0
 --- /dev/null
 +++ b/apps/web/src/admin-performance-render.ts
 @@ -0,0 +1,120 @@
@@ -1621,14 +2001,14 @@ index 00000000..1307856b
 +}
 diff --git a/apps/web/src/admin-performance.css b/apps/web/src/admin-performance.css
 new file mode 100644
-index 00000000..ccd5f9f9
+index 0000000000000000000000000000000000000000..ccd5f9f99270c8cda69f1217d06d38a1d6643318
 --- /dev/null
 +++ b/apps/web/src/admin-performance.css
 @@ -0,0 +1 @@
 +.perf-panel{scroll-margin-top:20px}.perf-heading{display:flex;gap:16px;align-items:flex-start;justify-content:space-between}.perf-heading h3{margin-bottom:10px}.perf-heading p{margin-bottom:12px}.perf-scope-note{font-size:12px;line-height:1.7}.perf-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}.perf-filters label{display:grid;gap:6px;font-size:11px;color:#657b8c}.perf-filters input,.perf-filters select{width:100%;min-width:0;min-height:37px;border:1px solid #dbe3e9;border-radius:6px;background:#fff;padding:8px 10px;color:#254052}.perf-panel summary{cursor:pointer;color:#536f81;font-size:12px;padding:10px 0;line-height:1.6}.perf-actions{margin:16px 0}.perf-query-receipt{font-size:11px;color:#708197;line-height:1.9;overflow-wrap:anywhere}.perf-coverage{background:#eef7f2;border:1px solid #d6e9df;color:#326b52;font-size:12px;line-height:1.9;padding:12px 14px;border-radius:7px}.perf-coverage.perf-incomplete{background:#fff8e9;border-color:#f0e3c4;color:#7d6636}.perf-summary-table{min-width:1200px}.perf-summary-table td:nth-child(n+4){font-variant-numeric:tabular-nums;white-space:nowrap}.perf-summary-table code{font-size:11px;overflow-wrap:anywhere}.perf-summary-table td:first-child{min-width:220px}.perf-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}.perf-metric{padding:14px;background:#f6f9fa;border:1px solid #e2e9ec;border-radius:7px;min-width:0}.perf-metric>span{font-size:11px;color:#687f91}.perf-metric strong{display:block;margin:10px 0;font-size:18px;line-height:1.5;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.perf-metric small{display:block;font-size:10px;line-height:1.8}.perf-waterfall-scroll{overflow:auto;border:1px solid #e0e8ec;border-radius:7px;max-width:100%}.perf-waterfall{min-width:1040px}.perf-waterfall-head,.perf-span-row{display:grid;grid-template-columns:340px minmax(250px,1fr) 140px 130px 120px;gap:12px;align-items:center;padding:12px}.perf-waterfall-head{background:#f4f8fa;color:#6f8392;font-size:11px}.perf-span-row{border-top:1px solid #edf1f5;min-height:75px}.perf-span-label{display:flex;align-items:flex-start;gap:3px;padding-left:calc(var(--perf-depth)*13px);min-width:0}.perf-tree-toggle,.perf-tree-leaf{flex:0 0 20px;padding:1px 2px;border:0;background:none;color:#5b7d8c;text-align:center;min-height:25px}.perf-span-title{min-width:0;overflow-wrap:anywhere}.perf-span-title strong{font-size:11px;line-height:1.65;font-family:ui-monospace,Consolas,monospace}.perf-span-title small{display:block;font-size:10px;line-height:1.7;margin-top:5px}.perf-status[data-status=failed],.perf-status[data-status=interrupted]{color:#b84b49}.perf-status[data-status=running]{color:#2074a6}.perf-status[data-status=reused]{color:#795ab6}.perf-track{position:relative;background:repeating-linear-gradient(to right,#f0f4f6 0,#f0f4f6 calc(25% - 1px),#dbe5eb calc(25% - 1px),#dbe5eb 25%);height:24px;border-radius:4px;overflow:hidden}.perf-track i{position:absolute;top:4px;height:16px;background:#409688;border-radius:3px;min-width:2px}.perf-track i[data-status=failed],.perf-track i[data-status=interrupted]{background:#cd756f}.perf-track i[data-status=reused]{background:#9980c1}.perf-track i[data-status=running]{background:#5c9abf}.perf-track i[data-status=cancelled],.perf-track i[data-status=paused]{background:#96a5ad}.perf-track i.perf-provisional{background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,#ffffff55 5px,#ffffff55 9px)}.perf-track>span{font-size:10px;padding:4px 7px;color:#80909c;display:block}.perf-number{font-size:11px;line-height:1.7;font-variant-numeric:tabular-nums}.perf-number small{display:block;font-size:10px}.perf-context{padding:18px 24px;background:#f6f9fb;border-top:1px solid #e2e9ec}.perf-context[hidden]{display:none}.perf-context h4{font-size:12px;color:#4c697c;margin:12px 0}.perf-attributes{display:grid;grid-template-columns:160px minmax(0,1fr);gap:8px 14px;font-size:11px;line-height:1.75;margin:0}.perf-attributes dt{color:#748b9d;overflow-wrap:anywhere}.perf-attributes dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,Consolas,monospace;color:#324e62}.perf-context-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}.perf-context-groups .perf-attributes{grid-template-columns:1fr;gap:2px}.perf-context-groups dd{margin-bottom:5px}.perf-sessions{margin-top:16px}.perf-sessions table{min-width:900px}.perf-panel .muted{font-size:12px;line-height:1.8}.perf-panel .pagination{flex-wrap:wrap}.perf-panel [hidden]{display:none}@media(max-width:1100px){.perf-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.perf-heading{display:block}.perf-heading .source-tag{display:inline-block;margin-bottom:8px}.perf-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.perf-metric{padding:11px}.perf-metric strong{font-size:16px}.perf-context-groups{grid-template-columns:1fr}.perf-actions .button{font-size:12px}.perf-panel{padding:14px}.perf-attributes{grid-template-columns:130px minmax(0,1fr)}}
 diff --git a/apps/web/src/admin-performance.test.ts b/apps/web/src/admin-performance.test.ts
 new file mode 100644
-index 00000000..e54fd58e
+index 0000000000000000000000000000000000000000..e54fd58eddac8682a6c8bb9431c0f11b9f59615c
 --- /dev/null
 +++ b/apps/web/src/admin-performance.test.ts
 @@ -0,0 +1,145 @@
@@ -1779,7 +2159,7 @@ index 00000000..e54fd58e
 +});
 diff --git a/apps/web/src/admin-performance.ts b/apps/web/src/admin-performance.ts
 new file mode 100644
-index 00000000..65dd4156
+index 0000000000000000000000000000000000000000..65dd41565e90469208f89f0a6eaf9ffadbc122fc
 --- /dev/null
 +++ b/apps/web/src/admin-performance.ts
 @@ -0,0 +1,101 @@
@@ -1886,7 +2266,7 @@ index 00000000..65dd4156
 +}
 diff --git a/apps/web/tests/admin-performance-live.mjs b/apps/web/tests/admin-performance-live.mjs
 new file mode 100644
-index 00000000..142c96a5
+index 0000000000000000000000000000000000000000..142c96a5c2bdf4fe89c53991b49a9663bcaa4def
 --- /dev/null
 +++ b/apps/web/tests/admin-performance-live.mjs
 @@ -0,0 +1,124 @@
@@ -2016,7 +2396,7 @@ index 00000000..142c96a5
 +} else { await pool.end(); throw Error('Use seed, serve or verify.'); }
 diff --git a/apps/web/tests/admin-performance.spec.ts b/apps/web/tests/admin-performance.spec.ts
 new file mode 100644
-index 00000000..eda8a679
+index 0000000000000000000000000000000000000000..eda8a6793b72f2d0d3b944de1cccd0bb3e33984b
 --- /dev/null
 +++ b/apps/web/tests/admin-performance.spec.ts
 @@ -0,0 +1,142 @@
@@ -2162,8 +2542,32 @@ index 00000000..eda8a679
 +  await page.screenshot({path: info.outputPath(`missing-tool-${scenario}.png`)});
 +  expect(fixture.errors).toEqual([]); expect(fixture.unexpected).toEqual([]);
 +});
+diff --git a/apps/worker/src/bounded-items.ts b/apps/worker/src/bounded-items.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d36aa13b18647a60b95e14be45d34da80eb23745
+--- /dev/null
++++ b/apps/worker/src/bounded-items.ts
+@@ -0,0 +1,18 @@
++/** Bounded independent work, with stable result order and no detached operations.
++ * A rejected/uncertain item closes new admission; already accepted work settles. */
++export async function boundedItems<T,R>(items:readonly T[],limit:number,signal:AbortSignal,
++  run:(item:T,index:number)=>Promise<R>,continueAfter:(result:R)=>boolean):Promise<(R|undefined)[]>{
++  if(!Number.isInteger(limit)||limit<1||limit>4)throw Error('INVALID_BATCH_PARALLELISM');
++  const results:(R|undefined)[]=new Array(items.length).fill(undefined);let next=0,closed=false;
++  const errors:unknown[]=[];
++  await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{
++    while(!closed&&next<items.length){
++      if(signal.aborted){closed=true;errors.push(signal.reason??Error('ABORTED'));break;}
++      const index=next++;
++      try{const result=await run(items[index]!,index);results[index]=result;if(!continueAfter(result))closed=true;}
++      catch(error){closed=true;errors.push(error);}
++    }
++  }));
++  if(errors.length)throw errors[0];
++  return results;
++}
 diff --git a/apps/worker/src/codex-adapter.test.ts b/apps/worker/src/codex-adapter.test.ts
-index 66010a0f..df87881d 100644
+index 66010a0f07d3f938c03300bb1df146ec2f4ef606..df87881d29820a207d6c45cda0e0603f21c7b852 100644
 --- a/apps/worker/src/codex-adapter.test.ts
 +++ b/apps/worker/src/codex-adapter.test.ts
 @@ -13,12 +13,69 @@ import { createReviewActionObserver } from './review-action-progress.js';
@@ -2237,7 +2641,7 @@ index 66010a0f..df87881d 100644
    const { config, cleanup } = await setup({ web_search: 'live' });
    try {
 diff --git a/apps/worker/src/codex-adapter.ts b/apps/worker/src/codex-adapter.ts
-index 0932a836..4018fdd7 100644
+index 0932a83601fcfd83baa7a2d97fa1c4cb2ede1d2a..4018fdd721bb250663d0a6873285e8a94f9ebd77 100644
 --- a/apps/worker/src/codex-adapter.ts
 +++ b/apps/worker/src/codex-adapter.ts
 @@ -1,3 +1,7 @@
@@ -2523,8 +2927,24 @@ index 0932a836..4018fdd7 100644
      }
      return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
    } catch (error) {
+diff --git a/apps/worker/src/deferred-qa-journal.ts b/apps/worker/src/deferred-qa-journal.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ea222fd65c677691a38ccb7d5e485d14dfdc4ae
+--- /dev/null
++++ b/apps/worker/src/deferred-qa-journal.ts
+@@ -0,0 +1,10 @@
++import {CodexDurableJournal} from './durable-probe-journal.js';
++import {recordProviderCallObservation,type ProviderCallObservation} from '@bondbuddy/api/provider-results';
++/** Independent question observations settle before the enclosing job is aggregated. */
++export class DeferredQaJournal extends CodexDurableJournal{
++  constructor(private readonly deferredInput:ConstructorParameters<typeof CodexDurableJournal>[0]){super(deferredInput);}
++  override async recordObservation(observation:ProviderCallObservation,options:{retryable?:boolean}={}){
++    await recordProviderCallObservation(this.deferredInput.pool,this.deferredInput.blobs,observation,this.deferredInput.validateResult,
++      {lease:this.deferredInput.lease,source:'provider',retryable:options.retryable===true,deferRunOutcome:true});
++  }
++}
 diff --git a/apps/worker/src/durable-probe-journal.ts b/apps/worker/src/durable-probe-journal.ts
-index 6f7d373f..81592748 100644
+index 6f7d373fc71bc48e2de3ffec023d87e91203b7a0..815927489dd1f146ace6134dae61699616b3b319 100644
 --- a/apps/worker/src/durable-probe-journal.ts
 +++ b/apps/worker/src/durable-probe-journal.ts
 @@ -1,3 +1,4 @@
@@ -2542,7 +2962,7 @@ index 6f7d373f..81592748 100644
      const { pool, lease } = this.codexInput;
      if (intent.owner_user_id !== lease.owner || intent.job_id !== lease.jobId || intent.run_id !== lease.runId) throw new Error('PROVIDER_ATTEMPT_SCOPE_MISMATCH');
 diff --git a/apps/worker/src/file-authoring-repair.ts b/apps/worker/src/file-authoring-repair.ts
-index cf9e76f1..f4fa0c3f 100644
+index cf9e76f1deb26ca219aa16be49e52b5b623c6454..f4fa0c3f3222b9a7c02d6ebf7b9f2cbc12f927f4 100644
 --- a/apps/worker/src/file-authoring-repair.ts
 +++ b/apps/worker/src/file-authoring-repair.ts
 @@ -1,4 +1,6 @@
@@ -2574,7 +2994,7 @@ index cf9e76f1..f4fa0c3f 100644
        ctx.values.set('model_generation',result.value);
        if(await (options.pause??pauseAtCheckpoint)(ctx.pool,ctx.lease))return {kind:'stopped'};
 diff --git a/apps/worker/src/file-authoring-stage.ts b/apps/worker/src/file-authoring-stage.ts
-index 0a7a0edb..33c349f1 100644
+index 0a7a0edbe4814de8ced80b293fd221af91681407..33c349f1d6d47b433a1dd3f9185563512c7ebbde 100644
 --- a/apps/worker/src/file-authoring-stage.ts
 +++ b/apps/worker/src/file-authoring-stage.ts
 @@ -1,4 +1,5 @@
@@ -2633,7 +3053,7 @@ index 0a7a0edb..33c349f1 100644
        data={input_hash:ctx.run.input_hash.trim(),revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,...qualityContext(input,source),
          baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf'};
 diff --git a/apps/worker/src/historical-model-stage.ts b/apps/worker/src/historical-model-stage.ts
-index d7f2d34e..232fc11c 100644
+index d7f2d34edf7b3fb6d79fd524a30be0162e8095e7..232fc11c7b5c994ee323a8cd94277915e1416c36 100644
 --- a/apps/worker/src/historical-model-stage.ts
 +++ b/apps/worker/src/historical-model-stage.ts
 @@ -1,4 +1,6 @@
@@ -2674,7 +3094,7 @@ index d7f2d34e..232fc11c 100644
        // A preserved original can be delivered only as a clearly pending test artifact.
        // Never admit zero supported changes as a completed production update.
 diff --git a/apps/worker/src/m4-document-stage.ts b/apps/worker/src/m4-document-stage.ts
-index ca487f81..1270aa55 100644
+index ca487f813e3dbea6fedf1bf0b9b3e0e2db99e089..4d378ad95d4f3e940979bb0b88af726017a08c1d 100644
 --- a/apps/worker/src/m4-document-stage.ts
 +++ b/apps/worker/src/m4-document-stage.ts
 @@ -1,3 +1,4 @@
@@ -2682,6 +3102,15 @@ index ca487f81..1270aa55 100644
  import {validateWorkpaperCoverage} from './workpaper-content.js';
  import {collectDirectWorkpaper} from './workpaper-direct-output.js';
  import {writeFile} from 'node:fs/promises';
+@@ -42,7 +43,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
+   return {name: 'model_generation', replay: true, run: async ctx => {
+     const input = await (options.load ?? loadM4WorkerInput)(ctx);
+     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
+-    if(['shared_batch_v1','progressive_item_v1'].includes(input.manifest.input.workpaper?.execution??'')&&!input.manifest.input.template)
++    if(['shared_batch_v1','progressive_item_v1','grouped_batch_v1'].includes(input.manifest.input.workpaper?.execution??'')&&!input.manifest.input.template)
+       return sharedWorkpaperDocument(ctx,input,options.model,options.config);
+     const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file',workpaper:'m4-workpaper'} as const)[input.manifest.input.document_type]);
+     const config = options.config ?? loadCodexAdapterConfig();
 @@ -103,12 +104,12 @@ export function m4DocumentDeliveryStage(): RunStage {
      const result = ctx.values.get('model_generation');
      if (!validM4DocumentResult(result, ctx) || result.error) return {kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE'};
@@ -2698,7 +3127,7 @@ index ca487f81..1270aa55 100644
      const document=await read('document.docx'),note=await read('preparation-note.docx');
      if(result.workpaper_decision)await publishWorkpaperItemResult(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.workpaper_decision,
 diff --git a/apps/worker/src/m4-file-workspace.ts b/apps/worker/src/m4-file-workspace.ts
-index f7ed4df7..59d3f249 100644
+index f7ed4df789af164b013534c42fedb88eea7d9e2e..59d3f249bfa2ebaabd12c3015efbd69e75eaaa45 100644
 --- a/apps/worker/src/m4-file-workspace.ts
 +++ b/apps/worker/src/m4-file-workspace.ts
 @@ -1,3 +1,4 @@
@@ -2763,7 +3192,7 @@ index f7ed4df7..59d3f249 100644
  }
 diff --git a/apps/worker/src/model-call-budget.pg.test.ts b/apps/worker/src/model-call-budget.pg.test.ts
 new file mode 100644
-index 00000000..e52d870a
+index 0000000000000000000000000000000000000000..e52d870ab96eb7f22e7c2a9564b1ea09481b3ca6
 --- /dev/null
 +++ b/apps/worker/src/model-call-budget.pg.test.ts
 @@ -0,0 +1,108 @@
@@ -2877,7 +3306,7 @@ index 00000000..e52d870a
 +});
 diff --git a/apps/worker/src/model-call-budget.ts b/apps/worker/src/model-call-budget.ts
 new file mode 100644
-index 00000000..d4bfb0a1
+index 0000000000000000000000000000000000000000..d4bfb0a127c9be57e05d5cb8b0ddf7c22f325104
 --- /dev/null
 +++ b/apps/worker/src/model-call-budget.ts
 @@ -0,0 +1,240 @@
@@ -3123,7 +3552,7 @@ index 00000000..d4bfb0a1
 +}
 diff --git a/apps/worker/src/model-performance.test.ts b/apps/worker/src/model-performance.test.ts
 new file mode 100644
-index 00000000..ef5982ac
+index 0000000000000000000000000000000000000000..ef5982ac2a99edf8c769a523ffd0682273018e5e
 --- /dev/null
 +++ b/apps/worker/src/model-performance.test.ts
 @@ -0,0 +1,94 @@
@@ -3223,7 +3652,7 @@ index 00000000..ef5982ac
 +});
 diff --git a/apps/worker/src/model-performance.ts b/apps/worker/src/model-performance.ts
 new file mode 100644
-index 00000000..fd7d015d
+index 0000000000000000000000000000000000000000..fd7d015d4bff0e5c737c726624b34e8cf43fdf44
 --- /dev/null
 +++ b/apps/worker/src/model-performance.ts
 @@ -0,0 +1,89 @@
@@ -3318,7 +3747,7 @@ index 00000000..fd7d015d
 +}
 diff --git a/apps/worker/src/performance-io.test.ts b/apps/worker/src/performance-io.test.ts
 new file mode 100644
-index 00000000..8c494fd7
+index 0000000000000000000000000000000000000000..8c494fd7d8a52ca2b26e11992fa1659d40afbe5f
 --- /dev/null
 +++ b/apps/worker/src/performance-io.test.ts
 @@ -0,0 +1,51 @@
@@ -3375,7 +3804,7 @@ index 00000000..8c494fd7
 +});
 diff --git a/apps/worker/src/performance-io.ts b/apps/worker/src/performance-io.ts
 new file mode 100644
-index 00000000..13431862
+index 0000000000000000000000000000000000000000..13431862882f1ebaba58918a26ede35c2752630a
 --- /dev/null
 +++ b/apps/worker/src/performance-io.ts
 @@ -0,0 +1,31 @@
@@ -3412,17 +3841,17 @@ index 00000000..13431862
 +}
 diff --git a/apps/worker/src/performance-pipeline.pg.test.ts b/apps/worker/src/performance-pipeline.pg.test.ts
 new file mode 100644
-index 00000000..1cc7b16f
+index 0000000000000000000000000000000000000000..5ea5f9cb250835fe4511b8bb568e63272493c59f
 --- /dev/null
 +++ b/apps/worker/src/performance-pipeline.pg.test.ts
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,121 @@
 +// Real PostgreSQL and queue/delivery code; synthetic stages and in-memory storage, no model calls.
 +import assert from 'node:assert/strict';
 +import test from 'node:test';
 +import {randomUUID} from 'node:crypto';
 +import {Pool} from 'pg';
 +import type {PrivateBlobs} from '@bondbuddy/api/data';
-+import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
++import {flushPerformanceTraces,withPerformanceTrace,withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 +import {isolatedTestDatabase} from './test-database.js';
 +import {runPipelineOnce,wordDeliveryStage,type RunStage} from './run-pipeline.js';
 +import {makeWorkerDocxFixture} from './docx-test-fixture.js';
@@ -3450,7 +3879,18 @@ index 00000000..1cc7b16f
 +  for(const key of ['worker.claim','job.queue_wait','stage.execute','stage.checkpoint','artifact.promote','document.inspect','artifact.upload','artifact.readback','artifact.register','run.finish','run.terminal_persist'])assert(keys.includes(key),key);
 +  assert.equal(delivery.find(row=>row.step_key==='run.execution').status,'succeeded');
 +  assert(delivery.every(row=>row.duration_ms!==null&&row.duration_ms>=0));
-+  assert.equal((await pool.query('SELECT complete,worker_instance_id FROM bb_performance_sessions WHERE run_id=$1',[completed])).rows[0].complete,true);
++  const sessions=(await pool.query('SELECT * FROM bb_performance_sessions WHERE run_id=$1',[completed])).rows;
++  assert.equal(sessions.length,1);
++  const session=sessions[0];
++  assert.equal(session.worker_instance_id,'synthetic-worker');
++  assert.equal(session.closed,true);
++  assert.equal(session.generated,delivery.length);
++  assert.equal(session.acknowledged,delivery.length);
++  assert.equal(session.dropped,0);assert.equal(session.invalid_attributes,0);
++  assert(delivery.every(row=>row.session_id===session.session_id&&row.ended_at!==null&&row.status!=='running'));
++  // The independent writer deliberately stops waiting on a hot run row after 250ms.
++  // A retried, fully acknowledged trace still reports that advisory flush failure.
++  assert.equal(session.complete,session.flush_errors===0);
 +  const retry=await submit();let checkpoints=0;
 +  const first:RunStage={name:'input_lock',run:async()=>{checkpoints++;return {kind:'done',checkpoint:{synthetic:true}};}};
 +  assert.equal(await execute([first,{name:'model_generation',run:async()=>{throw Error('synthetic failure');}}]),'retry');
@@ -3465,8 +3905,69 @@ index 00000000..1cc7b16f
 +  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE owner_user_id=$1',[owner])).rows[0].n,0);
 + }finally{await flushPerformanceTraces(pool,1000);await pool.end();}
 +});
++
++
++test('a run-row lock never blocks the business callback and a retried trace retains its flush error',
++ {skip:!connection,timeout:30000},async()=>{
++  const pool=new Pool({connectionString:connection});
++  const owner='perf-contention-'+randomUUID(),project=randomUUID(),run=randomUUID(),job=randomUUID(),hash='b'.repeat(64);
++  const blocker=await pool.connect();let locked=false,blockedFlush:Promise<void>|undefined;
++  let callbackTimer:ReturnType<typeof setTimeout>|undefined;
++  const scope={ownerUserId:owner,projectId:project,runId:run,jobId:job,taskKind:'update',serviceRole:'worker',workerInstanceId:'synthetic-worker'};
++  try{
++   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'perf_lock_'+randomUUID().slice(0,8)]);
++   await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic timing contention','update')",[project,owner]);
++   await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[project,owner,hash]);
++   await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'update',$4,'queued')",[run,owner,project,hash]);
++   await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage) VALUES($1,$2,$3,'update','default','queued','queued')",[job,owner,run]);
++   // Establish the real advisory pool before taking the run lock, so this scenario
++   // exercises its FK lock wait rather than a cold connection timeout.
++   const warmExecution=randomUUID();
++   await withPerformanceTrace(pool,{...scope,runExecutionId:warmExecution},async()=>undefined);
++   await flushPerformanceTraces(pool,5000);
++   assert.equal((await pool.query('SELECT complete FROM bb_performance_sessions WHERE run_execution_id=$1',[warmExecution])).rows[0].complete,true);
++   await blocker.query('BEGIN');locked=true;
++   await blocker.query('SELECT id FROM bb_runs WHERE id=$1 FOR UPDATE',[run]);
++   const execution=randomUUID();let flushSettled=false;
++   const business=withPerformanceTrace(pool,{...scope,runExecutionId:execution},async()=>{
++    // Start the real writer while the callback is running, but never await it here.
++    blockedFlush=flushPerformanceTraces(pool,2000);
++    void blockedFlush.then(()=>{flushSettled=true;});
++    return withPerformanceSpan('stage.execute',{stage:'input_lock'},async()=>'business-result');
++   });
++   const outcome=await Promise.race([business,new Promise<never>((_,reject)=>{
++    callbackTimer=setTimeout(()=>reject(Error('business callback waited for the advisory writer')),2000);
++   })]);
++   clearTimeout(callbackTimer);callbackTimer=undefined;
++   assert.equal(outcome,'business-result');
++   assert.equal(flushSettled,false,'business callback finishes while its independent flush is still pending');
++   // Keep the real FOR UPDATE lock longer than the unchanged 250ms writer limit.
++   await blocker.query('SELECT pg_sleep(0.6)');
++   await blockedFlush;
++   await blocker.query('ROLLBACK');locked=false;
++   await flushPerformanceTraces(pool,5000);
++   const sessions=(await pool.query('SELECT * FROM bb_performance_sessions WHERE run_execution_id=$1',[execution])).rows;
++   assert.equal(sessions.length,1);
++   const session=sessions[0];
++   const spans=(await pool.query('SELECT * FROM bb_performance_spans WHERE session_id=$1',[session.session_id])).rows;
++   assert.equal(spans.length,2);
++   assert.deepEqual(spans.map(row=>row.step_key).sort(),['run.execution','stage.execute']);
++   assert(spans.every(row=>row.status==='succeeded'&&row.ended_at!==null&&row.duration_ms!==null&&row.duration_ms>=0));
++   assert.equal(session.worker_instance_id,'synthetic-worker');assert.equal(session.closed,true);
++   assert.equal(session.generated,spans.length);assert.equal(session.acknowledged,spans.length);
++   assert.equal(session.dropped,0);assert.equal(session.invalid_attributes,0);
++   assert(session.flush_errors>0,'the timed-out FK check remains visible after every span is retried');
++   assert.equal(session.complete,false);assert.equal(session.complete,session.flush_errors===0);
++  }finally{
++   if(callbackTimer)clearTimeout(callbackTimer);
++   if(locked)await blocker.query('ROLLBACK').catch(()=>{});
++   blocker.release();
++   await blockedFlush;
++   await flushPerformanceTraces(pool,1000);await pool.end();
++  }
++ });
 diff --git a/apps/worker/src/project-file-tools.ts b/apps/worker/src/project-file-tools.ts
-index bf2b0af8..b72947be 100644
+index bf2b0af8143e4381190297de115ae35ba385360c..b72947bec842c21014f438b74e422a4cf5725e84 100644
 --- a/apps/worker/src/project-file-tools.ts
 +++ b/apps/worker/src/project-file-tools.ts
 @@ -1,3 +1,4 @@
@@ -3486,8 +3987,90 @@ index bf2b0af8..b72947be 100644
  }
  export async function inspectProjectFile(ctx:StageContext,path:string,complete=false):Promise<ProjectFileText>{
    const dir=await mkdtemp(join(tmpdir(),'bb-file-text-'));
+diff --git a/apps/worker/src/project-qa-stage.ts b/apps/worker/src/project-qa-stage.ts
+index c40c674558e3782c8be9e6c24028178ac2aacf58..a22d1fe512451d65ebf1641140a2171b8d6ae53c 100644
+--- a/apps/worker/src/project-qa-stage.ts
++++ b/apps/worker/src/project-qa-stage.ts
+@@ -1,3 +1,4 @@
++import {boundedItems} from './bounded-items.js';
+ import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+ import {tmpdir} from 'node:os';
+ import {join} from 'node:path';
+@@ -8,7 +9,7 @@ import {QaAnswerSchema,QaResultSchema,qaSearchTerms,qaSameAsset,type QaAnswer,ty
+ import {digest,transaction} from '@bondbuddy/api/data';
+ import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
+ import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
+-import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js';
++import {codexModelStage,type RunStage,type StageContext,type StageOutcome} from './run-pipeline.js';
+ import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
+ import {loadProjectQaInput} from './project-qa-input.js';
+ import {projectFilesRoot} from './project-file-tools.js';
+@@ -76,7 +77,7 @@ export function qaMissingMaterials(question:string):string[]{
+ }
+ export function projectQaModelStage(options:{model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig}={}):RunStage{
+  return {name:'model_generation',replay:true,run:async ctx=>{
+-  const input=await loadProjectQaInput(ctx),old=(await ctx.pool.query('SELECT result,result_hash FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
++  const input=await loadProjectQaInput(ctx),old=(await ctx.pool.query('SELECT result,result_hash,max_parallel FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
+   if(old?.result){if(!Value.Check(QaResultSchema,old.result)||inputManifestHash(old.result)!==old.result_hash.trim())throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:old.result};}
+   const dir=await mkdtemp(join(tmpdir(),'bb-project-qa-'));
+   try{
+@@ -99,10 +100,11 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
+     const prospectusIndex=input.prospectus?input.materials.findIndex(m=>qaSameAsset(m.asset,input.prospectus!.asset)):-1;
+     if(input.prospectus&&(prospectusIndex<0||!evidence[prospectusIndex]?.snapshot.spans.some(s=>s.text.trim())))return {kind:'fail',code:'MATERIAL_UNREADABLE'};
+     const projectContext={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length})),introduction:prospectusIndex<0?[]:evidence[prospectusIndex].snapshot.spans.filter(s=>s.text.trim()).slice(0,12).map(s=>({span_id:s.id,text:s.text.slice(0,1200)}))};
+-    const answers:QaAnswer[]=[];
+-    for(const question of input.questions){
++    let outcomes:(StageOutcome|undefined)[];
++    try{outcomes=await boundedItems(input.questions,4,ctx.signal,async(question):Promise<StageOutcome>=>{
++     const questionCtx={...ctx,checkpoint:{...ctx.checkpoint},values:new Map(ctx.values)};
+      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
+-     if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
++     if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:saved.answer};}
+      const recovered=await reusableQaAnswer(ctx.pool,ctx.run,input,question.id,answer=>
+       (answer.citations.length>0&&answer.citations.every(c=>c.quote.trim()&&evidence[c.asset_index]?.snapshot.spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))||qaUnanswered(answer))
+       &&answer.case_ids.every(id=>input.cases.some(c=>c.id===id)));
+@@ -112,22 +114,35 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
+       const {answer,...receipt}=recovered;
+       await checkpointStage(ctx.pool,ctx.lease,'qa_'+digest(question.id).slice(0,48)+'_reuse',{question_id:question.id,...receipt});
+       await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,recovered.answer_sha256]);});
+-      answers.push(answer);continue;
++      return {kind:'done',value:answer};
+      }
+      const terms=new Set(qaSearchTerms(question.question));
+      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
+      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
+      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
+-     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
++     const outcome=await (options.model??codexModelStage)({deferRunOutcome:true,name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
+       // An explicit unanswered question can finish without a citation. Its model
+       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
+       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
+       config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
+-      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
++      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(questionCtx);
+      if(outcome.kind!=='done')return outcome;
+      const answer=groundedQaAnswer(outcome.value as QaAnswer,question,{...input,cases:questionCases},evidence);
+-     await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});answers.push(answer);
++     await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});return {kind:'done',value:answer};
++    },outcome=>outcome.kind==='done');
++    }catch(error){
++      // boundedItems has drained every accepted operation. A persistence or
++      // process exception must never turn an uncertain sibling into a settled
++      // run failure, or release its reservation without reconciliation.
++      const live=(await ctx.pool.query("SELECT 1 FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[ctx.lease.jobId,ctx.lease.owner,ctx.lease.runId,ctx.lease.token])).rowCount;
++      if(!live)return {kind:'stopped'};
++      const unknown=(await ctx.pool.query("SELECT 1 FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND status='pending_reconcile' LIMIT 1",[ctx.lease.owner,ctx.lease.jobId])).rowCount;
++      if(unknown)return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};
++      throw error;
+     }
++    const stopped=outcomes.find(outcome=>outcome?.kind==='pause'&&outcome.stage==='provider_reconcile')??outcomes.find(outcome=>outcome&&outcome.kind!=='done');if(stopped)return stopped;
++    if(outcomes.some(outcome=>!outcome))return {kind:'stopped'};
++    const answers=outcomes.map(outcome=>outcome!.kind==='done'?outcome!.value as QaAnswer:undefined!);
+     await writeFile(join(dir,'fill.json'),JSON.stringify({source_sha256:prepared.document.sha256,questions:input.questions,answers,evidence,cases:input.cases,warnings}),{mode:0o600});
+     await python(ctx,['fill',join(dir,'source.docx'),join(dir,'fill.json'),join(dir,'filled.docx')]);
+     result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'filled.docx')),snapshot:prepared.snapshot,questions:input.questions,answers,evidence,warnings};
 diff --git a/apps/worker/src/review-assistant.ts b/apps/worker/src/review-assistant.ts
-index 4ba32d92..2627163a 100644
+index 4ba32d92c29189557dc6d80ab51c2799a71b4082..2627163a6af079e326ce0f4a6e25974abf575117 100644
 --- a/apps/worker/src/review-assistant.ts
 +++ b/apps/worker/src/review-assistant.ts
 @@ -1,3 +1,4 @@
@@ -3521,16 +4104,17 @@ index 4ba32d92..2627163a 100644
    constructor(private readonly options:{pool:Pool;blobs:PrivateBlobs;lease:ReviewAssistantLease;validateResult:(value:unknown)=>boolean}) {
      this.protocol=reviewAssistantProtocol(options.lease.context_snapshot as AssistantSnapshot);
 diff --git a/apps/worker/src/run-pipeline.ts b/apps/worker/src/run-pipeline.ts
-index 0bd7d86d..56e8a4f8 100644
+index 0bd7d86d25eb0e58018d8eeba1c3dc8ad188d1b7..31aa81cf75889ed84355aafb03d906eee375b579 100644
 --- a/apps/worker/src/run-pipeline.ts
 +++ b/apps/worker/src/run-pipeline.ts
-@@ -1,3 +1,5 @@
+@@ -1,3 +1,6 @@
 +import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 +import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
++import {DeferredQaJournal} from './deferred-qa-journal.js';
  import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
  import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
  // #17 run execution path. One claimed run job executes its stages in order; each completed stage
-@@ -93,6 +95,7 @@ export type RunPipelineDependencies = {
+@@ -93,6 +96,7 @@ export type RunPipelineDependencies = {
    loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
    /** #76 target-period candidate producer call point; absent = unchanged. */
    produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
@@ -3538,22 +4122,93 @@ index 0bd7d86d..56e8a4f8 100644
    onLease?: (lease: Lease | null) => void;
    /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
    afterStage?: (stage: string, lease: Lease) => Promise<void>;
-@@ -517,11 +520,11 @@ export function codexModelStage(options: {
+@@ -480,16 +484,12 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
+ }
+ export const materialsReadyStage = createMaterialsReadyStage();
+ 
+-async function nextSnapshotVersion(pool: Pool, owner: string, projectId: string) {
+-  const q = await pool.query("SELECT COALESCE(max(version),0)::int+1 AS v FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'", [owner, projectId]);
+-  return Number(q.rows[0].v);
+-}
+-
+ /**
+  * A model stage on the contained Codex adapter. The prompt is saved (scrubbed) as a #79 snapshot
+  * and checkpointed before any call; the text actually sent is always read back from that snapshot.
+  */
+ export function codexModelStage(options: {
++  deferRunOutcome?:boolean;
+   name: string; logicalCallId: string; config: CodexAdapterConfig | (() => CodexAdapterConfig);
+   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
+   resultSchemaVersion: string; templateVersion?: string;
+@@ -517,13 +517,9 @@ export function codexModelStage(options: {
        let imageRef=ctx.checkpoint[promptStage]?.image_input as ModelImageRef|undefined;
        if (!snapshotId) {
          imageRef=options.imageInput?await saveModelImage(blobs,run,options.imageInput):undefined;
 -        const body = await options.buildPrompt(ctx)+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
-+        const body = await withPerformanceSpan('prompt.compose',{logical_call_id:options.logicalCallId},()=>options.buildPrompt(ctx))+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
-         for (let tries = 0; !snapshotId; tries++) {
-           try {
+-        for (let tries = 0; !snapshotId; tries++) {
+-          try {
 -            snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
 -              version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
-+            snapshotId = await withPerformanceSpan('prompt.snapshot_save',{logical_call_id:options.logicalCallId},async()=>savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
-+              version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion }));
-           } catch (error) { if ((error as { code?: string }).code !== '23505' || tries >= 3) throw error; }
-         }
+-          } catch (error) { if ((error as { code?: string }).code !== '23505' || tries >= 3) throw error; }
+-        }
++        const body = await withPerformanceSpan('prompt.compose',{logical_call_id:options.logicalCallId},()=>options.buildPrompt(ctx))+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
++        snapshotId = await withPerformanceSpan('prompt.snapshot_save',{logical_call_id:options.logicalCallId},()=>savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
++          body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion }));
          const pinned={snapshot_id:snapshotId,...(imageRef?{image_input:imageRef}:{})};
-@@ -594,9 +597,12 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' |
+         await checkpointStage(pool, lease, promptStage, pinned);
+         ctx.checkpoint[promptStage] = pinned;
+@@ -542,7 +538,7 @@ export function codexModelStage(options: {
+         return !!envelope && options.validate(envelope.output);
+       }
+         : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
+-      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
++      const durable = new (options.deferRunOutcome?DeferredQaJournal:CodexDurableJournal)({ pool, blobs, lease, validateResult });
+       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
+       const callGate = await ctx.validateBeforeModelCall?.();
+       if (callGate) return callGate;
+@@ -553,11 +549,40 @@ export function codexModelStage(options: {
+         persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
+       const authoring=['update','generation'].includes(run.task_kind)&&(!options.logicalCallId.startsWith('m4-')||options.logicalCallId==='m4-document-v1')
+         ?createAuthoringActivityObserver({signal:ctx.signal,persist:activity=>recordAuthoringActivity(pool,lease,activity)}):undefined;
++      let delayedGate:StageOutcome|undefined;
++      const beforeIntent=async()=>{
++        ctx.signal.throwIfAborted();
++        const gate=await ctx.validateBeforeModelCall?.();
++        if(gate){delayedGate=gate;throw Error('MODEL_ADMISSION_INPUT_CHANGED');}
++        const active=await pool.query(`SELECT j.user_pause_requested,j.credit_pause_requested FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
++          WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND j.lease_token=$4 AND j.state='running'
++          AND j.lease_until>now() AND r.state='running'`,
++          [lease.jobId,lease.owner,lease.runId,lease.token]);
++        if(!active.rowCount){delayedGate={kind:'stopped'};throw Error('MODEL_ADMISSION_LEASE_CHANGED');}
++        const flags=active.rows[0];
++        if(flags.user_pause_requested||flags.credit_pause_requested){
++          const stage=flags.credit_pause_requested?'credits_exhausted':'user_paused';
++          delayedGate={kind:'pause',stage,reason:stage};throw Error('MODEL_ADMISSION_PAUSED');
++        }
++      };
+       let result:ContainedCallResult;
+       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
+-        logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
++        ...{beforeIntent},logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
+         imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
+         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
++      } catch(error){
++        if(delayedGate)return delayedGate;
++        // A pause can also win between the last read-only check and the locked
++        // intent write. No model was sent; park after draining accepted siblings.
++        if(error instanceof Problem&&error.code==='CAPABILITY_NOT_READY'){
++          const flags=(await pool.query(`SELECT user_pause_requested,credit_pause_requested FROM bb_jobs
++            WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()`,
++            [lease.jobId,lease.owner,lease.runId,lease.token])).rows[0];
++          if(flags?.user_pause_requested||flags?.credit_pause_requested){
++            const stage=flags.credit_pause_requested?'credits_exhausted':'user_paused';return {kind:'pause',stage,reason:stage};
++          }
++        }
++        throw error;
+       } finally { await progress?.drain(); await authoring?.drain(); }
+       if (result.status === 'completed' || result.status === 'reused')
+         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
+@@ -594,9 +619,12 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' |
  
  /** Claims one run job and executes its remaining stages. Returns what happened to the durable job. */
  export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
@@ -3567,7 +4222,7 @@ index 0bd7d86d..56e8a4f8 100644
    deps.onLease?.(lease);
    if (!lease) return 'idle';
    const abort = new AbortController();
-@@ -605,24 +611,66 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -605,24 +633,66 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
    // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
    const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
    let currentStage: string | undefined;
@@ -3638,7 +4293,7 @@ index 0bd7d86d..56e8a4f8 100644
      const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
      const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
        loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
-@@ -630,7 +678,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -630,7 +700,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
        // Synthetic mechanics tests install their own input-lock stage. The production stage
        // always rechecks every binding before a provider intent, including checkpoint replay.
        if (!deps.stages.includes(inputLockStage)) return null;
@@ -3647,7 +4302,7 @@ index 0bd7d86d..56e8a4f8 100644
        if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
        if(isWorkpaperChange(input.manifest))return workpaperChangeGate(pool,run,input);
        if(isWorkpaperAssessment(input.manifest))return workpaperAssessmentGate(pool,run,input);
-@@ -660,13 +708,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -660,13 +730,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
          if(gate?.kind==='fail')return await failRun({errorCode:gate.code,failedStage:stage.name});
        }
        const saved = checkpoint[stage.name];
@@ -3669,7 +4324,7 @@ index 0bd7d86d..56e8a4f8 100644
            checkpoint[stage.name] = outcome.checkpoint ?? {};
          } else if (outcome.upgradeCheckpoint) {
            await upgradeStageCheckpoint(pool, lease, stage.name, outcome.checkpoint ?? {});
-@@ -703,7 +756,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -703,7 +778,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
          : [];
        const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
        if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
@@ -3679,7 +4334,7 @@ index 0bd7d86d..56e8a4f8 100644
          if (baseline.status !== 'available') {
            return await failRun({ errorCode: baseline.failureCode, failedStage: stage.name });
          }
-@@ -711,7 +765,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -711,7 +787,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
          reviewArtifacts.push({ id: baseline.artifactId, version: baseline.artifactVersion, kind: 'baseline' });
        }
        if (outcome.cleanBytes) {
@@ -3689,7 +4344,7 @@ index 0bd7d86d..56e8a4f8 100644
          if (clean.status !== 'available') {
            return await failRun({ errorCode: clean.failureCode, failedStage: stage.name });
          }
-@@ -719,33 +774,35 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -719,33 +796,35 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
          reviewArtifacts.push({ id: clean.artifactId, version: clean.artifactVersion, kind: 'clean' });
        }
        for (const attachment of outcome.attachments ?? []) {
@@ -3733,7 +4388,7 @@ index 0bd7d86d..56e8a4f8 100644
          if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
        }
        if (reviewExecution) {
-@@ -761,43 +818,20 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
+@@ -761,43 +840,20 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
          ctx.checkpoint.word_delivery_pair = pair;
        }
        if(await pauseAtCheckpoint(pool,lease))return 'paused';
@@ -3786,7 +4441,7 @@ index 0bd7d86d..56e8a4f8 100644
      clearInterval(heartbeat);
      deps.signal?.removeEventListener('abort', onOuterAbort);
 diff --git a/apps/worker/src/runtime.ts b/apps/worker/src/runtime.ts
-index 5164050a..85354b87 100644
+index 5164050a346464f13276cb8aac35d96a51220596..85354b87a298aa5af1460983c0b8a2e42e0ce1c9 100644
 --- a/apps/worker/src/runtime.ts
 +++ b/apps/worker/src/runtime.ts
 @@ -1,3 +1,5 @@
@@ -3864,7 +4519,7 @@ index 5164050a..85354b87 100644
      process.exit(0);
    };
 diff --git a/apps/worker/src/unified-model-stage.ts b/apps/worker/src/unified-model-stage.ts
-index 17fbd63c..7aaef832 100644
+index 17fbd63ca4714c1e789517fe003e1b7b9c233b0c..7aaef8326c8a94af49f5b2d8eba8da5c278b26cf 100644
 --- a/apps/worker/src/unified-model-stage.ts
 +++ b/apps/worker/src/unified-model-stage.ts
 @@ -1,4 +1,6 @@
@@ -3910,7 +4565,7 @@ index 17fbd63c..7aaef832 100644
        };
 diff --git a/apps/worker/src/workpaper-group-performance.test.ts b/apps/worker/src/workpaper-group-performance.test.ts
 new file mode 100644
-index 00000000..ac1dda36
+index 0000000000000000000000000000000000000000..ac1dda364a8464e21198ec5f4ccaa2ae70855b96
 --- /dev/null
 +++ b/apps/worker/src/workpaper-group-performance.test.ts
 @@ -0,0 +1,70 @@
@@ -3985,11 +4640,14 @@ index 00000000..ac1dda36
 +  assert.equal(waits.length, 1); assert.equal(waits[0].status, 'cancelled'); assert.equal(f.modelCalls(), 0);
 +});
 diff --git a/apps/worker/src/workpaper-progressive-groups.ts b/apps/worker/src/workpaper-progressive-groups.ts
-index 7ae94083..cb6cedd7 100644
+index 7ae9408300b521b78495d6648b57ec41a9fae674..e05116731d6cc10b3866562e50d8d65ba67efd0f 100644
 --- a/apps/worker/src/workpaper-progressive-groups.ts
 +++ b/apps/worker/src/workpaper-progressive-groups.ts
-@@ -3,6 +3,8 @@ import {Value} from '@sinclair/typebox/value';
- import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive} from '@bondbuddy/contracts';
+@@ -1,8 +1,10 @@
+ import {Type,type Static} from '@sinclair/typebox';
+ import {Value} from '@sinclair/typebox/value';
+-import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive} from '@bondbuddy/contracts';
++import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive,workpaperPlanGroupIds,WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
  import {inputManifestHash as hash} from '@bondbuddy/api/production-rule-pin';
  import {transaction} from '@bondbuddy/api/data';
 +import {startPerformanceSpan,withPerformanceSpan} from '@bondbuddy/api/performance-trace';
@@ -3997,7 +4655,34 @@ index 7ae94083..cb6cedd7 100644
  import {writeFile,readFile} from 'node:fs/promises';
  import {join} from 'node:path';
  import {execFile} from 'node:child_process';
-@@ -59,6 +61,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -15,7 +17,7 @@ import type {StageContext,StageOutcome,codexModelStage} from './run-pipeline.js'
+ import type {CodexAdapterConfig} from './codex-adapter.js';
+ import type {SharedSource} from './workpaper-shared-stage.js';
+ 
+-export const WORKPAPER_PLAN_GROUP_SIZE=8;
++export {WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
+ const MAX_PLAN=64*1024*1024,version='workpaper-progressive-group-result-v1';
+ const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
+ const id=Type.String({minLength:1,maxLength:128});
+@@ -35,14 +37,11 @@ export function progressiveItemPlanIdentity(batchIdentity:string,manifest:M4Docu
+ /** Trial files never wait for a group. Remaining membership is derived only
+  * from the frozen chapter/catalogue order, not the current queue or retry order. */
+ export function progressivePlanGroup(manifests:M4DocumentManifest[],plan:WorkpaperProgressive|undefined,itemId:string){
+-  if(!plan||!['remaining','retry_failed'].includes(plan.phase)||plan.trial_item_ids.includes(itemId))return null;
+-  const chapter=plan.chapters.find(c=>c.item_ids.includes(itemId));if(!chapter)throw Error('INPUT_REVISION_CONFLICT');
+-  const remaining=chapter.item_ids.filter(id=>!plan.trial_item_ids.includes(id)),index=remaining.indexOf(itemId);
+-  const ids=remaining.slice(Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)*WORKPAPER_PLAN_GROUP_SIZE,(Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)+1)*WORKPAPER_PLAN_GROUP_SIZE);
+-  if(ids.length<2)return null;
++  const membership=workpaperPlanGroupIds(plan,itemId);if(!membership)return null;
++  const {ids,chapter}=membership;
+   const group=ids.map(id=>manifests.find(m=>m.input.workpaper!.entry.id===id));
+   if(group.some(m=>!m))throw Error('INPUT_REVISION_CONFLICT');
+-  return {id:hash({version:'workpaper-chapter-group-v1',chapter:chapter.id,ids,size:WORKPAPER_PLAN_GROUP_SIZE}),manifests:group as M4DocumentManifest[]};
++  return {id:hash({version:'workpaper-chapter-group-v1',chapter,ids,size:WORKPAPER_PLAN_GROUP_SIZE}),manifests:group as M4DocumentManifest[]};
+ }
+ 
+ /** The durable result distinguishes fallback from accepted item plans. A
+@@ -59,6 +58,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
    const {batch,itemId,group,source,method,dir}=options,owner=ctx.run.owner_user_id;
    const identity=hash({version:'workpaper-progressive-group-v1',batch_identity:options.batchIdentity,group_id:group.id,manifests:group.manifests});
    const logicalCallId='workpaper-group-'+group.id.slice(0,40),key=`workpaper-plan-group:${owner}:${batch}:${group.id}`;
@@ -4005,7 +4690,7 @@ index 7ae94083..cb6cedd7 100644
    const validResult=(value:unknown):value is GroupResult=>{
      if(!Value.Check(WorkpaperProgressiveGroupResultSchema,value))return false;
      if(value.status==='fallback')return true;
-@@ -72,11 +75,15 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -72,11 +72,15 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
    const read=async()=> (await ctx.pool.query('SELECT * FROM bb_workpaper_progressive_groups WHERE owner_user_id=$1 AND batch_id=$2 AND group_id=$3',[owner,batch,group.id])).rows[0];
    {
      let saved:any;
@@ -4021,7 +4706,7 @@ index 7ae94083..cb6cedd7 100644
        // Only the first immutable member authors this group. If it crashes after
        // durable acceptance, another in-flight item must not create a second
        // provider call under a different run. Wait without occupying a pooled
-@@ -90,8 +97,9 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -90,8 +94,9 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
          LEFT JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
          WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,authorItem])).rows[0];
        if(!author)throw Error('INPUT_REVISION_CONFLICT');
@@ -4032,7 +4717,7 @@ index 7ae94083..cb6cedd7 100644
            await db.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,author.run_id]);
            await db.query('SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,author.run_id]);
            await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[key]);
-@@ -113,18 +121,22 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -113,18 +118,22 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
            await db.query(`INSERT INTO bb_workpaper_progressive_groups(owner_user_id,batch_id,group_id,input_hash,method_hash,source_hash,receipt,receipt_hash,author_run_id)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[owner,batch,group.id,identity,method,hash(source),receipt,hash(receipt),settled.id]);
            return true;
@@ -4060,7 +4745,7 @@ index 7ae94083..cb6cedd7 100644
          schema:WorkpaperProgressiveGroupResultSchema,validate:validResult,resultSchemaVersion:version,templateVersion:method,buildPrompt:async()=>options.skill.content,onActivity:e=>observer.onEvent(e),
          fileWorkspace:{prepare:cwd=>options.prepare(cwd,options.input),collect:async cwd=>{
            let plan:unknown;
-@@ -140,14 +152,14 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -140,14 +149,14 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
            if(!validResult(result))throw Error('WORKPAPER_GROUP_VALIDATION_UNSAFE');
            return result;
          }}
@@ -4077,7 +4762,7 @@ index 7ae94083..cb6cedd7 100644
          // Match renewal/cancellation/evidence writers: run first, then job.
          // The plan foreign key later takes a run key-share lock as well.
          await db.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,ctx.run.id]);
-@@ -165,9 +177,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -165,9 +174,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
          }
          await db.query(`INSERT INTO bb_workpaper_progressive_groups(owner_user_id,batch_id,group_id,input_hash,method_hash,source_hash,receipt,receipt_hash,author_run_id)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[owner,batch,group.id,identity,method,hash(source),receipt,hash(receipt),ctx.run.id]);
@@ -4089,7 +4774,7 @@ index 7ae94083..cb6cedd7 100644
      if(saved.input_hash.trim()!==identity||saved.method_hash.trim()!==method||saved.source_hash.trim()!==hash(source)||saved.receipt_hash.trim()!==hash(saved.receipt))throw Error('INPUT_REVISION_CONFLICT');
      const receipt=saved.receipt as Receipt;
      if(receipt.version!==version)throw Error('INPUT_REVISION_CONFLICT');
-@@ -177,5 +190,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
+@@ -177,5 +187,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
      if('error'in item){if(!options.itemError(item.error))throw Error('INPUT_REVISION_CONFLICT');return {kind:'item_failed',error:item.error};}
      if(!/^[a-f0-9]{64}$/.test(item.plan_hash))throw Error('INPUT_REVISION_CONFLICT');
      return {kind:'ready',planHash:item.plan_hash};
@@ -4100,16 +4785,42 @@ index 7ae94083..cb6cedd7 100644
 +    });
    }
  }
+diff --git a/apps/worker/src/workpaper-shared-stage.pg.test.ts b/apps/worker/src/workpaper-shared-stage.pg.test.ts
+index 157fb7874a229330b242841a2135c1e7bc0fb49f..e46cafd0360df72b4dec85d7f6036b98bc890564 100644
+--- a/apps/worker/src/workpaper-shared-stage.pg.test.ts
++++ b/apps/worker/src/workpaper-shared-stage.pg.test.ts
+@@ -32,7 +32,19 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
+   const directory=await mkdtemp(join(tmpdir(),'bb-shared-test-'));
+   const storage=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{storage.set(k,Buffer.from(b));},get:async k=>Buffer.from(storage.get(k)!),getIfExists:async k=>storage.get(k)??null,
+     getIfExistsBounded:async(k,max)=>{const b=storage.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>storage.has(k),delete:async k=>{storage.delete(k);}};
+-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
++  // Seed the historical manifest/policy before INSERT; never rewrite a frozen input.
++  const legacyPool=new Proxy(pool,{get(target,key){
++    if(key==='connect')return async()=>{const client=await target.connect();return new Proxy(client,{get(c,k){
++      if(k==='query')return async(sql:any,values?:any[])=>{
++        if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_items'))values![4].input.workpaper.execution='shared_batch_v1';
++        if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_batches'))sql=sql.replace('progressive_phase) VALUES','progressive_phase,max_parallel) VALUES').replace('$14,$15)','$14,$15,NULL)');
++        return c.query(sql,values);
++      };
++      const value=Reflect.get(c,k);return typeof value==='function'?value.bind(c):value;
++    }});};
++    const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
++  }});
++  const origin='http://bondbuddy.test',app=createServer({pool:legacyPool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
+   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
+   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
 diff --git a/apps/worker/src/workpaper-shared-stage.ts b/apps/worker/src/workpaper-shared-stage.ts
-index b989f7d1..dde559de 100644
+index b989f7d11306980730ae046aaf791ef2ab51e8c5..4bec1a298cfccd3fd304fd5ad20dc91447200c50 100644
 --- a/apps/worker/src/workpaper-shared-stage.ts
 +++ b/apps/worker/src/workpaper-shared-stage.ts
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
 +import {withPerformanceSpan,startPerformanceSpan,type PerformanceSpanHandle} from '@bondbuddy/api/performance-trace';
++import {workpaperChapters} from '@bondbuddy/contracts';
  import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
  import {tmpdir} from 'node:os';
  import {join} from 'node:path';
-@@ -22,14 +23,16 @@ import {promisify} from 'node:util';
+@@ -22,14 +24,16 @@ import {promisify} from 'node:util';
  import {setTimeout as delay} from 'node:timers/promises';
  import {prepareProgressiveGroup,progressiveItemPlanIdentity,progressivePlanGroup,WORKPAPER_PLAN_GROUP_SIZE} from './workpaper-progressive-groups.js';
  import {workpaperMethodHash} from './workpaper-method.js';
@@ -4128,11 +4839,20 @@ index b989f7d1..dde559de 100644
    }catch(error){
      const code=/^(?:BB_WORKPAPER_ERROR=|ValueError: )(WORKPAPER_[A-Z_]+)\s*$/m.exec(String((error as {stderr?:unknown}).stderr??''))?.[1];
      if(code)throw new WorkpaperOperationError(code);
-@@ -121,12 +124,18 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -82,7 +86,7 @@ export function checkedSharedPlan(value:unknown,source:SharedSource,manifests:M4
+ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInput,model=codexModelStage,providedConfig?:CodexAdapterConfig):Promise<StageOutcome>{
+   if(input.manifest.kind!=='document')return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+   const task=input.manifest.input.workpaper!;
+-  const progressive=task.execution==='progressive_item_v1';
++  const progressive=['progressive_item_v1','grouped_batch_v1'].includes(task.execution??'');
+   const owner=ctx.run.owner_user_id,batch=task.batch_id;
+   const imagePrefix=`owners/${owner}/projects/${ctx.run.project_id}/workpaper-batches/${batch}/source-images/`;
+   const imageBytes=async(image:SharedSource['images'][number])=>{
+@@ -121,12 +125,18 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
    const batchInput={entries:plannedManifests.map(m=>m.input.workpaper!.entry),issuer_name:input.manifest.input.fields.issuer_name,
      requirements:input.manifest.input.supplemental_requirements??'',templates:plannedManifests.map(m=>({item_id:m.input.workpaper!.entry.id,template_id:m.knowledge?.template?.id}))};
    let phase:'source'|'plan'|'render'='source';
-+  let sourceWait:PerformanceSpanHandle|undefined,sourcePolls=0;
++  let sourceWait:PerformanceSpanHandle|undefined,planWait:PerformanceSpanHandle|undefined,sourcePolls=0,planPolls=0;
    try{
      const sourceGate=await ctx.validateBeforeModelCall?.();if(sourceGate)return sourceGate;
      const readSource=async()=>(await ctx.pool.query('SELECT * FROM bb_workpaper_shared_sources WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rows[0];
@@ -4141,14 +4861,15 @@ index b989f7d1..dde559de 100644
 +      const value=await readSource();span.annotate({cache_status:value?'hit':'miss'});return value;
 +    });
      const sourceAuthor=manifests[0]!.input.workpaper!.entry.id;
+-    while(progressive&&!sourceRow&&task.entry.id!==sourceAuthor){
 +    const sourceWasCached=!!sourceRow;
-+    if(progressive&&!sourceRow&&task.entry.id!==sourceAuthor)sourceWait=startPerformanceSpan('workpaper.source_wait',{batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,wait_reason:'shared_source',owns_worker_slot:true});
-     while(progressive&&!sourceRow&&task.entry.id!==sourceAuthor){
++    if(!sourceRow&&task.entry.id!==sourceAuthor)sourceWait=startPerformanceSpan('workpaper.source_wait',{batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,wait_reason:'shared_source',owns_worker_slot:true});
++    while(!sourceRow&&task.entry.id!==sourceAuthor){
 +      sourcePolls++;
        ctx.signal.throwIfAborted();
        const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state,
          (r.state IN ('failed','cancelled','rejected','succeeded','test_completed') AND j.state=r.state AND j.lease_token IS NULL AND j.lease_until IS NULL
-@@ -138,18 +147,23 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -138,18 +148,23 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
          WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,sourceAuthor])).rows[0];
        if(!author)throw Error('INPUT_REVISION_CONFLICT');
        if(author.settled_terminal){
@@ -4176,7 +4897,7 @@ index b989f7d1..dde559de 100644
        const bytes=await ctx.blobs.getIfExistsBounded(material.objectKey,M4_FILE_MAX);
        if(!bytes||digest(bytes)!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');
        const path=join(dir,material.mediaType==='application/pdf'?'source.pdf':'source.docx');
-@@ -165,8 +179,14 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -165,8 +180,14 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
        }
        await ctx.pool.query(`INSERT INTO bb_workpaper_shared_sources(owner_user_id,batch_id,input_hash,snapshot,snapshot_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,[owner,batch,identity,snapshot,hash(snapshot)]);
        sourceRow=(await ctx.pool.query('SELECT * FROM bb_workpaper_shared_sources WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rows[0];
@@ -4192,20 +4913,39 @@ index b989f7d1..dde559de 100644
      const source=sourceRow.snapshot as SharedSource;
      await jsonFile(dir,'source-data.json',source);await jsonFile(dir,'batch-input.json',batchInput);
      const preparePlan=async(cwd:string,planInput:Record<string,unknown>)=>{
-@@ -185,7 +205,11 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -185,8 +206,29 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
        return outcome;
      };
      phase='plan';
 -    let saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
+-    const group=progressive?progressivePlanGroup(manifests,rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined,task.entry.id):null;
 +    let saved=await withPerformanceSpan('workpaper.plan_cache_lookup',{batch_id:batch,work_item_id:task.entry.id},async span=>{
 +      const value=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];span.annotate({cache_status:value?'hit':'miss'});return value;
 +    });
 +    const planWasCached=!!saved;
++    if(!progressive&&!saved&&task.entry.id!==sourceAuthor)planWait=startPerformanceSpan('workpaper.plan_wait',{batch_id:batch,work_item_id:task.entry.id,producer_item_id:sourceAuthor,logical_call_id:logicalCallId,wait_reason:'shared_plan',owns_worker_slot:true});
++    while(!progressive&&!saved&&task.entry.id!==sourceAuthor){
++      planPolls++;
++      ctx.signal.throwIfAborted();
++      const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state FROM bb_workpaper_items i
++        JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
++        LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
++        WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,sourceAuthor])).rows[0];
++      if(!author)throw Error('INPUT_REVISION_CONFLICT');
++      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state)){
++        planWait?.end('paused',{poll_count:planPolls});return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_authoring_unavailable'};
++      }
++      await delay(100,undefined,{signal:ctx.signal});
++      saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
++    }
++    planWait?.end('succeeded',{poll_count:planPolls});
 +    let planReused=!!saved,producerLogicalCallId=progressive?undefined:logicalCallId;
-     const group=progressive?progressivePlanGroup(manifests,rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined,task.entry.id):null;
++    const grouping=task.execution==='grouped_batch_v1'?{phase:'remaining' as const,chapters:workpaperChapters(manifests.map(m=>m.input.workpaper!.entry)),trial_item_ids:[],max_parallel:4 as const}:rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined;
++    const group=progressive?progressivePlanGroup(manifests,grouping,task.entry.id):null;
      const itemAttempt=Number(rows.find(r=>r.manifest.input.workpaper.entry.id===task.entry.id)?.attempt??1);
      if(!saved&&group&&itemAttempt===1){
-@@ -195,6 +219,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+       const groupInput={...batchInput,entries:group.manifests.map(m=>m.input.workpaper!.entry),templates:group.manifests.map(m=>({item_id:m.input.workpaper!.entry.id,template_id:m.knowledge?.template?.id}))};
+@@ -195,6 +237,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
        if(prepared.kind==='outcome')return handleModelOutcome(prepared.outcome,prepared.logicalCallId);
        if(prepared.kind==='item_failed')return {kind:'fail',code:'VALIDATION_FAILED'};
        if(prepared.kind==='ready'){
@@ -4213,7 +4953,7 @@ index b989f7d1..dde559de 100644
          saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
          if(!saved||saved.plan_hash.trim()!==prepared.planHash)throw Error('INPUT_REVISION_CONFLICT');
        }
-@@ -204,7 +229,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -204,7 +247,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
      if(!saved){
        const observer=m4ActionObserver(ctx,'document');
        try{
@@ -4222,7 +4962,7 @@ index b989f7d1..dde559de 100644
            schema:WorkpaperSharedPlanSchema,validate:v=>checkedSharedPlan(v,source,plannedManifests),resultSchemaVersion:'workpaper-shared-plan-v1',templateVersion:method,
            buildPrompt:async()=>skill.content,onActivity:e=>observer.onEvent(e),
            fileWorkspace:{prepare:cwd=>preparePlan(cwd,batchInput),collect:async cwd=>{
-@@ -222,7 +247,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -222,7 +265,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
              }
              return plan;
            }}
@@ -4231,7 +4971,7 @@ index b989f7d1..dde559de 100644
          if(outcome.kind!=='done'){
            return handleModelOutcome(outcome,logicalCallId);
          }
-@@ -232,14 +257,20 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -232,14 +275,20 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
          await jsonFile(dir,'batch-plan.json',outcome.value);
          await python(ctx,['validate',join(dir,'source-data.json'),join(dir,'batch-input.json'),join(dir,'batch-plan.json')]);
          // Store only after the durable model journal has accepted the result.
@@ -4247,7 +4987,7 @@ index b989f7d1..dde559de 100644
 -    if(!checkedSharedPlan(saved.plan,source,plannedManifests))throw Error('WORKPAPER_PLAN_INVALID');
 +    const planGate=await withPerformanceSpan<StageOutcome|undefined>(planReused?'workpaper.plan_reuse':'workpaper.plan_validate',
 +      {batch_id:batch,work_item_id:task.entry.id,author_run_id:saved.author_run_id,
-+        ...(producerLogicalCallId?{logical_call_id:producerLogicalCallId}:{}),cache_status:planReused?(planWasCached?'hit':'group'):'miss'},span=>{
++        ...(producerLogicalCallId?{logical_call_id:producerLogicalCallId}:{}),cache_status:planReused?(planWasCached?'hit':planWait?'waited':'group'):'miss'},span=>{
 +        if(saved.input_hash.trim()!==planIdentity||saved.source_hash.trim()!==hash(source)||saved.plan_hash.trim()!==hash(saved.plan))throw Error('INPUT_REVISION_CONFLICT');
 +        if(saved.method_hash.trim()!==method){span.end('paused');return {kind:'pause',stage:'capability_not_ready',reason:'m4_document_method_changed'};}
 +        if(!checkedSharedPlan(saved.plan,source,plannedManifests))throw Error('WORKPAPER_PLAN_INVALID');
@@ -4257,24 +4997,25 @@ index b989f7d1..dde559de 100644
      const plan=saved.plan as WorkpaperSharedPlan,item=plan.items.find(i=>i.item_id===task.entry.id)!;
      const beforeRender=await ctx.validateBeforeModelCall?.();if(beforeRender)return beforeRender;
      phase='render';
-@@ -278,6 +309,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -278,6 +327,8 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
      return {kind:'done',value:{version:'codex-m4-document-v1',input_hash:ctx.run.input_hash.trim(),skill_sha256:skill.sha256,method_hash:method,internal_note:true,
        workpaper_decision:decision,files,project_file_links:{links,source_sha256:source.source.sha256,target_sha256:digest(outputBytes),warnings:source.source.warnings}} satisfies M4DocumentResult};
    }catch(error){
 +    sourceWait?.end(ctx.signal.aborted?'cancelled':'failed',{poll_count:sourcePolls});
++    planWait?.end(ctx.signal.aborted?'cancelled':'failed',{poll_count:planPolls});
      if(progressive){
        if(ctx.signal.aborted)return {kind:'stopped'};
        if(phase!=='source'&&isWorkpaperItemError(error))return {kind:'fail',code:phase==='render'?'WORD_DELIVERY_UNAVAILABLE':'VALIDATION_FAILED'};
-@@ -289,5 +321,5 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
+@@ -289,5 +340,5 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
      const planned=(await ctx.pool.query('SELECT 1 FROM bb_workpaper_shared_plans WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rowCount;
      if(!planned)await pauseSharedWorkpaperBatch(ctx.pool,owner,batch);
      throw error;
 -  }finally{await rm(dir,{recursive:true,force:true});}
-+  }finally{sourceWait?.end(ctx.signal.aborted?'cancelled':'interrupted',{poll_count:sourcePolls,wait_reason:'scope_ended'});await rm(dir,{recursive:true,force:true});}
++  }finally{sourceWait?.end(ctx.signal.aborted?'cancelled':'interrupted',{poll_count:sourcePolls,wait_reason:'scope_ended'});planWait?.end(ctx.signal.aborted?'cancelled':'interrupted',{poll_count:planPolls,wait_reason:'scope_ended'});await rm(dir,{recursive:true,force:true});}
  }
 diff --git a/db/migrations/0179_model_call_capacity.sql b/db/migrations/0179_model_call_capacity.sql
 new file mode 100644
-index 00000000..7d02459f
+index 0000000000000000000000000000000000000000..7d02459f4ca088cb83b3290106d70dcef8912af1
 --- /dev/null
 +++ b/db/migrations/0179_model_call_capacity.sql
 @@ -0,0 +1,33 @@
@@ -4311,9 +5052,141 @@ index 00000000..7d02459f
 + renewed_at timestamptz NOT NULL DEFAULT now(),
 + CHECK((child_pid IS NULL)=(child_start IS NULL))
 +);
+diff --git a/db/migrations/0180_batch_four_way.sql b/db/migrations/0180_batch_four_way.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..296fecbf69e460c47e5d03776271a00901d7b4bc
+--- /dev/null
++++ b/db/migrations/0180_batch_four_way.sql
+@@ -0,0 +1,126 @@
++-- NULL is the historical policy: ordinary batches stay serial, progressive stay two.
++-- Only newly created batches acquire four-way admission; frozen inputs are untouched.
++ALTER TABLE bb_workpaper_batches ADD COLUMN max_parallel smallint CHECK(max_parallel IS NULL OR max_parallel=4);
++ALTER TABLE bb_project_file_batches ADD COLUMN max_parallel smallint CHECK(max_parallel IS NULL OR max_parallel=4);
++ALTER TABLE bb_project_file_update_batches ADD COLUMN max_parallel smallint CHECK(max_parallel IS NULL OR max_parallel=4);
++ALTER TABLE bb_workpaper_batches ALTER COLUMN max_parallel SET DEFAULT 4;
++ALTER TABLE bb_project_file_batches ALTER COLUMN max_parallel SET DEFAULT 4;
++ALTER TABLE bb_project_file_update_batches ALTER COLUMN max_parallel SET DEFAULT 4;
++-- Execution policy is kept outside the public exact manifest: existing clients
++-- use strict schema validation and must keep reading the same response format.
++ALTER TABLE bb_project_qa_runs ADD COLUMN max_parallel smallint CHECK(max_parallel IS NULL OR max_parallel=4);
++ALTER TABLE bb_project_qa_runs ALTER COLUMN max_parallel SET DEFAULT 4;
++CREATE FUNCTION bb_qa_admission_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++ IF NEW.max_parallel IS DISTINCT FROM OLD.max_parallel THEN
++  RAISE EXCEPTION 'Frozen question admission policy changed' USING ERRCODE='23514';
++ END IF;
++ RETURN NEW;
++END $$;
++CREATE TRIGGER bb_qa_admission_immutable BEFORE UPDATE ON bb_project_qa_runs FOR EACH ROW EXECUTE FUNCTION bb_qa_admission_immutable();
++ALTER TABLE bb_workpaper_batches DROP CONSTRAINT bb_workpaper_progressive_shape;
++ALTER TABLE bb_workpaper_batches ADD CONSTRAINT bb_workpaper_progressive_shape CHECK(progressive_plan IS NULL OR COALESCE((
++ jsonb_typeof(progressive_plan->'chapters')='array' AND jsonb_array_length(progressive_plan->'chapters')>0
++ AND jsonb_typeof(progressive_plan->'trial_item_ids')='array' AND jsonb_array_length(progressive_plan->'trial_item_ids') BETWEEN 1 AND 8
++ AND progressive_plan->>'max_parallel' IN ('2','4')),false));
++
++CREATE FUNCTION bb_batch_admission_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++ IF NEW.max_parallel IS DISTINCT FROM OLD.max_parallel THEN
++  RAISE EXCEPTION 'Frozen batch admission policy changed' USING ERRCODE='23514';
++ END IF;
++ IF TG_TABLE_NAME<>'bb_workpaper_batches' THEN
++  IF jsonb_path_query_array(NEW.items,'$[*].manifest') IS DISTINCT FROM jsonb_path_query_array(OLD.items,'$[*].manifest')
++   OR (to_jsonb(NEW)->'owner_user_id') IS DISTINCT FROM (to_jsonb(OLD)->'owner_user_id')
++   OR (to_jsonb(NEW)->'project_id') IS DISTINCT FROM (to_jsonb(OLD)->'project_id')
++   OR (to_jsonb(NEW)->'topic_id') IS DISTINCT FROM (to_jsonb(OLD)->'topic_id')
++   OR (to_jsonb(NEW)->'request_id') IS DISTINCT FROM (to_jsonb(OLD)->'request_id')
++   OR (to_jsonb(NEW)->'request_hash') IS DISTINCT FROM (to_jsonb(OLD)->'request_hash') THEN
++   RAISE EXCEPTION 'Frozen batch membership changed' USING ERRCODE='23514';
++  END IF;
++ END IF;
++ RETURN NEW;
++END $$;
++CREATE TRIGGER bb_batch_admission_immutable BEFORE UPDATE ON bb_workpaper_batches FOR EACH ROW EXECUTE FUNCTION bb_batch_admission_immutable();
++CREATE TRIGGER bb_batch_admission_immutable BEFORE UPDATE ON bb_project_file_batches FOR EACH ROW EXECUTE FUNCTION bb_batch_admission_immutable();
++CREATE TRIGGER bb_batch_admission_immutable BEFORE UPDATE ON bb_project_file_update_batches FOR EACH ROW EXECUTE FUNCTION bb_batch_admission_immutable();
++
++-- Exact host-created manifest + linked run OR exact pending child request key.
++-- Merely claiming a batch ID in client input never grants a project mutex exception.
++CREATE FUNCTION bb_batch_child_identity(owner_id text,project_id text,revision integer,run_id text,request_key text)
++ RETURNS text[] LANGUAGE sql STABLE AS $$
++ SELECT ARRAY['workpaper:'||b.id,i.item_id,COALESCE((b.progressive_plan->>'max_parallel')::smallint,b.max_parallel,1)::text]
++ FROM bb_input_revisions input
++ JOIN bb_workpaper_items i ON i.owner_user_id=input.owner_user_id AND i.manifest=input.manifest
++ JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
++ JOIN bb_m4_topics t ON t.owner_user_id=b.owner_user_id AND t.id=b.topic_id
++ JOIN bb_projects p ON p.owner_user_id=t.owner_user_id AND p.id=t.project_id
++ WHERE input.owner_user_id=$1 AND input.project_id=$2 AND input.revision=$3
++ AND t.project_id=$2 AND t.source_project_id=b.project_id
++ AND input.manifest->>'topic_id'=t.id AND input.manifest->>'kind'='document'
++ AND input.manifest->>'execution_scope_project_id'=COALESCE(p.execution_scope_project_id,p.id)
++ AND input.manifest->'input'->'workpaper'->>'batch_id'=b.id
++ AND input.manifest->'input'->'workpaper'->'entry'->>'id'=i.item_id
++ AND (i.run_id=$4 OR (i.run_id IS NULL AND i.state='queued' AND b.state IN ('queued','running')
++  AND $5='workpaper:'||b.id||':'||i.item_id||':'||i.attempt
++  AND (b.progressive_plan IS NULL OR b.progressive_phase='remaining'
++   OR b.progressive_phase='trial' AND b.progressive_plan->'trial_item_ids' ? i.item_id
++   OR b.progressive_phase='retry_failed' AND b.progressive_retry_items ? i.item_id)))
++ UNION ALL
++ SELECT ARRAY['generation:'||b.id,item.value->'manifest'->'input'->>'document_type',COALESCE(b.max_parallel,1)::text]
++ FROM bb_input_revisions input JOIN bb_project_file_batches b ON b.owner_user_id=input.owner_user_id
++ CROSS JOIN LATERAL jsonb_array_elements(b.items) WITH ORDINALITY item(value,ordinality)
++ JOIN bb_m4_topics t ON t.owner_user_id=b.owner_user_id AND t.id=b.topic_id
++ JOIN bb_projects p ON p.owner_user_id=t.owner_user_id AND p.id=t.project_id
++ JOIN bb_project_file_workspaces workspace ON workspace.owner_user_id=b.owner_user_id AND workspace.project_id=b.project_id AND workspace.topic_id=b.topic_id
++ WHERE input.owner_user_id=$1 AND input.project_id=$2 AND input.revision=$3
++ AND input.manifest=item.value->'manifest' AND t.project_id=$2 AND (t.source_project_id=b.project_id OR t.project_id=b.project_id)
++ AND input.manifest->>'topic_id'=t.id AND input.manifest->>'execution_scope_project_id'=COALESCE(p.execution_scope_project_id,p.id)
++ AND (item.value->>'run_id'=$4 OR (item.value->>'run_id' IS NULL AND b.state IN ('queued','running')
++ AND $5='project-files:'||b.id||':'||(item.ordinality-1)||':'||COALESCE(item.value->>'attempt','1')))
++ UNION ALL
++ SELECT ARRAY['patch:'||b.id,item.value->'manifest'->>'file_id',COALESCE(b.max_parallel,1)::text]
++ FROM bb_input_revisions input JOIN bb_project_file_update_batches b ON b.owner_user_id=input.owner_user_id AND b.project_id=input.project_id
++ CROSS JOIN LATERAL jsonb_array_elements(b.items) WITH ORDINALITY item(value,ordinality)
++ WHERE input.owner_user_id=$1 AND input.project_id=$2 AND input.revision=$3 AND input.manifest=item.value->'manifest'
++ AND input.manifest->>'operation'='patch' AND input.manifest->>'check_run_id'=b.check_run_id
++ AND (item.value->>'run_id'=$4 OR (item.value->>'run_id' IS NULL AND b.state IN ('queued','running')
++ AND $5='file-patch:'||b.id||':'||(item.ordinality-1)||':'||COALESCE(item.value->>'attempt','1')))
++ LIMIT 1
++$$;
++
++-- Preserve every existing assessment/QA/check exception; replace only the exact
++-- progressive child comparison and its cap with the more general frozen identity.
++DO $$ DECLARE definition text; marker text; BEGIN
++ SELECT pg_get_functiondef('bb_m3_project_run_mutex()'::regprocedure) INTO definition;
++ -- All nonterminal states already occupy admission, including queued and paused.
++ -- A progress/claim transition of the same admitted child cannot increase it.
++ -- Re-locking the project here (after run/account locks) conflicts with sibling
++ -- foreign-key key-share locks and creates a real account/project deadlock.
++ -- Inserts, resurrection and changed identities still take the original mutex.
++ marker:='BEGIN'||chr(10)||' IF NEW.task_kind=';
++ IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch mutex entry'; END IF;
++ definition:=replace(definition,marker,$guard$BEGIN
++ IF TG_OP='UPDATE' AND OLD.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')
++  AND NEW.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')
++  AND ROW(NEW.owner_user_id,NEW.project_id,NEW.input_revision,NEW.id,NEW.execution_request_id,NEW.task_kind)
++   IS NOT DISTINCT FROM ROW(OLD.owner_user_id,OLD.project_id,OLD.input_revision,OLD.id,OLD.execution_request_id,OLD.task_kind)
++ THEN RETURN NEW; END IF;
++ IF NEW.task_kind=$guard$);
++ marker:='PERFORM 1 FROM bb_projects WHERE owner_user_id=NEW.owner_user_id AND id=scope_id FOR UPDATE;';
++ IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch scope lock'; END IF;
++ definition:=replace(definition,marker,replace(marker,'FOR UPDATE;','FOR NO KEY UPDATE;'));
++ marker:='progressive:=bb_progressive_workpaper_identity(NEW.owner_user_id,NEW.project_id,NEW.input_revision,NEW.id);';
++ IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch mutex identity'; END IF;
++ definition:=replace(definition,marker,'progressive:=bb_batch_child_identity(NEW.owner_user_id,NEW.project_id,NEW.input_revision,NEW.id,NEW.execution_request_id);');
++ definition:=replace(definition,'bb_progressive_workpaper_identity(active.owner_user_id,active.project_id,active.input_revision,active.id)',
++  'bb_batch_child_identity(active.owner_user_id,active.project_id,active.input_revision,active.id,active.execution_request_id)');
++ definition:=replace(definition,'bb_progressive_workpaper_identity(r.owner_user_id,r.project_id,r.input_revision,r.id)',
++  'bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id)');
++ marker:=')>=2 THEN RAISE EXCEPTION';
++ IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch mutex cap'; END IF;
++ definition:=replace(definition,marker,')>=progressive[3]::integer THEN RAISE EXCEPTION');
++ definition:=replace(definition,'(project_kind=''review'' OR is_m4_scope)',
++  '(project_kind=''review'' OR is_m4_scope OR EXISTS(SELECT 1 FROM bb_project_file_workspaces w JOIN bb_projects scope_project ON scope_project.owner_user_id=w.owner_user_id AND scope_project.id=w.project_id WHERE w.owner_user_id=NEW.owner_user_id AND COALESCE(scope_project.execution_scope_project_id,scope_project.id)=scope_id))');
++ EXECUTE definition;
++END $$;
 diff --git a/db/migrations/0185_performance_spans.sql b/db/migrations/0185_performance_spans.sql
 new file mode 100644
-index 00000000..b8a4e067
+index 0000000000000000000000000000000000000000..b8a4e067f5e77d5ecbaf57f062904c93beeb4051
 --- /dev/null
 +++ b/db/migrations/0185_performance_spans.sql
 @@ -0,0 +1,43 @@
@@ -4360,8 +5233,28 @@ index 00000000..b8a4e067
 +CREATE INDEX bb_performance_spans_session ON bb_performance_spans(session_id);
 +CREATE INDEX bb_performance_spans_step ON bb_performance_spans(step_key,started_at);
 +-- Retention deletes spans and keeps session purge receipts; retries cannot resurrect purged sessions.
+diff --git a/db/migrations/0186_shared_batch_capacity.sql b/db/migrations/0186_shared_batch_capacity.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..669fb5bd7849bd2be0ff7c774b63cbeb649013fe
+--- /dev/null
++++ b/db/migrations/0186_shared_batch_capacity.sql
+@@ -0,0 +1,14 @@
++-- Scheduling capacity belongs to the common execution pool, not frozen inputs.
++-- Keep exact batch/child identity, input hashes, membership and all mutex checks.
++-- Historical NULL/2 policies remain in the audit rows without imposing 1/2 slots.
++DO $$ DECLARE definition text; workpaper_cap text; other_cap text; BEGIN
++ SELECT pg_get_functiondef('bb_batch_child_identity(text,text,integer,text,text)'::regprocedure) INTO definition;
++ workpaper_cap:='COALESCE((b.progressive_plan->>''max_parallel'')::smallint,b.max_parallel,1)::text';
++ other_cap:='COALESCE(b.max_parallel,1)::text';
++ IF (length(definition)-length(replace(definition,workpaper_cap,'')))/length(workpaper_cap)<>1
++  OR (length(definition)-length(replace(definition,other_cap,'')))/length(other_cap)<>2 THEN
++  RAISE EXCEPTION 'Unexpected frozen batch identity capacity';
++ END IF;
++ definition:=replace(replace(definition,workpaper_cap,'''4''::text'),other_cap,'''4''::text');
++ EXECUTE definition;
++END $$;
 diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
-index eac8e58f..6507f3ef 100644
+index eac8e58f551fe2a42cca56c697955b369244f89d..6507f3efaa3e0b4b38a6c5868c0a8e51cca99740 100644
 --- a/packages/contracts/src/index.ts
 +++ b/packages/contracts/src/index.ts
 @@ -74,6 +74,8 @@ import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
@@ -4383,7 +5276,7 @@ index eac8e58f..6507f3ef 100644
    ...trialSchemas, // #35 trial guard
 diff --git a/packages/contracts/src/performance.ts b/packages/contracts/src/performance.ts
 new file mode 100644
-index 00000000..ffdfec76
+index 0000000000000000000000000000000000000000..ffdfec76553edd568088f36be61c488bb584de18
 --- /dev/null
 +++ b/packages/contracts/src/performance.ts
 @@ -0,0 +1,61 @@
@@ -4448,9 +5341,82 @@ index 00000000..ffdfec76
 +export type AdminPerformanceRunResponse=Static<typeof AdminPerformanceRunResponseSchema>;
 +export type AdminPerformanceSummaryResponse=Static<typeof AdminPerformanceSummaryResponseSchema>;
 +export const performanceSchemas={AdminPerformanceRunResponse:AdminPerformanceRunResponseSchema,AdminPerformanceSummaryResponse:AdminPerformanceSummaryResponseSchema};
+diff --git a/packages/contracts/src/workpaper-entry.ts b/packages/contracts/src/workpaper-entry.ts
+index 3661290681bf11b640a592bd55784e86e090cf8b..8587799f8ce07f76ac81bc423ee9915b8c82c608 100644
+--- a/packages/contracts/src/workpaper-entry.ts
++++ b/packages/contracts/src/workpaper-entry.ts
+@@ -12,5 +12,5 @@ export const WorkpaperDecisionSchema=obj({item_id:id,status:Type.Union((['genera
+ export type WorkpaperDecision=Static<typeof WorkpaperDecisionSchema>;
+ export const WORKPAPER_DECISION_LABELS:Record<WorkpaperDecision['status'],string>={generate:'可生成底稿',not_applicable:'业务不适用',missing_information:'资料不足，暂无法生成',external_evidence:'需外部原始证据'};
+ 
+-export const WorkpaperTaskSchema=obj({batch_id:id,catalogue_id:id,entry:WorkpaperEntrySchema,mode:Type.Optional(Type.Literal('direct')),execution:Type.Optional(Type.Union([Type.Literal('shared_batch_v1'),Type.Literal('progressive_item_v1')])),decision:Type.Optional(WorkpaperDecisionSchema)});
++export const WorkpaperTaskSchema=obj({batch_id:id,catalogue_id:id,entry:WorkpaperEntrySchema,mode:Type.Optional(Type.Literal('direct')),execution:Type.Optional(Type.Union([Type.Literal('shared_batch_v1'),Type.Literal('progressive_item_v1'),Type.Literal('grouped_batch_v1')])),decision:Type.Optional(WorkpaperDecisionSchema)});
+ export type WorkpaperTask=Static<typeof WorkpaperTaskSchema>;
+diff --git a/packages/contracts/src/workpaper-progressive.test.ts b/packages/contracts/src/workpaper-progressive.test.ts
+index 3375edfbe550a353696e191f4b2f4295a04e17c3..c821c5f4511cdc86c13bbb198a7a11f864cda248 100644
+--- a/packages/contracts/src/workpaper-progressive.test.ts
++++ b/packages/contracts/src/workpaper-progressive.test.ts
+@@ -53,3 +53,15 @@ test('opt-in progressive schemas preserve old requests and require revision plus
+   assert.equal(Value.Check(WorkpaperActionSchema,{action:'continue_remaining',expected_revision:1}),false);
+   assert.equal(Value.Check(WorkpaperTaskSchema,{batch_id:'b',catalogue_id:'c',entry:file('a'),mode:'direct',execution:'progressive_item_v1'}),true);
+ });
++
++test('four leaders are admitted before waiters without changing eight-file membership or publication order',async()=>{
++ const {workpaperPlanGroupIds,workpaperAdmissionOrder}=await import('./workpapers.js');
++ const ids=Array.from({length:250},(_,i)=>'file-'+i);
++ const plan={phase:'remaining' as const,chapters:[{id:'chapter',title:'Chapter',item_ids:ids}],trial_item_ids:[],max_parallel:4 as const};
++ const order=workpaperAdmissionOrder(ids,plan);
++ assert.deepEqual(order.slice(0,4),['file-0','file-8','file-16','file-24']);
++ assert.deepEqual(ids.slice(0,3),['file-0','file-1','file-2']);
++ assert.equal(new Set(order).size,250);
++ assert.deepEqual(workpaperPlanGroupIds(plan,'file-9')?.ids,ids.slice(8,16));
++ assert.deepEqual(workpaperPlanGroupIds(plan,'file-249')?.ids,ids.slice(248));
++});
+diff --git a/packages/contracts/src/workpaper-progressive.ts b/packages/contracts/src/workpaper-progressive.ts
+index a6512700265b684b2cfaaecd135b177dc38b07d4..33bfae1a9d4c4b7683ac380e6e1c072c3cfc6da8 100644
+--- a/packages/contracts/src/workpaper-progressive.ts
++++ b/packages/contracts/src/workpaper-progressive.ts
+@@ -2,7 +2,7 @@ import {Type,type Static} from '@sinclair/typebox';
+ import {WORKPAPER_LIMITS,type WorkpaperEntry} from './workpaper-entry.js';
+ 
+ export const WORKPAPER_TRIAL_CHAPTERS=8;
+-export const WORKPAPER_MAX_PARALLEL=2;
++export const WORKPAPER_MAX_PARALLEL=4;
+ export const WorkpaperProgressiveRequestSchema=Type.Object({
+   chapter_order:Type.Array(Type.String({minLength:1,maxLength:128}),{minItems:1,maxItems:WORKPAPER_LIMITS.items,uniqueItems:true}),
+ },{additionalProperties:false});
+@@ -12,7 +12,7 @@ export type WorkpaperProgressive={
+   phase:'trial'|'awaiting_confirmation'|'remaining'|'retry_failed';
+   chapters:WorkpaperChapter[];
+   trial_item_ids:string[];
+-  max_parallel:typeof WORKPAPER_MAX_PARALLEL;
++  max_parallel:2|typeof WORKPAPER_MAX_PARALLEL;
+ };
+ 
+ const parts=(entry:WorkpaperEntry)=>entry.folder.split(/[\\/]+/).map(s=>s.trim()).filter(Boolean);
+@@ -73,3 +73,19 @@ export function workpaperProgressiveSelection(entries:readonly WorkpaperEntry[],
+   const ordered_item_ids=[...trial_item_ids,...chapters.flatMap(c=>c.item_ids).filter(id=>!trial.has(id))];
+   return {chapters,trial_item_ids,ordered_item_ids};
+ }
++
++/** Stable eight-file planning groups. Runtime admission never changes membership. */
++export const WORKPAPER_PLAN_GROUP_SIZE=8;
++export function workpaperPlanGroupIds(plan:WorkpaperProgressive|undefined,itemId:string):{chapter:string;ids:string[]}|null{
++  if(!plan||!['remaining','retry_failed'].includes(plan.phase)||plan.trial_item_ids.includes(itemId))return null;
++  const chapter=plan.chapters.find(c=>c.item_ids.includes(itemId));
++  if(!chapter)throw Error('INPUT_REVISION_CONFLICT');
++  const remaining=chapter.item_ids.filter(id=>!plan.trial_item_ids.includes(id)),index=remaining.indexOf(itemId);
++  const offset=Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)*WORKPAPER_PLAN_GROUP_SIZE;
++  const ids=remaining.slice(offset,offset+WORKPAPER_PLAN_GROUP_SIZE);
++  return ids.length<2?null:{chapter:chapter.id,ids};
++}
++/** Prefer independent plan authors over followers; publication retains catalogue order. */
++export function workpaperAdmissionOrder(ids:readonly string[],plan:WorkpaperProgressive|undefined):string[]{
++  return [...ids].sort((a,b)=>Number(!!workpaperPlanGroupIds(plan,b)&&workpaperPlanGroupIds(plan,b)!.ids[0]===b)-Number(!!workpaperPlanGroupIds(plan,a)&&workpaperPlanGroupIds(plan,a)!.ids[0]===a));
++}
 diff --git a/product-prototype/admin-performance-build.mjs b/product-prototype/admin-performance-build.mjs
 new file mode 100644
-index 00000000..4c71c6af
+index 0000000000000000000000000000000000000000..4c71c6aff099cc37db0c8593a651119da0f246a6
 --- /dev/null
 +++ b/product-prototype/admin-performance-build.mjs
 @@ -0,0 +1,48 @@
@@ -4504,7 +5470,7 @@ index 00000000..4c71c6af
 +console.log('Generated synthetic /admin prototype from the current performance renderer.');
 diff --git a/product-prototype/public/admin/README.md b/product-prototype/public/admin/README.md
 new file mode 100644
-index 00000000..cdf07256
+index 0000000000000000000000000000000000000000..cdf07256b60b04e45a235ff760097ec45a9fdf63
 --- /dev/null
 +++ b/product-prototype/public/admin/README.md
 @@ -0,0 +1,20 @@
@@ -4530,7 +5496,7 @@ index 00000000..cdf07256
 +开发交付不代表本地集成验收或生产部署。
 diff --git a/product-prototype/public/admin/index.html b/product-prototype/public/admin/index.html
 new file mode 100644
-index 00000000..977ccdbe
+index 0000000000000000000000000000000000000000..977ccdbe2b067aecc107b97925d1890a9bbb63c7
 --- /dev/null
 +++ b/product-prototype/public/admin/index.html
 @@ -0,0 +1,47 @@
