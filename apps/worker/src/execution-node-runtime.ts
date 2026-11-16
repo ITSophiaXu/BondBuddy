@@ -6,7 +6,7 @@ import {ExecutionRuntimeEnrollmentSchema,type ExecutionRuntimeEnrollment,type Ex
 import {registerExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 
 async function stat(pid:number){
- try{const raw=await readFile(`/proc/${pid}/stat`,'utf8'),parts=raw.slice(raw.lastIndexOf(')')+2).split(' ');return {parent:Number(parts[1]),start:parts[19]!};}
+ try{const raw=await readFile(`/proc/${pid}/stat`,'utf8'),parts=raw.slice(raw.lastIndexOf(')')+2).split(' ');return {parent:Number(parts[1]),start:parts[19]!,state:parts[0]!};}
  catch(error){if(['ENOENT','ESRCH'].includes((error as NodeJS.ErrnoException).code??''))return null;throw error;}
 }
 export function assertManagedRuntimeOptions(options:{kinds?:readonly string[];parseSlots?:number;uploadConfirmationEnabled?:boolean;uploadConfirmationSmallSlot?:boolean;runKinds?:readonly string[];reviewAssistant?:unknown;platformProbe?:unknown}){
@@ -38,4 +38,16 @@ export async function nativeExecutionChildren(){
  const children=new Set([process.pid]);let changed=true;
  while(changed){changed=false;for(const [pid,row] of records)if(children.has(row.parent)&&!children.has(pid)){children.add(pid);changed=true;}}
  return children.size-1;
+}
+
+/** The standalone consumer owns its PID namespace. Count orphaned children too:
+ * a browser reparented to tini must not disappear from a retry's release proof.
+ * Ancestors and zombies cannot execute this task; unrelated live processes make
+ * this conservative check wait. Missing/unreadable inventory fails closed. */
+export async function nativeExecutionProcesses(){
+ const records=new Map<number,NonNullable<Awaited<ReturnType<typeof stat>>>>();
+ for(const name of await readdir('/proc')){if(!/^\d+$/.test(name))continue;const row=await stat(Number(name));if(row)records.set(Number(name),row);}
+ const ancestors=new Set<number>();let pid=process.pid;
+ while(pid>0){const row=records.get(pid);if(!row||ancestors.has(pid))throw Error('EXECUTION_PROCESS_INVENTORY_INCOMPLETE');ancestors.add(pid);pid=row.parent;}
+ return [...records].filter(([id,row])=>!ancestors.has(id)&&!['Z','X'].includes(row.state)).length;
 }

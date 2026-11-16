@@ -2,8 +2,9 @@
 export function startRunLeaseHeartbeat(options:{renew:()=>Promise<unknown>;intervalMs:number;onLost:()=>void}) {
   let stopped=false;
   let timer:ReturnType<typeof setTimeout>|undefined;
-  const stop=()=>{stopped=true;if(timer)clearTimeout(timer);};
-  const schedule=()=>{if(!stopped)timer=setTimeout(()=>{void tick();},options.intervalMs);};
+  let inFlight:Promise<void>|undefined;
+  const stop=()=>{stopped=true;if(timer)clearTimeout(timer);return inFlight??Promise.resolve();};
+  const schedule=()=>{if(!stopped)timer=setTimeout(()=>{inFlight=tick();void inFlight.finally(()=>{inFlight=undefined;});},options.intervalMs);};
   const tick=async()=>{
     if(stopped)return;
     try{await options.renew();}
