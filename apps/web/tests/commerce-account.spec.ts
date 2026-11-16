@@ -1,6 +1,7 @@
 import {mkdir,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
+import {fixtureJson} from './billing-fixture-wire';
 import {DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,commerceMetadata,type DataPolicy} from '@bondbuddy/contracts';
 
 // Synthetic HTTP tests exercise display, amount confirmation and safe retries, not merchant settlement.
@@ -8,7 +9,7 @@ const now='2026-10-28T04:00:00Z';
 const policy:DataPolicy={policy_version:DATA_POLICY_VERSION,storage_location:'platform_private_cloud',server_side_processing:true,model_provider_processing:true,active_retention:'until_user_deletes',purge_enabled:false,deleted_content_purge_days:null,orphan_upload_purge_hours:null,log_content_retention_days:30,backup_retention_days:null,pinned_by_active_run:'retained_until_run_ends',purged_content:[...DELETION_PURGED_CONTENT],retained_metadata:[...DELETION_RETAINED_METADATA]};
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
 test.beforeEach(async({page})=>page.setViewportSize({width:1440,height:960}));
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:status<400?fixtureJson(route,body):JSON.stringify(body)});
 async function setup(page:Page,options:{payment?:boolean;uncertainTopup?:boolean;unpricedCatalog?:boolean}={}){
   const calls:{method:string;path:string;body:any}[]=[];
   const order={order_id:'synthetic-cny-order',provider:'wechat',state:'pending',amount_fen:1234,points:1234,currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic-local-qr',project_id:null,expires_at:'2030-01-01T00:00:00Z',credited_at:null};
@@ -75,7 +76,7 @@ test('an uncertain topup retries the same exact amount and renders the native We
   await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
   await expect(page.getByRole('img',{name:'本订单微信支付二维码',exact:true})).toHaveAttribute('src',/^data:image\/png;base64,/);
   const topups=calls.filter(c=>c.path==='/commerce/topups'&&c.method==='POST');
-  expect(topups).toHaveLength(2);expect(topups[0].body).toEqual(topups[1].body);expect(topups[1].body).toMatchObject({amount_fen:1234,provider:'wechat'});
+  expect(topups).toHaveLength(2);expect(topups[0].body).toEqual(topups[1].body);expect(topups[1].body).toMatchObject({amount_fen:'1234',provider:'wechat'});
   await page.getByRole('button',{name:'刷新支付状态',exact:true}).click();
   expect(calls.filter(c=>c.path==='/commerce/topups'&&c.method==='POST')).toHaveLength(2);
 });
