@@ -1,7 +1,7 @@
 import {expect,test,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {checkId,exportId,historicalDraft,oldPin,workspaceReads,writes} from './integrity-continuation-fixtures';
+import {checkId,exportId,historicalDraft,oldPin,ownerId,projectId,workspaceReads,writes} from './integrity-continuation-fixtures';
 import {assertFixture,fixture,historical,install,progress,readPayload,route,word,type Kind,type State} from './integrity-delivery-fixtures';
 import {downloadBytes,hash} from './word-roundtrip-fixtures';
 import {installIntegrityDeliveryReference} from './integrity-delivery-reference';
@@ -15,7 +15,14 @@ const panel=(page:Page)=>page.locator('.integrity-panel').first();
 const button=(page:Page,s:State,run=exportId,kind:Kind='company')=>page.locator(`[data-integrity-download="${word(s,run,kind).artifact_id}"]`);
 test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:900});});
 test.afterEach(async({page})=>{await assertFixture(page);});
-async function open(page:Page,s=fixture(),run=exportId){await install(page,s);await page.goto(route(run));await expect(page.locator('#integrity-records')).toBeVisible();return s;}
+async function open(page:Page,s=fixture(),run=exportId,retainedEvidence=false){
+  if(retainedEvidence)await page.addInitScript(({owner,project,draft,revision,roundId})=>{
+    const key='bb-integrity-recovery:'+owner+':'+project;if(localStorage.getItem(key))return;
+    // Synthetic pre-upgrade state. New evidence entry points remain retired.
+    localStorage.setItem(key,JSON.stringify({version:'integrity-recovery-cache-v1',owner,project,value:{revision,draft,evidenceDraft:{roundId,subjectId:'company-a',siteId:'credit-china',url:'https://www.creditchina.gov.cn/',time:'',note:'合成升级前保留的补证草稿',conclusion:'unresolved'}}}));
+  },{owner:ownerId,project:projectId,draft:s.workspace.draft,revision:s.workspace.revision,roundId:checkId});
+  await install(page,s);await page.goto(route(run));await expect(page.locator('#integrity-records')).toBeVisible();return s;
+}
 async function visit(page:Page,run:string){await page.goto(route(run));await expect(page.locator('#integrity-records')).toBeVisible();expect(await page.evaluate(()=>new URLSearchParams(location.hash.split('?')[1]).get('run'))).toBe(run);}
 function stableHistory(s:State){return s.workspace.rounds.filter(round=>[checkId,exportId].includes(round.run_id)).map(round=>({run_id:round.run_id,manifest:structuredClone(round.manifest),records:structuredClone(round.records),artifacts:structuredClone(round.artifacts),artifact_id:round.artifact_id}));}
 async function exactWord(page:Page,s:State,run=exportId,kind:Kind='company'){
@@ -26,15 +33,17 @@ async function exactWord(page:Page,s:State,run=exportId,kind:Kind='company'){
 }
 async function saveEvidence(page:Page,s:State,note:string,index=0,site='credit-china'){
   const count=s.manuals.length,action=page.locator(`[data-evidence="${index}:${site}"]`);await action.locator('xpath=ancestor::details').evaluate((node:HTMLDetailsElement)=>{node.open=true;});await action.click();
+  await expect(page.locator('#integrity-evidence-form')).toHaveCount(0);await modal(page).press('Escape');
+  await page.locator('#integrity-resume-evidence').click();
   await expect(page.locator('#integrity-evidence-form')).toBeVisible();await page.locator('#integrity-existing-materials').selectOption('0');
   await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill(note);await modal(page).locator('[name=conclusion]').selectOption('unresolved');
   await page.locator('#integrity-evidence-save').click();await expect.poll(()=>s.manuals.length).toBe(count+1);await expect(modal(page)).toHaveCount(0);
   expect(s.manuals[count].checkId).toBe(checkId);expect(s.manuals[count].body.material).toEqual(oldPin);return s.manuals[count];
 }
 async function freeExport(page:Page,s:State){
-  await page.locator('#integrity-export').click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await expect(modal(page)).toContainText('0 积分');await expect(modal(page)).toContainText('不重新查询官网');
+  await page.locator('#integrity-export').click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await expect(modal(page)).toContainText('本次导出包含在原任务内');await expect(page.locator('#integrity-export-free-confirm')).toHaveText('确认导出新版本 · 免费');await expect(modal(page)).toContainText('不重新查询官网');
   expect(s.exports).toEqual([]);await page.locator('#integrity-export-free-confirm').click();await expect.poll(()=>s.accepted.size).toBe(1);
-  const accepted=[...s.accepted.values()][0];await expect(panel(page).locator('h2')).toContainText('排队');await expect(page.locator('[data-integrity-download]')).toHaveCount(0);
+  const accepted=[...s.accepted.values()][0];expect(accepted.round.manifest.points).toBe(0);expect(accepted.generic.reservation_id).toBeNull();await expect(panel(page).locator('h2')).toContainText('排队');await expect(page.locator('[data-integrity-download]')).toHaveCount(0);
   expect(await page.evaluate(()=>new URLSearchParams(location.hash.split('?')[1]).get('run'))).toBe(accepted.round.run_id);return accepted;
 }
 async function expectNearDownloadFeedback(page:Page,text=mismatch){
@@ -44,7 +53,7 @@ async function expectNearDownloadFeedback(page:Page,text=mismatch){
 }
 
 test('integrity delivery: old exact Word, original-round evidence, free queued/running/succeeded export and both new Word files retain the old bytes',async({page})=>{
-  test.setTimeout(40000);const s=await open(page),history=stableHistory(s),draft=structuredClone(s.workspace.draft),revision=s.workspace.revision;
+  test.setTimeout(40000);const s=await open(page,fixture(),exportId,true),history=stableHistory(s),draft=structuredClone(s.workspace.draft),revision=s.workspace.revision;
   await expect(page.locator('#integrity-status')).toBeHidden();const oldCompany=await exactWord(page,s),oldPerson=await exactWord(page,s,exportId,'person');
   expect(oldCompany.payload.evidence.map(item=>item.id)).toEqual(['synthetic-evidence-old']);expect(oldPerson.payload.draft.subjects).toHaveLength(1);expect(oldPerson.payload.draft.subjects[0].identifier).toBe('****7788');
   expect(oldPerson.bytes.toString('utf8')).not.toContain('内部核对尾号7788');expect(oldCompany.payload.draft.subjects.map(item=>item.kind)).toEqual(['company','company']);expect(oldPerson.payload.records).toHaveLength(4);
@@ -67,7 +76,7 @@ test('integrity delivery: old exact Word, original-round evidence, free queued/r
 });
 
 test('integrity delivery: evidence saved through the original UI after export acceptance grows shared history but stays outside that frozen Word',async({page})=>{
-  const s=await open(page),history=stableHistory(s),oldBytes=Buffer.from(word(s).bytes),accepted=await freeExport(page,s),newId=accepted.round.run_id,frozen=structuredClone(accepted.round.manifest);
+  const s=await open(page,fixture(),exportId,true),history=stableHistory(s),oldBytes=Buffer.from(word(s).bytes),accepted=await freeExport(page,s),newId=accepted.round.run_id,frozen=structuredClone(accepted.round.manifest);
   await saveEvidence(page,s,'合成补证：此项在免费导出受理后新增，不应进入已冻结的版本。');expect(accepted.round.evidence).toHaveLength(3);expect(accepted.round.manifest).toEqual(frozen);
   progress(s,'running');await expect(panel(page).locator('h2')).toContainText('处理中',{timeout:7500});progress(s,'succeeded');await expect(page.locator('[data-integrity-download]')).toHaveCount(2,{timeout:7500});
   const next=await exactWord(page,s,newId);expect(next.payload.evidence_ids).toEqual(['synthetic-evidence-old','synthetic-evidence-new']);expect(next.payload.evidence.map(item=>item.id)).toEqual(frozen.evidence_ids);
