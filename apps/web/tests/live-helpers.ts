@@ -17,8 +17,18 @@ export async function login(page: Page, user: { username: string; password: stri
   await page.goto('/');
   await page.getByLabel('用户名', { exact: true }).fill(user.username);
   await page.getByLabel('密码', { exact: true }).fill(user.password);
+  const loggedIn = page.waitForResponse(response => response.url() === new URL('/api/v1/auth/login', origin).href && response.request().method() === 'POST');
   await page.getByRole('button', { name: '登录', exact: true }).click();
+  const response = await loggedIn;
+  expect(response.status()).toBe(200);
+  const session = await response.json();
+  expect(session).toMatchObject({ user_id: expect.any(String), session_status: 'active' });
+  // Check the browser's own cookie session before using authenticated navigation.
+  const me = await page.request.get('/api/v1/me');
+  expect(me.status()).toBe(200);
+  expect(await me.json()).toMatchObject({ user_id: session.user_id, session_status: 'active' });
+  await expect(page.getByLabel('当前登录账号', { exact: true })).toHaveText(user.username.trim().toLowerCase());
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('link', { name: '任务进度与结果', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
 }
