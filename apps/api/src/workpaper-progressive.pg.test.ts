@@ -307,14 +307,15 @@ test('progressive automatic billing admits only affordable files, retains full s
 });
 
 
-test('historical frozen two-way plan keeps its exact policy and confirmation fence',{skip:!configured,timeout:60000},async()=>{
+test('historical frozen two-way input uses shared four-way capacity without changing its input or confirmation fence',{skip:!configured,timeout:60000},async()=>{
  const f=await fixture('legacy-two',9,false,3000000,true);
  try{
   let batch=await f.start();assert.equal(batch.progressive?.max_parallel,2);
   assert.equal((await f.pool.query('SELECT max_parallel FROM bb_workpaper_batches WHERE id=$1',[batch.batch_id])).rows[0].max_parallel,null);
-  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);
+  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);
   assert.equal(await advanceWorkpaperBatch(f.pool),false);
-  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,2);
+  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
+  assert.equal(batch.progressive?.max_parallel,2);
   assert.equal(batch.progressive?.phase,'trial');
   await f.action(batch,{action:'pause'});assert.equal(await advanceWorkpaperBatch(f.pool),false);
  }finally{await f.close();}

@@ -1,3 +1,4 @@
+import {SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import {Pool,type PoolClient} from 'pg';
 import {finalizeExecutionRunDenial,resumeExecutionRunAuthorization,type ExecutionDenialScope} from './execution-run-denial.js';
 import {Value} from '@sinclair/typebox/value';
@@ -355,7 +356,7 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
     if(b.progressive_phase==='trial'&&!b.progressive_plan?.trial_item_ids.includes(row.item_id)){excluded.batch_window++;continue;}
     const demand=workpaperDemandKey(row.batch_id,row.item_id,b);
     if(!demand.key){excluded[demand.reason??'unready_input']++;continue;}
-    if((batchUsed.get(row.batch_id)??0)>=Number(b.progressive_plan?.max_parallel??b.max_parallel??1)){excluded.batch_window++;continue;}
+    if((batchUsed.get(row.batch_id)??0)>=SHARED_BATCH_CAPACITY){excluded.batch_window++;continue;}
     key=demand.key;batchUsed.set(row.batch_id,(batchUsed.get(row.batch_id)??0)+1);
    }
    if(work.some(w=>w.key===key)){excluded.shared_plan_waiter++;continue;}

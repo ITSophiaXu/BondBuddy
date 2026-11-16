@@ -1,5 +1,5 @@
 import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
-import {assertBatchAdmission} from './batch-admission.js';
+import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -78,7 +78,7 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
         await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
       }
     }
-    if(active>=(row.max_parallel??1)||next<0&&active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
+    if(active>=SHARED_BATCH_CAPACITY||next<0&&active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
     if(next<0){await c.query("UPDATE bb_project_file_batches SET state='complete',updated_at=now() WHERE id=$1",[row.id]);return true;}
     const item=items[next],m=item.manifest,owner=row.owner_user_id;
     await c.query('SAVEPOINT start_file');
@@ -86,7 +86,7 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
     const ids=[...new Set([m.execution_scope_project_id,m.input.source_material!.source_project_id])];
     const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[owner,ids])).rows;
     if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目已归档或来源不可用，请恢复后继续。');
-    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type,row.max_parallel??1);
+    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type);
     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
     if(!t)throw missing();
     const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);
