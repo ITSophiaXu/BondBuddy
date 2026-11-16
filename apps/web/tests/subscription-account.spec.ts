@@ -553,30 +553,46 @@ test('small topup uses exact fen and preserves the non-subscription entry',async
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 });
 
-for(const width of [1440,900,390])test(`topup controls align and stay within the card at ${width}px`,async({page})=>{
-  const {calls}=await setup(page,{payment:true});await page.setViewportSize({width,height:960});await page.goto('/#/account');
-  await page.locator('#subscription-topup-amount').fill('12.18');
-  const provider=page.locator('#subscription-topup-provider'),amount=page.locator('#subscription-topup-amount'),submit=page.locator('.subscription-topup-submit');
-  await expect(provider).toBeVisible();await expect(submit).toBeVisible();
-  const boxes=await Promise.all([provider,amount,submit].map(control=>control.boundingBox()));
-  expect(boxes.every(box=>box!==null)).toBe(true);
-  const [methodBox,amountBox,submitBox]=boxes as {x:number;y:number;width:number;height:number}[];
+for(const width of [1440,1024,900,390,320])test(`topup groups amount choices and checkout at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  const {calls}=await setup(page,{payment:true,alipay:true});await page.goto('/#/account');
+  const input=page.getByLabel('充值金额（元）',{exact:true}),shortcuts=page.getByRole('group',{name:'快捷充值金额'});
+  const provider=page.locator('#subscription-topup-provider'),checkout=page.locator('.subscription-topup-checkout');
+  await expect(input).toBeVisible();await input.focus();await input.press('Tab');
+  await expect(shortcuts.getByRole('button',{name:'¥50',exact:true})).toBeFocused();
+  await input.evaluate(element=>element.setAttribute('data-layout-probe','preserved'));
+  await shortcuts.getByRole('button',{name:'¥500',exact:true}).click();
+  await expect(input).toHaveValue('500');await expect(input).toBeFocused();await expect(input).toHaveAttribute('data-layout-probe','preserved');
+  await expect(shortcuts.getByRole('button',{name:'¥500',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(checkout).toContainText('将到账 50,000 积分');await expect(provider).toHaveValue('alipay');
+  await input.fill('500.00');await expect(shortcuts.locator('[aria-pressed="true"]')).toHaveText('¥500');
+  await input.fill('12.18');await expect(shortcuts.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await expect(checkout).toContainText('将到账 1,218 积分');
+  const fieldBox=(await input.boundingBox())!,providerBox=(await provider.boundingBox())!,choiceBox=(await shortcuts.boundingBox())!,checkoutBox=(await checkout.boundingBox())!;
   const card=(await page.locator('.subscription-topup').boundingBox())!;
-  for(const box of [methodBox,amountBox,submitBox]){
+  for(const control of [input,provider,checkout.getByRole('button')]){
+    const box=(await control.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(card.x);expect(box.x+box.width).toBeLessThanOrEqual(card.x+card.width);
-    expect(box.height).toBeGreaterThanOrEqual(42);
+    expect(box.height).toBeGreaterThanOrEqual(44);
   }
-  if(width>650){
-    expect(Math.abs(methodBox.y-amountBox.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(methodBox.height-amountBox.height)).toBeLessThanOrEqual(1);
-    if(width>1100){expect(Math.abs(submitBox.y-amountBox.y)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.height-amountBox.height)).toBeLessThanOrEqual(1);}
+  expect(choiceBox.y).toBeGreaterThanOrEqual(fieldBox.y+fieldBox.height);
+  expect(choiceBox.y-fieldBox.y-fieldBox.height).toBeLessThanOrEqual(12);
+  expect(checkoutBox.y).toBeGreaterThan(choiceBox.y+choiceBox.height);
+  if(width>760){
+    expect(Math.abs(fieldBox.y-providerBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(fieldBox.height-providerBox.height)).toBeLessThanOrEqual(1);
   }else{
-    expect(Math.abs(methodBox.x-amountBox.x)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.x-amountBox.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(methodBox.width-amountBox.width)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.width-amountBox.width)).toBeLessThanOrEqual(1);
-    expect(amountBox.y).toBeGreaterThanOrEqual(methodBox.y+methodBox.height);expect(submitBox.y).toBeGreaterThanOrEqual(amountBox.y+amountBox.height);
+    expect(providerBox.y).toBeGreaterThan(choiceBox.y+choiceBox.height);
+    const buttonBox=(await checkout.getByRole('button').boundingBox())!;
+    expect(Math.abs(buttonBox.width-fieldBox.width)).toBeLessThanOrEqual(1);
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await regionEvidence(page,`payment-page-topup-aligned-${width}.png`,'.subscription-topup');
+  await provider.focus();await provider.press('Tab');await expect(checkout.getByRole('button')).toBeFocused();
+  await page.locator('#subscription-topup-title').click();
+  await regionEvidence(page,`topup-implementation-${width}.png`,'.subscription-topup');
+  await input.fill('10000.01');await expect(input).toHaveAttribute('aria-invalid','true');
+  await expect(checkout).toContainText('最多两位小数');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(calls.filter(c=>c.method==='POST')).toHaveLength(0);
 });
 
@@ -791,7 +807,7 @@ test('subscription preview shares the account layout and keeps its interactive e
   const directory=fileURLToPath(new URL('../../../product-prototype/public/',import.meta.url));
   await page.route('**/prototype-subscription/**',async route=>{
     const filename=new URL(route.request().url()).pathname.split('/').at(-1)!;
-    if(!['account-credits.html','commerce-account-prototype.js','subscription-account-prototype.js','subscription-billing.css','subscription-experience-prototype.css'].includes(filename))return route.abort();
+    if(!['account-credits.html','commerce-account-prototype.js','subscription-account-prototype.js','subscription-billing.css','subscription-topup.css','subscription-experience-prototype.css'].includes(filename))return route.abort();
     return route.fulfill({contentType:filename.endsWith('.html')?'text/html':filename.endsWith('.css')?'text/css':'text/javascript',body:await readFile(join(directory,filename),'utf8')});
   });
   await page.goto('/prototype-subscription/account-credits.html?subscription=1');
@@ -799,6 +815,13 @@ test('subscription preview shares the account layout and keeps its interactive e
   await expect(page.getByRole('button',{name:'开通专业',exact:true})).toBeEnabled();
   await expect(page.locator('.subscription-price-list')).toHaveCount(0);
   await page.locator('#subscription-topup-amount').fill('12.18');await expect(page.locator('#prototype-points')).toHaveText('将到账 1,218 积分');
+  for(const width of [1440,1024,900,390,320]){
+    await page.setViewportSize({width,height:960});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.locator('#subscription-topup-title').click();
+    await regionEvidence(page,`topup-prototype-${width}.png`,'.subscription-topup');
+  }
+  await page.setViewportSize({width:1440,height:960});
   await evidence(page,'subscription-final-prototype-monthly-1440.png');
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
