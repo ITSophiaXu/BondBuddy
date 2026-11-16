@@ -269,9 +269,24 @@ export class SubscriptionBillingPage{
     const input=document.querySelector<HTMLInputElement>('#subscription-topup-amount'),preview=document.querySelector<HTMLElement>('#subscription-topup-preview');
     const invalid=!!this.topupAmount.trim()&&topupFen(this.topupAmount)===null;
     if(input){input.setAttribute('aria-invalid',String(invalid));input.setCustomValidity(invalid?'请输入0.01至10,000元之间、最多两位小数的金额。':'');}
-    if(preview){preview.textContent=this.topupPreview();preview.classList.toggle('invalid',invalid);}
+    if(preview){preview.textContent=this.topupPreview();preview.classList.toggle('invalid',invalid);preview.classList.toggle('has-amount',topupFen(this.topupAmount)!==null);}
+    document.querySelectorAll<HTMLButtonElement>('[data-topup-shortcut]').forEach(button=>button.setAttribute('aria-pressed',String(topupFen(this.topupAmount)===topupFen(button.dataset.topupShortcut!))));
   }
-  private topup(){return `<section class="credit-recharge subscription-topup" aria-labelledby="subscription-topup-title"><div class="section-head"><div><h2 id="subscription-topup-title">按需充值</h2><p>灵活补足用量，无须开通订阅。</p></div></div>${this.catalog.providers.length?`<form id="subscription-topup-form">${this.providerSelect('subscription-topup-provider',this.topupProvider)}<div class="subscription-topup-entry"><label>充值金额（元）<input id="subscription-topup-amount" inputmode="decimal" type="text" value="${esc(this.topupAmount)}" placeholder="例如 12.18" autocomplete="off" required aria-describedby="subscription-topup-preview subscription-topup-help"></label><p id="subscription-topup-preview" class="subscription-topup-preview" role="status" aria-live="polite">${this.topupPreview()}</p><p class="subscription-topup-conversion">¥1＝100积分，永久有效。</p></div><button class="btn primary subscription-topup-submit" type="submit" ${!this.canBuy()?'disabled':''}>充值并前往支付</button><p id="subscription-topup-help">最低0.01元，单次最高10,000元。</p><div class="subscription-topup-shortcuts" aria-label="快捷充值金额">${[50,200,500].map(amount=>`<button class="btn secondary" type="button" data-topup-shortcut="${amount}" ${this.busy?'disabled':''}>¥${amount}</button>`).join('')}</div></form>`:'<p class="account-recharge-status">充值渠道暂未开放。</p><p class="subscription-topup-conversion">¥1＝100积分，永久有效。</p>'}</section>`;}
+  private topup(){return `<section class="credit-recharge subscription-topup" aria-labelledby="subscription-topup-title">
+    <div class="section-head"><div><h2 id="subscription-topup-title">按需充值</h2><p>灵活补足用量，无须开通订阅。</p></div></div>
+    ${this.catalog.providers.length?`<form id="subscription-topup-form">
+      <div class="subscription-topup-entry">
+        <label for="subscription-topup-amount">充值金额（元）</label>
+        <input id="subscription-topup-amount" inputmode="decimal" type="text" value="${esc(this.topupAmount)}" placeholder="例如 12.18" autocomplete="off" required aria-describedby="subscription-topup-help subscription-topup-preview">
+        <div class="subscription-topup-shortcuts" role="group" aria-label="快捷充值金额">${[50,200,500].map(amount=>`<button class="btn secondary" type="button" data-topup-shortcut="${amount}" aria-pressed="${topupFen(this.topupAmount)===String(amount*100)}" ${this.busy?'disabled':''}>¥${amount}</button>`).join('')}</div>
+        <p id="subscription-topup-help">最低0.01元，单次最高10,000元。</p>
+      </div>
+      ${this.providerSelect('subscription-topup-provider',this.topupProvider)}
+      <div class="subscription-topup-checkout">
+        <div class="subscription-topup-summary"><p id="subscription-topup-preview" class="subscription-topup-preview" role="status" aria-live="polite">${this.topupPreview()}</p><p class="subscription-topup-conversion">¥1＝100积分，永久有效。</p></div>
+        <button class="btn primary subscription-topup-submit" type="submit" ${!this.canBuy()?'disabled':''}>充值并前往支付</button>
+      </div>
+    </form>`:'<p class="account-recharge-status">充值渠道暂未开放。</p><p class="subscription-topup-conversion">¥1＝100积分，永久有效。</p>'}</section>`;}
   private periods(){
     const rows=this.account?.periods??[];if(!rows.length)return '';
     return `<section class="subscription-periods" aria-labelledby="subscription-periods-title"><h2 id="subscription-periods-title">订阅额度明细</h2><ul>${rows.map(period=>`<li data-period="${esc(period.id)}"><div><strong>${esc(planLabel(period.plan_id))} · ${period.billing_cycle==='annual'?'年付，每月 '+points(period.monthly_points??'0'):points(period.points)} 积分</strong><p>${period.billing_cycle==='annual'?`已发放 ${period.released_count??0}/${period.release_count??12} 个月，每批到账后有效90天${period.next_release_at?' · 下次 '+esc(date(period.next_release_at))+' 到账':''}`:`${period.starts_at?esc(date(period.starts_at))+' 到账':'等待本期付款'}${period.credits_expires_at?' · '+esc(date(period.credits_expires_at))+' 到期':''}`}</p>${this.paymentBreakdown(period)}<a class="text-button" href="${esc(this.orderLink(period.order_id))}">查看支付与退款</a></div><div><strong>可用 ${points(period.available_points)} 积分</strong>${this.periodStatus(period)}</div></li>`).join('')}</ul></section>`;
@@ -301,7 +316,7 @@ export class SubscriptionBillingPage{
     this.updateTopupPreview();
     document.querySelector('#subscription-topup-form')?.addEventListener('submit',event=>{event.preventDefault();void this.buyTopup();});
     document.querySelectorAll<HTMLButtonElement>('[data-subscribe]').forEach(button=>button.addEventListener('click',()=>void this.buySubscription(button.dataset.subscribe as SubscriptionCheckoutRequest['plan_id'])));
-    document.querySelectorAll<HTMLButtonElement>('[data-topup-shortcut]').forEach(button=>button.addEventListener('click',()=>{this.topupAmount=button.dataset.topupShortcut!;this.draw();document.querySelector<HTMLInputElement>('#subscription-topup-amount')?.focus();}));
+    document.querySelectorAll<HTMLButtonElement>('[data-topup-shortcut]').forEach(button=>button.addEventListener('click',()=>{this.topupAmount=button.dataset.topupShortcut!;const input=document.querySelector<HTMLInputElement>('#subscription-topup-amount');if(input){input.value=this.topupAmount;input.focus();}this.updateTopupPreview();}));
     document.querySelector('#refresh-subscription-payment')?.addEventListener('click',()=>void this.refreshPayment());
     document.querySelector('#retry-return-order')?.addEventListener('click',()=>{this.error='';void this.render();});
     document.querySelector('#close-subscription-payment')?.addEventListener('click',()=>void this.closePayment());
