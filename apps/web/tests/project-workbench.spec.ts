@@ -102,6 +102,16 @@ test('mobile files appear before the collapsed directory and folder selection cl
   await expect(page.locator('#file-list>.collection-file').first()).toBeInViewport();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:test.info().outputPath('project-workbench-mobile-files.png'),fullPage:true});
+  const status=page.locator('#pw-file-status'),filters=status.locator('[data-file-status]');
+  await expect(filters).toHaveCount(7);
+  const targets=await filters.evaluateAll(buttons=>buttons.map(button=>{const box=button.getBoundingClientRect();return {top:box.top,height:box.height};}));
+  expect(new Set(targets.map(box=>box.top)).size).toBe(1);expect(targets.every(box=>box.height>=44)).toBe(true);
+  expect(await status.evaluate(host=>host.scrollWidth>host.clientWidth)).toBe(true);
+  const other=status.locator('[data-file-status="other"]');
+  await other.click();await expect(other).toHaveAttribute('aria-pressed','true');await expect(other).toBeFocused();
+  expect(await other.evaluate(button=>{const frame=button.closest('#pw-file-status')!.getBoundingClientRect(),box=button.getBoundingClientRect();return box.left>=frame.left&&box.right<=frame.right;})).toBe(true);
+  await expect(page.locator('#file-list>.collection-file')).toHaveCount(1);await expect(page.locator('#file-list>.collection-file')).toContainText('募集说明书_V1.docx');
+  await status.locator('[data-file-status="all"]').click();await expect(page.locator('#file-list>.collection-file')).toHaveCount(2);
   await summary.click();await expect(page.locator('#file-folders')).toBeVisible();
   await page.locator('[data-folder="4.1"]').click();
   await expect(picker).not.toHaveAttribute('open');await expect(summary).toContainText('说明性文件');
