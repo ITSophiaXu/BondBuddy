@@ -1,0 +1,10 @@
+{
+  "role": "review",
+  "exit": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 45975,
+  "argv_sha256": "500b258ad71da53d0e01bc81989cc3facce88e6c1a3ea68973d3b944e53f1a98",
+  "stdout_sha256": "2912c821901f95e39a99e6e541fa51a316e46cafaee070f157660a3a3e9b9714",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
