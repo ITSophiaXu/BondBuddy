@@ -179,7 +179,12 @@ test('approved prototype comparison capture',async({page})=>{
  for(const file of ['project-assistant-refined']){
   const source=await readFile(new URL('../../../product-prototype/public/'+file+'.html',import.meta.url),'utf8');
   await page.setContent('<!doctype html><meta charset="utf-8"><style>:root{color-scheme:light}body{margin:0}</style>'+source);
-  await page.getByRole('textbox',{name:'发送给 BondBuddy'}).focus();
+  const dock=page.locator('button[data-assistant-dock]');
+  await expect(dock).toHaveCount(1);await expect(dock).toHaveAttribute('aria-label','打开 BondBuddy');await expect(dock).toHaveAttribute('aria-controls','ba-panel');
+  await expect(dock).toHaveAttribute('aria-expanded','false');await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+  // The original launcher keeps its name and expanded state while hidden.
+  await expect(dock).toHaveAttribute('aria-expanded','true');await expect(dock).toBeHidden();await expect(page.locator('.ba-panel')).toBeVisible();
+  const composer=page.getByRole('textbox',{name:'发送给 BondBuddy'});await composer.focus();await expect(composer).toBeFocused();
   await page.screenshot({path:resolve(evidenceDir,'prototype-1440.png')});
   await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
   await page.setViewportSize({width:390,height:960});
