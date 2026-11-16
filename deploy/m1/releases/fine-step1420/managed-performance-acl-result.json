@@ -1,0 +1,298 @@
+{
+  "status": "passed",
+  "local_only": true,
+  "synthetic": true,
+  "production_contacted": false,
+  "real_model_called": false,
+  "node": "v24.22.1",
+  "platform": "win32",
+  "postgres": "PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+  "writer_sha256": "48b5792718c4162c0cd10272edbd4c585941c14fa2bfab148640cee0472c5b22",
+  "migration_sha256": "20f7e159dca10fc86137f03e93d79a073c1787b4e6455693314a4f0d83dc347b",
+  "grant_sha256": "d331cfdc523df6cbeba4daf47bd31df87bb32e72c6f98deb4081ee5e1f7c0a0b",
+  "tests": [
+    {
+      "name": "bb1361_formal_n1_author_v1: writer denied before grant",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: writer denied before grant",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: writer denied before grant",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: writer denied before grant",
+      "status": "passed"
+    },
+    {
+      "name": "grant is idempotent",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: actual writer inserts running session/span",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: actual writer updates and finalizes",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: actual writer idempotent replay",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: writer rejects invalid run owner",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies session delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies span delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies truncate",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies session owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies session run mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies session purge",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies span owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies span session mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies recorded timestamp mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies recorded transaction insert",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: denies business balance update",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_author_v1: no table-level insert/update or delete privilege",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: actual writer inserts running session/span",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: actual writer updates and finalizes",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: actual writer idempotent replay",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: writer rejects invalid run owner",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies session delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies span delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies truncate",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies session owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies session run mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies session purge",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies span owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies span session mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies recorded timestamp mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies recorded transaction insert",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: denies business balance update",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n1_review_v1: no table-level insert/update or delete privilege",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: actual writer inserts running session/span",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: actual writer updates and finalizes",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: actual writer idempotent replay",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: writer rejects invalid run owner",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies session delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies span delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies truncate",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies session owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies session run mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies session purge",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies span owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies span session mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies recorded timestamp mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies recorded transaction insert",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: denies business balance update",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_author_v1: no table-level insert/update or delete privilege",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: actual writer inserts running session/span",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: actual writer updates and finalizes",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: actual writer idempotent replay",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: writer rejects invalid run owner",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies session delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies span delete",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies truncate",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies session owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies session run mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies session purge",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies span owner mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies span session mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies recorded timestamp mutation",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies recorded transaction insert",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: denies business balance update",
+      "status": "passed"
+    },
+    {
+      "name": "bb1361_formal_n2_review_v1: no table-level insert/update or delete privilege",
+      "status": "passed"
+    },
+    {
+      "name": "owner retains logs/purge access and balances unchanged",
+      "status": "passed"
+    }
+  ],
+  "passed": 70,
+  "failed": 0,
+  "skipped": 0
+}
