@@ -528,8 +528,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/business-overlay.mjs",
-      "bytes": 7933,
-      "sha256": "d3a18dd9e4c05e84c363a01a9c2ed4afb61353d21ee673d0f004b6f4c8662c38"
+      "bytes": 8018,
+      "sha256": "ea741b7168ef9ae6ea7823b1e5b9472163190a4baf8bdefba6b0b71b28e796e9"
     },
     {
       "path": "apps/api/dist/workpapers.js",
@@ -1067,6 +1067,14 @@
     ],
     "preserved_api_source_baseline_sha256": "43b6620d4336431994d97ba27795c5ec83494f1dfab2ec2e35afc5100d0b0113",
     "preserved_contract_compiled_baseline_sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3",
-    "retained_warm_bootstrap": "Exact existing public creation bytes pinned per instance and original launch manifest; final complete launch hash is still required. No replay of RunInstances or weaker identity binding."
+    "retained_warm_bootstrap": "Exact existing public creation bytes pinned per instance and original launch manifest; final complete launch hash is still required. No replay of RunInstances or weaker identity binding.",
+    "review_import_recovery": {
+      "review_additional_mounts": [
+        "apps/api/dist/batch-admission.js",
+        "packages/contracts/dist/workpaper-entry.js"
+      ],
+      "business_archive_unchanged": true,
+      "recovery": "Existing operator fence Stop, confirm exact acknowledgement and STOPPED/STOP_CHARGING, then one normal warm Start with new epoch. Preserve all prior sessions and unresolved calls."
+    }
   }
 }
