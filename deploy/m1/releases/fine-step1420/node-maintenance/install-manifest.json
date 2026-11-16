@@ -1,0 +1,16 @@
+{
+  "target": "ins-p4i0pcub",
+  "region": "ap-beijing",
+  "request_sha256": "6136bf3bbfb99fc536cc53ca7140d563f90e09ea544019dd637be067bf15eea2",
+  "request_bytes": 17494,
+  "command_sha256": "72ad793914a0873a55c8a08d7e3905ca48572074ecbf86d1e8072857abd55efb",
+  "helper_sha256": "75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4",
+  "preconditions": [
+    "shared main deployment and control coordination window",
+    "current stopped operation confirmed",
+    "new pool/authority/templates/Blob candidate installed",
+    "one normal cloud Start completed with new epoch",
+    "no running consumers and no activating bootstrap"
+  ],
+  "rollback": "Restore backed-up node config and helper only after current consumers drain; control side must restore matching old templates before normal startup. Never alter original cloud/epoch/ledger records."
+}
