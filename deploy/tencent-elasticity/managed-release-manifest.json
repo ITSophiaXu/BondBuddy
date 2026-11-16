@@ -527,25 +527,56 @@
     "retained_nodes": [],
     "source_sha256": "d3340d98c2188cabadf39f99717ac1a41042c584a5d2506761b95562f8c6dea1",
     "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
-    "image_id": "img-quo1uh41",
+    "image_id": "img-6cnm1flv",
     "private_pg_verified": false,
     "service_credentials_verified": false
   },
   "system_image": {
-    "image_id": "img-quo1uh41",
-    "snapshot_id": "snap-jguuvymo",
-    "ImageState": "NORMAL",
-    "IsSupportCloudinit": true,
-    "ImageType": "PRIVATE_IMAGE",
+    "image_id": "img-6cnm1flv",
+    "snapshot_id": null,
+    "ImageState": "CREATING",
+    "IsSupportCloudinit": null,
+    "ImageType": null,
     "system_disk_GiB": 40,
-    "original_capture_sha256": "19c33801b3c9b53996af65d956449d3db0f1d3b4fc465c01c388a34d1f9b2c01",
-    "current_identity_clean_sha256": "729a87be42fd175d822b3d4275c298844ebbf4c06c708f403ef5e28450a60e91",
-    "installation_receipt_sha256": "d872744a2d8de0e4de809655959b3fa87ddf9b1675eaf4b488bc17f23f3bfc7e",
-    "builder_retirement_verified": true,
+    "create_request_id": "c3caee18-cb7e-4102-b375-53f5605dcbe4",
+    "create_original_sha256": "d35b22590f433c39483c24f4c621c1eef0b4350ca56cd74bc4fab7d316625273",
+    "NORMAL_verified": false,
+    "original_capture_sha256": null,
+    "current_identity_clean_sha256": "f5d6e0994d70f9ae0c8343dea51cf09e625a6db4cb32e84f085b2403c7db1d23",
+    "installation_receipt_sha256": "030d11822c45a11eb15778826db6b6b9b5b74d9e126e53f77e233eea4e1e4b19",
+    "host_contracts_import_repair_receipt_sha256": "1eb3468b035605c680bb487152de3a0b3c52c51db473faed42ce3fa7fc327bc8",
+    "host_closure_files": 21,
+    "host_closure_canonical_sha256": "500738aa1b8fb911b158e15860b9883e5943bdd4487c90a2a8ad084263ee8b66",
+    "actual_host_closure": {
+      "deploy/tencent-elasticity/bootstrap-entry.mjs": "1cfd19875630bc7a2fe6906f0be5850285569360b21b5975a71fb27a1edaa4c3",
+      "deploy/tencent-elasticity/bootstrap-failure.mjs": "e40b0cff60fa83701eea48d17f44c0459135db6d153a2f634673ecee0a5f1068",
+      "deploy/tencent-elasticity/bootstrap.mjs": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3",
+      "deploy/tencent-elasticity/compose.yaml": "3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489",
+      "deploy/tencent-elasticity/control-socket.mjs": "becdbd83d14dc0a520394e24e2bef561ebd097f37f26410aee75ba02a06bfb98",
+      "deploy/tencent-elasticity/control-tick-bound.mjs": "e7a23959ec60d667dc8998555decad919cddbff4777bcb9ad6dfb716b87bed43",
+      "deploy/tencent-elasticity/enrollment.mjs": "2eaab77c9d0e33b7fa4bce1180a5a4272aa11d7203790fdfdf838c06af6b01e1",
+      "deploy/tencent-elasticity/node-adapter.mjs": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65",
+      "deploy/tencent-elasticity/policy.mjs": "7ff2353ac0585ed73177d4033390223ea190c28f7727c274b5bfe5ad2bd41a06",
+      "deploy/tencent-elasticity/private-egress.mjs": "84397844bf60c424be352321d2ca87c7977cc9370d01e81fd669d45884f91563",
+      "deploy/tencent-elasticity/private-files.mjs": "7b7b7a1409efd1398d21fda659d3182644923cc64a9573d8ca85c8280fc8f29e",
+      "deploy/tencent-elasticity/private-transport.mjs": "e3cf3527c0d9b23bff9f75b585a224aee50965035229a64122afab8ddeff1e6d",
+      "deploy/tencent-elasticity/stunnel-reload.mjs": "bb6789a3bf9a2f7de227bd9eda404f42d171c227b0d2ead96c050443a5194be4",
+      "deploy/tencent-elasticity/tencent-cvm.mjs": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530",
+      "deploy/tencent-elasticity/transport-issuer.mjs": "e6611f6c2e9e414e66626473fa5d045faad45079db81d1f3c1e5608b50600c9e",
+      "deploy/tencent-elasticity/transport-refresher.mjs": "db8c26c58c1fcce568305092047027a2adbd43dd4ec3698e8d2fbda579b6ce77",
+      "deploy/tencent-elasticity/transport-renewal.mjs": "6ebabf4c44937703138fc7ab2bca9a0aedf613d952aeb9223378894d1aa3073f",
+      "deploy/tencent-elasticity/transport-service.mjs": "ed69f95a60acf7c6da230ba59017c92be50ccef246e3b8cff3136f66c35db07a",
+      "packages/contracts/dist/execution-capacity.js": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3",
+      "packages/contracts/dist/index.js": "2fb47693049a9530996b341ab582dd9a90fe0eaf20c21e5582f97406ffc47afc",
+      "packages/contracts/dist/workpaper-progressive.js": "da383c4e17e6c2dbda3536937c910a60aa27a775ccca7939793f5aedbe604bc6"
+    },
+    "source_instance_same_ACK_STOP_CHARGING": true,
+    "source_stop_request_id": "8fb65c77-a4ea-4fe0-858c-4f698f72c0ed",
+    "source_stop_original_sha256": "d30a1fdbcc4a1d0fa58aa820e89c365e2ce42a02840834953d39fe9696bd54ed",
+    "source_retirement_verified": false,
     "transport_same_scope_verified": false,
-    "builder_retirement_original_sha256": "3efa58898ddf37f2b4f94268543cee5c4e7ca9983ed7b544de0b34726e6912e6",
-    "builder_exact_disks_absent": true,
-    "snapshot_retained": true
+    "source_exact_disks_absent": false,
+    "node_OCI_rebuilt": false
   },
   "evidence_reused": {
     "capacity_cases_passed": 14,
@@ -585,12 +616,19 @@
     "full_c23_gold_quality_passed": false,
     "full_stack_automatic_deploy_paused": true,
     "fixed_four_exception_covers_managed": false,
-    "exact_infrastructure_exception_granted": false,
     "native_model_overlap_gt4_lte8_verified": false,
     "formal_ops_automatic_same_ACK_stop_verified": false,
-    "complete_closed_history_review_ready": false,
     "formal_schema_ACL_activation_executed": false,
-    "note": "Release preparation does not grant activation. Preserve all known failures and historical/unknown expenses; scoped final authorization follows the exact artifacts and required real acceptance."
+    "note": "No full c23, Web/public API or financial business deployment. Reuse applicable evidence. Actual corrected image NORMAL and the original real task/persistence/Stop P0 chain remain pending; preparation is not production activation.",
+    "release_scope_authorization": "Explicit user instruction: proceed with narrow dynamic infrastructure; only concrete P0 blocks. No further legacy quality exception approval required.",
+    "legacy_full_gold_gate_required_for_this_scope": false,
+    "legacy_gold_status": "deferred; existing 30/43 failure retained and not relabeled PASS",
+    "P0_required": [
+      "corrected-image node claims actual tasks; observed native total concurrency >4 and <=8, each node <=4",
+      "results and real usage persisted without loss or duplicate execution/accounting",
+      "drain completes and controller autonomously Stops; exact same ACK proves STOPPED/STOP_CHARGING/SUCCESS"
+    ],
+    "P0_evidence_complete": false
   },
   "control_composition_order": [
     "1416 exact component payload",
@@ -647,5 +685,58 @@
       "skip": 0
     },
     "guards_preserved": "No pending completion or credentials; full RUNNING launch checks, inventory, issuer, warm and Stop unchanged; trusted ACK/account/region/exact status required."
+  },
+  "prior_system_image_superseded_for_launch": {
+    "image_id": "img-quo1uh41",
+    "snapshot_id": "snap-jguuvymo",
+    "ImageState": "NORMAL",
+    "IsSupportCloudinit": true,
+    "ImageType": "PRIVATE_IMAGE",
+    "system_disk_GiB": 40,
+    "original_capture_sha256": "19c33801b3c9b53996af65d956449d3db0f1d3b4fc465c01c388a34d1f9b2c01",
+    "current_identity_clean_sha256": "729a87be42fd175d822b3d4275c298844ebbf4c06c708f403ef5e28450a60e91",
+    "installation_receipt_sha256": "d872744a2d8de0e4de809655959b3fa87ddf9b1675eaf4b488bc17f23f3bfc7e",
+    "builder_retirement_verified": true,
+    "transport_same_scope_verified": false,
+    "builder_retirement_original_sha256": "3efa58898ddf37f2b4f94268543cee5c4e7ca9983ed7b544de0b34726e6912e6",
+    "builder_exact_disks_absent": true,
+    "snapshot_retained": true
+  },
+  "host_contracts_correction": {
+    "generic_bootstrap_dependency": true,
+    "three_leaf_source_PR": 1416,
+    "files": [
+      {
+        "path": "packages/contracts/dist/execution-capacity.js",
+        "bytes": 17572,
+        "sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3"
+      },
+      {
+        "path": "packages/contracts/dist/index.js",
+        "bytes": 98540,
+        "sha256": "2fb47693049a9530996b341ab582dd9a90fe0eaf20c21e5582f97406ffc47afc"
+      },
+      {
+        "path": "packages/contracts/dist/workpaper-progressive.js",
+        "bytes": 5440,
+        "sha256": "da383c4e17e6c2dbda3536937c910a60aa27a775ccca7939793f5aedbe604bc6"
+      }
+    ],
+    "actual_missing_export": "executionStopAuthorizationMatches",
+    "adapter_unchanged_sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65",
+    "new_adapter_import_PASS": true,
+    "generic_compose_restored": true,
+    "current_identity_clean_PASS": true,
+    "host_installed_files": 21,
+    "node_OCI_rebuild_required": false,
+    "reason": "The runtime component artifacts already contained the three compiled contracts leaves; the system-image host installation selection omitted them. Corrected generic host closure is now explicit."
+  },
+  "release_execution_boundaries": {
+    "Azure": "stop the two legacy consumers only; do not stop the VM",
+    "Tencent": "existing ops/control effective payload, selected 0181/0183/0184 and exact ACL/CAS only",
+    "public_Web_API_financial_source_changed": false,
+    "unknown39": "preserve; no automatic replay",
+    "backup_and_post1414_rollback": "reuse existing exact references; keep required identity, data and mutual-exclusion protections",
+    "new_model_calls_after_unified_P0_acceptance": "none for duplicate cutover verification"
   }
 }
