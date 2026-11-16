@@ -4,6 +4,7 @@ import {expect,test,type Page,type Route} from '@playwright/test';
 import {PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileSource,type ProjectFileUpdateBatches,type ProjectFileVersion,type ProspectusVersions} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
+import {fixtureJson} from './billing-fixture-wire';
 
 // One synthetic backend state serves the real application routes throughout this journey.
 // These bytes and receipts verify UI ownership, version pins and delivery behavior only;
@@ -35,7 +36,7 @@ const initialFile=(id:'issuer'|'financial',filename:string):ProjectFileVersion=>
 type Call={method:string;path:string;body:unknown};
 type CheckBody=Dto<'ProjectFileCheckRequest'>;
 type UpdateBody=Dto<'ProjectFileUpdateRequest'>;
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 
 async function setupJourney(page:Page){
   const versions:ProspectusVersions={project_id:sourceId,current_version_id:'source-v1',selection_revision:2,
@@ -136,7 +137,7 @@ async function setupJourney(page:Page){
     if(method==='POST'&&path===base+`/checks/${checkId}/updates`){
       const input=body as UpdateBody;updatePosts.push(structuredClone(input));
       expect(input).toEqual({request_id:expect.any(String),expected_check_sha256:checks[0].sha256,
-        price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:9000,
+        price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:'9000',
         files:[{file_version_id:'issuer-v1'},{file_version_id:'financial-v1'}]});
       expect(batches).toHaveLength(0);
       checks[0].updates=input.files.map(f=>({file_version_id:f.file_version_id,issue_ids:[f.file_version_id==='issuer-v1'?'issuer-conflict':'financial-conflict'],
