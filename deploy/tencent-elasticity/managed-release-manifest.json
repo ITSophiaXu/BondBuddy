@@ -6,13 +6,21 @@
     1416,
     1419,
     1423,
-    1425
+    1425,
+    1426,
+    1427
   ],
   "stable_base_commit": "c23abe58cdb960261b988eec32be6b42c2a19bce",
-  "source_develop_commit": "6aaa9d9d622219100ea6c6a04b708a799249355a",
+  "source_develop_commit": "f029721966a7c08c1158dcce90f6c319d1de3f29",
   "component_only_release": true,
   "public_app_and_business_source_delta": [],
   "source_records": [
+    {
+      "path": "db/migrations/0184_execution_run_authorization_denial.sql",
+      "bytes": 946,
+      "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
     {
       "path": "deploy/tencent-elasticity/authorization-denial.pg.test.mjs",
       "bytes": 17053,
@@ -230,16 +238,16 @@
       "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
     },
     {
-      "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
-      "bytes": 21182,
-      "sha256": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "path": "deploy/tencent-elasticity/run-pending-observation.test.mjs",
+      "bytes": 6122,
+      "sha256": "342ba073cbf9aea059aae7cb3a5e1651cd878c3541f36d7de1a7b30b98ca28e8",
+      "source_commit": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a"
     },
     {
-      "path": "db/migrations/0184_execution_run_authorization_denial.sql",
-      "bytes": 946,
-      "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
+      "bytes": 22304,
+      "sha256": "ba33f4d90d37aa229f982a900a24962558234eabbca31019962db2d6535ee047",
+      "source_commit": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a"
     }
   ],
   "source_prs": [
@@ -267,6 +275,13 @@
       "merge": "6aaa9d9d622219100ea6c6a04b708a799249355a",
       "tree": "86111f7b33ea56b1d91fd7737e4f663ec1b0a7c2",
       "merge_tree": "86111f7b33ea56b1d91fd7737e4f663ec1b0a7c2"
+    },
+    {
+      "number": 1427,
+      "head": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a",
+      "merge": "f029721966a7c08c1158dcce90f6c319d1de3f29",
+      "tree": "feee6f267fc091a419ad0e703b056ada847f6263",
+      "merge_tree": "feee6f267fc091a419ad0e703b056ada847f6263"
     }
   ],
   "runtime_payload": {
@@ -423,8 +438,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
-      "bytes": 21182,
-      "sha256": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530"
+      "bytes": 22304,
+      "sha256": "ba33f4d90d37aa229f982a900a24962558234eabbca31019962db2d6535ee047"
     },
     {
       "path": "deploy/tencent-elasticity/transport-issuer.mjs",
@@ -467,7 +482,7 @@
       "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af"
     }
   ],
-  "control_installation": "Exact effective_control_payload on the existing ops image/package tree, with final control-authority.mjs from #1425; reuse existing ops Pool for stop completion and operation persistence. Independent issuer and runtime identities.",
+  "control_installation": "Exact effective_control_payload on the existing ops image/package tree: final #1425 control-authority.mjs and #1427 tencent-cvm.mjs override earlier copies. Existing ops Pool owns stop/recover and operation persistence; issuer/runtime remain independent.",
   "schema": {
     "formal_before_count": 182,
     "after_count": 185,
@@ -581,7 +596,8 @@
     "1416 exact component payload",
     "1419 final expense history/ops entries",
     "1423 final costcap/cloud-quote-refresh",
-    "1425 final control-authority retirement exclusion and retired-target rejection"
+    "1425 final control-authority retirement exclusion and retired-target rejection",
+    "1427 final trusted Run PENDING observation before materialized launch checks"
   ],
   "retired_issuer_delta": {
     "source_pr": 1425,
@@ -603,5 +619,33 @@
     "prior_release_head": "95d253d21728b0e12e5554f55abf4612eb0b28e9",
     "runtime_OCI_rebuild_required": false,
     "new_test_run_for_release_metadata": false
+  },
+  "pending_run_observation_delta": {
+    "source_pr": 1427,
+    "only_source_files": [
+      {
+        "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
+        "bytes": 22304,
+        "sha256": "ba33f4d90d37aa229f982a900a24962558234eabbca31019962db2d6535ee047",
+        "source_commit": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a"
+      },
+      {
+        "path": "deploy/tencent-elasticity/run-pending-observation.test.mjs",
+        "bytes": 6122,
+        "sha256": "342ba073cbf9aea059aae7cb3a5e1651cd878c3541f36d7de1a7b30b98ca28e8",
+        "source_commit": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a"
+      }
+    ],
+    "prior_release_head": "0d45acb2dfcb812180615333414bbf63b5c80895",
+    "runtime_OCI_rebuild_required": false,
+    "new_test_run_for_release_metadata": false,
+    "targeted_test": {
+      "command": "node --test deploy/tencent-elasticity/run-pending-observation.test.mjs",
+      "synthetic": true,
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "guards_preserved": "No pending completion or credentials; full RUNNING launch checks, inventory, issuer, warm and Stop unchanged; trusted ACK/account/region/exact status required."
   }
 }
