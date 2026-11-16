@@ -8,7 +8,7 @@ import {WorkpaperSharedPlanSchema,type WorkpaperSharedPlan,type M4DocumentManife
 import {digest} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {checkpointStage} from '@bondbuddy/api/queue';
-import {loadWorkpaperTemplate,publishWorkpaperItemResult,pauseSharedWorkpaperBatch} from '@bondbuddy/api/workpapers';
+import {loadWorkpaperTemplate,publishWorkpaperItemResult,pauseSharedWorkpaperBatch,pauseFailedSharedWorkpaperBatch} from '@bondbuddy/api/workpapers';
 import {projectFilesRoot,projectFilePython} from './project-file-tools.js';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {loadCodexAdapterConfig,CodexOutputValidationError,type CodexAdapterConfig} from './codex-adapter.js';
@@ -200,9 +200,19 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
       }
     };
     const handleModelOutcome=async(outcome:StageOutcome,callId:string)=>{
-      const failure=outcome.kind==='stopped'?await stoppedWorkpaperFailure(ctx,batch,task.entry.id,callId):outcome.kind==='fail'?outcome.code:null;
-      if(failure&&(!progressive||failure!=='MODEL_OUTPUT_SCHEMA_INVALID'))await pauseSharedWorkpaperBatch(ctx.pool,owner,batch,
-        {itemId:task.entry.id,runId:ctx.run.id,jobId:ctx.lease.jobId,...(outcome.kind==='stopped'?{}:{leaseToken:ctx.lease.token})});
+      if(outcome.kind==='stopped'){
+        try{
+          const failure=await stoppedWorkpaperFailure(ctx,batch,task.entry.id,callId);
+          if(failure&&!progressive)await pauseFailedSharedWorkpaperBatch(ctx.pool,ctx.lease,batch);
+          else if(failure&&failure!=='MODEL_OUTPUT_SCHEMA_INVALID')await pauseSharedWorkpaperBatch(ctx.pool,owner,batch,
+            {itemId:task.entry.id,runId:ctx.run.id,jobId:ctx.lease.jobId});
+        }catch{
+          // Reconciliation is eager only. Preserve stopped/lease-loss semantics;
+          // the scheduler checks the durable failure before admitting more work.
+          process.stderr.write('workpaper_shared_failure_pause_deferred\n');
+        }
+      }else if(outcome.kind==='fail'&&(!progressive||outcome.code!=='MODEL_OUTPUT_SCHEMA_INVALID'))await pauseSharedWorkpaperBatch(ctx.pool,owner,batch,
+        {itemId:task.entry.id,runId:ctx.run.id,jobId:ctx.lease.jobId,leaseToken:ctx.lease.token});
       return outcome;
     };
     phase='plan';
