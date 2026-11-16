@@ -1,3 +1,4 @@
+import {fixtureBody} from './billing-fixture-wire';
 import {test,expect,type Page} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {mkdir,readFile} from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function fixture(page:Page){
    {subject_id:'company',site_id:'csrc',site_name:'证券期货市场失信记录查询平台',urls:['https://neris.csrc.gov.cn/shixinchaxun/'],query:'合成企业',status:'needs_manual',reason:'官网要求验证码，自动查询已停止，其他网站继续。',checked_at:time,sources:[],search_performed:true,browser:{version:'official-browser-v1',outcome:'blocked',scope:'证券期货市场失信查询',limitation:'未获得数据库查询结果。',captures:[]}}],evidence:[],artifact_id:null,artifacts:[],charged_points:5000,reserved_points:0}]};
  let corrupt=false,exported=0;
  await page.route('**/api/v1/**',async route=>{
-  const path=new URL(route.request().url()).pathname,reply=(v:unknown)=>route.fulfill({json:v});
+  const path=new URL(route.request().url()).pathname,reply=(v:unknown)=>route.fulfill({json:fixtureBody(route,v)});
   if(path==='/api/v1/me')return reply({user_id:'synthetic-owner',session_status:'active'});
   if(path==='/api/v1/account')return reply({user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:time,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
   if(path==='/api/v1/credits/balance')return reply({enabled:true,available:10000,frozen:0});

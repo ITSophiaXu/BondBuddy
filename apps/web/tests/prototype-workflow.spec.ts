@@ -40,7 +40,11 @@ async function setup(page: Page, options: { beforeProjectRead?: () => Promise<vo
         message_version:1,prompt_snapshot_ref:'synthetic-prompt',revises_submission_id:null,
         content_sha256:createHash('sha256').update(input.body).digest('hex'),body:input.body,material_versions:[],created_at:'2026-09-28T00:00:00Z',
         role:'user',source_status:'user_asserted',intent_status:'not_classified',route:'save_only'};
-      messages.push(message);body={...message,conversation_id:'synthetic-design-project',is_current:true,project_message_set_ref:messageRef()};status=201;
+      messages.push(message);
+      // The public save receipt identifies the saved version; text and materials are read from history.
+      const {body:_text,material_versions:_materials,...receipt}=message;
+      body={...receipt,conversation_id:'synthetic-design-project',is_current:true,project_message_set_ref:messageRef()};status=201;
+      expect(Value.Check(schemas.ProjectMessageSaveResponse,body)).toBe(true);
     } else if(path==='/projects/synthetic-design-project/prospectus-versions' && request.method()==='GET') {
       body={project_id:'synthetic-design-project',current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]} satisfies Dto<'ProspectusVersionsResponse'>;
     } else if(path.endsWith('/tasks'))body={project_id:'synthetic-design-project',items:[],page:{has_more:false,next_cursor:null}};
@@ -90,14 +94,39 @@ test('prototype dashboard leads through creation to materials with persistent ma
   await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('#draft-form')).toBeHidden();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
-  await page.getByLabel('补充募集书更新说明').fill('补充授信证明后核对时点。');
-  await page.locator('#send-project-message').click();
-  await expect(page.locator('.cowork-message')).toContainText('补充授信证明后核对时点。');
-  await page.getByLabel('补充募集书更新说明').fill('材料阶段也可保存下一轮说明。');
-  await page.locator('#send-project-message').click();
+  const savedMessage=()=>page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname==='/api/v1/projects/synthetic-design-project/messages');
+  const firstText='补充授信证明后核对时点。',secondText='材料阶段也可保存下一轮说明。';
+  const firstSave=savedMessage();
+  await page.getByLabel('补充募集书更新说明').fill(firstText);
+  const firstResponse=await firstSave;expect(firstResponse.status()).toBe(201);
+  const firstReceipt=await firstResponse.json();expect(Value.Check(schemas.ProjectMessageSaveResponse,firstReceipt)).toBe(true);
+  expect(firstReceipt).toMatchObject({content_sha256:createHash('sha256').update(firstText).digest('hex'),message_version:1,submission_version:1,is_current:true,route:'save_only'});
+  expect(firstReceipt).not.toHaveProperty('body');expect(firstReceipt).not.toHaveProperty('material_versions');
+  expect(firstReceipt.project_message_set_ref.message_ids).toEqual([firstReceipt.message_id]);
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue(firstText);
+  expect(state.messages[0]).toMatchObject({message_id:firstReceipt.message_id,submission_id:firstReceipt.submission_id,body:firstText,content_sha256:firstReceipt.content_sha256,material_versions:[]});
+  expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
+  await page.getByRole('button',{name:'添加另一条说明',exact:true}).click();
+  await expect(page.locator('.cowork-message')).toContainText(firstText);
+  const secondSave=savedMessage();
+  await page.getByLabel('补充募集书更新说明').fill(secondText);
+  const secondResponse=await secondSave;expect(secondResponse.status()).toBe(201);
+  const secondReceipt=await secondResponse.json();expect(Value.Check(schemas.ProjectMessageSaveResponse,secondReceipt)).toBe(true);
+  expect(secondReceipt).toMatchObject({content_sha256:createHash('sha256').update(secondText).digest('hex'),message_version:1,submission_version:1,is_current:true,route:'save_only'});
+  expect(secondReceipt).not.toHaveProperty('body');expect(secondReceipt).not.toHaveProperty('material_versions');
+  expect(secondReceipt.project_message_set_ref.message_ids).toEqual([firstReceipt.message_id,secondReceipt.message_id].sort());
+  expect(secondReceipt.message_id).not.toBe(firstReceipt.message_id);
+  expect(secondReceipt.submission_id).not.toBe(firstReceipt.submission_id);
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue(secondText);
+  expect(state.messages[1]).toMatchObject({message_id:secondReceipt.message_id,submission_id:secondReceipt.submission_id,body:secondText,content_sha256:secondReceipt.content_sha256,material_versions:[]});
   await expect.poll(()=>state.messages.map(m=>m.body)).toEqual(['补充授信证明后核对时点。','材料阶段也可保存下一轮说明。']);
+  expect(state.messages.map(m=>m.message_version)).toEqual([1,1]);
   await page.reload(); await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('.cowork-message')).toHaveCount(2);
+  await expect(page.locator('.cowork-message').nth(0)).toContainText(firstText);
+  await expect(page.locator('.cowork-message').nth(1)).toContainText(secondText);
   await page.getByRole('button',{name:'编辑项目信息'}).click();
   await expect(page.getByLabel('发行人全称')).toHaveValue('合成发行人有限公司');
   await page.reload(); await expect(page.locator('.step.current')).toContainText('创建项目');

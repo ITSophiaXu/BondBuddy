@@ -1,0 +1,67 @@
+{
+  "scope": "TypeScript syntax and AST title/control preservation only",
+  "base": "bf7781439bf4ce727c7b66eb6273b0b0126987b6",
+  "fullTypecheck": false,
+  "browser": false,
+  "build": false,
+  "modelCalls": 0,
+  "files": [
+    {
+      "file": "apps/web/tests/integrity-browser.spec.ts",
+      "beforeSha256": "c768642078c1e669ee84a347dbb496b5968bfafdfbe8d3f6713227d22b06c2ba",
+      "afterSha256": "6824642d906a702c6c1da0037045807552ad75de8d319f9295ce1905ffcec83b",
+      "testDeclarations": 8,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": null
+    },
+    {
+      "file": "apps/web/tests/m4-workspace.spec.ts",
+      "beforeSha256": "b2713e7baf8f3fc4efd42c4a66492b5eb11d12c26847267bf7983b8b183aaf97",
+      "afterSha256": "360adbbe2c030a3288244f8fc62e91789c5ec03b31b63807a641bc1d0ac1f4a2",
+      "testDeclarations": 42,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": null
+    },
+    {
+      "file": "apps/web/tests/project-conversation.spec.ts",
+      "beforeSha256": "2103e454710d5e787958f83f2b7df6a309b16ec212d89c303a4d13210088c456",
+      "afterSha256": "23b54620fa9d7f72535c6d8eb0c05b8c3fd37afe20190fb44f4a70bd2359fe1b",
+      "testDeclarations": 19,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": {
+        "from": "'no uploaded prospectus requires no source fields and can start authoring'",
+        "to": "'financial materials without a reference prospectus preserve saved notes but cannot start authoring'"
+      }
+    },
+    {
+      "file": "apps/web/tests/prototype-corrections.spec.ts",
+      "beforeSha256": "99a3bd50935cdb69d6af1607198167ae5ed4090038a078752364261a92e3b3c7",
+      "afterSha256": "88202c27704bbf67c9d124a0d385db9b28dda3e1cbcf242aaa30f0f831e56a87",
+      "testDeclarations": 6,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": null
+    },
+    {
+      "file": "apps/web/tests/prototype-workflow.spec.ts",
+      "beforeSha256": "4e82f587fbdaffdf2ca198e57ea86617bf22fc5c4bb59dfd29b59d63867e0fb7",
+      "afterSha256": "28d667c5613200ebcafdf4a86d63ba1308d6ddcfb059683cc20f466041549d99",
+      "testDeclarations": 7,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": null
+    },
+    {
+      "file": "apps/web/tests/review-workspace.spec.ts",
+      "beforeSha256": "166273f7d8c18276fcf863b914e6bf4ae5305b8dcbb89ce3e62496f639534461",
+      "afterSha256": "1b4f1ec27e2b9dffec60cab3318eaaaf23d5c6dcbe638dd6599725ceb1fb137d",
+      "testDeclarations": 62,
+      "parseAndTranspile": "passed",
+      "controlsUnchanged": true,
+      "titleMigration": null
+    }
+  ]
+}
