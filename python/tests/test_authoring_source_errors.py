@@ -64,6 +64,32 @@ class AuthoringSourceErrors(unittest.TestCase):
         self.source.write_bytes(b'SYNTHETIC mislabeled data')
         self.assert_unreadable()
 
+    def test_encrypted_office_source_has_specific_error(self):
+        raw = bytearray(1536)
+        raw[:8] = bytes.fromhex('d0cf11e0a1b11ae1')
+        raw[28:32] = b'\xfe\xff\x09\x00'
+        for offset, name in [(512, 'EncryptionInfo'), (640, 'EncryptedPackage')]:
+            marker = (name + '\0').encode('utf-16le')
+            raw[offset:offset + len(marker)] = marker
+            raw[offset + 64:offset + 66] = len(marker).to_bytes(2, 'little')
+            raw[offset + 66] = 2
+        self.source.write_bytes(raw)
+        result = self.run_prepare()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stderr), {'error': 'WORD_EDIT_SOURCE_ENCRYPTED'})
+        self.assertFalse((self.root / 'manifest.json').exists())
+        # A pinned-input integrity failure remains authoritative, even for encryption.
+        mismatch = self.run_prepare(expected_hash='b' * 64)
+        self.assertEqual(json.loads(mismatch.stderr), {'error': 'WORD_EDIT_SOURCE_HASH_MISMATCH'})
+        # Rights-managed packages may use DataSpaces rather than EncryptionInfo.
+        raw[578] = 0
+        self.source.write_bytes(raw)
+        self.assertEqual(json.loads(self.run_prepare().stderr), {'error': 'WORD_EDIT_SOURCE_ENCRYPTED'})
+        # Names alone in ordinary legacy content are not encryption stream records.
+        raw[706] = 0
+        self.source.write_bytes(raw)
+        self.assert_unreadable()
+
     def test_missing_required_parts_are_confirmed_unreadable(self):
         for name in self.parts:
             with self.subTest(missing=name):

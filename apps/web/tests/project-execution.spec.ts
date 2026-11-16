@@ -2139,3 +2139,39 @@ test('upload automatically adopts the original and submits it without a selectio
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
   expect(state.selectionRequests).toEqual([]);
 });
+
+
+for (const width of [1440,390]) test(`encrypted source failure explains replacement without retrying ${width}`,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='model_generation';state.runReason='stage_started';
+  await page.setViewportSize({width,height:960});await setup(page,state);await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0], inputHash=run.input_hash;
+  state.publicEvents=[{event_id:'encrypted-source-failure',schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq:5,occurred_at:now,
+    stage:'failed',type:'run.state_changed',state:'failed',payload:{reason:'processor_failed',error_code:'MATERIAL_ENCRYPTED'}}];
+  run.state='failed';run.stage='failed';run.event_cursor=5;state.eventSeq=5;state.chargeState='released';
+  for(let refresh=0;refresh<2;refresh++){
+    await page.reload();
+    await expect(page.locator('.execution-summary')).toContainText('历史／参考募集说明书已加密');
+    await expect(page.locator('.execution-summary')).toContainText('未加密的 DOCX');
+    await expect(page.locator('.execution-summary')).toContainText('继续修改');
+    await expect(page.locator('#prepare-next-version')).toBeVisible();
+    expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(inputHash);
+  }
+  if(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE){
+    await mkdir(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,{recursive:true});
+    await page.locator('.execution-summary').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,`encrypted-source-${width}.png`)});
+  }
+});
+
+for(const width of [1440,390]) test(`encrypted source feedback matches prototype ${width}`,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  await page.setContent(await readFile(resolve(process.cwd(),'../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+  await page.locator('[data-state=encrypted_source]').click();
+  await expect(page.locator('.log')).toContainText('未加密的 DOCX');
+  await expect(page.locator('.actions')).toContainText('继续修改');
+  if(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE){
+    await mkdir(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,{recursive:true});
+    await page.screenshot({path:join(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,`prototype-encrypted-source-${width}.png`)});
+  }
+});
