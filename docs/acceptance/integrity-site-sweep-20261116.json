@@ -1,0 +1,5303 @@
+{
+  "version": "integrity-site-sweep-v1",
+  "screenshot_review": {
+    "reviewer": "Codex visual inspection",
+    "reviewed_at": "2026-11-16T15:12:17.410Z",
+    "purpose": "Confirm the submitted query and a real result or zero-result page; not an issuer integrity finding.",
+    "results": [
+      {
+        "key": "bankruptcy",
+        "capture": "captures/bankruptcy-0.png",
+        "sha256": "82d0c1c0901d2d53ba4832d15f97bf5f9e113be99e73f797006bfd121e5bf381",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "bse",
+        "capture": "captures/bse-0.png",
+        "sha256": "ef9fa3d6aa325b21e125303d072614047dc1e76da05ff5b879c988dd22d1654e",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "csrc-portal",
+        "capture": "captures/csrc-portal-0.png",
+        "sha256": "0f85ab863a287175afca2aa5995d02bd4568aa827ee45d1a2d17efdaf6cc3ec0",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "industry",
+        "capture": "captures/industry-0.png",
+        "sha256": "316c8abeaf40134c91acac45c36275da68e1f6e331d7c28f0cf8408237df95fe",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-上海",
+        "capture": "captures/local-csrc-上海-0.png",
+        "sha256": "cfd011b29b56e650ca23dafcc060daabf1c95456a91aeec68d996d41d5d88232",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-云南",
+        "capture": "captures/local-csrc-云南-0.png",
+        "sha256": "5c3afd9153aee2fc20fb42aca217832c8a076b9147b65108c907eddff2123c1f",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-内蒙古",
+        "capture": "captures/local-csrc-内蒙古-0.png",
+        "sha256": "aa3abb2abe05641fe340eb3d305abc6ee006e23b35e94e01bb9d88f30c9c7b6a",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-北京",
+        "capture": "captures/local-csrc-北京-0.png",
+        "sha256": "d70d7a41e4901610cf010fb25f8e28e5064c6828f04a5cf85c87032c5f7b411a",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-吉林",
+        "capture": "captures/local-csrc-吉林-0.png",
+        "sha256": "62273fdc1b6e545168d1b27028b33a64516c281dc8b2a253aedc58b7b1bde234",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-四川",
+        "capture": "captures/local-csrc-四川-0.png",
+        "sha256": "82be6724232435b1ed232c1eee26d7c581c56776eb4b6877b765a0c71f3e6614",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-天津",
+        "capture": "captures/local-csrc-天津-0.png",
+        "sha256": "c2365e952634e7e7065f7a347803056751b75a53f05b3742327540794b0ff542",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-安徽",
+        "capture": "captures/local-csrc-安徽-0.png",
+        "sha256": "66d6801bc626408da2c47ee44d7f63d5699a62f796860f1ed1b64298407c4a65",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-山东",
+        "capture": "captures/local-csrc-山东-0.png",
+        "sha256": "7efbfe3858a59b174f156f82710847b673f261ba6ea06c96f6f0298ed7a0ddec",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-山西",
+        "capture": "captures/local-csrc-山西-0.png",
+        "sha256": "7f6e0ebe5dedf7b3206741b643ebaa096c31baf5a08905352b0c7abba18dc58c",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-广东",
+        "capture": "captures/local-csrc-广东-0.png",
+        "sha256": "09cc8e23db4aecec63bad8ce5aa51a6f093d8465b631bc33030bd14ec677c351",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-广西",
+        "capture": "captures/local-csrc-广西-0.png",
+        "sha256": "b22bfccb47890a162bb6b3d6562150cf31f60637dbbd5d19a13a638bb0fdf58c",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-江苏",
+        "capture": "captures/local-csrc-江苏-0.png",
+        "sha256": "00098bde085b5a1bedff03df65d31e6bd9dd45c998a6fbc157736b162ab0c69e",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-江西",
+        "capture": "captures/local-csrc-江西-0.png",
+        "sha256": "0673f9e540890caccac8428dc26b44133c1f19f1a48fdcc33c6be03e2b19305f",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-河北",
+        "capture": "captures/local-csrc-河北-0.png",
+        "sha256": "05653cc7e1aae40d84b93d8e1f3c6f99ab40b45f19e868058dac8eba8dc7e95e",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-浙江",
+        "capture": "captures/local-csrc-浙江-0.png",
+        "sha256": "5946bc389b4d67ed3b83b5dddab8960f01b0990a88e268b744986f699e803f74",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-海南",
+        "capture": "captures/local-csrc-海南-0.png",
+        "sha256": "0e3e6d04f001f8811002f114ae85da3f7c261b8e4eff9f2fcf3c698f1c5076e5",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-福建",
+        "capture": "captures/local-csrc-福建-0.png",
+        "sha256": "b5ed6d92bc3a6a4bc568e4c1a686b8af71e2e3cbc3b14933f247a7feacb50df6",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-西藏",
+        "capture": "captures/local-csrc-西藏-0.png",
+        "sha256": "3e0be55b64bcad9ed38ccfa76bc3ae1e50fc0a20490c371879132e60eaa7e592",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-贵州",
+        "capture": "captures/local-csrc-贵州-0.png",
+        "sha256": "3d4d340467935ba00bfb131d9e8cd7eb297db0fcfa0ecc9484dcf033605c72b0",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-辽宁",
+        "capture": "captures/local-csrc-辽宁-0.png",
+        "sha256": "36dedf28b945ac1b396d7eb33993491178e870cfc0f122c1abd834e3da790498",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-重庆",
+        "capture": "captures/local-csrc-重庆-0.png",
+        "sha256": "f6c03ac61cbafb3f1c7c554e42b34a52b8b8aaf8990ac57676042e1f91b56580",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-黑龙江",
+        "capture": "captures/local-csrc-黑龙江-0.png",
+        "sha256": "80218286851f38f08dd038b6f5f7d2e6932c44a04623356d0620856427e73ca8",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-tax-山西",
+        "capture": "captures/local-tax-山西-0.png",
+        "sha256": "139f27ef16af87cb685f06120064239211601bf24c5360eec80bf73c5acb7391",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-tax-广东",
+        "capture": "captures/local-tax-广东-0.png",
+        "sha256": "bfb66887a8519b6879ce1b5974ddf1380db9ce0917809fea4f74658481e1c2a0",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "mohrss",
+        "capture": "captures/mohrss-0.png",
+        "sha256": "740593853600c6e3f4d73490c9cca05d502d05b40770d5507ca2578177ab20e3",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "nafmii-discipline",
+        "capture": "captures/nafmii-discipline-0.png",
+        "sha256": "bb2116c3a0425f2f32b6635a0398a7421811fbd81a3586a7f7bfb97af533b738",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "neeq",
+        "capture": "captures/neeq-0.png",
+        "sha256": "3504f9da4958d5ffaca08015b658598e6722dd80a57cba7f7887200097d7a6b5",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "pbc",
+        "capture": "captures/pbc-0.png",
+        "sha256": "e9f32cbf3c5d9a53124101de6443683d514a5135e85bde286c553348ccb6b42b",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "sse",
+        "capture": "captures/sse-0.png",
+        "sha256": "12e1bbc74f5e3710f67c1da8980239175dd88a634304c0184632a747f074bafb",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-宁夏",
+        "capture": "captures/local-csrc-宁夏-0.png",
+        "sha256": "0b31dcd2fa0c538f41fb60f0115d34bdf542decf9dd2c8df499d46c0d0a54019",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-新疆",
+        "capture": "captures/local-csrc-新疆-0.png",
+        "sha256": "1a6f482b70076abe2d8308ebba3e89ee24baa9e86d36704c14b5a4f57f664717",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-河南",
+        "capture": "captures/local-csrc-河南-0.png",
+        "sha256": "54782cdc0048743c4c9845059d06351de44f0fa3f1a2224d56ced32e024f643f",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-湖北",
+        "capture": "captures/local-csrc-湖北-0.png",
+        "sha256": "6cf5200c27ffcd1c9bbaf9021156926783c53c59de7a4a628cb26f8dbee7eabf",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-湖南",
+        "capture": "captures/local-csrc-湖南-0.png",
+        "sha256": "d4c7767bc9bdbc4c4cebb3f504d32dbbd10c45b5f3866d5d915ffaa17d0cbedb",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-甘肃",
+        "capture": "captures/local-csrc-甘肃-0.png",
+        "sha256": "aea3b34199f36ffd4e004baa546f09890604fe8858b630759116e5bd130c4ebe",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-陕西",
+        "capture": "captures/local-csrc-陕西-0.png",
+        "sha256": "3851432714d39cbdd15c9161308dd910a2fc83615ed7d0687196689626fe6175",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-青海",
+        "capture": "captures/local-csrc-青海-0.png",
+        "sha256": "39cd7582e72ec385fe992be8db33dc567a9e290ab1e448c85ddb633b1851f6a4",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-深圳",
+        "capture": "captures/local-csrc-深圳-0.png",
+        "sha256": "e98c75126b63e8cefd5dda85aec4bc51dfe30cb7145e6ce7c13482d44d85273d",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-大连",
+        "capture": "captures/local-csrc-大连-0.png",
+        "sha256": "073b2a7afd4508651eaa205db0e6787c4d8f7f3744eb366f2d9a15222beca19d",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-宁波",
+        "capture": "captures/local-csrc-宁波-0.png",
+        "sha256": "d799f68ef8b64e5ebf7dc21b8e41d830086d98b507f7dc86f3362111d5d7ac9c",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-厦门",
+        "capture": "captures/local-csrc-厦门-0.png",
+        "sha256": "bc440027c66240ca9d828e308adc3523b97b3085dfab77601c8e3d6981abfe2b",
+        "decision": "query_and_result_visible"
+      },
+      {
+        "key": "local-csrc-青岛",
+        "capture": "captures/local-csrc-青岛-0.png",
+        "sha256": "ddd00cd9a4b9b051959318109509d250e28616d5d817d55440ea9ae70579d5a1",
+        "decision": "query_and_result_visible"
+      }
+    ]
+  },
+  "started_at": "2026-11-16T14:21:01.118Z",
+  "finished_at": "2026-11-16T15:10:44.017Z",
+  "network": "local Docker direct public egress; not production Beijing egress",
+  "inventory_source": "025e3d1d16b1769e0221795476ce958e98bea386",
+  "collector_source": "8209b347d765589fb97c19c990c63718d67ad227",
+  "model_calls": 0,
+  "production_mutations": 0,
+  "routing_note": "Regional province/city fields only select the test endpoint; they do not assert the issuer is registered in those regions.",
+  "tested_endpoints": 129,
+  "enabled_site_ids": [
+    "bankruptcy",
+    "pbc",
+    "csrc-portal",
+    "sse",
+    "bse",
+    "neeq",
+    "nafmii-discipline",
+    "industry",
+    "mohrss",
+    "local-csrc",
+    "local-tax"
+  ],
+  "enabled_endpoints": 47,
+  "paused_endpoints": 82,
+  "results": [
+    {
+      "key": "credit-china",
+      "site_id": "credit-china",
+      "name": "信用中国",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.creditchina.gov.cn/",
+      "checked_at": "2026-11-16T14:21:32.252Z",
+      "elapsed_ms": 29689,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 16233
+      },
+      "captures": []
+    },
+    {
+      "key": "execution-dishonest",
+      "site_id": "execution-dishonest",
+      "name": "中国执行信息网-失信被执行人",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://zxgk.court.gov.cn/shixin/",
+      "checked_at": "2026-11-16T14:21:29.138Z",
+      "elapsed_ms": 28020,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "detail": "403 Forbidden",
+        "attempts": 1,
+        "elapsed_ms": 12664
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zxgk.court.gov.cn/shixin/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:21:26.030Z",
+          "page": 1,
+          "file": "captures/execution-dishonest-0.png",
+          "screenshot_bytes": 50641,
+          "sha256": "86a3a82252e662fc2d511c71ebd36199185ea9a56d1ef5a7af49132a4546cf3e"
+        }
+      ]
+    },
+    {
+      "key": "execution-debtor",
+      "site_id": "execution-debtor",
+      "name": "中国执行信息网-被执行人信息",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://zxgk.court.gov.cn/zhixing/",
+      "checked_at": "2026-11-16T14:21:54.933Z",
+      "elapsed_ms": 25161,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "detail": "403 Forbidden",
+        "attempts": 1,
+        "elapsed_ms": 10767
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zxgk.court.gov.cn/zhixing/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:21:51.154Z",
+          "page": 1,
+          "file": "captures/execution-debtor-0.png",
+          "screenshot_bytes": 51069,
+          "sha256": "14262d3a1768b6bacc0d2c69b28948fce3a7f081d4a2c80e5b7a709b5a466244"
+        }
+      ]
+    },
+    {
+      "key": "execution-restriction",
+      "site_id": "execution-restriction",
+      "name": "中国执行信息网-限制消费信息",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://zxgk.court.gov.cn/xgl/",
+      "checked_at": "2026-11-16T14:22:17.594Z",
+      "elapsed_ms": 22400,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "detail": "403 Forbidden",
+        "attempts": 1,
+        "elapsed_ms": 6343
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zxgk.court.gov.cn/xgl/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:22:14.596Z",
+          "page": 1,
+          "file": "captures/execution-restriction-0.png",
+          "screenshot_bytes": 50603,
+          "sha256": "f6cf740534a159d9c3c0cbd0a7d2218d8ec2c27b9e026d212318bcad6ae27205"
+        }
+      ]
+    },
+    {
+      "key": "bankruptcy",
+      "site_id": "bankruptcy",
+      "name": "全国企业破产重整案件信息网",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://pccz.court.gov.cn/",
+      "checked_at": "2026-11-16T14:22:13.111Z",
+      "elapsed_ms": 70565,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "no_results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 57030
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://pccz.court.gov.cn/pcajxxw/searchKey/qzss?ssfs=1",
+          "title": "全国企业破产重整案件信息网",
+          "captured_at": "2026-11-16T14:22:10.362Z",
+          "page": 1,
+          "file": "captures/bankruptcy-0.png",
+          "screenshot_bytes": 135546,
+          "sha256": "82d0c1c0901d2d53ba4832d15f97bf5f9e113be99e73f797006bfd121e5bf381"
+        }
+      ]
+    },
+    {
+      "key": "tax",
+      "site_id": "tax",
+      "name": "国家税务总局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:25:22.256Z",
+      "elapsed_ms": 229613,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "blank_page_timeout",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 218538
+      },
+      "captures": []
+    },
+    {
+      "key": "tax-dishonest",
+      "site_id": "tax-dishonest",
+      "name": "重大税收违法失信案件信息公布栏",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:29:04.367Z",
+      "elapsed_ms": 221914,
+      "query": "东营市城市建设发展集团有限公司 重大税收违法",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "operation_failed",
+        "phase": "query",
+        "attempts": 2,
+        "elapsed_ms": 212879
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.chinatax.gov.cn/",
+          "title": "国家税务总局",
+          "captured_at": "2026-11-16T14:29:01.872Z",
+          "page": 1,
+          "file": "captures/tax-dishonest-0.png",
+          "screenshot_bytes": 163975,
+          "sha256": "339ab01fff1da421414b01f07523a81b31e60969cec5da41dfd327c38c31fc8a"
+        }
+      ]
+    },
+    {
+      "key": "industry-credit",
+      "site_id": "industry-credit",
+      "name": "全国行业信用公共服务平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.bcp12312.org.cn/",
+      "checked_at": "2026-11-16T14:22:30.894Z",
+      "elapsed_ms": 17532,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CERT_DATE_INVALID",
+        "attempts": 1,
+        "elapsed_ms": 6221
+      },
+      "captures": []
+    },
+    {
+      "key": "pbc",
+      "site_id": "pbc",
+      "name": "中国人民银行",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.pbc.gov.cn/",
+      "checked_at": "2026-11-16T14:23:31.109Z",
+      "elapsed_ms": 60089,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "detail": "OPTIONAL_PBC_WIDGET_STYLESHEET_HTTP_404",
+        "attempts": 1,
+        "elapsed_ms": 49690
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://wzdig.pbc.gov.cn/search/pcRender?sr=score+desc&pageId=c177a85bd02b4114bebebd210809f691&ext=&pNo=1&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中国人民银行",
+          "captured_at": "2026-11-16T14:23:28.775Z",
+          "page": 1,
+          "file": "captures/pbc-0.png",
+          "screenshot_bytes": 316198,
+          "sha256": "e9f32cbf3c5d9a53124101de6443683d514a5135e85bde286c553348ccb6b42b"
+        }
+      ]
+    },
+    {
+      "key": "nfra",
+      "site_id": "nfra",
+      "name": "国家金融监督管理总局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.nfra.gov.cn/",
+      "checked_at": "2026-11-16T14:31:36.848Z",
+      "elapsed_ms": 151980,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "blank_page_timeout",
+        "phase": "query",
+        "attempts": 2,
+        "elapsed_ms": 138681
+      },
+      "captures": []
+    },
+    {
+      "key": "csrc-portal",
+      "site_id": "csrc-portal",
+      "name": "中国证监会",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/",
+      "checked_at": "2026-11-16T14:24:40.412Z",
+      "elapsed_ms": 142189,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 131896
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "中国证券监督管理委员会",
+          "captured_at": "2026-11-16T14:23:07.918Z",
+          "page": 1,
+          "file": "captures/csrc-portal-0.png",
+          "screenshot_bytes": 289806,
+          "sha256": "0f85ab863a287175afca2aa5995d02bd4568aa827ee45d1a2d17efdaf6cc3ec0"
+        }
+      ]
+    },
+    {
+      "key": "csrc",
+      "site_id": "csrc",
+      "name": "中国证券监督管理委员会-证券期货市场失信记录查询平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://neris.csrc.gov.cn/shixinchaxun/",
+      "checked_at": "2026-11-16T14:23:59.921Z",
+      "elapsed_ms": 28714,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "blocked",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "captcha_required",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 20474
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://neris.csrc.gov.cn/shixinchaxun/",
+          "title": "失信查询平台",
+          "captured_at": "2026-11-16T14:23:57.632Z",
+          "page": 1,
+          "file": "captures/csrc-0.png",
+          "screenshot_bytes": 517757,
+          "sha256": "ec9db108280805d47080901740434e71badc039c1f240eda646c7d9e377b3cf6"
+        }
+      ]
+    },
+    {
+      "key": "sse",
+      "site_id": "sse",
+      "name": "上海证券交易所",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.sse.com.cn/",
+      "checked_at": "2026-11-16T14:33:40.042Z",
+      "elapsed_ms": 123027,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 105736
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "上证搜索 | 上海证券交易所",
+          "captured_at": "2026-11-16T14:33:19.711Z",
+          "page": 1,
+          "file": "captures/sse-0.png",
+          "screenshot_bytes": 438940,
+          "sha256": "12e1bbc74f5e3710f67c1da8980239175dd88a634304c0184632a747f074bafb"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "上证搜索 | 上海证券交易所",
+          "captured_at": "2026-11-16T14:33:27.245Z",
+          "page": 2,
+          "file": "captures/sse-1.png",
+          "screenshot_bytes": 306895,
+          "sha256": "676eb4f57b396a7f0162f626a40d58f58b5a3829697ed2d19bef15720f826f36"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "上证搜索 | 上海证券交易所",
+          "captured_at": "2026-11-16T14:33:36.986Z",
+          "page": 3,
+          "file": "captures/sse-2.png",
+          "screenshot_bytes": 316554,
+          "sha256": "af28eba117f01588316cbd3e188db96d5483b78d4e20b0843544edea382eb064"
+        }
+      ]
+    },
+    {
+      "key": "bse",
+      "site_id": "bse",
+      "name": "北京证券交易所",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.bse.cn/",
+      "checked_at": "2026-11-16T14:25:24.711Z",
+      "elapsed_ms": 43833,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "no_results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 34226
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.bse.cn/select/index/searchInfo.do",
+          "title": "全站搜索 - 北京证券交易所",
+          "captured_at": "2026-11-16T14:25:23.302Z",
+          "page": 1,
+          "file": "captures/bse-0.png",
+          "screenshot_bytes": 274217,
+          "sha256": "ef9fa3d6aa325b21e125303d072614047dc1e76da05ff5b879c988dd22d1654e"
+        }
+      ]
+    },
+    {
+      "key": "szse",
+      "site_id": "szse",
+      "name": "深圳证券交易所-首页",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.szse.cn/",
+      "checked_at": "2026-11-16T14:26:18.921Z",
+      "elapsed_ms": 138589,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 130053
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://www.szse.cn/application/search/index.html?keyword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8&r=1794839082604",
+          "title": "深圳证券交易所-搜索页面",
+          "captured_at": "2026-11-16T14:26:16.616Z",
+          "page": 1,
+          "file": "captures/szse-0.png",
+          "screenshot_bytes": 245427,
+          "sha256": "ca0eea59ce5c5fb8574a4681440ee803494ab9a1fb8c80b1e5a9741456d23631"
+        }
+      ]
+    },
+    {
+      "key": "szse-bond-discipline",
+      "site_id": "szse-bond-discipline",
+      "name": "深圳证券交易所-债券纪律处分",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.szse.cn/",
+      "checked_at": "2026-11-16T14:52:12.893Z",
+      "elapsed_ms": 186799,
+      "retry_of": {
+        "file": "first-attempts/szse-bond-discipline.json",
+        "sha256": "82d75a1c00f6f3be7b272cd89babc7fa5d1b04a527b8987d2a4d6b198fa5a524",
+        "started_at": "2026-11-16T14:26:19.059Z",
+        "checked_at": "2026-11-16T14:30:22.557Z",
+        "elapsed_ms": 243498,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司 债券纪律处分",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 174624
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://www.szse.cn/application/search/index.html?keyword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E5%80%BA%E5%88%B8%E7%BA%AA%E5%BE%8B%E5%A4%84%E5%88%86&r=1794840626124",
+          "title": "深圳证券交易所-搜索页面",
+          "captured_at": "2026-11-16T14:52:07.852Z",
+          "page": 1,
+          "file": "captures/szse-bond-discipline-0.png",
+          "screenshot_bytes": 252598,
+          "sha256": "226c74dd4f5d8291cb863feb85de73cd8e8b8e93a10dc61dec428ec7f35eb581"
+        }
+      ]
+    },
+    {
+      "key": "szse-supervision",
+      "site_id": "szse-supervision",
+      "name": "深圳证券交易所-监管措施",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.szse.cn/",
+      "checked_at": "2026-11-16T14:33:45.062Z",
+      "elapsed_ms": 202062,
+      "query": "东营市城市建设发展集团有限公司 监管措施",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 186181
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://www.szse.cn/application/search/index.html?keyword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E7%9B%91%E7%AE%A1%E6%8E%AA%E6%96%BD&r=1794839527309",
+          "title": "深圳证券交易所-搜索页面",
+          "captured_at": "2026-11-16T14:33:40.155Z",
+          "page": 1,
+          "file": "captures/szse-supervision-0.png",
+          "screenshot_bytes": 250114,
+          "sha256": "fe7164d51c142432a92aa967f4ba3289839a5db96765323929212ed6df518cee"
+        }
+      ]
+    },
+    {
+      "key": "safe",
+      "site_id": "safe",
+      "name": "国家外汇管理局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.safe.gov.cn/",
+      "checked_at": "2026-11-16T14:53:33.476Z",
+      "elapsed_ms": 249165,
+      "retry_of": {
+        "file": "first-attempts/safe.json",
+        "sha256": "8e0c7bef8b5fe219dcea72a3a0b2be6b6e2b3f898c48a277602bfc941e2146f5",
+        "started_at": "2026-11-16T14:33:40.173Z",
+        "checked_at": "2026-11-16T14:37:43.569Z",
+        "elapsed_ms": 243396,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 236097
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.safe.gov.cn/safe/search/index.html?q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8&siteid=safe&order=releasetime",
+          "title": "全文检索_国家外汇管理局门户网站",
+          "captured_at": "2026-11-16T14:53:30.523Z",
+          "page": 1,
+          "file": "captures/safe-0.png",
+          "screenshot_bytes": 415320,
+          "sha256": "c57f93c3f0962969ff94e9b301a6f027fc02553f824ee9ef555f05f8bde5b033"
+        }
+      ]
+    },
+    {
+      "key": "neeq",
+      "site_id": "neeq",
+      "name": "全国中小企业股份转让系统",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.neeq.com.cn/",
+      "checked_at": "2026-11-16T14:26:10.551Z",
+      "elapsed_ms": 45752,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "no_results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 37650
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.neeq.com.cn/index/searchInfo.do",
+          "title": "全站搜索 - 全国中小企业股份转让系统",
+          "captured_at": "2026-11-16T14:26:09.013Z",
+          "page": 1,
+          "file": "captures/neeq-0.png",
+          "screenshot_bytes": 302398,
+          "sha256": "3504f9da4958d5ffaca08015b658598e6722dd80a57cba7f7887200097d7a6b5"
+        }
+      ]
+    },
+    {
+      "key": "nafmii-discipline",
+      "site_id": "nafmii-discipline",
+      "name": "中国银行间市场交易商协会-自律处分概览",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.nafmii.org.cn/",
+      "checked_at": "2026-11-16T14:38:55.854Z",
+      "elapsed_ms": 71868,
+      "query": "东营市城市建设发展集团有限公司 自律处分",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 56589
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "title": "网站搜索_中国银行间市场交易商协会",
+          "captured_at": "2026-11-16T14:38:38.693Z",
+          "page": 1,
+          "file": "captures/nafmii-discipline-0.png",
+          "screenshot_bytes": 682663,
+          "sha256": "bb2116c3a0425f2f32b6635a0398a7421811fbd81a3586a7f7bfb97af533b738"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "title": "网站搜索_中国银行间市场交易商协会",
+          "captured_at": "2026-11-16T14:38:46.764Z",
+          "page": 2,
+          "file": "captures/nafmii-discipline-1.png",
+          "screenshot_bytes": 281922,
+          "sha256": "c051ff867dc8db7524c54f28b616d9fce7133c5ab396031919e5171557175593"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "title": "网站搜索_中国银行间市场交易商协会",
+          "captured_at": "2026-11-16T14:38:52.926Z",
+          "page": 3,
+          "file": "captures/nafmii-discipline-2.png",
+          "screenshot_bytes": 280731,
+          "sha256": "e3986430e95542cf869b49111e20ce8125db3fa2199dfb380330181be1257105"
+        }
+      ]
+    },
+    {
+      "key": "sac",
+      "site_id": "sac",
+      "name": "中国证券业协会",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.sac.net.cn/",
+      "checked_at": "2026-11-16T14:26:31.567Z",
+      "elapsed_ms": 20944,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 567,
+        "attempts": 2,
+        "elapsed_ms": 10404
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.sac.net.cn/",
+          "title": "请求已被拦截",
+          "captured_at": "2026-11-16T14:26:28.253Z",
+          "page": 1,
+          "file": "captures/sac-0.png",
+          "screenshot_bytes": 148948,
+          "sha256": "5ffa2e5fc007d50104adb5fea886f99a5c1756996f3f4b1d650d88916524dad9"
+        }
+      ]
+    },
+    {
+      "key": "amac",
+      "site_id": "amac",
+      "name": "中国证券投资基金业协会",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.amac.org.cn/",
+      "checked_at": "2026-11-16T14:49:23.847Z",
+      "elapsed_ms": 260150,
+      "retry_of": {
+        "file": "first-attempts/amac.json",
+        "sha256": "5d97504e4668675193271a6465c8decf3ca0e07e90a51cc2fa8933a9365e86a0",
+        "started_at": "2026-11-16T14:38:56.015Z",
+        "checked_at": "2026-11-16T14:42:58.730Z",
+        "elapsed_ms": 242715,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 244974
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.amac.org.cn/index/qzss/?key=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "全站搜索",
+          "captured_at": "2026-11-16T14:49:20.916Z",
+          "page": 1,
+          "file": "captures/amac-0.png",
+          "screenshot_bytes": 297938,
+          "sha256": "d5ec0cf63c691f3b5d264d951fb2d22ed815d6798094033a2e8219c3570e4f38"
+        }
+      ]
+    },
+    {
+      "key": "mofcom",
+      "site_id": "mofcom",
+      "name": "中华人民共和国商务部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mofcom.gov.cn/",
+      "checked_at": "2026-11-16T14:27:18.424Z",
+      "elapsed_ms": 45652,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "blocked",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "captcha_required",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 35084
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://search.mofcom.gov.cn/allSearch/?siteId=0&keyWordType=title&isos=Y&acSuggest=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国商务部",
+          "captured_at": "2026-11-16T14:27:15.395Z",
+          "page": 1,
+          "file": "captures/mofcom-0.png",
+          "screenshot_bytes": 167786,
+          "sha256": "829b3869ff5397e269b7768267a62030b76aec5892f57dd3708dd68afbcb38ef"
+        }
+      ]
+    },
+    {
+      "key": "commerce-credit",
+      "site_id": "commerce-credit",
+      "name": "商务信用服务平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.bcpcn.com/",
+      "checked_at": "2026-11-16T14:37:49.367Z",
+      "elapsed_ms": 243421,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 231520
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.bcpcn.com/bcp/dataq.jsp?qymc=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8&pinpaimc=&zscode=",
+          "title": "官网-商务信用服务平台",
+          "captured_at": "2026-11-16T14:37:45.280Z",
+          "page": 1,
+          "file": "captures/commerce-credit-0.png",
+          "screenshot_bytes": 158344,
+          "sha256": "8794e91b87ca980ee6a7811d0b6d8c5961c31bac3d11f2d9464b3bf39f5c44f5"
+        }
+      ]
+    },
+    {
+      "key": "cfa-credit",
+      "site_id": "cfa-credit",
+      "name": "中国期货业协会-期货公司诚信记录信息",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cfachina.org/",
+      "checked_at": "2026-11-16T14:57:42.518Z",
+      "elapsed_ms": 240113,
+      "retry_of": {
+        "file": "first-attempts/cfa-credit.json",
+        "sha256": "dee6aee3622abb6f2733b44583e1ed39e8f40b697ee86f966ec3f0d43c7d046e",
+        "started_at": "2026-11-16T14:42:58.956Z",
+        "checked_at": "2026-11-16T14:47:02.374Z",
+        "elapsed_ms": 243426,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司 诚信记录",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 229208
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.cfachina.org/index/qzjs/?key=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%AF%9A%E4%BF%A1%E8%AE%B0%E5%BD%95",
+          "title": "中国期货业协会",
+          "captured_at": "2026-11-16T14:57:40.128Z",
+          "page": 1,
+          "file": "captures/cfa-credit-0.png",
+          "screenshot_bytes": 639587,
+          "sha256": "7c2fef908cf1cf6b4ad9c6a8f07f35b1afb71a8d3af3c0b1ec05a0db87c8f9a4"
+        }
+      ]
+    },
+    {
+      "key": "cfa-discipline",
+      "site_id": "cfa-discipline",
+      "name": "中国期货业协会-纪律惩戒",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cfachina.org/",
+      "checked_at": "2026-11-16T15:01:41.641Z",
+      "elapsed_ms": 238624,
+      "retry_of": {
+        "file": "first-attempts/cfa-discipline.json",
+        "sha256": "fcfb4d926cc7f8014790d0cb854828b57c9a16e5fb3fa0b6b347ad13f4e753b6",
+        "started_at": "2026-11-16T14:47:02.728Z",
+        "checked_at": "2026-11-16T14:51:06.192Z",
+        "elapsed_ms": 243464,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司 纪律惩戒",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 229803
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.cfachina.org/index/qzjs/?key=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E7%BA%AA%E5%BE%8B%E6%83%A9%E6%88%92",
+          "title": "中国期货业协会",
+          "captured_at": "2026-11-16T15:01:38.565Z",
+          "page": 1,
+          "file": "captures/cfa-discipline-0.png",
+          "screenshot_bytes": 639778,
+          "sha256": "6995065c4f75883663ac1bc5b4e04db9c301749a6c478d424ccc5e5b3e119192"
+        }
+      ]
+    },
+    {
+      "key": "emergency",
+      "site_id": "emergency",
+      "name": "中华人民共和国应急管理部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mem.gov.cn/",
+      "checked_at": "2026-11-16T14:31:15.425Z",
+      "elapsed_ms": 236645,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 225107
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.mem.gov.cn/was5/web/search",
+          "title": "搜索 - 中华人民共和国应急管理部",
+          "captured_at": "2026-11-16T14:31:12.035Z",
+          "page": 1,
+          "file": "captures/emergency-0.png",
+          "screenshot_bytes": 181092,
+          "sha256": "f654d351db8c690dd3eace5bd307c4367d1064026448461daadb644c6e384f43"
+        }
+      ]
+    },
+    {
+      "key": "ndrc",
+      "site_id": "ndrc",
+      "name": "国家发展和改革委员会",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.ndrc.gov.cn/",
+      "checked_at": "2026-11-16T14:49:05.782Z",
+      "elapsed_ms": 242449,
+      "retry_of": {
+        "file": "first-attempts/ndrc.json",
+        "sha256": "efa26b82bca16f3d5ceed35514e1c98dbedbf822a0f50b4dad9830e9c27fcb71",
+        "started_at": "2026-11-16T14:37:49.800Z",
+        "checked_at": "2026-11-16T14:41:53.300Z",
+        "elapsed_ms": 243500,
+        "test_error": "SITE_SWEEP_OVERALL_DEADLINE",
+        "runtime_failure": null
+      },
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 231714
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://so.ndrc.gov.cn/s?siteCode=bm04000007&ssl=1&token=&qt=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国国家发展和改革委员会智能云搜索系统",
+          "captured_at": "2026-11-16T14:49:04.330Z",
+          "page": 1,
+          "file": "captures/ndrc-0.png",
+          "screenshot_bytes": 187948,
+          "sha256": "c4953330c13a0c69ac09cffafbc4337f571ad7123ec6fa3925d64f371c46e6af"
+        }
+      ]
+    },
+    {
+      "key": "environment",
+      "site_id": "environment",
+      "name": "中华人民共和国生态环境部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mee.gov.cn/",
+      "checked_at": "2026-11-16T14:32:27.449Z",
+      "elapsed_ms": 71748,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "query",
+        "detail": "OFFICIAL_STYLESHEET_LOAD_FAILED http://static.gridsumdissector.com/zheng_fen_xiang/content/gwdsharestyle.css",
+        "attempts": 2,
+        "elapsed_ms": 57288
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.mee.gov.cn/",
+          "title": "中华人民共和国生态环境部",
+          "captured_at": "2026-11-16T14:32:23.480Z",
+          "page": 1,
+          "file": "captures/environment-0.png",
+          "screenshot_bytes": 531243,
+          "sha256": "3d10a106bfb3f10cc492f7c24b141352f044fc5fdd8794d13894a0987358335f"
+        }
+      ]
+    },
+    {
+      "key": "mof",
+      "site_id": "mof",
+      "name": "中华人民共和国财政部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mof.gov.cn/",
+      "checked_at": "2026-11-16T14:43:12.693Z",
+      "elapsed_ms": 78780,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "results",
+        "detail": "OFFICIAL_STYLESHEET_LOAD_FAILED net::ERR_ABORTED https://search.mof.gov.cn/was5/web/mofimages/js/My97DatePicker/skin/WdatePicker.css",
+        "http_status": 502,
+        "attempts": 2,
+        "elapsed_ms": 64462
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://search.mof.gov.cn/was5/web/search",
+          "title": "中华人民共和国财政部_全文检索",
+          "captured_at": "2026-11-16T14:43:10.160Z",
+          "page": 1,
+          "file": "captures/mof-0.png",
+          "screenshot_bytes": 299731,
+          "sha256": "6896c7304a5f5ba9bedc5d5f1cb3c5a606467312bdc64ff5b35bbfc08e970142"
+        }
+      ]
+    },
+    {
+      "key": "statistics",
+      "site_id": "statistics",
+      "name": "国家统计局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.stats.gov.cn/",
+      "checked_at": "2026-11-16T14:52:13.626Z",
+      "elapsed_ms": 66370,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "results",
+        "detail": "OFFICIAL_STYLESHEET_LOAD_FAILED net::ERR_BLOCKED_BY_CLIENT https://p.so-gov.cn/web/pc/enterprise/css/swiper-bundle.min.css",
+        "attempts": 1,
+        "elapsed_ms": 52455
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.stats.gov.cn/search/s?qt=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "",
+          "captured_at": "2026-11-16T14:52:10.054Z",
+          "page": 1,
+          "file": "captures/statistics-0.png",
+          "screenshot_bytes": 135458,
+          "sha256": "164bbb466e82e778b858cbafc8aabe82870e6df5a918acf2800ff78995175e48"
+        }
+      ]
+    },
+    {
+      "key": "customs",
+      "site_id": "customs",
+      "name": "中华人民共和国海关总署",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "http://www.customs.gov.cn/",
+      "checked_at": "2026-11-16T14:33:01.773Z",
+      "elapsed_ms": 34022,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 23001
+      },
+      "captures": []
+    },
+    {
+      "key": "industry",
+      "site_id": "industry",
+      "name": "中华人民共和国工业和信息化部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.miit.gov.cn/",
+      "checked_at": "2026-11-16T14:44:09.608Z",
+      "elapsed_ms": 56795,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 44823
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.miit.gov.cn/search/index.html?websiteid=110000000000000&pg=&p=&tpl=&category=&jsflIndexSeleted=&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "数据统一检索平台",
+          "captured_at": "2026-11-16T14:44:05.988Z",
+          "page": 1,
+          "file": "captures/industry-0.png",
+          "screenshot_bytes": 260422,
+          "sha256": "316c8abeaf40134c91acac45c36275da68e1f6e331d7c28f0cf8408237df95fe"
+        }
+      ]
+    },
+    {
+      "key": "samr",
+      "site_id": "samr",
+      "name": "国家市场监督管理总局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.samr.gov.cn/",
+      "checked_at": "2026-11-16T14:56:07.932Z",
+      "elapsed_ms": 234018,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 219825
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.samr.gov.cn/api-gateway/jpaas-jsearch-web-server/search?serviceId=db6d646f22e541d7a303940a8e8623cc&cateid=aef29dab559a4e9db9da54ff2e1eb92b&sortType=2&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "国家市场监督管理总局",
+          "captured_at": "2026-11-16T14:56:04.392Z",
+          "page": 1,
+          "file": "captures/samr-0.png",
+          "screenshot_bytes": 205257,
+          "sha256": "f635305f63ba1424f840e55fda3aefd0f27cd90f5df9104b674c3032229ed8f7"
+        }
+      ]
+    },
+    {
+      "key": "samr-penalties",
+      "site_id": "samr-penalties",
+      "name": "国家市场监督管理总局-中国市场监管行政处罚文书网",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.samr.gov.cn/",
+      "checked_at": "2026-11-16T14:59:51.013Z",
+      "elapsed_ms": 222928,
+      "query": "东营市城市建设发展集团有限公司 行政处罚文书",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 212963
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.samr.gov.cn/api-gateway/jpaas-jsearch-web-server/search?serviceId=db6d646f22e541d7a303940a8e8623cc&cateid=aef29dab559a4e9db9da54ff2e1eb92b&sortType=2&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%A1%8C%E6%94%BF%E5%A4%84%E7%BD%9A%E6%96%87%E4%B9%A6",
+          "title": "国家市场监督管理总局",
+          "captured_at": "2026-11-16T14:59:48.147Z",
+          "page": 1,
+          "file": "captures/samr-penalties-0.png",
+          "screenshot_bytes": 212883,
+          "sha256": "ae7d50be512fad94f2d73cd526a18f7e15dd54070b526abd037320635f341c98"
+        }
+      ]
+    },
+    {
+      "key": "agriculture",
+      "site_id": "agriculture",
+      "name": "农业农村部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.moa.gov.cn/",
+      "checked_at": "2026-11-16T14:36:50.579Z",
+      "elapsed_ms": 228276,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 216891
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.moa.gov.cn/so/s?qt=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国农业农村部门户网站",
+          "captured_at": "2026-11-16T14:36:47.260Z",
+          "page": 1,
+          "file": "captures/agriculture-0.png",
+          "screenshot_bytes": 311956,
+          "sha256": "46361e5d73812611841e5bde83699cf6211da63d223583e70c4c6f701aa7693e"
+        }
+      ]
+    },
+    {
+      "key": "customs-credit",
+      "site_id": "customs-credit",
+      "name": "中国海关企业进出口信用信息公示平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "http://credit.customs.gov.cn/",
+      "checked_at": "2026-11-16T14:44:35.872Z",
+      "elapsed_ms": 26101,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 15955
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://credit.customs.gov.cn/ccppwebserver/pages/ccpp/html/ccppindex.html",
+          "title": "访问受限",
+          "captured_at": "2026-11-16T14:44:33.923Z",
+          "page": 1,
+          "file": "captures/customs-credit-0.png",
+          "screenshot_bytes": 101889,
+          "sha256": "28f969ddbd0e80d34985cff00b30e60eed24bd9dd46bcbe5530cbdd591261dcb"
+        }
+      ]
+    },
+    {
+      "key": "energy",
+      "site_id": "energy",
+      "name": "国家能源局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.nea.gov.cn/",
+      "checked_at": "2026-11-16T14:37:23.888Z",
+      "elapsed_ms": 33141,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "query",
+        "detail": "OFFICIAL_STYLESHEET_LOAD_FAILED net::ERR_BLOCKED_BY_CLIENT https://www.news.cn/global/lib/swiper/swiper3.4.2/swiper.min.css",
+        "attempts": 1,
+        "elapsed_ms": 16514
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.nea.gov.cn/",
+          "title": "国家能源局",
+          "captured_at": "2026-11-16T14:37:19.423Z",
+          "page": 1,
+          "file": "captures/energy-0.png",
+          "screenshot_bytes": 1174336,
+          "sha256": "82e2d84c1781d69e1372e4d1d6144933423d72ab8d1a362ba913c39e2a24a0b4"
+        }
+      ]
+    },
+    {
+      "key": "housing",
+      "site_id": "housing",
+      "name": "国家住房和城乡建设部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mohurd.gov.cn/",
+      "checked_at": "2026-11-16T14:45:24.636Z",
+      "elapsed_ms": 48021,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_TUNNEL_CONNECTION_FAILED",
+        "attempts": 2,
+        "elapsed_ms": 37446
+      },
+      "captures": []
+    },
+    {
+      "key": "cec-blacklist",
+      "site_id": "cec-blacklist",
+      "name": "中国电力企业联合会-信用电力-关联黑名单",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cec.org.cn/",
+      "checked_at": "2026-11-16T15:01:31.699Z",
+      "elapsed_ms": 100329,
+      "query": "东营市城市建设发展集团有限公司 关联黑名单",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 88786
+      },
+      "captures": []
+    },
+    {
+      "key": "cec-supervision",
+      "site_id": "cec-supervision",
+      "name": "中国电力企业联合会-信用电力-监管、大数据预警",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cec.org.cn/",
+      "checked_at": "2026-11-16T15:03:07.013Z",
+      "elapsed_ms": 95139,
+      "query": "东营市城市建设发展集团有限公司 监管",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 86913
+      },
+      "captures": []
+    },
+    {
+      "key": "resources",
+      "site_id": "resources",
+      "name": "自然资源部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mnr.gov.cn/",
+      "checked_at": "2026-11-16T14:38:06.945Z",
+      "elapsed_ms": 42633,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_TUNNEL_CONNECTION_FAILED",
+        "attempts": 2,
+        "elapsed_ms": 26853
+      },
+      "captures": []
+    },
+    {
+      "key": "mohrss",
+      "site_id": "mohrss",
+      "name": "人力资源和社会保障部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mohrss.gov.cn/",
+      "checked_at": "2026-11-16T14:46:59.900Z",
+      "elapsed_ms": 94640,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 71531
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国人力资源和社会保障部搜索结果",
+          "captured_at": "2026-11-16T14:46:31.616Z",
+          "page": 1,
+          "file": "captures/mohrss-0.png",
+          "screenshot_bytes": 324622,
+          "sha256": "740593853600c6e3f4d73490c9cca05d502d05b40770d5507ca2578177ab20e3"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国人力资源和社会保障部搜索结果",
+          "captured_at": "2026-11-16T14:46:44.592Z",
+          "page": 2,
+          "file": "captures/mohrss-1.png",
+          "screenshot_bytes": 212609,
+          "sha256": "37ba1185302226d9b17e08c01420c9a775f52bc9ef22ab3d02f2594f2dcf2b2f"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "中华人民共和国人力资源和社会保障部搜索结果",
+          "captured_at": "2026-11-16T14:46:56.581Z",
+          "page": 3,
+          "file": "captures/mohrss-2.png",
+          "screenshot_bytes": 206642,
+          "sha256": "bb5ce6a965a1ca05bba51f74d468d026c6df50923936f3264cc0fc7c9770c2f6"
+        }
+      ]
+    },
+    {
+      "key": "transport",
+      "site_id": "transport",
+      "name": "交通运输部",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.mot.gov.cn/",
+      "checked_at": "2026-11-16T14:42:08.345Z",
+      "elapsed_ms": 240830,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 227627
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zs.mot.gov.cn/mot/s?siteCode=bm19000004_cs&tab=all&qt=",
+          "title": "中华人民共和国交通运输部 · 交通智搜",
+          "captured_at": "2026-11-16T14:42:03.294Z",
+          "page": 1,
+          "file": "captures/transport-0.png",
+          "screenshot_bytes": 161842,
+          "sha256": "c54fae0d00713ab8d0286996b8200524d3aa0ef84991e8ebe06a82f2e0c270c9"
+        }
+      ]
+    },
+    {
+      "key": "transport-credit",
+      "site_id": "transport-credit",
+      "name": "信用交通-信用信息查询",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://credit.mot.gov.cn/",
+      "checked_at": "2026-11-16T14:47:31.078Z",
+      "elapsed_ms": 30787,
+      "query": "东营市城市建设发展集团有限公司 信用信息",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "page_error",
+        "phase": "open",
+        "detail": "因信用交通网站进行系统维护，现调整网站运行时间：2026年11月13日18：00至2026年11月21日8：00期间暂停服务。给您带来的不便敬请谅解!",
+        "attempts": 2,
+        "elapsed_ms": 16370
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://credit.mot.gov.cn/",
+          "title": "通知",
+          "captured_at": "2026-11-16T14:47:27.401Z",
+          "page": 1,
+          "file": "captures/transport-credit-0.png",
+          "screenshot_bytes": 59133,
+          "sha256": "e9141ebfa4bf150e79edcf7e1d37c8bfb9278b07075d59efe50f387a3764b5cf"
+        }
+      ]
+    },
+    {
+      "key": "transport-penalties",
+      "site_id": "transport-penalties",
+      "name": "信用交通-行政处罚",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://credit.mot.gov.cn/",
+      "checked_at": "2026-11-16T14:48:10.346Z",
+      "elapsed_ms": 38195,
+      "query": "东营市城市建设发展集团有限公司 行政处罚",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "page_error",
+        "phase": "open",
+        "detail": "因信用交通网站进行系统维护，现调整网站运行时间：2026年11月13日18：00至2026年11月21日8：00期间暂停服务。给您带来的不便敬请谅解!",
+        "attempts": 2,
+        "elapsed_ms": 19566
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://credit.mot.gov.cn/",
+          "title": "通知",
+          "captured_at": "2026-11-16T14:48:07.906Z",
+          "page": 1,
+          "file": "captures/transport-penalties-0.png",
+          "screenshot_bytes": 59338,
+          "sha256": "295be86540244757564baaf625b79e8a85a669696be1695c74373e33ef56b9f1"
+        }
+      ]
+    },
+    {
+      "key": "construction-credit",
+      "site_id": "construction-credit",
+      "name": "全国建筑市场监管公共服务平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://jzsc.mohurd.gov.cn/",
+      "checked_at": "2026-11-16T15:03:37.302Z",
+      "elapsed_ms": 29861,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_TUNNEL_CONNECTION_FAILED",
+        "attempts": 2,
+        "elapsed_ms": 20765
+      },
+      "captures": []
+    },
+    {
+      "key": "salt-credit",
+      "site_id": "salt-credit",
+      "name": "信用盐业-盐行业信用管理与公共服务平台",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cnsalt.cn/",
+      "checked_at": "2026-11-16T14:42:31.636Z",
+      "elapsed_ms": 23207,
+      "query": "东营市城市建设发展集团有限公司 信用盐业",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_EMPTY_RESPONSE",
+        "attempts": 2,
+        "elapsed_ms": 12440
+      },
+      "captures": []
+    },
+    {
+      "key": "procurement-agency",
+      "site_id": "procurement-agency",
+      "name": "中国政府采购网-代理机构不良行为记录名单",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.ccgp.gov.cn/",
+      "checked_at": "2026-11-16T14:36:33.273Z",
+      "elapsed_ms": 36973,
+      "query": "东营市城市建设发展集团有限公司 代理机构不良行为",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "attempts": 1,
+        "elapsed_ms": 17579
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.ccgp.gov.cn/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:36:28.197Z",
+          "page": 1,
+          "file": "captures/procurement-agency-0.png",
+          "screenshot_bytes": 59914,
+          "sha256": "8a8d427914c3049e58dc75a6c0a83e31cbdd5923b19ab4c3282fd8199444ea0a"
+        }
+      ]
+    },
+    {
+      "key": "procurement-dishonest",
+      "site_id": "procurement-dishonest",
+      "name": "中国政府采购网-政府采购严重违法失信行为记录名单",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.ccgp.gov.cn/",
+      "checked_at": "2026-11-16T14:37:01.551Z",
+      "elapsed_ms": 28028,
+      "query": "东营市城市建设发展集团有限公司 严重违法失信",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "attempts": 1,
+        "elapsed_ms": 7813
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.ccgp.gov.cn/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:36:57.031Z",
+          "page": 1,
+          "file": "captures/procurement-dishonest-0.png",
+          "screenshot_bytes": 59885,
+          "sha256": "8f87009b3c85cd8ca8cf5dd902f1adf0d880c3300b47defd842642bdd043b279"
+        }
+      ]
+    },
+    {
+      "key": "salt-association",
+      "site_id": "salt-association",
+      "name": "中国盐业协会",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.cnsalt.cn/",
+      "checked_at": "2026-11-16T14:36:45.823Z",
+      "elapsed_ms": 45370,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_EMPTY_RESPONSE",
+        "attempts": 2,
+        "elapsed_ms": 18172
+      },
+      "captures": []
+    },
+    {
+      "key": "nmpa",
+      "site_id": "nmpa",
+      "name": "国家药品监督管理局",
+      "category": "national",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.nmpa.gov.cn/",
+      "checked_at": "2026-11-16T14:36:49.766Z",
+      "elapsed_ms": 52401,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 34615
+      },
+      "captures": []
+    },
+    {
+      "key": "gsxt",
+      "site_id": "gsxt",
+      "name": "国家企业信用信息公示系统",
+      "category": "legacy",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.gsxt.gov.cn/",
+      "checked_at": "2026-11-16T14:37:16.726Z",
+      "elapsed_ms": 29865,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "attempts": 1,
+        "elapsed_ms": 10667
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.gsxt.gov.cn/",
+          "title": "请求异常",
+          "captured_at": "2026-11-16T14:37:12.573Z",
+          "page": 1,
+          "file": "captures/gsxt-0.png",
+          "screenshot_bytes": 85695,
+          "sha256": "956f9a542472ec3a17f8a42ffe130f241729f0bd7188545f20017ce8f6d1ce07"
+        }
+      ]
+    },
+    {
+      "key": "execution",
+      "site_id": "execution",
+      "name": "中国执行信息公开网",
+      "category": "legacy",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://zxgk.court.gov.cn/",
+      "checked_at": "2026-11-16T14:37:41.056Z",
+      "elapsed_ms": 23418,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "detail": "403 Forbidden",
+        "attempts": 1,
+        "elapsed_ms": 10607
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zxgk.court.gov.cn/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:37:37.775Z",
+          "page": 1,
+          "file": "captures/execution-0.png",
+          "screenshot_bytes": 49870,
+          "sha256": "692c0ee4a5a550c627ae934137f84c57d6a3177a0d1622053f3380d8a04e110c"
+        }
+      ]
+    },
+    {
+      "key": "judgments",
+      "site_id": "judgments",
+      "name": "中国裁判文书网",
+      "category": "legacy",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://wenshu.court.gov.cn/",
+      "checked_at": "2026-11-16T14:40:57.041Z",
+      "elapsed_ms": 246600,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 230426
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://wenshu.court.gov.cn/website/wenshu/181010CARHS5BS3C/index.html?https://wenshu.court.gov.cn/website/wenshu/181217BMTKHNT2W0/index.html?pageId=0323b80f0199ae6b00e2e3a6c03a185f&s21=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "登录/注册",
+          "captured_at": "2026-11-16T14:40:54.184Z",
+          "page": 1,
+          "file": "captures/judgments-0.png",
+          "screenshot_bytes": 114118,
+          "sha256": "a7a1afae88fda9a743d7a3ec55e1b1fba6938885afb5358d08082e0cc96e769c"
+        }
+      ]
+    },
+    {
+      "key": "food-drug-0",
+      "site_id": "food-drug",
+      "name": "食品药品监管部门门户",
+      "category": "legacy",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.samr.gov.cn/",
+      "checked_at": "2026-11-16T14:41:26.324Z",
+      "elapsed_ms": 263352,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 247343
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://www.samr.gov.cn/api-gateway/jpaas-jsearch-web-server/search?serviceId=db6d646f22e541d7a303940a8e8623cc&cateid=aef29dab559a4e9db9da54ff2e1eb92b&sortType=2&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "国家市场监督管理总局",
+          "captured_at": "2026-11-16T14:41:23.471Z",
+          "page": 1,
+          "file": "captures/food-drug-0-0.png",
+          "screenshot_bytes": 204560,
+          "sha256": "d10cf65bd26e61d6ed8a2f48f25fbf2c4cec669192917c6903c23782013c3fce"
+        }
+      ]
+    },
+    {
+      "key": "food-drug-1",
+      "site_id": "food-drug",
+      "name": "食品药品监管部门门户",
+      "category": "legacy",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.nmpa.gov.cn/",
+      "checked_at": "2026-11-16T14:41:30.883Z",
+      "elapsed_ms": 33484,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 16550
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-北京",
+      "site_id": "local-csrc",
+      "name": "北京证监局",
+      "category": "regional",
+      "region": "北京",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "北京",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/beijing/index.shtml",
+      "checked_at": "2026-11-16T14:23:25.088Z",
+      "elapsed_ms": 142811,
+      "query": "东营市城市建设发展集团有限公司 北京",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 130125
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "北京监管局",
+          "captured_at": "2026-11-16T14:21:49.768Z",
+          "page": 1,
+          "file": "captures/local-csrc-北京-0.png",
+          "screenshot_bytes": 207503,
+          "sha256": "d70d7a41e4901610cf010fb25f8e28e5064c6828f04a5cf85c87032c5f7b411a"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-北京",
+      "site_id": "local-tax",
+      "name": "北京税务局",
+      "category": "regional",
+      "region": "北京",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "北京",
+        "city": ""
+      },
+      "configured_url": "http://beijing.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:42:44.184Z",
+      "elapsed_ms": 77517,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 17593
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-天津",
+      "site_id": "local-csrc",
+      "name": "天津证监局",
+      "category": "regional",
+      "region": "天津",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "天津",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/tianjin/index.shtml",
+      "checked_at": "2026-11-16T14:25:39.491Z",
+      "elapsed_ms": 134133,
+      "query": "东营市城市建设发展集团有限公司 天津",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 123921
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "天津监管局",
+          "captured_at": "2026-11-16T14:23:58.792Z",
+          "page": 1,
+          "file": "captures/local-csrc-天津-0.png",
+          "screenshot_bytes": 220389,
+          "sha256": "c2365e952634e7e7065f7a347803056751b75a53f05b3742327540794b0ff542"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "天津监管局",
+          "captured_at": "2026-11-16T14:24:04.983Z",
+          "page": 2,
+          "file": "captures/local-csrc-天津-1.png",
+          "screenshot_bytes": 223857,
+          "sha256": "440fd4d799c1e514d20b6f71d5a8910acb20e62b4c5bfa80c6cd762fdf45efdf"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-天津",
+      "site_id": "local-tax",
+      "name": "天津税务局",
+      "category": "regional",
+      "region": "天津",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "天津",
+        "city": ""
+      },
+      "configured_url": "http://tianjin.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:41:17.157Z",
+      "elapsed_ms": 215005,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 200703
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://tianjin.chinatax.gov.cn/",
+          "title": "国家税务总局天津市税务局",
+          "captured_at": "2026-11-16T14:41:14.357Z",
+          "page": 1,
+          "file": "captures/local-tax-天津-0.png",
+          "screenshot_bytes": 489959,
+          "sha256": "5a6cf224083c94bed3ae780418cef4ccfd8f5d91d04314d83b9dbf7a8967702d"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-河北",
+      "site_id": "local-csrc",
+      "name": "河北证监局",
+      "category": "regional",
+      "region": "河北",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "河北",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/hebei/index.shtml",
+      "checked_at": "2026-11-16T14:27:46.201Z",
+      "elapsed_ms": 126446,
+      "query": "东营市城市建设发展集团有限公司 河北",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 115466
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "河北监管局",
+          "captured_at": "2026-11-16T14:26:09.919Z",
+          "page": 1,
+          "file": "captures/local-csrc-河北-0.png",
+          "screenshot_bytes": 225728,
+          "sha256": "05653cc7e1aae40d84b93d8e1f3c6f99ab40b45f19e868058dac8eba8dc7e95e"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-河北",
+      "site_id": "local-tax",
+      "name": "河北税务局",
+      "category": "regional",
+      "region": "河北",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "河北",
+        "city": ""
+      },
+      "configured_url": "http://hebei.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:41:51.559Z",
+      "elapsed_ms": 20210,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "detail": "Forbidden",
+        "attempts": 1,
+        "elapsed_ms": 8838
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://hebei.chinatax.gov.cn/",
+          "title": "403 Forbidden",
+          "captured_at": "2026-11-16T14:41:48.497Z",
+          "page": 1,
+          "file": "captures/local-tax-河北-0.png",
+          "screenshot_bytes": 57051,
+          "sha256": "3504989fbb762df0b218b4d46c3fa17114c9ecfbe46aa4f1d1b79e47818e4d03"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-山西",
+      "site_id": "local-csrc",
+      "name": "山西证监局",
+      "category": "regional",
+      "region": "山西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山西",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/shanxi/index.shtml",
+      "checked_at": "2026-11-16T14:30:27.821Z",
+      "elapsed_ms": 160114,
+      "query": "东营市城市建设发展集团有限公司 山西",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 145540
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "山西监管局",
+          "captured_at": "2026-11-16T14:28:43.829Z",
+          "page": 1,
+          "file": "captures/local-csrc-山西-0.png",
+          "screenshot_bytes": 215434,
+          "sha256": "7f6e0ebe5dedf7b3206741b643ebaa096c31baf5a08905352b0c7abba18dc58c"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "山西监管局",
+          "captured_at": "2026-11-16T14:28:51.591Z",
+          "page": 2,
+          "file": "captures/local-csrc-山西-1.png",
+          "screenshot_bytes": 178516,
+          "sha256": "2845f4a0418fe5be983bf48aea546d69ce5ec6b098d69a9518b97d2770e108b9"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-山西",
+      "site_id": "local-tax",
+      "name": "山西税务局",
+      "category": "regional",
+      "region": "山西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山西",
+        "city": ""
+      },
+      "configured_url": "http://shanxi.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:43:46.721Z",
+      "elapsed_ms": 62292,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 42579
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "http://shanxi.chinatax.gov.cn/web/search/sx-11400",
+          "title": "国家税务总局山西省税务局",
+          "captured_at": "2026-11-16T14:43:30.777Z",
+          "page": 1,
+          "file": "captures/local-tax-山西-0.png",
+          "screenshot_bytes": 228465,
+          "sha256": "139f27ef16af87cb685f06120064239211601bf24c5360eec80bf73c5acb7391"
+        },
+        {
+          "kind": "result",
+          "url": "http://shanxi.chinatax.gov.cn/web/search/sx-11400",
+          "title": "国家税务总局山西省税务局",
+          "captured_at": "2026-11-16T14:43:37.080Z",
+          "page": 2,
+          "file": "captures/local-tax-山西-1.png",
+          "screenshot_bytes": 316897,
+          "sha256": "c0a96f79be01e7721319d681ac298eaa2de90f67395f247434a17251ec817efd"
+        },
+        {
+          "kind": "result",
+          "url": "http://shanxi.chinatax.gov.cn/web/search/sx-11400",
+          "title": "国家税务总局山西省税务局",
+          "captured_at": "2026-11-16T14:43:43.359Z",
+          "page": 3,
+          "file": "captures/local-tax-山西-2.png",
+          "screenshot_bytes": 221207,
+          "sha256": "9719ff83c8234d8a2cf4525367010d3383b1a06c286fa1e2e1674efbd209c285"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-内蒙古",
+      "site_id": "local-csrc",
+      "name": "内蒙古证监局",
+      "category": "regional",
+      "region": "内蒙古",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "内蒙古",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/neimenggu/index.shtml",
+      "checked_at": "2026-11-16T14:33:08.450Z",
+      "elapsed_ms": 160406,
+      "query": "东营市城市建设发展集团有限公司 内蒙古",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 146977
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "内蒙古监管局",
+          "captured_at": "2026-11-16T14:31:34.429Z",
+          "page": 1,
+          "file": "captures/local-csrc-内蒙古-0.png",
+          "screenshot_bytes": 217539,
+          "sha256": "aa3abb2abe05641fe340eb3d305abc6ee006e23b35e94e01bb9d88f30c9c7b6a"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-内蒙古",
+      "site_id": "local-tax",
+      "name": "内蒙古税务局",
+      "category": "regional",
+      "region": "内蒙古",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "内蒙古",
+        "city": ""
+      },
+      "configured_url": "http://neimenggu.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:45:43.819Z",
+      "elapsed_ms": 266478,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "operation_failed",
+        "phase": "query",
+        "attempts": 2,
+        "elapsed_ms": 255353
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://neimenggu.chinatax.gov.cn/",
+          "title": "国家税务总局内蒙古自治区税务局",
+          "captured_at": "2026-11-16T14:45:40.663Z",
+          "page": 1,
+          "file": "captures/local-tax-内蒙古-0.png",
+          "screenshot_bytes": 740082,
+          "sha256": "2b7d742a43cd58e375d2178328ba95ae68f2ae3ba4c7701d9d3d124f5cf84149"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-辽宁",
+      "site_id": "local-csrc",
+      "name": "辽宁证监局",
+      "category": "regional",
+      "region": "辽宁",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "辽宁",
+        "city": "沈阳市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/liaoning/index.shtml",
+      "checked_at": "2026-11-16T14:35:34.454Z",
+      "elapsed_ms": 145050,
+      "query": "东营市城市建设发展集团有限公司 辽宁",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 131286
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "辽宁监管局",
+          "captured_at": "2026-11-16T14:33:53.204Z",
+          "page": 1,
+          "file": "captures/local-csrc-辽宁-0.png",
+          "screenshot_bytes": 211677,
+          "sha256": "36dedf28b945ac1b396d7eb33993491178e870cfc0f122c1abd834e3da790498"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "辽宁监管局",
+          "captured_at": "2026-11-16T14:33:59.032Z",
+          "page": 2,
+          "file": "captures/local-csrc-辽宁-1.png",
+          "screenshot_bytes": 214393,
+          "sha256": "94acee8e8fc5c4c3a017d8af3835d47297cdc03323bacb380fbd0b7df54350b2"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-辽宁",
+      "site_id": "local-tax",
+      "name": "辽宁税务局",
+      "category": "regional",
+      "region": "辽宁",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "辽宁",
+        "city": "沈阳市"
+      },
+      "configured_url": "http://liaoning.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:45:22.107Z",
+      "elapsed_ms": 210066,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 194132
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://liaoning.chinatax.gov.cn/",
+          "title": "国家税务总局辽宁省税务局",
+          "captured_at": "2026-11-16T14:45:18.968Z",
+          "page": 1,
+          "file": "captures/local-tax-辽宁-0.png",
+          "screenshot_bytes": 684614,
+          "sha256": "ef62d31bd56fa3b66f668a5b79b0ac0a034174292323ebb29efc2f276fe78989"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-吉林",
+      "site_id": "local-csrc",
+      "name": "吉林证监局",
+      "category": "regional",
+      "region": "吉林",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "吉林",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/jilin/index.shtml",
+      "checked_at": "2026-11-16T14:38:21.481Z",
+      "elapsed_ms": 166493,
+      "query": "东营市城市建设发展集团有限公司 吉林",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 152650
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "吉林监管局",
+          "captured_at": "2026-11-16T14:36:37.959Z",
+          "page": 1,
+          "file": "captures/local-csrc-吉林-0.png",
+          "screenshot_bytes": 211873,
+          "sha256": "62273fdc1b6e545168d1b27028b33a64516c281dc8b2a253aedc58b7b1bde234"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "吉林监管局",
+          "captured_at": "2026-11-16T14:36:46.014Z",
+          "page": 2,
+          "file": "captures/local-csrc-吉林-1.png",
+          "screenshot_bytes": 214626,
+          "sha256": "3ff31ae3cdf975d2c51cd225e1fdb421796d3d465cde00cf58b84b287cfe78d0"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-吉林",
+      "site_id": "local-tax",
+      "name": "吉林税务局",
+      "category": "regional",
+      "region": "吉林",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "吉林",
+        "city": ""
+      },
+      "configured_url": "http://jilin.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:44:14.932Z",
+      "elapsed_ms": 27288,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 16062
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-黑龙江",
+      "site_id": "local-csrc",
+      "name": "黑龙江证监局",
+      "category": "regional",
+      "region": "黑龙江",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "黑龙江",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/heilongjiang/index.shtml",
+      "checked_at": "2026-11-16T14:40:52.249Z",
+      "elapsed_ms": 150065,
+      "query": "东营市城市建设发展集团有限公司 黑龙江",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 137688
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "黑龙江监管局",
+          "captured_at": "2026-11-16T14:39:04.259Z",
+          "page": 1,
+          "file": "captures/local-csrc-黑龙江-0.png",
+          "screenshot_bytes": 239825,
+          "sha256": "80218286851f38f08dd038b6f5f7d2e6932c44a04623356d0620856427e73ca8"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "黑龙江监管局",
+          "captured_at": "2026-11-16T14:39:16.138Z",
+          "page": 2,
+          "file": "captures/local-csrc-黑龙江-1.png",
+          "screenshot_bytes": 245561,
+          "sha256": "675b2f8f97305fddc84723c58ef8a1e96193cc7a5e8f8e3ced4fbdd7386a4379"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-黑龙江",
+      "site_id": "local-tax",
+      "name": "黑龙江税务局",
+      "category": "regional",
+      "region": "黑龙江",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "黑龙江",
+        "city": ""
+      },
+      "configured_url": "http://heilongjiang.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:49:34.593Z",
+      "elapsed_ms": 230247,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 215517
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://heilongjiang.chinatax.gov.cn/",
+          "title": "国家税务总局黑龙江省税务局",
+          "captured_at": "2026-11-16T14:49:31.447Z",
+          "page": 1,
+          "file": "captures/local-tax-黑龙江-0.png",
+          "screenshot_bytes": 542264,
+          "sha256": "1bf0f82c350e86562403fea74a65bd59e394c561bc80566f4ed9a3d42970112f"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-上海",
+      "site_id": "local-csrc",
+      "name": "上海证监局",
+      "category": "regional",
+      "region": "上海",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "上海",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/shanghai/index.shtml",
+      "checked_at": "2026-11-16T14:43:13.384Z",
+      "elapsed_ms": 140928,
+      "query": "东营市城市建设发展集团有限公司 上海",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 123556
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "上海监管局",
+          "captured_at": "2026-11-16T14:41:33.059Z",
+          "page": 1,
+          "file": "captures/local-csrc-上海-0.png",
+          "screenshot_bytes": 191157,
+          "sha256": "cfd011b29b56e650ca23dafcc060daabf1c95456a91aeec68d996d41d5d88232"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "上海监管局",
+          "captured_at": "2026-11-16T14:41:39.619Z",
+          "page": 2,
+          "file": "captures/local-csrc-上海-1.png",
+          "screenshot_bytes": 194178,
+          "sha256": "d8ea5a4dee527ff3959d393f08dd58e260d41f90aa008374656fb036d57babbf"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-上海",
+      "site_id": "local-tax",
+      "name": "上海税务局",
+      "category": "regional",
+      "region": "上海",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "上海",
+        "city": ""
+      },
+      "configured_url": "http://shanghai.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:49:29.399Z",
+      "elapsed_ms": 246463,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "operation_failed",
+        "phase": "query",
+        "attempts": 2,
+        "elapsed_ms": 231657
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://shanghai.chinatax.gov.cn/",
+          "title": "国家税务总局上海市税务局",
+          "captured_at": "2026-11-16T14:49:26.020Z",
+          "page": 1,
+          "file": "captures/local-tax-上海-0.png",
+          "screenshot_bytes": 359857,
+          "sha256": "e2e1836f622efba5fe73f40d88cdf2596087824a0414b1c44dcbc64d08c67278"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-江苏",
+      "site_id": "local-csrc",
+      "name": "江苏证监局",
+      "category": "regional",
+      "region": "江苏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "江苏",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/jiangsu/index.shtml",
+      "checked_at": "2026-11-16T14:45:21.170Z",
+      "elapsed_ms": 127725,
+      "query": "东营市城市建设发展集团有限公司 江苏",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 115954
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "江苏监管局",
+          "captured_at": "2026-11-16T14:43:45.993Z",
+          "page": 1,
+          "file": "captures/local-csrc-江苏-0.png",
+          "screenshot_bytes": 217680,
+          "sha256": "00098bde085b5a1bedff03df65d31e6bd9dd45c998a6fbc157736b162ab0c69e"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-江苏",
+      "site_id": "local-tax",
+      "name": "江苏税务局",
+      "category": "regional",
+      "region": "江苏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "江苏",
+        "city": ""
+      },
+      "configured_url": "http://jiangsu.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:47:53.004Z",
+      "elapsed_ms": 217786,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 204758
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://jiangsu.chinatax.gov.cn/",
+          "title": "国家税务总局江苏省税务局网站",
+          "captured_at": "2026-11-16T14:47:48.062Z",
+          "page": 1,
+          "file": "captures/local-tax-江苏-0.png",
+          "screenshot_bytes": 676130,
+          "sha256": "c11febf2251d525d0d4855b41daf7c635ddfef692dfdf5cd785c92febbddde2d"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-浙江",
+      "site_id": "local-csrc",
+      "name": "浙江证监局",
+      "category": "regional",
+      "region": "浙江",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "浙江",
+        "city": "杭州市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/zhejiang/index.shtml",
+      "checked_at": "2026-11-16T14:47:56.744Z",
+      "elapsed_ms": 155225,
+      "query": "东营市城市建设发展集团有限公司 浙江",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 136958
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "浙江监管局",
+          "captured_at": "2026-11-16T14:46:19.777Z",
+          "page": 1,
+          "file": "captures/local-csrc-浙江-0.png",
+          "screenshot_bytes": 221915,
+          "sha256": "5946bc389b4d67ed3b83b5dddab8960f01b0990a88e268b744986f699e803f74"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-浙江",
+      "site_id": "local-tax",
+      "name": "浙江税务局",
+      "category": "regional",
+      "region": "浙江",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "浙江",
+        "city": "杭州市"
+      },
+      "configured_url": "http://zhejiang.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:53:04.041Z",
+      "elapsed_ms": 209250,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 196731
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://zhejiang.chinatax.gov.cn/",
+          "title": "国家税务总局浙江省税务局",
+          "captured_at": "2026-11-16T14:53:01.028Z",
+          "page": 1,
+          "file": "captures/local-tax-浙江-0.png",
+          "screenshot_bytes": 632618,
+          "sha256": "7ac0d77674343195d6303fbc08d8b2b8d85fc6c85ae6bba4286f52be9a7c0c72"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-安徽",
+      "site_id": "local-csrc",
+      "name": "安徽证监局",
+      "category": "regional",
+      "region": "安徽",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "安徽",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/anhui/index.shtml",
+      "checked_at": "2026-11-16T14:50:10.605Z",
+      "elapsed_ms": 133346,
+      "query": "东营市城市建设发展集团有限公司 安徽",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 118719
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "安徽监管局",
+          "captured_at": "2026-11-16T14:48:34.190Z",
+          "page": 1,
+          "file": "captures/local-csrc-安徽-0.png",
+          "screenshot_bytes": 169190,
+          "sha256": "66d6801bc626408da2c47ee44d7f63d5699a62f796860f1ed1b64298407c4a65"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-安徽",
+      "site_id": "local-tax",
+      "name": "安徽税务局",
+      "category": "regional",
+      "region": "安徽",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "安徽",
+        "city": ""
+      },
+      "configured_url": "http://anhui.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:49:52.734Z",
+      "elapsed_ms": 21737,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "access_denied",
+        "phase": "open",
+        "http_status": 403,
+        "attempts": 1,
+        "elapsed_ms": 8689
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://anhui.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T14:49:49.178Z",
+          "page": 1,
+          "file": "captures/local-tax-安徽-0.png",
+          "screenshot_bytes": 87449,
+          "sha256": "2a73601eb9e3e124af668e263a73ec24801a4f6af75d7754f568ca9a6e37ecb9"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-福建",
+      "site_id": "local-csrc",
+      "name": "福建证监局",
+      "category": "regional",
+      "region": "福建",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "福建",
+        "city": "福州市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/fujian/index.shtml",
+      "checked_at": "2026-11-16T14:52:29.024Z",
+      "elapsed_ms": 137863,
+      "query": "东营市城市建设发展集团有限公司 福建",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 124266
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "福建监管局",
+          "captured_at": "2026-11-16T14:50:53.511Z",
+          "page": 1,
+          "file": "captures/local-csrc-福建-0.png",
+          "screenshot_bytes": 223547,
+          "sha256": "b5ed6d92bc3a6a4bc568e4c1a686b8af71e2e3cbc3b14933f247a7feacb50df6"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-福建",
+      "site_id": "local-tax",
+      "name": "福建税务局",
+      "category": "regional",
+      "region": "福建",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "福建",
+        "city": "福州市"
+      },
+      "configured_url": "http://fujian.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:48:29.576Z",
+      "elapsed_ms": 35816,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 503,
+        "attempts": 2,
+        "elapsed_ms": 23756
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://fujian.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T14:48:26.811Z",
+          "page": 1,
+          "file": "captures/local-tax-福建-0.png",
+          "screenshot_bytes": 45324,
+          "sha256": "1ad4ec7e28a6bde8bf93e78018f40b2980ffbddf5e2dceb5efc62fc3c4556272"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-江西",
+      "site_id": "local-csrc",
+      "name": "江西证监局",
+      "category": "regional",
+      "region": "江西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "江西",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/jiangxi/index.shtml",
+      "checked_at": "2026-11-16T14:54:45.888Z",
+      "elapsed_ms": 136502,
+      "query": "东营市城市建设发展集团有限公司 江西",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 126633
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "江西监管局",
+          "captured_at": "2026-11-16T14:53:05.415Z",
+          "page": 1,
+          "file": "captures/local-csrc-江西-0.png",
+          "screenshot_bytes": 229088,
+          "sha256": "0673f9e540890caccac8428dc26b44133c1f19f1a48fdcc33c6be03e2b19305f"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "江西监管局",
+          "captured_at": "2026-11-16T14:53:11.474Z",
+          "page": 2,
+          "file": "captures/local-csrc-江西-1.png",
+          "screenshot_bytes": 218535,
+          "sha256": "1b964272171ae551cc25216efae7b489b50da4d7a5d7b6745a9bca6893635fd6"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-江西",
+      "site_id": "local-tax",
+      "name": "江西税务局",
+      "category": "regional",
+      "region": "江西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "江西",
+        "city": ""
+      },
+      "configured_url": "http://jiangxi.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:55:56.303Z",
+      "elapsed_ms": 172070,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_EMPTY_RESPONSE",
+        "attempts": 2,
+        "elapsed_ms": 161686
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-山东",
+      "site_id": "local-csrc",
+      "name": "山东证监局",
+      "category": "regional",
+      "region": "山东",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/shandong/index.shtml",
+      "checked_at": "2026-11-16T14:56:53.574Z",
+      "elapsed_ms": 127319,
+      "query": "东营市城市建设发展集团有限公司 山东",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 116348
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "山东监管局",
+          "captured_at": "2026-11-16T14:55:19.453Z",
+          "page": 1,
+          "file": "captures/local-csrc-山东-0.png",
+          "screenshot_bytes": 227247,
+          "sha256": "7efbfe3858a59b174f156f82710847b673f261ba6ea06c96f6f0298ed7a0ddec"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-山东",
+      "site_id": "local-tax",
+      "name": "山东税务局",
+      "category": "regional",
+      "region": "山东",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "东营市"
+      },
+      "configured_url": "http://shandong.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:50:18.414Z",
+      "elapsed_ms": 24405,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 8857
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-河南",
+      "site_id": "local-csrc",
+      "name": "河南证监局",
+      "category": "regional",
+      "region": "河南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "河南",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/henan/index.shtml",
+      "checked_at": "2026-11-16T14:59:18.475Z",
+      "elapsed_ms": 144850,
+      "query": "东营市城市建设发展集团有限公司 河南",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 131756
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "河南监管局",
+          "captured_at": "2026-11-16T14:57:37.031Z",
+          "page": 1,
+          "file": "captures/local-csrc-河南-0.png",
+          "screenshot_bytes": 226854,
+          "sha256": "54782cdc0048743c4c9845059d06351de44f0fa3f1a2224d56ced32e024f643f"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "河南监管局",
+          "captured_at": "2026-11-16T14:57:43.713Z",
+          "page": 2,
+          "file": "captures/local-csrc-河南-1.png",
+          "screenshot_bytes": 215794,
+          "sha256": "945423346fff02faaab3e2c29edb39faa31e0246657b0cf0ebad97a1c4a9d4f6"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-河南",
+      "site_id": "local-tax",
+      "name": "河南税务局",
+      "category": "regional",
+      "region": "河南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "河南",
+        "city": ""
+      },
+      "configured_url": "https://henan.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:50:52.103Z",
+      "elapsed_ms": 142340,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 131707
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-湖北",
+      "site_id": "local-csrc",
+      "name": "湖北证监局",
+      "category": "regional",
+      "region": "湖北",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "湖北",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/hubei/index.shtml",
+      "checked_at": "2026-11-16T15:01:49.089Z",
+      "elapsed_ms": 150121,
+      "query": "东营市城市建设发展集团有限公司 湖北",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 136137
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "湖北监管局",
+          "captured_at": "2026-11-16T15:00:05.980Z",
+          "page": 1,
+          "file": "captures/local-csrc-湖北-0.png",
+          "screenshot_bytes": 220908,
+          "sha256": "6cf5200c27ffcd1c9bbaf9021156926783c53c59de7a4a628cb26f8dbee7eabf"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "湖北监管局",
+          "captured_at": "2026-11-16T15:00:13.892Z",
+          "page": 2,
+          "file": "captures/local-csrc-湖北-1.png",
+          "screenshot_bytes": 208670,
+          "sha256": "591441185df9ef9448aaf0c6ce56e40f7d0812bcf45b8a4a8c70e93126728d54"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-湖北",
+      "site_id": "local-tax",
+      "name": "湖北税务局",
+      "category": "regional",
+      "region": "湖北",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "湖北",
+        "city": ""
+      },
+      "configured_url": "http://hubei.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:56:20.161Z",
+      "elapsed_ms": 22711,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 12024
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-湖南",
+      "site_id": "local-csrc",
+      "name": "湖南证监局",
+      "category": "regional",
+      "region": "湖南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "湖南",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/hunan/index.shtml",
+      "checked_at": "2026-11-16T15:03:53.626Z",
+      "elapsed_ms": 124237,
+      "query": "东营市城市建设发展集团有限公司 湖南",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 113595
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "湖南监管局",
+          "captured_at": "2026-11-16T15:02:19.489Z",
+          "page": 1,
+          "file": "captures/local-csrc-湖南-0.png",
+          "screenshot_bytes": 263201,
+          "sha256": "d4c7767bc9bdbc4c4cebb3f504d32dbbd10c45b5f3866d5d915ffaa17d0cbedb"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-湖南",
+      "site_id": "local-tax",
+      "name": "湖南税务局",
+      "category": "regional",
+      "region": "湖南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "湖南",
+        "city": ""
+      },
+      "configured_url": "http://hunan.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:53:59.585Z",
+      "elapsed_ms": 220796,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 205499
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://hunan.chinatax.gov.cn/wap",
+          "title": "国家税务总局湖南省税务局网站",
+          "captured_at": "2026-11-16T14:53:56.276Z",
+          "page": 1,
+          "file": "captures/local-tax-湖南-0.png",
+          "screenshot_bytes": 358156,
+          "sha256": "d5c20dcd1e13d6bc9bcad0217eb5538134d2ced78c5dc01c09552ff28b5698f4"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-广东",
+      "site_id": "local-csrc",
+      "name": "广东证监局",
+      "category": "regional",
+      "region": "广东",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广东",
+        "city": "广州市"
+      },
+      "configured_url": "https://www.csrc.gov.cn/guangdong/index.shtml",
+      "checked_at": "2026-11-16T14:38:50.196Z",
+      "elapsed_ms": 166774,
+      "query": "东营市城市建设发展集团有限公司 广东",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 137479
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "广东监管局",
+          "captured_at": "2026-11-16T14:37:05.145Z",
+          "page": 1,
+          "file": "captures/local-csrc-广东-0.png",
+          "screenshot_bytes": 217412,
+          "sha256": "09cc8e23db4aecec63bad8ce5aa51a6f093d8465b631bc33030bd14ec677c351"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "广东监管局",
+          "captured_at": "2026-11-16T14:37:15.195Z",
+          "page": 2,
+          "file": "captures/local-csrc-广东-1.png",
+          "screenshot_bytes": 210644,
+          "sha256": "7170115995373a2fac2323a375e100a636b3cb699ea6cc19fd62ed01762302a7"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-广东",
+      "site_id": "local-tax",
+      "name": "广东税务局",
+      "category": "regional",
+      "region": "广东",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广东",
+        "city": "广州市"
+      },
+      "configured_url": "http://guangdong.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:53:40.932Z",
+      "elapsed_ms": 168543,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 156803
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://guangdong.chinatax.gov.cn/search5/html/searchResult.html?siteCode=bm29190001&searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "国家税务总局广东省税务局",
+          "captured_at": "2026-11-16T14:51:48.706Z",
+          "page": 1,
+          "file": "captures/local-tax-广东-0.png",
+          "screenshot_bytes": 192280,
+          "sha256": "bfb66887a8519b6879ce1b5974ddf1380db9ce0917809fea4f74658481e1c2a0"
+        },
+        {
+          "kind": "result",
+          "url": "https://guangdong.chinatax.gov.cn/search5/html/searchResult.html?siteCode=bm29190001&searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "title": "国家税务总局广东省税务局",
+          "captured_at": "2026-11-16T14:52:04.956Z",
+          "page": 2,
+          "file": "captures/local-tax-广东-1.png",
+          "screenshot_bytes": 189276,
+          "sha256": "73331d163050a4d5d925e78a248777c79fd45a204446fadc272c0aef56246abd"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-广西",
+      "site_id": "local-csrc",
+      "name": "广西证监局",
+      "category": "regional",
+      "region": "广西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广西",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/guangxi/index.shtml",
+      "checked_at": "2026-11-16T14:41:29.176Z",
+      "elapsed_ms": 158520,
+      "query": "东营市城市建设发展集团有限公司 广西",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 141941
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "广西监管局",
+          "captured_at": "2026-11-16T14:39:43.883Z",
+          "page": 1,
+          "file": "captures/local-csrc-广西-0.png",
+          "screenshot_bytes": 226800,
+          "sha256": "b22bfccb47890a162bb6b3d6562150cf31f60637dbbd5d19a13a638bb0fdf58c"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "广西监管局",
+          "captured_at": "2026-11-16T14:39:53.101Z",
+          "page": 2,
+          "file": "captures/local-csrc-广西-1.png",
+          "screenshot_bytes": 227591,
+          "sha256": "da3381f83d1189cc30fe112a319292c153f8eb2128d0d85846668a30dc5bc578"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-广西",
+      "site_id": "local-tax",
+      "name": "广西税务局",
+      "category": "regional",
+      "region": "广西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广西",
+        "city": ""
+      },
+      "configured_url": "https://guangxi.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:00:34.352Z",
+      "elapsed_ms": 253624,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "result_unverified",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 244545
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://guangxi.chinatax.gov.cn/so.html?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8&channelid=262389",
+          "title": "国家税务总局广西壮族自治区税务局",
+          "captured_at": "2026-11-16T15:00:32.542Z",
+          "page": 1,
+          "file": "captures/local-tax-广西-0.png",
+          "screenshot_bytes": 204499,
+          "sha256": "7175f78a16231ce8f6d7d9f214c741c01187b1e8266839044029614f54614cfc"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-海南",
+      "site_id": "local-csrc",
+      "name": "海南证监局",
+      "category": "regional",
+      "region": "海南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "海南",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/hainan/index.shtml",
+      "checked_at": "2026-11-16T14:43:44.936Z",
+      "elapsed_ms": 134994,
+      "query": "东营市城市建设发展集团有限公司 海南",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 122568
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "海南监管局",
+          "captured_at": "2026-11-16T14:42:11.451Z",
+          "page": 1,
+          "file": "captures/local-csrc-海南-0.png",
+          "screenshot_bytes": 136558,
+          "sha256": "0e3e6d04f001f8811002f114ae85da3f7c261b8e4eff9f2fcf3c698f1c5076e5"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-海南",
+      "site_id": "local-tax",
+      "name": "海南税务局",
+      "category": "regional",
+      "region": "海南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "海南",
+        "city": ""
+      },
+      "configured_url": "http://hainan.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:57:26.768Z",
+      "elapsed_ms": 206622,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 193683
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://hainan.chinatax.gov.cn/",
+          "title": "国家税务总局海南省税务局",
+          "captured_at": "2026-11-16T14:57:24.184Z",
+          "page": 1,
+          "file": "captures/local-tax-海南-0.png",
+          "screenshot_bytes": 626659,
+          "sha256": "e0a7a096d7b837fcb71afe80c0c2bc52913c260ab812623790708133f75cb6bd"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-重庆",
+      "site_id": "local-csrc",
+      "name": "重庆证监局",
+      "category": "regional",
+      "region": "重庆",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "重庆",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/chongqing/index.shtml",
+      "checked_at": "2026-11-16T14:46:41.565Z",
+      "elapsed_ms": 176484,
+      "query": "东营市城市建设发展集团有限公司 重庆",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 164075
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "重庆监管局",
+          "captured_at": "2026-11-16T14:45:07.211Z",
+          "page": 1,
+          "file": "captures/local-csrc-重庆-0.png",
+          "screenshot_bytes": 214257,
+          "sha256": "f6c03ac61cbafb3f1c7c554e42b34a52b8b8aaf8990ac57676042e1f91b56580"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-重庆",
+      "site_id": "local-tax",
+      "name": "重庆税务局",
+      "category": "regional",
+      "region": "重庆",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "重庆",
+        "city": ""
+      },
+      "configured_url": "http://chongqing.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:55:20.984Z",
+      "elapsed_ms": 99686,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 88389
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-四川",
+      "site_id": "local-csrc",
+      "name": "四川证监局",
+      "category": "regional",
+      "region": "四川",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "四川",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/sichuan/index.shtml",
+      "checked_at": "2026-11-16T14:49:02.753Z",
+      "elapsed_ms": 140384,
+      "query": "东营市城市建设发展集团有限公司 四川",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 127102
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "四川监管局",
+          "captured_at": "2026-11-16T14:47:27.854Z",
+          "page": 1,
+          "file": "captures/local-csrc-四川-0.png",
+          "screenshot_bytes": 216498,
+          "sha256": "82be6724232435b1ed232c1eee26d7c581c56776eb4b6877b765a0c71f3e6614"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-四川",
+      "site_id": "local-tax",
+      "name": "四川税务局",
+      "category": "regional",
+      "region": "四川",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "四川",
+        "city": ""
+      },
+      "configured_url": "http://sichuan.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:03:28.243Z",
+      "elapsed_ms": 173500,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_EMPTY_RESPONSE",
+        "attempts": 2,
+        "elapsed_ms": 165194
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-贵州",
+      "site_id": "local-csrc",
+      "name": "贵州证监局",
+      "category": "regional",
+      "region": "贵州",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "贵州",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/guizhou/index.shtml",
+      "checked_at": "2026-11-16T14:51:23.293Z",
+      "elapsed_ms": 139868,
+      "query": "东营市城市建设发展集团有限公司 贵州",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 128126
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "贵州监管局",
+          "captured_at": "2026-11-16T14:49:48.324Z",
+          "page": 1,
+          "file": "captures/local-csrc-贵州-0.png",
+          "screenshot_bytes": 236336,
+          "sha256": "3d4d340467935ba00bfb131d9e8cd7eb297db0fcfa0ecc9484dcf033605c72b0"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-贵州",
+      "site_id": "local-tax",
+      "name": "贵州税务局",
+      "category": "regional",
+      "region": "贵州",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "贵州",
+        "city": ""
+      },
+      "configured_url": "http://guizhou.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:57:55.949Z",
+      "elapsed_ms": 28783,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 503,
+        "attempts": 2,
+        "elapsed_ms": 19933
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://guizhou.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T14:57:54.449Z",
+          "page": 1,
+          "file": "captures/local-tax-贵州-0.png",
+          "screenshot_bytes": 44952,
+          "sha256": "a2008f404b013b49bc0903064388b844fd8a6c37750c5dbfedda5a091d292fd9"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-云南",
+      "site_id": "local-csrc",
+      "name": "云南证监局",
+      "category": "regional",
+      "region": "云南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "云南",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/yunnan/index.shtml",
+      "checked_at": "2026-11-16T14:54:06.314Z",
+      "elapsed_ms": 162250,
+      "query": "东营市城市建设发展集团有限公司 云南",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 147078
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "云南监管局",
+          "captured_at": "2026-11-16T14:52:23.536Z",
+          "page": 1,
+          "file": "captures/local-csrc-云南-0.png",
+          "screenshot_bytes": 224040,
+          "sha256": "5c3afd9153aee2fc20fb42aca217832c8a076b9147b65108c907eddff2123c1f"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "云南监管局",
+          "captured_at": "2026-11-16T14:52:30.649Z",
+          "page": 2,
+          "file": "captures/local-csrc-云南-1.png",
+          "screenshot_bytes": 222645,
+          "sha256": "fee8d90ed6e98fb33cc3352267d77753247a0f3f01dfae2b0502c05a82e19c1d"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-云南",
+      "site_id": "local-tax",
+      "name": "云南税务局",
+      "category": "regional",
+      "region": "云南",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "云南",
+        "city": ""
+      },
+      "configured_url": "http://yunnan.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:58:11.132Z",
+      "elapsed_ms": 169946,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_EMPTY_RESPONSE",
+        "attempts": 2,
+        "elapsed_ms": 160751
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-西藏",
+      "site_id": "local-csrc",
+      "name": "西藏证监局",
+      "category": "regional",
+      "region": "西藏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "西藏",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/xizang/index.shtml",
+      "checked_at": "2026-11-16T14:56:46.839Z",
+      "elapsed_ms": 160134,
+      "query": "东营市城市建设发展集团有限公司 西藏",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 149730
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "西藏监管局",
+          "captured_at": "2026-11-16T14:55:11.983Z",
+          "page": 1,
+          "file": "captures/local-csrc-西藏-0.png",
+          "screenshot_bytes": 225481,
+          "sha256": "3e0be55b64bcad9ed38ccfa76bc3ae1e50fc0a20490c371879132e60eaa7e592"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-西藏",
+      "site_id": "local-tax",
+      "name": "西藏税务局",
+      "category": "regional",
+      "region": "西藏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "西藏",
+        "city": ""
+      },
+      "configured_url": "https://xizang.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:05:08.943Z",
+      "elapsed_ms": 100239,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 90584
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-陕西",
+      "site_id": "local-csrc",
+      "name": "陕西证监局",
+      "category": "regional",
+      "region": "陕西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "陕西",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/shaanxi/index.shtml",
+      "checked_at": "2026-11-16T14:58:59.348Z",
+      "elapsed_ms": 131906,
+      "query": "东营市城市建设发展集团有限公司 陕西",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 118271
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "陕西监管局",
+          "captured_at": "2026-11-16T14:57:24.405Z",
+          "page": 1,
+          "file": "captures/local-csrc-陕西-0.png",
+          "screenshot_bytes": 225071,
+          "sha256": "3851432714d39cbdd15c9161308dd910a2fc83615ed7d0687196689626fe6175"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-陕西",
+      "site_id": "local-tax",
+      "name": "陕西税务局",
+      "category": "regional",
+      "region": "陕西",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "陕西",
+        "city": ""
+      },
+      "configured_url": "https://shaanxi.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:59:37.853Z",
+      "elapsed_ms": 100710,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_CONNECTION_CLOSED",
+        "attempts": 2,
+        "elapsed_ms": 90333
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-甘肃",
+      "site_id": "local-csrc",
+      "name": "甘肃证监局",
+      "category": "regional",
+      "region": "甘肃",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "甘肃",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/gansu/index.shtml",
+      "checked_at": "2026-11-16T15:01:25.924Z",
+      "elapsed_ms": 145821,
+      "query": "东营市城市建设发展集团有限公司 甘肃",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 132110
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "甘肃监管局",
+          "captured_at": "2026-11-16T14:59:45.789Z",
+          "page": 1,
+          "file": "captures/local-csrc-甘肃-0.png",
+          "screenshot_bytes": 228575,
+          "sha256": "aea3b34199f36ffd4e004baa546f09890604fe8858b630759116e5bd130c4ebe"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "甘肃监管局",
+          "captured_at": "2026-11-16T14:59:52.131Z",
+          "page": 2,
+          "file": "captures/local-csrc-甘肃-1.png",
+          "screenshot_bytes": 234725,
+          "sha256": "6ad73657d942b723d35fe71eb2c068c06892a23530fa2a54b5d579dfd427dae3"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-甘肃",
+      "site_id": "local-tax",
+      "name": "甘肃税务局",
+      "category": "regional",
+      "region": "甘肃",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "甘肃",
+        "city": ""
+      },
+      "configured_url": "http://gansu.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:58:44.460Z",
+      "elapsed_ms": 33135,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 503,
+        "attempts": 2,
+        "elapsed_ms": 23180
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://gansu.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T14:58:41.864Z",
+          "page": 1,
+          "file": "captures/local-tax-甘肃-0.png",
+          "screenshot_bytes": 45264,
+          "sha256": "229e25c70ffd91a538e01668d092afa97c9d20bda498a9884c5f42d478a636d3"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-青海",
+      "site_id": "local-csrc",
+      "name": "青海证监局",
+      "category": "regional",
+      "region": "青海",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "青海",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/qinghai/index.shtml",
+      "checked_at": "2026-11-16T15:03:34.621Z",
+      "elapsed_ms": 128540,
+      "query": "东营市城市建设发展集团有限公司 青海",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 120186
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "青海监管局",
+          "captured_at": "2026-11-16T15:02:01.658Z",
+          "page": 1,
+          "file": "captures/local-csrc-青海-0.png",
+          "screenshot_bytes": 132209,
+          "sha256": "39cd7582e72ec385fe992be8db33dc567a9e290ab1e448c85ddb633b1851f6a4"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-青海",
+      "site_id": "local-tax",
+      "name": "青海税务局",
+      "category": "regional",
+      "region": "青海",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "青海",
+        "city": ""
+      },
+      "configured_url": "http://qinghai.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:06:37.575Z",
+      "elapsed_ms": 88158,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 504,
+        "attempts": 2,
+        "elapsed_ms": 79375
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-宁夏",
+      "site_id": "local-csrc",
+      "name": "宁夏证监局",
+      "category": "regional",
+      "region": "宁夏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "宁夏",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/ningxia/index.shtml",
+      "checked_at": "2026-11-16T15:05:40.083Z",
+      "elapsed_ms": 124922,
+      "query": "东营市城市建设发展集团有限公司 宁夏",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 115681
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "宁夏监管局",
+          "captured_at": "2026-11-16T15:04:07.232Z",
+          "page": 1,
+          "file": "captures/local-csrc-宁夏-0.png",
+          "screenshot_bytes": 169006,
+          "sha256": "0b31dcd2fa0c538f41fb60f0115d34bdf542decf9dd2c8df499d46c0d0a54019"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-宁夏",
+      "site_id": "local-tax",
+      "name": "宁夏税务局",
+      "category": "regional",
+      "region": "宁夏",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "宁夏",
+        "city": ""
+      },
+      "configured_url": "http://ningxia.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:00:07.110Z",
+      "elapsed_ms": 28816,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 17309
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-新疆",
+      "site_id": "local-csrc",
+      "name": "新疆证监局",
+      "category": "regional",
+      "region": "新疆",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "新疆",
+        "city": ""
+      },
+      "configured_url": "https://www.csrc.gov.cn/xinjiang/index.shtml",
+      "checked_at": "2026-11-16T15:07:46.305Z",
+      "elapsed_ms": 126048,
+      "query": "东营市城市建设发展集团有限公司 新疆",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 115960
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "新疆监管局",
+          "captured_at": "2026-11-16T15:06:06.390Z",
+          "page": 1,
+          "file": "captures/local-csrc-新疆-0.png",
+          "screenshot_bytes": 217014,
+          "sha256": "1a6f482b70076abe2d8308ebba3e89ee24baa9e86d36704c14b5a4f57f664717"
+        },
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "新疆监管局",
+          "captured_at": "2026-11-16T15:06:12.453Z",
+          "page": 2,
+          "file": "captures/local-csrc-新疆-1.png",
+          "screenshot_bytes": 219557,
+          "sha256": "98d67ada30ea5ea083d5ea2b473aa257c7b59db13cc68d589e1d52a3a7e5b810"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-新疆",
+      "site_id": "local-tax",
+      "name": "新疆税务局",
+      "category": "regional",
+      "region": "新疆",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "新疆",
+        "city": ""
+      },
+      "configured_url": "https://xinjiang.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:59:17.823Z",
+      "elapsed_ms": 32350,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 19697
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-深圳",
+      "site_id": "local-csrc",
+      "name": "深圳证监局",
+      "category": "regional",
+      "region": "深圳",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广东",
+        "city": "深圳"
+      },
+      "configured_url": "https://www.csrc.gov.cn/shenzhen/index.shtml",
+      "checked_at": "2026-11-16T15:10:17.268Z",
+      "elapsed_ms": 150214,
+      "query": "东营市城市建设发展集团有限公司 广东",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 140286
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "深圳监管局",
+          "captured_at": "2026-11-16T15:08:43.075Z",
+          "page": 1,
+          "file": "captures/local-csrc-深圳-0.png",
+          "screenshot_bytes": 134034,
+          "sha256": "e98c75126b63e8cefd5dda85aec4bc51dfe30cb7145e6ce7c13482d44d85273d"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-深圳",
+      "site_id": "local-tax",
+      "name": "深圳税务局",
+      "category": "regional",
+      "region": "深圳",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "广东",
+        "city": "深圳"
+      },
+      "configured_url": "https://shenzhen.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:06:53.837Z",
+      "elapsed_ms": 15902,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "network_error",
+        "phase": "open",
+        "detail": "net::ERR_TUNNEL_CONNECTION_FAILED",
+        "attempts": 2,
+        "elapsed_ms": 7657
+      },
+      "captures": []
+    },
+    {
+      "key": "local-csrc-大连",
+      "site_id": "local-csrc",
+      "name": "大连证监局",
+      "category": "regional",
+      "region": "大连",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "辽宁",
+        "city": "大连"
+      },
+      "configured_url": "https://www.csrc.gov.cn/dalian/index.shtml",
+      "checked_at": "2026-11-16T15:10:32.909Z",
+      "elapsed_ms": 181317,
+      "query": "东营市城市建设发展集团有限公司 辽宁",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 170027
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "大连监管局",
+          "captured_at": "2026-11-16T15:08:58.571Z",
+          "page": 1,
+          "file": "captures/local-csrc-大连-0.png",
+          "screenshot_bytes": 164305,
+          "sha256": "073b2a7afd4508651eaa205db0e6787c4d8f7f3744eb366f2d9a15222beca19d"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-大连",
+      "site_id": "local-tax",
+      "name": "大连税务局",
+      "category": "regional",
+      "region": "大连",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "辽宁",
+        "city": "大连"
+      },
+      "configured_url": "http://dalian.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:03:30.604Z",
+      "elapsed_ms": 202833,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "unverified",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "query_form_unavailable",
+        "phase": "open",
+        "attempts": 2,
+        "elapsed_ms": 194530
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "https://dalian.chinatax.gov.cn/",
+          "title": "国家税务总局大连市税务局",
+          "captured_at": "2026-11-16T15:03:28.444Z",
+          "page": 1,
+          "file": "captures/local-tax-大连-0.png",
+          "screenshot_bytes": 593278,
+          "sha256": "2bb41e0a2367279da357c907c846c71820aa83bbc481dd118242c45565841275"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-宁波",
+      "site_id": "local-csrc",
+      "name": "宁波证监局",
+      "category": "regional",
+      "region": "宁波",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "浙江",
+        "city": "宁波"
+      },
+      "configured_url": "https://www.csrc.gov.cn/ningbo/index.shtml",
+      "checked_at": "2026-11-16T15:10:39.081Z",
+      "elapsed_ms": 185112,
+      "query": "东营市城市建设发展集团有限公司 浙江",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 171457
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "宁波监管局",
+          "captured_at": "2026-11-16T15:09:04.204Z",
+          "page": 1,
+          "file": "captures/local-csrc-宁波-0.png",
+          "screenshot_bytes": 207216,
+          "sha256": "d799f68ef8b64e5ebf7dc21b8e41d830086d98b507f7dc86f3362111d5d7ac9c"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-宁波",
+      "site_id": "local-tax",
+      "name": "宁波税务局",
+      "category": "regional",
+      "region": "宁波",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "浙江",
+        "city": "宁波"
+      },
+      "configured_url": "http://ningbo.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T14:59:53.036Z",
+      "elapsed_ms": 34646,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 503,
+        "attempts": 2,
+        "elapsed_ms": 21966
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://ningbo.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T14:59:51.096Z",
+          "page": 1,
+          "file": "captures/local-tax-宁波-0.png",
+          "screenshot_bytes": 45341,
+          "sha256": "b9c21c349941a91addb05d931d88f169b170be81bda5d2a578bcd54d0f9d4dd9"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-厦门",
+      "site_id": "local-csrc",
+      "name": "厦门证监局",
+      "category": "regional",
+      "region": "厦门",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "福建",
+        "city": "厦门"
+      },
+      "configured_url": "https://www.csrc.gov.cn/xiamen/index.shtml",
+      "checked_at": "2026-11-16T15:10:44.017Z",
+      "elapsed_ms": 192448,
+      "query": "东营市城市建设发展集团有限公司 福建",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 180894
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "厦门监管局",
+          "captured_at": "2026-11-16T15:09:09.148Z",
+          "page": 1,
+          "file": "captures/local-csrc-厦门-0.png",
+          "screenshot_bytes": 129189,
+          "sha256": "bc440027c66240ca9d828e308adc3523b97b3085dfab77601c8e3d6981abfe2b"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-厦门",
+      "site_id": "local-tax",
+      "name": "厦门税务局",
+      "category": "regional",
+      "region": "厦门",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "福建",
+        "city": "厦门"
+      },
+      "configured_url": "http://xiamen.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:07:34.499Z",
+      "elapsed_ms": 40250,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": false,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 503,
+        "attempts": 2,
+        "elapsed_ms": 31548
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "url": "http://xiamen.chinatax.gov.cn/",
+          "title": "",
+          "captured_at": "2026-11-16T15:07:32.343Z",
+          "page": 1,
+          "file": "captures/local-tax-厦门-0.png",
+          "screenshot_bytes": 45443,
+          "sha256": "0f6f77ebdb2498c0472d766ecbc10a0b9fc55f5a19f2968e9dfba20c2e618394"
+        }
+      ]
+    },
+    {
+      "key": "local-csrc-青岛",
+      "site_id": "local-csrc",
+      "name": "青岛证监局",
+      "category": "regional",
+      "region": "青岛",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "青岛"
+      },
+      "configured_url": "https://www.csrc.gov.cn/qingdao/index.shtml",
+      "checked_at": "2026-11-16T15:10:41.595Z",
+      "elapsed_ms": 187233,
+      "query": "东营市城市建设发展集团有限公司 山东",
+      "outcome": "results",
+      "search_performed": true,
+      "verified_query": true,
+      "decision": "enabled",
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 174993
+      },
+      "captures": [
+        {
+          "kind": "result",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "title": "青岛监管局",
+          "captured_at": "2026-11-16T15:09:08.262Z",
+          "page": 1,
+          "file": "captures/local-csrc-青岛-0.png",
+          "screenshot_bytes": 192999,
+          "sha256": "ddd00cd9a4b9b051959318109509d250e28616d5d817d55440ea9ae70579d5a1"
+        }
+      ]
+    },
+    {
+      "key": "local-tax-青岛",
+      "site_id": "local-tax",
+      "name": "青岛税务局",
+      "category": "regional",
+      "region": "青岛",
+      "subject": {
+        "name": "东营市城市建设发展集团有限公司",
+        "kind": "company",
+        "province": "山东",
+        "city": "青岛"
+      },
+      "configured_url": "http://qingdao.chinatax.gov.cn/",
+      "checked_at": "2026-11-16T15:04:06.347Z",
+      "elapsed_ms": 35277,
+      "query": "东营市城市建设发展集团有限公司",
+      "outcome": "failed",
+      "search_performed": true,
+      "verified_query": false,
+      "decision": "paused",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "results",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 25404
+      },
+      "captures": []
+    }
+  ]
+}
