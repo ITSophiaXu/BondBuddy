@@ -1,8 +1,8 @@
 """Stage #1420 node/control files and private descriptors; do not activate them."""
 import base64,copy,datetime,hashlib,json,os,pathlib,re,subprocess,sys,urllib.parse
-ROOT=pathlib.Path('/var/lib/bondbuddy/timing1478-20261116')
+ROOT=pathlib.Path('/var/lib/bondbuddy/timing1488-20261116')
 OLD_PIN='2d86f1351c8c7cf1b49609d7ff442b06344a0c45aa003b5ca0efb4a64a7e7654'
-NEW_PIN='8776d6abebc19efa6643a649b69428bccc56f11d0646d66a00bf9141efdd4ed5'
+NEW_PIN='c4749d922f49eaa8fcbdc334881552dd7db5bdaa540ef154064de5f29e375b5e'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def sha(b):return hashlib.sha256(b).hexdigest()
@@ -23,7 +23,7 @@ def main():
  expected={'main-cutover-adapter.py':'00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67','overlay.tar.gz':NEW_PIN,'business-overlay.mjs':'75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4','bootstrap.mjs':'8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e'}
  for name,digest in expected.items():
   b=base64.b64decode(payload['files'][name]);need(sha(b)==digest,'public_hash');write(public/name,b,0o644)
- desc=payload['descriptor'];need(desc['sha256']==NEW_PIN and desc['bytes']==435959 and len(desc['files'])==70,'descriptor_scope')
+ desc=payload['descriptor'];need(desc['sha256']==NEW_PIN and desc['bytes']==435846 and len(desc['files'])==70,'descriptor_scope')
  c=json.loads(run(['docker','inspect','bb-main-ops-1']))[0];need(c['State']['Running'],'ops_running')
  env=dict(v.split('=',1) for v in c['Config']['Env']);pool_target=env['BB_EXECUTION_POOL_CONFIG'];effective=pathlib.Path('/proc')/str(c['State']['Pid'])/'root'/pool_target.lstrip('/');pool_raw=effective.read_bytes();pool=json.loads(pool_raw)
  authority_path=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/authority.json');authority_raw=authority_path.read_bytes();authority=json.loads(authority_raw)

@@ -1,14 +1,16 @@
 {
-  "archive_sha256": "8776d6abebc19efa6643a649b69428bccc56f11d0646d66a00bf9141efdd4ed5",
+  "archive_sha256": "c4749d922f49eaa8fcbdc334881552dd7db5bdaa540ef154064de5f29e375b5e",
+  "issue": 1488,
   "exact_oci_roles": 2,
   "oci_import_pass": true,
-  "linux_recovery_tests": 20,
-  "linux_recovery_pass": true,
-  "helper_tests": 7,
-  "helper_pass": 7,
+  "linux_tests": 28,
+  "linux_pass": 28,
+  "linux_fail": 0,
+  "linux_skip": 0,
+  "helper_tests_included": 6,
   "user_data_bytes": [
-    16376,
-    16376
+    16312,
+    16312
   ],
   "production_installed": false,
   "models_called": false,
@@ -17,15 +19,17 @@
     "typescript": "5.9.3",
     "diagnostics": 0,
     "source_files": 1046,
-    "elapsed_ms": 122857
+    "elapsed_ms": 113354
   },
   "semantic_review": {
     "schema": "timing1420-recovery-targeted-semantic-build-v1",
     "typescript": "5.9.3",
     "diagnostics": 0,
     "source_files": 1041,
-    "elapsed_ms": 42596
+    "elapsed_ms": 76416
   },
-  "merge_input_archive_sha256": "a48f5b194c5adc022b057426bbd2b83856507a6012d6ae5a9cd07355a373baa8",
-  "review_semantic_first_failure": "Historical review source fixture lacked batch-admission.ts; supplied fixed source whose emission matches the already mounted file SHA256. No runtime bytes changed. First diagnostic retained."
+  "request_syntax_and_hash": "PASS",
+  "unchanged_runtime_entries": 68,
+  "changed_runtime_entries": 2,
+  "sql_executed": false
 }

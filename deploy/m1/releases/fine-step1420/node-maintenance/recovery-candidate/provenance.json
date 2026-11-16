@@ -102,8 +102,8 @@
     },
     {
       "key": "authoring/apps/worker/dist/execution-node-runtime.js",
-      "origin": "exact current recovery artifact",
-      "sha256": "5aa0c95093b7a13a2d9f8308f3a4381f3f4cec7c6a53ecfe0f133f5928803023"
+      "origin": "issue1488 source plus existing recovery inventory",
+      "sha256": "4fc21e6511f35d48d2e959933e0573429e1b4b2b637af6a5d6b64aa1b8783b3d"
     },
     {
       "key": "authoring/apps/worker/dist/file-authoring-repair.js",
@@ -267,8 +267,8 @@
     },
     {
       "key": "review/apps/worker/dist/execution-node-runtime.js",
-      "origin": "exact current recovery artifact",
-      "sha256": "5aa0c95093b7a13a2d9f8308f3a4381f3f4cec7c6a53ecfe0f133f5928803023"
+      "origin": "issue1488 source plus existing recovery inventory",
+      "sha256": "4fc21e6511f35d48d2e959933e0573429e1b4b2b637af6a5d6b64aa1b8783b3d"
     },
     {
       "key": "review/apps/worker/dist/file-authoring-repair.js",
@@ -360,5 +360,14 @@
       "origin": "unchanged verified logging artifact",
       "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
     }
-  ]
+  ],
+  "drain_fix": {
+    "issue": 1488,
+    "source": "sources/execution-node-runtime.ts",
+    "source_sha256": "a32544b4bc3fec3d9866b6a515cea27e2bea766ec98ad9905b79f4437c4e165d",
+    "previous_archive_sha256": "8776d6abebc19efa6643a649b69428bccc56f11d0646d66a00bf9141efdd4ed5",
+    "previous_module_sha256": "5aa0c95093b7a13a2d9f8308f3a4381f3f4cec7c6a53ecfe0f133f5928803023",
+    "emitted_sha256": "4fc21e6511f35d48d2e959933e0573429e1b4b2b637af6a5d6b64aa1b8783b3d",
+    "scope": "Only live namespace inventory, no contract, ledger or model behavior changes."
+  }
 }

@@ -6,7 +6,7 @@ No direct cloud action, credential access, migration or force-stop is performed.
 import base64,datetime,fcntl,gzip,hashlib,json,os,pathlib,stat,subprocess,urllib.request
 TARGET='ins-p4i0pcub'
 OLD_PIN='2d86f1351c8c7cf1b49609d7ff442b06344a0c45aa003b5ca0efb4a64a7e7654'
-NEW_PIN='8776d6abebc19efa6643a649b69428bccc56f11d0646d66a00bf9141efdd4ed5'
+NEW_PIN='c4749d922f49eaa8fcbdc334881552dd7db5bdaa540ef154064de5f29e375b5e'
 OLD_HELPER='60afbcc278f3bac460235240bc2cff03600f61d42b992dbed0fed49ef32609ca'
 NEW_HELPER='75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4'
 HELPER_GZIP_BASE64='__HELPER__'
