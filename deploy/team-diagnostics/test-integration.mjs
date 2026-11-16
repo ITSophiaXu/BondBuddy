@@ -65,6 +65,14 @@ try {
     assert.notEqual(sql('SET default_transaction_read_only=off; '+statement,{role:'bb_diagnostics_reader',allowFailure:true}).status,0,statement);
   }
   pass('read-only database role cannot read identities directly, update, delete or create tables even after disabling transaction guard');
+  // A large excluded payload must not be serialized just to sort diagnostic metadata.
+  sql(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+    SELECT 'diag-outbox-'||lpad(i::text,5,'0'),'diag-user-001','upload','synthetic-upload','upload_complete',
+      jsonb_build_object('excluded',repeat('synthetic-large-payload-',2000)), '2026-01-01T00:00:00Z'::timestamptz
+    FROM generate_series(1,20000) i; ANALYZE bb_outbox;`);
+  const largePage=sql("BEGIN READ ONLY; SET LOCAL statement_timeout='2s'; SELECT key FROM bb_diagnostics.outbox ORDER BY at,key LIMIT 10; COMMIT;",{role:'bb_diagnostics_reader'});
+  assert.equal(largePage.stdout.trim().split(/\r?\n/).length,10);
+  pass('20,000 large-payload outbox rows remain pageable within bounded query time');
   const client=spawn(docker,['run','--rm','-i','--network','none','--mount',mount,'-w','/code','python:3.11-slim','python','-B','-u','test_pg_client.py'],{stdio:['pipe','pipe','pipe']});
   let clientError='',done=false;
   client.stderr.on('data',c=>{clientError+=c;});

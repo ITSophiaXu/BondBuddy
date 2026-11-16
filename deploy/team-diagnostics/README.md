@@ -1,6 +1,6 @@
 # BondBuddy 团队只读诊断 v3
 
-关联缺陷：[#1460](https://github.com/ITSophiaXu/BondBuddy/issues/1460)。本目录是可安装的独立运维组件；生产仍使用 v2。代码交付不代表账号已升级，安装、数据库授权、SSH 配置生效和采集服务启用由统一发布 chat 执行。
+关联缺陷：[#1460](https://github.com/ITSophiaXu/BondBuddy/issues/1460)。本目录是可安装的独立运维组件。实际部署版本、节点覆盖与验证结果记录在该 Issue；安装、数据库授权、SSH 配置生效和采集服务启用须由获授权的发布者执行。
 
 ## 已实现的访问范围
 
@@ -56,7 +56,7 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 3. 生成诊断投影SQL：`python3 database.py > /root/diagnostic-views.sql`。由管理员用已核实的当前主站PostgreSQL容器执行该SQL。它只建立 `bb_diagnostics` 视图和 `bb_diagnostics_reader` 读取角色，不改业务状态、账务或应用迁移。应用较旧、可选表不存在时在 `collections` 中明确列为 unavailable；新表不会自动获得权限。通过psql验证该角色可读视图、不能读 `bb_users` 原表或写业务表。
 4. 每位开发自行产生key，只交公钥。管理员执行 `python3 install.py account bb-log-alice /root/alice.pub`。迁移原账号则指定 `bb-logs` 和现有团队公钥；执行前保存 `getent passwd bb-logs` 的原登录shell及旧读取器sudo配置。账号命令会锁定密码并改用新受限shell，这些账号调整不在安装器文件回滚范围内。不生成或转交个人私钥，不给开发docker/sudo/adm组权限；诊断组的唯一sudo入口会再次校验具体账号的reader角色。
 5. 每个采集节点使用独立机器key，在主站执行 `python3 install.py account bb-ingest-node1 /root/node1.pub --role ingest --source INSTANCE_ID`；Azure来源使用 `azure`。此操作同时登记预期来源。节点上的上传私钥、known_hosts和 `upload-ssh.example.conf` 安装成root所有、私钥0600；地址只使用本批已批准的主站路径。开发拿不到上传key。新实例必须在受控入池时完成同一登记，不能继承另一实例的来源身份。
-6. 各节点安装经核对的配置。主站个人key就绪后，由发布者显式 reload SSH；节点和主站执行 `systemctl daemon-reload`、`systemctl enable --now bondbuddy-diagnostics-collect.timer`，再执行一次 `/usr/local/sbin/bb-diagnostics --collect --require-synced`。这些是**待发布操作**，本开发chat未执行。迁移v2时 `90-bondbuddy-diagnostics.conf` 优先于旧95配置；验证成功后撤销旧读取器sudo授权，保留其备份供回滚。
+6. 各节点安装经核对的配置。主站个人key就绪后，由发布者显式 reload SSH；节点和主站执行 `systemctl daemon-reload`、`systemctl enable --now bondbuddy-diagnostics-collect.timer`，再执行一次 `/usr/local/sbin/bb-diagnostics --collect --require-synced`。历史首次回填期间以实际回执核对积压；迁移v2时 `90-bondbuddy-diagnostics.conf` 优先于旧95配置，验证成功后撤销旧读取器sudo授权，保留其备份供回滚。
 7. 将 `execution-bootstrap.drop-in.conf` 安装到实际 `bondbuddy-execution-bootstrap.service.d/`，随执行节点模板固定版本。它在新节点入池前要求首次中央归档确认。正常排空节点后、物理停机/销毁前，再执行 `--collect --require-synced` 并核对回执；失败应保留节点排查。突然断电/销毁仍可能丢失最后一次同步后的日志，不能把15秒周期声称为零丢失保证。
 8. 用个人身份复验：新解析/确认/两类执行服务均出现在 `services`；`sources` 无未覆盖的活跃执行节点；跨用户任务可定位；超过50条任务和5000行日志能导出；保留期内历史可查；模型内容损坏/缺失准确报错；写库、exec、shell、跨源伪造被拒绝。记录实际部署版本、节点、个人账号和用户验收结果。
 
