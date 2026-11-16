@@ -38,7 +38,7 @@ const emit=s=>{const r=ts.transpileModule(s,{reportDiagnostics:true,compilerOpti
 export function buildRecoveryOverlay(){
  if(git('remote','get-url','origin').trim()!=='https://github.com/ITSophiaXu/BondBuddy.git')throw Error('TRUSTED_REMOTE_REQUIRED');
  git('merge-base','--is-ancestor',baseline,'origin/master');git('merge-base','--is-ancestor',fix,'origin/develop');
- const out=join(root,'deploy/tencent-elasticity/recovery-artifacts');if(existsSync(out))throw Error('RECOVERY_OUTPUT_EXISTS');mkdirSync(out);
+ const out=join(root,'deploy/tencent-elasticity/recovery-artifacts');if(existsSync(out)){const prior=JSON.parse(readFileSync(join(out,'source-manifest.json')));if(prior.version!=='managed-recovery-source-v1'||prior.fix_commit!==fix)throw Error('RECOVERY_OUTPUT_EXISTS');}mkdirSync(out,{recursive:true});
  const write=(path,b)=>{const target=join(out,path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,b);};
  const descriptor=JSON.parse(source(baseline,'deploy/tencent-elasticity/node-eight-artifacts/descriptor.json')),receipts=[];
  for(const f of descriptor.files){const b=Buffer.from(source(baseline,'deploy/tencent-elasticity/node-eight-artifacts/'+f.path));if(hash(b)!==f.sha256)throw Error('BASE_OVERLAY_HASH');write(f.path,b);}
