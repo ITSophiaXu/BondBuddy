@@ -59,6 +59,7 @@
 /knowledge/material-drafting/**/originals/* binary
 # This helper is executed through its Linux shebang in the local worker image.
 /scripts/local-integration/local-model-token.mjs text eol=lf
+/scripts/release-smoke/local-copilot-token.mjs text eol=lf
 # PPN authoring snapshots use identical hashed bytes on Windows and Linux.
 /knowledge/nafmii/drafts/ppn/writing-20261013/*.md text eol=lf
 /knowledge/nafmii/drafts/ppn/writing-20261013/*.json text eol=lf
