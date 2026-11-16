@@ -135,10 +135,29 @@ export class TencentCvm {
   }
   async inventory() {
     await this.assertAccount();
-    const data = await this.transport.call('cvm', 'DescribeInstances', {Filters: [{Name: 'tag:bondbuddy-pool', Values: [this.config.pool_tag]}], Limit: 100});
-    requireThat(Number(data.TotalCount) === data.InstanceSet?.length && data.InstanceSet.length <= 2, 'INVENTORY_DRIFT');
+    // Admission counts every physical instance, including stopped and foreign
+    // instances. Pool tags must never hide occupied slots. Read all pages using
+    // the existing short-lived control role; no external inventory file exists.
+    const instances = [], ids = new Set();
+    let total;
+    for (let page = 0; page < 10; page++) {
+      const data = await this.transport.call('cvm', 'DescribeInstances', {Offset: instances.length, Limit: 100});
+      requireThat(Number.isSafeInteger(data.TotalCount) && data.TotalCount >= 0 && Array.isArray(data.InstanceSet) &&
+        data.InstanceSet.length <= 100 && (total === undefined || total === data.TotalCount), 'INVENTORY_DRIFT');
+      total = data.TotalCount;
+      for (const i of data.InstanceSet) {
+        requireThat(/^ins-[a-z0-9]+$/.test(i?.InstanceId ?? '') && !ids.has(i.InstanceId), 'INVENTORY_DRIFT');
+        ids.add(i.InstanceId); instances.push(i);
+      }
+      requireThat(instances.length <= total, 'INVENTORY_DRIFT');
+      if (instances.length === total) break;
+      requireThat(data.InstanceSet.length > 0, 'INVENTORY_INCOMPLETE');
+    }
+    requireThat(instances.length === total, 'INVENTORY_INCOMPLETE');
+    requireThat(instances.length <= 2 && instances.every(i => Array.isArray(i.Tags) &&
+      i.Tags.some(t => t.Key === 'bondbuddy-pool' && t.Value === this.config.pool_tag)), 'INVENTORY_DRIFT');
     const result = [];
-    for (const i of data.InstanceSet) result.push(await this.describe(i.InstanceId));
+    for (const i of instances) result.push(await this.describe(i.InstanceId));
     requireThat(new Set(result.map(i => i.role_name)).size === result.length, 'ROLE_SLOT_DUPLICATED');
     return result;
   }
