@@ -1,7 +1,7 @@
-import {integrityBrowserBoundary} from './integrity-browser-boundary.js';
+import {integrityBrowserBoundary,integrityBrowserOperation,type integrityBrowserFailure} from './integrity-browser-boundary.js';
 import {resolveCreditChinaCaptcha,IntegrityCaptchaInterruption,type IntegrityCaptchaRecognizer,type IntegrityCaptchaSession} from './integrity-captcha.js';
 import {observeCaptchaImages} from './integrity-captcha-image.js';
-import {chromium,type BrowserContext,type Page,type Frame,type Response,type Request} from 'playwright';
+import {chromium,type Browser,type BrowserContext,type Page,type Frame,type Response,type Request} from 'playwright';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -15,7 +15,7 @@ import {observeIntegrityQuery,integrityRequestCarriesQuery,INTEGRITY_RESULT_STAB
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
 // Internal batch audit, persisted by saveBatch; not part of the public strict DTO.
 type QueryTiming={query_started_at:string;response_completed_at?:string;captured_at?:string;wait_ms:number;result_stable_ms:number;zero_confirm_ms:number;discarded_captures:number};
-export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic;timing?:QueryTiming};
+export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic;timing?:QueryTiming;runtime_failure?:ReturnType<typeof integrityBrowserFailure>};
 export type IntegrityCollector=(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,options?:{captchaRecognizer?:IntegrityCaptchaRecognizer})=>Promise<BrowserCollection>;
 export function integrityBrowserEnvironment(cacheDirectory:string){
  const env:Record<string,string>={XDG_CACHE_HOME:cacheDirectory};
@@ -95,21 +95,23 @@ function resultSignature(text:string,query:string,structured=''){
 export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signal,options)=>integrityBrowserBoundary(signal,async signal=>{
  signal.throwIfAborted();
  const cache=await mkdtemp(join(tmpdir(),'bb-integrity-browser-'));
- let browser;let desktop:IntegrityDesktop|undefined;let proxy:Awaited<ReturnType<typeof integrityProxy>>|undefined;
+ let browser:Browser|undefined;let desktop:IntegrityDesktop|undefined;let proxy:Awaited<ReturnType<typeof integrityProxy>>|undefined;
  try{
-  proxy=await integrityProxy(site,{upstreamUrl:process.env.BB_INTEGRITY_EGRESS_PROXY_URL});
-  desktop=await startIntegrityDesktop(cache,integrityBrowserEnvironment(cache));
+  proxy=await integrityBrowserOperation('proxy',()=>integrityProxy(site,{upstreamUrl:process.env.BB_INTEGRITY_EGRESS_PROXY_URL}));
+  desktop=await integrityBrowserOperation('desktop',()=>startIntegrityDesktop(cache,integrityBrowserEnvironment(cache)));
   signal.throwIfAborted();
-  browser=await chromium.launch({headless:false,chromiumSandbox:true,env:desktop.env as Record<string,string>,proxy:{server:proxy.server},args:['--window-size=1440,952','--window-position=0,0','--disable-quic','--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']});
+  const browserEnv=desktop.env as Record<string,string>,server=proxy.server;
+  browser=await integrityBrowserOperation('launch',()=>chromium.launch({headless:false,chromiumSandbox:true,env:browserEnv,proxy:{server},args:['--window-size=1440,952','--window-position=0,0','--disable-quic','--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']}));
   signal.throwIfAborted();
-  const context=await browser.newContext({viewport:null,locale:'zh-CN',timezoneId:'Asia/Shanghai',acceptDownloads:false,serviceWorkers:'block'});
+  const launched=browser;
+  const context=await integrityBrowserOperation('context',()=>launched.newContext({viewport:null,locale:'zh-CN',timezoneId:'Asia/Shanghai',acceptDownloads:false,serviceWorkers:'block'}));
   await context.route('**/*',route=>integrityBrowserUrlAllowed(site,route.request().url())?route.continue():route.abort('blockedbyclient'));
   const abort=()=>void context.close().catch(()=>{});signal.addEventListener('abort',abort,{once:true});
-  try{signal.throwIfAborted();return await collectInContext(context,site,subject,signal,{...collectionLimits,captchaRecognizer:options?.captchaRecognizer,screenCapture:desktop.capture});}finally{signal.removeEventListener('abort',abort);await context.close();}
- }finally{try{await browser?.close();}finally{
+  try{signal.throwIfAborted();return await collectInContext(context,site,subject,signal,{...collectionLimits,captchaRecognizer:options?.captchaRecognizer,screenCapture:desktop.capture});}finally{signal.removeEventListener('abort',abort);await integrityBrowserOperation('cleanup',()=>context.close());}
+ }finally{try{await integrityBrowserOperation('cleanup',async()=>{await browser?.close();});}finally{
   const closed=await Promise.allSettled([desktop?.close(),proxy?.close()]);
   await rm(cache,{recursive:true,force:true});
-  const failed=closed.find((r):r is PromiseRejectedResult=>r.status==='rejected');if(failed)throw failed.reason;
+  const failed=closed.find((r):r is PromiseRejectedResult=>r.status==='rejected');if(failed)await integrityBrowserOperation('cleanup',async()=>{throw failed.reason;});
  }}
 });
 

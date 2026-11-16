@@ -661,6 +661,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
       if (lease.attempts < maxAttempts) {
+        // Join any renewal before expiring: a renewal already waiting on the
+        // job lock must not extend the deadline after our release receipt.
+        await heartbeat.stop();
         await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
         return 'retry';
       }
@@ -856,7 +859,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     if(traceEntered)throw error;
     return handleError(error);
   } finally {
-    heartbeat.stop();
+    await heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
     deps.onLease?.(null);
   }

@@ -1,4 +1,5 @@
 import {IntegrityCaptchaInterruption} from './integrity-captcha.js';
+import {integrityBrowserFailure} from './integrity-browser-boundary.js';
 import {integrityCaptchaRecognizer} from './integrity-captcha-model.js';
 import {randomUUID} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
@@ -18,7 +19,7 @@ export async function collectIntegritySite(collector:IntegrityCollector,site:Int
   signal.throwIfAborted();
   if(error instanceof IntegrityCaptchaInterruption)throw error;
   const code=error instanceof Error&&/^(?:INTEGRITY_[A-Z_]+|INVALID_INTEGRITY_EGRESS_PROXY|E[A-Z]+)$/.test(error.message)?error.message:'INTEGRITY_BROWSER_RUNTIME_FAILED';
-  return {query:integritySearchQuery(site,subject),search_performed:false,outcome:'failed',scope:`${site.name}官网查询`,limitation:'浏览器采集未完成，本项不能作为已查询或无记录的依据。',reason:'浏览器采集未完成，已记录本项失败并继续其他网站；无需上传补充证据。',captures:[],diagnostic:{code:'operation_failed',phase:'open',detail:code}};
+  return {query:integritySearchQuery(site,subject),search_performed:false,outcome:'failed',scope:`${site.name}官网查询`,limitation:'浏览器采集未完成，本项不能作为已查询或无记录的依据。',reason:'浏览器采集未完成，已记录本项失败并继续其他网站；无需上传补充证据。',captures:[],diagnostic:{code:'operation_failed',phase:'open',detail:code},runtime_failure:integrityBrowserFailure(error)};
  }
 }
 export function validateIntegrityAssessment(value:unknown,subject:Pick<IntegritySubject,'name'|'kind'>,materials:{ref:string;text:string}[]):value is IntegrityBrowserAssessment{
