@@ -1,0 +1,3 @@
+{"ready": true, "locks": {"pid": 2745145, "process_start": "197299800", "paths": ["/var/lib/bondbuddy/migration-908/state-main/config.lock", "/var/lib/bondbuddy/migration-908/state-main/deploy.lock", "/var/lib/bondbuddy/migration-908/state-main/migration.lock"], "held": true, "same_inode": true}, "root": "/var/lib/bondbuddy/main1420-probe-r1-20261116", "pending_owned": true}
+{"status": "FAIL", "error": "RuntimeError:EFFECTIVE_HOST_CONFIG_DRIFT:api", "pending_root": "/var/lib/bondbuddy/main1420-probe-r1-20261116", "automatic_rollback": false}
+{"status": "PASS", "action": "abort_unmutated", "result": {"aborted_unmutated": true, "production_services_changed": false}}

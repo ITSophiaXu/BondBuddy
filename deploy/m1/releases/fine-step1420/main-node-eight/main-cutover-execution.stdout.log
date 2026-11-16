@@ -1,0 +1,4 @@
+{"at": "2026-11-16T07:02:32.037489+00:00", "event": "starting", "step": "prepare"}
+{"completed_steps": [], "error": "RuntimeError:COMMAND_FAILED:docker", "event": "failure", "public_write_boundary": false, "step": "prepare"}
+{"event": "recovery", "result": {"aborted_unmutated": true, "production_services_changed": false}, "step": "abort_unmutated"}
+{"automatic_model_or_task_replay": false, "completed_steps": [], "database_restored": false, "error": "RuntimeError:COMMAND_FAILED:docker", "failed_step": "prepare", "owned_pending_retained": false, "recovery": [{"result": {"aborted_unmutated": true, "production_services_changed": false}, "status": "PASS", "step": "abort_unmutated"}], "root": "/var/lib/bondbuddy/main1420-cutover-20261116", "status": "FAIL"}
