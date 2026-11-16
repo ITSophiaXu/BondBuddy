@@ -1,0 +1,63 @@
+{
+  "archive_sha256": "3530ca798a75f6515177b31f2fa9370d487a665d76ee0c6098610f6a93b3498f",
+  "archive_bytes": 46036,
+  "files": [
+    {
+      "path": "main-cutover-adapter.py",
+      "bytes": 45307,
+      "sha256": "97a431b1d39f1170cebe06912cce093878c144b0d5e09b833c59e59a128297b6"
+    },
+    {
+      "path": "run_main_cutover.py",
+      "bytes": 7544,
+      "sha256": "fbacafbefeaa9b8b34e9863e48ca80e4aa91f84ca2ea41b003575436213ab99d"
+    },
+    {
+      "path": "main-plan.bound.json",
+      "bytes": 126883,
+      "sha256": "749163d6cdc3e037fcf57c2ae185dd227fbb62ff82d8215992bbbde4eadc8340"
+    },
+    {
+      "path": "backup.receipt.json",
+      "bytes": 1070,
+      "sha256": "a2089a8f85ace0ee28811ad04b7dd2439782d37f1afbb97143470aafee29a16d"
+    },
+    {
+      "path": "0185_performance_spans.sql",
+      "bytes": 3958,
+      "sha256": "20f7e159dca10fc86137f03e93d79a073c1787b4e6455693314a4f0d83dc347b"
+    },
+    {
+      "path": "managed-performance-grants.sql",
+      "bytes": 2290,
+      "sha256": "d331cfdc523df6cbeba4daf47bd31df87bb32e72c6f98deb4081ee5e1f7c0a0b"
+    },
+    {
+      "path": "MAIN-CUTOVER.md",
+      "bytes": 6253,
+      "sha256": "f17f0da465eeb4c0f25c230e9561101f66cae9b74ff0b7f973370f2dd7e8d490"
+    },
+    {
+      "path": "local-validation.json",
+      "bytes": 786,
+      "sha256": "47495653c71f90be9c35756d7e947871fab9039d5cd29d11602fe014eb6a967a"
+    },
+    {
+      "path": "test_main_cutover.py",
+      "bytes": 8392,
+      "sha256": "479e2d591642601519e700f7a078d3511e0a1db8c75d348ae71a7a3912161acf"
+    },
+    {
+      "path": "test_main_driver.py",
+      "bytes": 5231,
+      "sha256": "ebfc78959711b312de0f0aa781232ede4f92785df1784d743c4ab3cba89be00a"
+    },
+    {
+      "path": "bundle-manifest.json",
+      "bytes": 1289,
+      "sha256": "f44cfe869c892793af7e424222ceea95a56d3eb7eb6455cdea1e26aa45b52a33"
+    }
+  ],
+  "main_only": true,
+  "managed_services_changed": false
+}

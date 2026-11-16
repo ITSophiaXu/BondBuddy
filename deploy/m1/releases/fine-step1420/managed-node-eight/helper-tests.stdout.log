@@ -1,0 +1,12 @@
+âœ” exact 63-file role closure validates, extracts and preserves native eight-slot compose (30.1475ms)
+âœ” descriptor rejects path widening, role widening, duplicates, extra fields and bounds (7.288ms)
+âœ” archive rejects checksum errors, links, traversal, extra tails, corrupt payload and decompression overflow (559.4505ms)
+âœ” old eight-slot and four-slot descriptor extraction remains accepted (133.9861ms)
+â„¹ tests 4
+â„¹ suites 0
+â„¹ pass 4
+â„¹ fail 0
+â„¹ cancelled 0
+â„¹ skipped 0
+â„¹ todo 0
+â„¹ duration_ms 2152.0129

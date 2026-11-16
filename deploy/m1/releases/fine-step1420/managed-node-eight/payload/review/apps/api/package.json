@@ -1,0 +1,234 @@
+{
+  "name": "@bondbuddy/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./performance-trace": {
+      "types": "./dist/performance-trace.d.ts",
+      "default": "./dist/performance-trace.js"
+    },
+    "./upload-spool": {
+      "types": "./dist/upload-spool.d.ts",
+      "default": "./dist/upload-spool.js"
+    },
+    "./integrity-billing-evidence": {
+      "types": "./dist/integrity-billing-evidence.d.ts",
+      "default": "./dist/integrity-billing-evidence.js"
+    },
+    "./upload-confirmation": {
+      "types": "./dist/upload-confirmation.d.ts",
+      "default": "./dist/upload-confirmation.js"
+    },
+    "./test-authoring-source": {
+      "types": "./dist/test-authoring-source.d.ts",
+      "default": "./dist/test-authoring-source.js"
+    },
+    "./none-baseline": {
+      "types": "./dist/none-baseline.d.ts",
+      "default": "./dist/none-baseline.js"
+    },
+    "./docx-inspector": {
+      "types": "./dist/docx-inspector.d.ts",
+      "default": "./dist/docx-inspector.js"
+    },
+    "./project-qa": {
+      "types": "./dist/project-qa.d.ts",
+      "default": "./dist/project-qa.js"
+    },
+    "./project-file-consistency": {
+      "types": "./dist/project-file-consistency.d.ts",
+      "default": "./dist/project-file-consistency.js"
+    },
+    "./project-file-storage": {
+      "types": "./dist/project-file-storage.d.ts",
+      "default": "./dist/project-file-storage.js"
+    },
+    "./project-file-workspace": {
+      "types": "./dist/project-file-workspace.d.ts",
+      "default": "./dist/project-file-workspace.js"
+    },
+    "./review-editor": {
+      "types": "./dist/review-editor.d.ts",
+      "default": "./dist/review-editor.js"
+    },
+    "./m4-knowledge": {
+      "types": "./dist/m4-knowledge.d.ts",
+      "default": "./dist/m4-knowledge.js"
+    },
+    "./m4-workspace": {
+      "types": "./dist/m4-workspace.d.ts",
+      "default": "./dist/m4-workspace.js"
+    },
+    "./m4-billing": {
+      "types": "./dist/m4-billing.d.ts",
+      "default": "./dist/m4-billing.js"
+    },
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./platform-probe": {
+      "types": "./dist/platform-probe.d.ts",
+      "default": "./dist/platform-probe.js"
+    },
+    "./queue": {
+      "types": "./dist/queue.d.ts",
+      "default": "./dist/queue.js"
+    },
+    "./non-production-test": {
+      "types": "./dist/non-production-test.d.ts",
+      "default": "./dist/non-production-test.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "default": "./dist/data.js"
+    },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "default": "./dist/observability.js"
+    },
+    "./provider-results": {
+      "types": "./dist/provider-results.d.ts",
+      "default": "./dist/provider-results.js"
+    },
+    "./exec-logs": {
+      "types": "./dist/exec-logs.d.ts",
+      "default": "./dist/exec-logs.js"
+    },
+    "./ocr": {
+      "types": "./dist/ocr.d.ts",
+      "default": "./dist/ocr.js"
+    },
+    "./ocr-v2": {
+      "types": "./dist/ocr-v2.d.ts",
+      "default": "./dist/ocr-v2.js"
+    },
+    "./log-ops": {
+      "types": "./dist/log-ops.d.ts",
+      "default": "./dist/log-ops.js"
+    },
+    "./log-archive-lifecycle": {
+      "types": "./dist/log-archive-lifecycle.d.ts",
+      "default": "./dist/log-archive-lifecycle.js"
+    },
+    "./evidence-gate": {
+      "types": "./dist/evidence-gate.d.ts",
+      "default": "./dist/evidence-gate.js"
+    },
+    "./trial-guard": {
+      "types": "./dist/trial-guard.d.ts",
+      "default": "./dist/trial-guard.js"
+    },
+    "./material-jobs": {
+      "types": "./dist/material-jobs.d.ts",
+      "default": "./dist/material-jobs.js"
+    },
+    "./historical-profile-corrections": {
+      "types": "./dist/historical-profile-corrections.d.ts",
+      "default": "./dist/historical-profile-corrections.js"
+    },
+    "./storage-lifecycle": {
+      "types": "./dist/storage-lifecycle.d.ts",
+      "default": "./dist/storage-lifecycle.js"
+    },
+    "./storage-inventory": {
+      "types": "./dist/storage-inventory.d.ts",
+      "default": "./dist/storage-inventory.js"
+    },
+    "./deletion-lifecycle": {
+      "types": "./dist/deletion-lifecycle.d.ts",
+      "default": "./dist/deletion-lifecycle.js"
+    },
+    "./issuer-identity-source": {
+      "types": "./dist/issuer-identity-source.d.ts",
+      "default": "./dist/issuer-identity-source.js"
+    },
+    "./issuer-identity-binding": {
+      "types": "./dist/issuer-identity-binding.d.ts",
+      "default": "./dist/issuer-identity-binding.js"
+    },
+    "./test-issuer-candidate": {
+      "types": "./dist/test-issuer-candidate.d.ts",
+      "default": "./dist/test-issuer-candidate.js"
+    },
+    "./generation-issuer-binding": {
+      "types": "./dist/generation-issuer-binding.d.ts",
+      "default": "./dist/generation-issuer-binding.js"
+    },
+    "./production-rule-pin": {
+      "types": "./dist/production-rule-pin.d.ts",
+      "default": "./dist/production-rule-pin.js"
+    },
+    "./test-rule-applicability-pin": {
+      "types": "./dist/test-rule-applicability-pin.d.ts",
+      "default": "./dist/test-rule-applicability-pin.js"
+    },
+    "./target-confirmation": {
+      "types": "./dist/target-confirmation.d.ts",
+      "default": "./dist/target-confirmation.js"
+    },
+    "./update-difficulty-repository": {
+      "types": "./dist/update-difficulty-repository.d.ts",
+      "default": "./dist/update-difficulty-repository.js"
+    },
+    "./library": {
+      "types": "./dist/library.d.ts",
+      "default": "./dist/library.js"
+    },
+    "./credit-facility-supplements-repository": {
+      "types": "./dist/credit-facility-supplements-repository.d.ts",
+      "default": "./dist/credit-facility-supplements-repository.js"
+    },
+    "./workpapers": {
+      "types": "./dist/workpapers.d.ts",
+      "default": "./dist/workpapers.js"
+    },
+    "./execution-capacity": {
+      "types": "./dist/execution-capacity.d.ts",
+      "default": "./dist/execution-capacity.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "node --test --test-concurrency=1 dist/*.test.js",
+    "storage:lifecycle": "node dist/storage-lifecycle.js",
+    "storage:inventory": "node dist/storage-inventory.js scan",
+    "log:ops": "node dist/log-ops.js",
+    "trial:health": "node dist/trial-guard.js health",
+    "deletion:lifecycle": "node dist/deletion-lifecycle.js",
+    "rule-applicability:grants": "node dist/rule-applicability-reviewer-grants.js",
+    "production-components:import": "node dist/production-component-import-cli.js",
+    "production-review:grants": "node dist/production-review-grants-cli.js",
+    "target-period:grants": "node dist/target-period-evidence-decisions.js",
+    "fact-evidence:grants": "node dist/fact-evidence-reviews.js"
+  },
+  "dependencies": {
+    "@azure/storage-blob": "^12.33.0",
+    "@bondbuddy/contracts": "0.1.0",
+    "@bondbuddy/domain": "0.1.0",
+    "@bondbuddy/rule-applicability-context": "0.1.0",
+    "@bondbuddy/rule-pack-registry": "0.1.0",
+    "@sinclair/typebox": "^0.34.41",
+    "alipay-sdk": "4.14.0",
+    "argon2": "^0.44.0",
+    "fast-xml-parser": "^5.11.1",
+    "fastify": "^5.6.1",
+    "file-type": "^22.1.1",
+    "jpeg-js": "^0.4.4",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.23.0",
+    "saxes": "^6.0.0",
+    "yazl": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "@types/pg": "^8.23.1",
+    "@types/pngjs": "^6.0.5",
+    "@types/yazl": "^3.3.1",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.3"
+  }
+}

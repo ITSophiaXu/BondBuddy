@@ -1,0 +1,11 @@
+âœ” actual two slots fit unchanged 16KiB boundary and preserve every installer operation/file byte (546.9821ms)
+âœ” fixed Node decoder restores exact bytes and rejects malformed/oversize compressed input (1086.1812ms)
+âœ” retained warm bootstrap stays byte-identical and altered pin fails closed (23.7821ms)
+â„¹ tests 3
+â„¹ suites 0
+â„¹ pass 3
+â„¹ fail 0
+â„¹ cancelled 0
+â„¹ skipped 0
+â„¹ todo 0
+â„¹ duration_ms 2276.3226

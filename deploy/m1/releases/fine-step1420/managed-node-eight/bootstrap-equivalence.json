@@ -1,0 +1,25 @@
+{
+  "version": "public-bootstrap-brotli-equivalence-v1",
+  "node": "v24.22.1",
+  "proofs": [
+    {
+      "slot": 0,
+      "user_data_bytes": 15904,
+      "decoded_program_bytes": 42844,
+      "decoded_program_sha256": "bfea7708e7271f673b6a2412dc596f64a79fb584492e5ac19bc688b54147d51f",
+      "same_json": true,
+      "same_installer_operations": true,
+      "all_file_bytes_verified": true
+    },
+    {
+      "slot": 1,
+      "user_data_bytes": 15904,
+      "decoded_program_bytes": 42844,
+      "decoded_program_sha256": "bfea7708e7271f673b6a2412dc596f64a79fb584492e5ac19bc688b54147d51f",
+      "same_json": true,
+      "same_installer_operations": true,
+      "all_file_bytes_verified": true
+    }
+  ],
+  "no_cloud_or_installer_execution": true
+}
