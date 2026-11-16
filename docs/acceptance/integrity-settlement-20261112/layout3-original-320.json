@@ -1,0 +1,21 @@
+{
+  "name": "baseline-320",
+  "url": "http://127.0.0.1:5189/#integrity?project=synthetic-integrity-continuation-a&run=synthetic-integrity-check-1",
+  "width": 320,
+  "text": "本轮诚信核查 · 已完成\n\n2026年10月24日 02:15 · 1 个对象 · 5 个网站\n\n返回名单与历史\n\n本轮已结算 2,170 积分\n\n5 / 5 项已有原查询记录 · 3 项原查询待核实\n\n人工证据不覆盖原查询状态，也不代表事项已解决。0 项待核实事项已附人工证据；结论仍需人工核对。\n\n0 份人工证据已进入此版底稿 · 0 份新增证据尚未包含。\n\n重新导出底稿 · 免费\n采用此轮名单准备新核查\n\n查看和导出沿用本轮记录，不重新查询。采用名单后可修改准备内容，新核查仍需单独确认本次范围与费用。",
+  "layout": {
+    "scrollWidth": 337,
+    "offenders": [
+      {
+        "tag": "SPAN",
+        "id": "",
+        "className": "step current",
+        "text": "3核查结果与底稿",
+        "left": 234,
+        "right": 337,
+        "width": 103,
+        "overflow": "visible"
+      }
+    ]
+  }
+}

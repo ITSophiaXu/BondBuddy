@@ -1,0 +1,6 @@
+{
+  "commit": "8a7dc38a9546831346805d8cb36ce88aae456da3",
+  "path": "apps/web/src/integrity-workspace.ts",
+  "sha256": "e54fda3bc347d1f3b0335ab2fd72e9c6f27a7bc870a2fcc8d31a91d52d857fef",
+  "description": "Exact original result component comparison. This is the existing implementation baseline, not a new prototype approval or business acceptance."
+}
