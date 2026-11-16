@@ -4,17 +4,20 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { azureBlobs, digest } from './data.js';
-import { claim, finish, promoteWordArtifact } from './queue.js';
+import { checkpointStage, claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { DOCX } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 
 const connection=await isolatedTestDatabase(undefined,'project-collection');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('project collection: root membership, real uploads/downloads, task history, pagination, failed retry and owner isolation',{skip:!connection||!storage},async()=>{
   const pool=new Pool({connectionString:connection});const firstOwner='collection-'+randomUUID();let owner=firstOwner;
   const blobs=azureBlobs(storage!);const origin='http://bondbuddy.test';
-  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  // This historical synthetic contract intentionally retries one unchanged input without billing.
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,
+    historicalBillingFixture:true,enablePaidAuthoring:false});
   app.addHook('onError',async(_req,_reply,error)=>{if(!(error as any).status)process.stderr.write(error.message+'\n');});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin,...headers,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any,headers?:Record<string,string>)=>{const r=await send(method,url,payload,headers);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
@@ -80,5 +83,63 @@ test('project collection: root membership, real uploads/downloads, task history,
     for(const path of ['files','tasks'])assert.equal((await send('GET',`/api/v1/projects/${root.project_id}/${path}`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${member}/materials/${material.material_id}/download?version=1`)).statusCode,404);
     assert.ok(topic);
+  }finally{await app.close();await pool.end();}
+});
+
+test('project collection: current paid admission retains settled delivery and locks the next edition',{skip:!connection||!storage},async()=>{
+  const pool=new Pool({connectionString:connection});const owner='collection-current-'+randomUUID();
+  const blobs=azureBlobs(storage!),origin='http://bondbuddy.test';
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin,...headers}});
+  const ok=async(method:string,url:string,payload?:any,headers?:Record<string,string>)=>{
+    const response=await send(method,url,payload,headers);assert.ok(response.statusCode<300,response.body);return response.json();
+  };
+  try{
+    const root=await ok('POST','/api/v1/projects',{name:'Synthetic paid collection',kind:'review',issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
+    const member=(await ok('POST',`/api/v1/projects/${root.project_id}/update-workspace`,{})).update_project_id;
+    const input=(await lockSyntheticAuthoringInput(app,member)).json();
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,member,input);
+    const request={project_id:member,input_revision:input.input_revision,input_hash:input.input_hash,task_kind:'update',
+      input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',quote_id:quoteId};
+    const execution={...request,execution_request_id:randomUUID()};
+    const run=await ok('POST','/api/v1/runs/execute',execution);
+    const lease=await claim(pool,30);assert.equal(lease!.runId,run.run_id);
+    const artifact=await promoteWordArtifact(pool,lease!,makeSyntheticDocxFixture(),blobs);
+    const clean=await promoteWordArtifact(pool,lease!,makeSyntheticDocxFixture({text:'Synthetic settled clean edition'}),blobs);
+    assert.equal(artifact.status,'available');assert.equal(clean.status,'available');
+    assert.notEqual(clean.artifactId,artifact.artifactId);
+    await checkpointStage(pool,lease!,'word_delivery_pair',{revision_artifact_id:artifact.artifactId,clean_artifact_id:clean.artifactId});
+    await finish(pool,lease!,'succeeded',{artifactId:artifact.artifactId,artifactVersion:artifact.artifactVersion,blobs});
+    const replay=await ok('POST','/api/v1/runs/execute',execution);
+    assert.equal(replay.run_id,run.run_id,'an exact execution replay returns the settled run');
+    const versions=await ok('GET',`/api/v1/projects/${member}/prospectus-versions`);
+    assert.equal(versions.versions.find((version:any)=>version.version_id===versions.current_version_id)?.artifact_id,clean.artifactId);
+    const duplicate=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
+    assert.equal(duplicate.statusCode,409,duplicate.body);assert.equal(duplicate.json().code,'INPUT_REVISION_CONFLICT',
+      'a new execution must lock the automatically adopted clean edition');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',[owner,member])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,1);
+    let row=(await ok('GET','/api/v1/projects')).items.find((item:any)=>item.project_id===root.project_id);
+    assert.equal(row.file_count,3);assert.equal(row.task_summary.recent_result.run_id,run.run_id);
+
+    const current=await ok('GET',`/api/v1/projects/${member}`);
+    const saved=await ok('PATCH',`/api/v1/projects/${member}`,{update_details:{...current.update_details,
+      supplementary_notes:'Synthetic second edition'}},{'if-match':String(current.draft_revision)});
+    const previous=(await pool.query('SELECT material_versions FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+      [owner,member,input.input_revision])).rows[0];
+    const next=await ok('POST',`/api/v1/projects/${member}/input-revisions`,{draft_revision:saved.draft_revision,
+      prospectus_selection_revision:versions.selection_revision,material_versions:previous.material_versions,requirement_message_ids:[]});
+    assert.notEqual(next.input_hash,input.input_hash,'a new edition has a distinct saved scope');
+    const nextQuote=await quoteSyntheticAuthoringRun(app,pool,owner,member,next);
+    assert.notEqual(nextQuote,quoteId);
+    const nextRun=await ok('POST','/api/v1/runs/execute',{...request,input_revision:next.input_revision,input_hash:next.input_hash,
+      quote_id:nextQuote,execution_request_id:randomUUID()});
+    const nextLease=await claim(pool,30);assert.equal(nextLease!.runId,nextRun.run_id);
+    await finish(pool,nextLease!,'failed',{errorCode:'DATA_UNAVAILABLE'});
+    row=(await ok('GET','/api/v1/projects')).items.find((item:any)=>item.project_id===root.project_id);
+    assert.equal(row.file_count,3,'both settled Word files survive a failed new edition');
+    assert.equal(row.task_summary.recent_result.run_id,nextRun.run_id);
+    const tasks=await ok('GET',`/api/v1/projects/${root.project_id}/tasks`);
+    assert.deepEqual(tasks.items.map((item:any)=>item.run_id),[nextRun.run_id,run.run_id]);
   }finally{await app.close();await pool.end();}
 });
