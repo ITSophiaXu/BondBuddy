@@ -32,7 +32,8 @@ function memoryBlobs(){
 
 async function fixture(pool:Pool,failedStage='model_generation'){
   const owner=uid(),origin='http://bondbuddy.test',{blobs,objects}=memoryBlobs();
-  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunRuntime:true});
+  // Preserve the original free review recovery contract; paid reservation recovery has its own integration suite.
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunRuntime:true,historicalBillingFixture:true,enablePaidReview:false});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   const good=(r:{statusCode:number;body:string})=>assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);
   try{
@@ -47,6 +48,7 @@ async function fixture(pool:Pool,failedStage='model_generation'){
     const start=await send('POST',`/api/v1/projects/${project}/review-executions`,{execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]});good(start);
     const runId=start.json().run_id,lease=await claim(pool,120);assert.ok(lease);assert.equal(lease.runId,runId);
     const r=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[runId])).rows[0];
+    assert.equal(r.billing_mode,'platform_trial');assert.equal(r.reservation_id,null);
     const prompt='Synthetic review prompt with immutable context',callKey=digest(prompt).slice(0,24),logical=`review-cli-v3-${callKey}`,promptStage=`review_cli_v3_${callKey}_prompt`;
     const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:project,runId,kind:'model_request',version:1,body:prompt,inputRevision:r.input_revision,inputHash:r.input_hash.trim(),templateVersion:'synthetic-review-v1'});
     await checkpointStage(pool,lease,promptStage,{snapshot_id:snapshot});
