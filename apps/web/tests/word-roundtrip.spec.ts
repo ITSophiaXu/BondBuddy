@@ -85,17 +85,54 @@ test.describe('finite Word roundtrip contracts',()=>{
     expect(s.executions).toHaveLength(1);expect(s.imports).toEqual([]);assertFixture(s);
   });
 
-  test('same-name mismatches, missing run, file patch, plain topic and unavailable registries never guess a continuation',async({context})=>{
+  test('same-name mismatches, missing run, file patch, plain topic and unavailable registries never guess a continuation',async({context},testInfo)=>{
     const options:NonNullable<Parameters<typeof fixture>[0]>[]=[{mismatch:'hash'},{mismatch:'version'},{mismatch:'project'},{mismatch:'missing-run'},
       {mismatch:'file-patch'},{mismatch:'plain-topic'},{registryFailure:true},{workspaceFailure:true}];
-    for(const option of options){const page=await context.newPage(),s=await install(page,fixture(option));await openFiles(page);
-      const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
-      await expect(original.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
-      await expect(original).toContainText(option.registryFailure?'文件版本暂未核对':'此稿暂不能直接接续');
-      if(!option.registryFailure)await expect(original.getByRole('button',{name:'上传此文件修改稿',exact:true})).toBeVisible();
-      const material=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
-      await expect(material.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
-      expect(businessCalls(s)).toEqual([]);assertFixture(s);await page.close();
+    const started=Date.now(),phases:{scenario:string;phase:string;started_ms:number;duration_ms:number;outcome:'passed'|'failed'}[]=[];
+    const timed=async<T>(scenario:string,phase:string,action:()=>Promise<T>):Promise<T>=>{
+      const began=Date.now(),measurement:typeof phases[number]={scenario,phase,started_ms:began-started,duration_ms:0,outcome:'failed'};
+      phases.push(measurement);
+      try{const value=await test.step(phase,action);measurement.outcome='passed';return value;}
+      finally{measurement.duration_ms=Date.now()-began;}
+    };
+    try{
+      // Load the real application once; every scenario still creates a fresh
+      // ProjectFiles instance through its native route and a new server fixture.
+      const page=await timed('shared-document','new-page',()=>context.newPage());
+      for(const option of options){
+        const scenario=option.mismatch??(option.registryFailure?'registry-unavailable':'workspace-unavailable');
+        await test.step(scenario,async()=>{
+          const s=await timed(scenario,'install-fixture',()=>install(page,fixture(option)));
+          await timed(scenario,'open-files',()=>openFiles(page));
+          await timed(scenario,'continuation-assertions',async()=>{
+            const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
+            await expect(original.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
+            await expect(original).toContainText(option.registryFailure?'文件版本暂未核对':'此稿暂不能直接接续');
+            if(!option.registryFailure)await expect(original.getByRole('button',{name:'上传此文件修改稿',exact:true})).toBeVisible();
+            const material=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
+            await expect(material.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
+            expect(businessCalls(s)).toEqual([]);assertFixture(s);
+            for(const suffix of ['files','project-files','project-files/workspace']){
+              expect(s.calls.some(call=>call.method==='GET'&&call.path===`/projects/${ids.root}/${suffix}`)).toBe(true);
+            }
+          });
+          // The native back link disposes the current component and aborts its
+          // reads. Do not stack routes or change the old fixture in place.
+          await timed(scenario,'leave-files',async()=>{
+            await page.locator('.project-workbench > a.back-link[href="#tasks"]').click();
+            await expect(page.locator('#file-list')).toHaveCount(0);
+            await expect(page.locator('#project-list')).toBeVisible();
+            await expect(page.locator('#project-list')).toHaveAttribute('aria-busy','false');
+          });
+          await timed(scenario,'uninstall-fixture',()=>s.uninstallFixture());
+          expect(businessCalls(s)).toEqual([]);assertFixture(s);
+        });
+      }
+      // Keep failed pages open for Playwright's original error-context capture.
+      await timed('shared-document','close-page',()=>page.close());
+    }finally{
+      await testInfo.attach('word-roundtrip-phase-timings',{contentType:'application/json',
+        body:JSON.stringify({case_budget_ms:testInfo.timeout,elapsed_ms:Date.now()-started,scenarios:options,phases},null,2)});
     }
   });
 
@@ -177,6 +214,10 @@ for(const width of [1440,390])test(`component comparison: row and import dialog 
   await page.setViewportSize({width,height:960});
   const verifyReference=referenceMode?await installWordRoundtripReference(page):undefined;
   const s=await install(page);await openFiles(page);const prefix=referenceMode?'reference':'implementation';
+  // syncPanel repaints file rows after the initial prospectus-version read.
+  const sourceSummary=page.locator('#pw-prospectus [data-current-summary="true"] p');
+  await expect(sourceSummary).toBeVisible();
+  await expect(sourceSummary).toHaveText(`项目当前稿：V${s.source.sequence} · ${s.source.filename}`);
   const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
   await original.scrollIntoViewIfNeeded();await noOverflow(page);await capture(page,`${prefix}-row-${width}`);
   if(referenceMode){
