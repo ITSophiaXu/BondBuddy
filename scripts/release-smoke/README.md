@@ -27,7 +27,7 @@ docker info --format '{{.OSType}}'  # 应为 linux
 npm.cmd run test:release -- --ref HEAD
 ```
 
-Windows 通过系统 `tar.exe` 展开源码和样本，保留启动进程所需的 Windows 系统环境变量；不会继承业务数据库/支付/模型或远程 Docker 连接变量。挂载使用 Compose 的长格式，支持盘符、空格及中文路径。本次私有运行目录与 OAuth 副本使用 Windows ACL 限定为当前用户和 SYSTEM；Mac 使用原有文件权限。脚本不修改原凭据文件权限。
+Windows 通过系统 `tar.exe` 展开源码和样本，保留启动进程所需的 Windows 系统环境变量；不会继承业务数据库/支付/模型或远程 Docker 连接变量。挂载使用 Compose 的长格式，支持盘符、空格及中文路径。本次私有运行目录与 OAuth 副本使用 Windows ACL 限定为当前用户和 SYSTEM；Mac 使用原有文件权限。脚本不修改原凭据文件权限。 Windows 续跑会先核验运行目录的 owner、受保护 DACL、当前用户和 SYSTEM 的完整权限及继承范围；已完全符合时不重复写 ACL，避免无实际变更却请求系统审计特权。不符合时仍须收紧并复核，失败即拒绝续跑，不跳过权限检查。
 
 使用仓库 `deploy/m1/Dockerfile` 的正式 api/worker/web targets，从固定 Git commit 的 archive 构建，不包含工作区未提交的产品代码。报告记录 SHA、tree、镜像 ID、样本 hash、任务 ID 和下载文件 hash；发布时应使用本次验证过的镜像。改动产品代码后先提交，再验证新的提交。
 
