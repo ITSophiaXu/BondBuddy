@@ -11,5 +11,21 @@
     16376
   ],
   "production_installed": false,
-  "models_called": false
+  "models_called": false,
+  "semantic_authoring": {
+    "schema": "timing1420-recovery-targeted-semantic-build-v1",
+    "typescript": "5.9.3",
+    "diagnostics": 0,
+    "source_files": 1046,
+    "elapsed_ms": 122857
+  },
+  "semantic_review": {
+    "schema": "timing1420-recovery-targeted-semantic-build-v1",
+    "typescript": "5.9.3",
+    "diagnostics": 0,
+    "source_files": 1041,
+    "elapsed_ms": 42596
+  },
+  "merge_input_archive_sha256": "a48f5b194c5adc022b057426bbd2b83856507a6012d6ae5a9cd07355a373baa8",
+  "review_semantic_first_failure": "Historical review source fixture lacked batch-admission.ts; supplied fixed source whose emission matches the already mounted file SHA256. No runtime bytes changed. First diagnostic retained."
 }
