@@ -2,6 +2,10 @@
 
 `npm run test:release` 在独立的本地 Docker Compose 项目运行待发布版本，使用一个新建的 `release_test` 账号验证任丘九月募集书更新、东营复核、东营七题问答。先按顺序提交三个独立项目，再核验各自的持久任务和下载，后台可使用现有 worker 并发槽位。真实材料、网页、API、PostgreSQL、Azurite、worker、模型调用和浏览器下载都参与执行。不会修改生产环境或发送真实支付请求；初始测试积分明确为 synthetic。
 
+问答募集书上传会自动采用并关闭弹窗。脚本先以项目当前稿、指定物料版本的 HTTP 200 持久记录和原文件名/大小/SHA-256 确认来源就绪，再刷新项目资料并重新加载页面核对相同版本。新浏览器恢复时，本轮材料可能尚未选入；问题识别完成后通过页面保存准备，提交回答前再核对服务端 draft.materials 包含准确来源 pin，刷新/重载后仍保持。来源可以由 QA API 解析到关联更新工作区，不强制等于导航项目。不等待消失的弹窗，也不以弹窗关闭作为成功。上传完成回执原校验仍保留；恢复已就绪来源不重复上传。
+
+问题清单识别也有独立 prepare run。脚本在上传前监听实际请求及其接受回执，请求发出时先持久化 request ID 和来源 pin；回执到达后再保存 preparationId，随后等待原页面完成跳转和七题识别。已发出但回执丢失的请求保持未决，恢复不自动重传；已取得 preparationId 时，prepared=false 的恢复只读取原 prepare。候选 worker 默认有独立交互槽，两个长任务占用 general 槽不等于识别会被阻塞；识别现有 180 秒断言和运行总预算保持不变。
+
 ## 运行
 
 需要 Node 22+、Git、Docker（Linux containers）、Compose、Buildx、Playwright 浏览器，以及可用于现有适配器的 Copilot 授权。Mac 可用 Docker Desktop / Colima，Windows 在 PowerShell 使用 Docker Desktop 的 WSL 2 Linux 后端；业务容器始终是 Linux。

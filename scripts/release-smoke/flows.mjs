@@ -2,6 +2,8 @@ import {chromium,expect} from '@playwright/test';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {sha256} from './support.mjs';
+import {qaProspectusFixture,confirmQaProspectus} from './qa-prospectus.mjs';
+import {retainQaPreparation,qaPreparationURL} from './qa-preparation.mjs';
 
 export async function runJourneys({out,report,privateData,save}){
  const browser=await chromium.launch(process.env.BB_RELEASE_BROWSER_CHANNEL?{channel:process.env.BB_RELEASE_BROWSER_CHANNEL}:{});
@@ -114,23 +116,20 @@ export async function runJourneys({out,report,privateData,save}){
     await modal.locator('select[name="market"]').selectOption('sse');await modal.locator('select[name="offering"]').selectOption('private');
     await modal.getByRole('button',{name:'创建项目并开始问答',exact:true}).click();await expect(page.locator('#qa-manage-prospectus')).toBeVisible();
     entry.projectURL=page.url();save();
-   }else await page.goto(entry.projectURL);
+   }else await page.goto(entry.preparationId&&!entry.runId?qaPreparationURL(entry.projectURL,entry.preparationId):entry.projectURL);
    if(!entry.runId){
     if(!entry.prepared){
      await expect(page.locator('#qa-manage-prospectus')).toBeVisible();
      if(!(await page.locator('.qa-project-materials').innerText()).includes('募集说明书已就绪')){
      await page.locator('#qa-manage-prospectus').click();await upload(page.getByLabel('募集书新版本文件',{exact:true}),f.dongying);
-     await expect.poll(async()=>await page.locator('#qa-prospectus-panel [data-current-summary="true"],#qa-prospectus-panel [data-use-saved]').count(),{timeout:60000}).toBeGreaterThan(0);
-     const use=page.locator('#qa-prospectus-panel [data-use-saved]');const explicitSelection=await use.count();if(explicitSelection)await use.click();
-     const dialog=page.locator('dialog[open]').filter({has:page.locator('#qa-prospectus-panel')});
-     if(explicitSelection)await expect(dialog).toHaveCount(0,{timeout:60000});
-     else await dialog.getByRole('button',{name:'关闭',exact:true}).click();
      }
-     await page.locator('#qa-refresh-materials').click();await expect(page.locator('.qa-project-materials')).toContainText('募集说明书已就绪');
-     await upload(page.locator('#qa-upload'),f.questions);
+     entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying)});save();
+     await retainQaPreparation(page,{entry,expected:qaProspectusFixture(f.questions),upload:()=>upload(page.locator('#qa-upload'),f.questions),save});
      await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:180000});entry.prepared=true;save();
     }
     await page.reload();await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:60000});
+    await page.locator('#qa-save').click();
+    entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying),round:true,previous:entry.qaProspectus});save();
     const run=await submit(page.locator('#qa-start'),/\/qa\/runs$/);entry.runId=run.run_id;save();
    }
    if(phase==='submit')return;
