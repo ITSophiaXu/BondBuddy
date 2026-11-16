@@ -13,7 +13,7 @@ import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {INTEGRITY_PRICE,INTEGRITY_SELECTABLE_SITES,type IntegrityInput} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,integritySelectableSitesForSubjects,type IntegrityInput} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {CodexDurableJournal} from './durable-probe-journal.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,codexModelStage} from './run-pipeline.js';
@@ -59,9 +59,9 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
    return {kind:'done',value};
   }
   const input=(await pool.query('SELECT manifest FROM bb_integrity_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as IntegrityInput,subject=input.draft.subjects.find(s=>'integrity-'+inputManifestHash(s.id).slice(0,24)===o.logicalCallId)!;
-  const query=subject.name+' site:'+ (subject.kind==='company'?'www.gsxt.gov.cn':'zxgk.court.gov.cn'),url='https://'+(subject.kind==='company'?'www.gsxt.gov.cn':'zxgk.court.gov.cn')+'/synthetic',quote=subject.name+' synthetic public record';
+  const query=subject.name+' site:'+ (subject.kind==='company'?'pccz.court.gov.cn':'www.pbc.gov.cn'),url='https://'+(subject.kind==='company'?'pccz.court.gov.cn':'www.pbc.gov.cn')+'/synthetic',quote=subject.name+' synthetic public record';
   await journal.recordWebSearchEvents(intent,searchEnabled?[{observed_at:new Date().toISOString(),item:{type:'web_search',id:'synthetic-tool',action:{type:'search',query},results:[{url,title:'Synthetic',text:quote}]}}]:[]);
-  const value={sites:input.draft.site_ids.filter(site=>subject.kind==='company'||site!=='gsxt').map(site_id=>({site_id,note:'Synthetic response; no actual external website queried',sources:site_id===(subject.kind==='company'?'gsxt':'execution')&&searchEnabled?[{url,quote}]:[]}))};
+  const value={sites:input.draft.site_ids.filter(site=>subject.kind==='company'||site!=='bankruptcy').map(site_id=>({site_id,note:'Synthetic response; no actual external website queried',sources:site_id===(subject.kind==='company'?'bankruptcy':'pbc')&&searchEnabled?[{url,quote}]:[]}))};
   assert.ok(o.validate(value),'synthetic provider obeys response contract');
   const ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),o.resultSchemaVersion);
   await journal.recordObservation({...intent,...ref,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage:{status:'measured',input_tokens:100,cached_input_tokens:0,output_tokens:20,reasoning_tokens:0,total_tokens:120},error_code:null});
@@ -71,12 +71,12 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
  const stage=integrityModelStage({model,config:()=>loadCodexAdapterConfig({}),collector:async(site,subject,signal)=>{
   assert.ok(!('identifier' in subject),'private identifier excluded from browser');browserCalls++;
   if(!searchEnabled)return {query:'',search_performed:false,outcome:'failed',scope:'Synthetic unavailable',limitation:'Synthetic only',reason:'未取得查询记录',captures:[]};
-  if(subject.kind==='company'&&site.id==='execution')throw Error('INTEGRITY_NATIVE_PANEL_UNAVAILABLE');
+  if(subject.kind==='company'&&site.id==='pbc')throw Error('INTEGRITY_NATIVE_PANEL_UNAVAILABLE');
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
   await integrityWebsiteFixture(context,'hits');
   try{const collection=await collectInContext(context,site,subject,signal,{waitMs:5000,maxPages:1});
    // Simulate one pre-upgrade immutable batch alongside new v2 batches, including pause/resume replay.
-   if(subject.kind==='company'&&site.id==='gsxt')delete collection.diagnostic;
+   if(subject.kind==='company'&&site.id==='bankruptcy')delete collection.diagnostic;
    return collection;
   }finally{await context.close();}
  }});
@@ -87,13 +87,13 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const scopeProject=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic expanded scope',issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
   const scopeBase='/api/v1/projects/'+scopeProject.project_id+'/integrity';
   assert.deepEqual((await ok('GET',scopeBase)).draft.site_ids,[],'new projects start with no silently selected sites');
-  const allSites=INTEGRITY_SELECTABLE_SITES.map(s=>s.id);
+  const allSites=integritySelectableSitesForSubjects([]).map(s=>s.id);
   await ok('POST',scopeBase+'/draft',{expected_revision:0,draft:{subjects:[],site_ids:allSites,notes:''}});
-  assert.deepEqual((await ok('GET',scopeBase)).draft.site_ids,allSites,'all 54 sites survive API validation and reload');
+  assert.deepEqual((await ok('GET',scopeBase)).draft.site_ids,allSites,'all currently available national sites survive API validation and reload');
   assert.equal((await send('POST',scopeBase+'/draft',{expected_revision:1,draft:{subjects:[],site_ids:['unknown-site'],notes:''}})).statusCode,422);
   assert.deepEqual(await creditBalance(pool,owner),{available:20000,frozen:0},'selecting sites is free');
   const project=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic integrity project',issuer_name:'Synthetic issuer',market:'sse',offering:'private'}),id=project.project_id,path='/api/v1/projects/'+id,base=path+'/integrity';
-  const draft={subjects:[{id:'subject',kind:'company',name:'合成诚信测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'},{id:'person',kind:'person',name:'合成测试人员',identifier:'123456789012345678',role:'董事',province:'',city:''}],site_ids:['gsxt','execution'],notes:'Synthetic only'};
+  const draft={subjects:[{id:'subject',kind:'company',name:'合成诚信测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'},{id:'person',kind:'person',name:'合成测试人员',identifier:'123456789012345678',role:'董事',province:'',city:''}],site_ids:['bankruptcy','pbc'],notes:'Synthetic only'};
   let w=await ok('GET',base);assert.equal(w.price.points,'5000');assert.equal(w.revision,0);
   w=await ok('POST',base+'/draft',{expected_revision:0,draft});assert.equal(w.revision,1);
   assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft})).statusCode,409);
@@ -108,9 +108,9 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic resume'});
   assert.equal(await execute(),'succeeded');assert.equal(calls,2);
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
-  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,'5000');assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
+  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,'5000');assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='bankruptcy').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='pbc').status,'query_failed');
   assert.equal(browserCalls,3,'one collection per applicable subject/site');
-  const capture=checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').browser.captures[0];
+  const capture=checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='bankruptcy').browser.captures[0];
   const captureUrl=base+'/runs/'+run.run_id+'/captures/'+capture.id;
   const screenshot=await send('GET',captureUrl);assert.equal(screenshot.statusCode,200);assert.equal(digest(screenshot.rawPayload),capture.screenshot_sha256);
   actor=other;assert.equal((await send('GET',captureUrl)).statusCode,404);actor=owner;
@@ -141,7 +141,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const bytes=makeSyntheticDocxFixture({text:'Synthetic manual evidence; test only'}),declaration={byte_size:bytes.length,sha256:digest(bytes)};
   const upload=await ok('POST',path+'/materials/uploads',{...declaration,filename:'manual-evidence.docx',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',role:'other'});
   assert.equal((await send('PUT',upload.upload_url,bytes)).statusCode,204);const m=await ok('POST',path+'/materials/uploads/'+upload.upload_id+'/complete',declaration);
-  const evidence={request_id:randomUUID(),subject_id:'subject',site_id:'execution',queried_at:new Date().toISOString(),url:'https://zxgk.court.gov.cn/',note:'Synthetic manual claim; no live website query',conclusion:'unresolved',material:{source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};
+  const evidence={request_id:randomUUID(),subject_id:'subject',site_id:'pbc',queried_at:new Date().toISOString(),url:'https://www.pbc.gov.cn/',note:'Synthetic manual claim; no live website query',conclusion:'unresolved',material:{source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};
   assert.equal((await send('POST',base+'/runs/'+run.run_id+'/evidence',{...evidence,url:'https://evil.test'})).statusCode,422);
   w=await ok('POST',base+'/runs/'+run.run_id+'/evidence',evidence);w=await ok('POST',base+'/runs/'+run.run_id+'/evidence',evidence);assert.equal(w.rounds[0].evidence.length,1);
   const exportRequest={request_id:randomUUID(),expected_evidence_ids:w.rounds[0].evidence.map((e:any)=>e.id)};

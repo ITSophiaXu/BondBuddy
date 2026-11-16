@@ -49,6 +49,8 @@ docs/product-decisions/*
 docs/acceptance/*
 !docs/acceptance/integrity-site-availability-20261116.md
 !docs/acceptance/integrity-site-availability-20261116.json
+!docs/acceptance/integrity-site-sweep-20261116.md
+!docs/acceptance/integrity-site-sweep-20261116.json
 !docs/acceptance/issue-943-reserved-confirmation-20261112.md
 !docs/acceptance/issue-1063-prospectus-reader-timeout-20261112.md
 !docs/acceptance/issue-1063-coverage.json

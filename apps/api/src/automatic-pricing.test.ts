@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {AUTOMATIC_TASK_TARIFF,AUTOMATIC_PRICE_VERSION,PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,INTEGRITY_SELECTABLE_SITES,integrityScopeMeasurement,integrityRoundPoints,automaticTaskTariff,automaticPriceFromPlannedCost,FULL_REVIEW_PLANNED_COST_CNY,emptyUpdateDetails,reportingWindow} from '@bondbuddy/contracts';
+import {AUTOMATIC_TASK_TARIFF,AUTOMATIC_PRICE_VERSION,PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,INTEGRITY_SITES,integrityScopeMeasurement,integrityRoundPoints,automaticTaskTariff,automaticPriceFromPlannedCost,FULL_REVIEW_PLANNED_COST_CNY,emptyUpdateDetails,reportingWindow} from '@bondbuddy/contracts';
 import {resolveAutomaticTaskPrice} from './automatic-pricing.js';
 
 test('all twelve tariff rows preserve separate base-fen and 1.7 rounding',()=>{
@@ -29,8 +29,8 @@ test('independent question list charges one unit each; malformed or oversized li
   assert.throws(()=>resolveAutomaticTaskPrice('project_qa_answer',{questions:[]}),/独立问题/);
 });
 test('historical integrity website selections retain their accepted fixed round tariff',()=>{
-  const sites=INTEGRITY_SELECTABLE_SITES.map(site=>site.id);
-  assert.ok(sites.length>20,'the picker must exercise the former pricing boundary');
+  const sites=INTEGRITY_SITES.map(site=>site.id);
+  assert.ok(sites.length>20,'immutable historical scopes still exercise the former pricing boundary');
   for(const version of [PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION]){
     const expected=automaticTaskTariff(version).integrity.points;
     for(const count of [1,20,21,sites.length]){
@@ -45,7 +45,7 @@ test('historical integrity website selections retain their accepted fixed round 
 
 const integritySubject=(id:string,kind:'company'|'person'='company')=>({id,kind,name:'合成主体'+id,identifier:'',role:'',province:'山东',city:'东营'});
 test('v4 integrity bills executable subject/section pairs with an explicit round ceiling',()=>{
- const sites=INTEGRITY_SELECTABLE_SITES.map(site=>site.id);
+ const sites=INTEGRITY_SITES.map(site=>site.id);
  for(const count of [1,20,49])for(const subjects of [1,5]){
   const draft={subjects:Array.from({length:subjects},(_,i)=>integritySubject(String(i))),site_ids:sites.slice(0,count),notes:''},before=structuredClone(draft);
   const price=resolveAutomaticTaskPrice('integrity_round',{draft});
@@ -61,7 +61,7 @@ test('v4 integrity bills executable subject/section pairs with an explicit round
 });
 
 test('integrity still requires a nonempty distinct scope and at most five subjects',()=>{
-  const draft={subjects:Array.from({length:5},(_,i)=>integritySubject('s'+i)),site_ids:INTEGRITY_SELECTABLE_SITES.map(site=>site.id)};
+  const draft={subjects:Array.from({length:5},(_,i)=>integritySubject('s'+i)),site_ids:INTEGRITY_SITES.map(site=>site.id)};
   assert.equal(resolveAutomaticTaskPrice('integrity_round',{draft}).points,AUTOMATIC_TASK_TARIFF.integrity.points);
   assert.throws(()=>resolveAutomaticTaskPrice('integrity_round',{draft:{...draft,subjects:[...draft.subjects,{id:'s5'}]}}),/1至5/);
   for(const invalid of [{...draft,subjects:[]},{...draft,site_ids:[]},{...draft,site_ids:null},null]){
