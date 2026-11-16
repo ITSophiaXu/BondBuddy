@@ -442,7 +442,7 @@ async function renderRoute() {
   const raw = location.hash.slice(1);
   const legacyDashboard = /^(?:\/)?dashboard(?:\?|$)/.test(raw);
   const requested = !raw || legacyDashboard ? '/'+(raw.includes('?')?'?'+raw.split('?')[1]:'') : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
-  const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
+  const nextRoute = requested;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
@@ -672,6 +672,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     if(intent.get('run'))stepQuery.set('run',intent.get('run')!);
     if(intent.get('prepare')==='next'&&intent.get('run'))for(const key of ['prepare','basis','prepare_after']){const value=intent.get(key);if(value)stepQuery.set(key,value);}
     history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?${withProjectContext(stepQuery)}`);
+    currentRoute = location.hash.slice(1);
     document.querySelector('#workspace-steps')!.scrollIntoView({ block: 'start' });
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
