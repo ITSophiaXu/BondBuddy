@@ -26,3 +26,11 @@ tccli tat DescribeInvocationTasks --profile bondbuddy-lighthouse --region ap-bei
 5. 用原 `bb-logs` key 读取该来源的真实 authoring/review 日志，核对历史分页、中央回执、积压/错误及写入拒绝。成功后更新 #1460 部署回执，不能以请求已提交或 PR 已合并代替部署。
 
 前像读取无业务写入，因此无需回滚。后续安装请求须包含实际备份路径和恢复步骤；失败保留归档与执行回执，未知结果不得重新派发。
+
+## 现存节点独立安装请求（已准备）
+
+`install-request.json` 从真实前像 `inv-gb90ehg5v9` 固定生成，检查SUCCESS/Exit 0；节点为Ubuntu24.04，两业务容器正在运行，磁盘余量约25GB。准确请求字节/hash见 `install-manifest.json`，公开可审源码见 `install-node.template.py`。内嵌13个文件均取自已合并、已在主站/Azure验证的诊断组件 `ac818a21241e9427f5bd8755d8aa5f4e0da1f304`。
+
+请求在修改前后核对业务配置/代码哈希与容器ID、镜像、StartedAt，持有节点诊断部署锁，拒绝既有未知诊断安装或同一路径的旧未完成尝试。只安装独立诊断路径，产生留在节点的上传私钥，回传公钥及备份路径。不会启用采集timer、reload SSH、变更业务配置、重启应用、执行迁移、修改IAM或发起云启停。安装器备份文件前像，安装阶段未启用服务；归档和节点私钥保留供故障恢复，未知结果先检查原回执。
+
+公钥需在主站同一配置/部署锁内注册为 `bb-ingest-ins-p4i0pcub` 并仅绑定该来源，随后才执行独立固定的首次同步与启用请求。本请求准备完成仍不代表已安装或日志覆盖成功。
