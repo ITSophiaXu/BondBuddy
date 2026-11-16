@@ -33,7 +33,15 @@ const parserPython = process.env.BB_PYTHON?.trim() || (existsSync(localPython)
   : process.platform === 'win32' ? 'python' : 'python3');
 const parser106Root = process.env.BB_PARSER_106_SOURCE_ROOT?.trim() || sourceRoot;
 const authorizedOptIn = process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS === '1';
+// Phase-only diagnostics preserve the original parser, sample, assertions and runner budget.
+// Never print credentials, paths, input bytes, source quotes or model output here.
+const identityStarted = performance.now();
+const identityPhase = (phase: string) => {
+  if (authorizedOptIn) console.error(JSON.stringify({ kind: 'authorized_identity_phase', phase, elapsed_ms: Math.round(performance.now() - identityStarted) }));
+};
+identityPhase('database_prepare_started');
 const authorizedDatabase = authorizedOptIn ? await isolatedTestDatabase('BB_TEST_AUTHORIZED_IDENTITY_DATABASE_URL') : undefined;
+identityPhase('database_prepare_finished');
 
 const sha256 = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
 const canonical = (value: unknown): string => {
@@ -55,6 +63,7 @@ function displayNameFromAnchor(quote: string): string | null {
 test('authorized rq-202506 DOCX keeps issuer identity selection review-only under parser 1.0.6 coverage warnings', {
   skip: authorizedOptIn ? false : 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to parse this authorized real sample',
 }, async () => {
+  identityPhase('sample_read_started');
   const manifestPath = join(sourceRoot, 'tests/samples/2026-09-25/manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as AuthorizedManifest;
   const sampleCase = manifest.cases.find((entry) => entry.case_id === 'rq-202506');
@@ -70,6 +79,7 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
   const contentHash = sha256(bytes);
   assert.equal(contentHash, file.sha256, 'authorized sample SHA-256 must match its manifest');
 
+  identityPhase('sample_verified');
   const scope = {
     ownerUserId: 'authorized-identity-regression-owner',
     projectId: 'authorized-identity-regression-project',
@@ -89,11 +99,13 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
     },
     options: {},
   };
+  identityPhase('parser_started');
   const response = await runDocumentParser(request, {
     pythonExecutable: parserPython,
     repoRoot: parser106Root,
   });
 
+  identityPhase('parser_finished');
   assert.equal(response.parser_version, 'bondbuddy-document-parser-1.0.6');
   assert.equal(response.status, 'needs_confirmation');
   assert.equal(response.records.length, 9970, 'parser 1.0.6 must return the complete baseline record set');
@@ -127,7 +139,9 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
     replayed: false,
   };
   // This in-memory snapshot exercises selector logic only; it does not persist to PostgreSQL.
+  identityPhase('selector_started');
   const selected = selectIssuerIdentityEvidence(scope, snapshot);
+  identityPhase('selector_finished');
 
   assert.equal(selected.status, 'needs_review');
   assert.equal(selected.coverage, 'incomplete');
@@ -158,6 +172,7 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
   assert.deepEqual(produced.map(item => item.sourceRecordId), expectedAnchorIds);
   assert.equal(new Set(produced.map(item => item.requestId)).size, 2);
 
+  identityPhase('in_memory_producer_finished');
   assert.ok(authorizedDatabase, 'authorized persistence regression requires a migrated test database');
   const pool = new Pool({ connectionString: authorizedDatabase });
   const owner = scope.ownerUserId, reviewer = 'authorized-identity-reviewer', grantor = 'authorized-identity-grantor';
@@ -177,15 +192,19 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
       VALUES($1,1,$2,$3,$4,'historical','authorized.docx',$5,$6,$7,$8,'parsed')`,
     [materialId, owner, projectId, uploadId, file.media_type, bytes.length, contentHash, 'authorized/identity-material']);
     let idCalls = 0;
+    identityPhase('snapshot_persist_started');
     const saved = await persistParseSnapshot({ pool, newId: () => idCalls++ === 0 ? scope.snapshotId : randomUUID() },
       { ownerUserId: owner, projectId, materialId, materialVersion: 1, requestId: request.request_id },
       { mediaType: file.media_type as DocumentParseRequest['material']['media_type'], sha256: contentHash }, response);
+    identityPhase('snapshot_persist_finished');
     const records = await pool.query(`SELECT record_id, record_sha256, locator_type FROM bb_parse_evidence
       WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4 AND uncertainty='[]'::jsonb`,
     [owner, projectId, materialId, saved.snapshotId]);
+    identityPhase('database_producer_started');
     const candidates = await createIssuerIdentityProducer(pool)({ ...scope, snapshotId: saved.snapshotId,
       materialSha256: contentHash, evidence: records.rows.map(row => ({ recordId: String(row.record_id),
         recordSha256: String(row.record_sha256).trim(), locatorType: String(row.locator_type) })) });
+    identityPhase('database_producer_finished');
     assert.deepEqual(candidates.map(item => item.sourceRecordId), expectedAnchorIds);
     for (const item of candidates) await appendIssuerIdentitySourceRecord({ pool }, { ...scope,
       requestId: item.requestId!, observationId: item.observationId, sourceRecordId: item.sourceRecordId,
@@ -229,4 +248,5 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
     assert.equal((await loadVerifiedIssuerIdentitySourceRecord(pool, scope))?.entityId, reviewedId);
   } finally { await app.close(); await pool.end(); }
   assert.equal(sha256(await readFile(samplePath)), file.sha256, 'the authorized original must remain unchanged after parsing');
+  identityPhase('regression_finished');
 });
