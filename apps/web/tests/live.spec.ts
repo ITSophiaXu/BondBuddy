@@ -38,7 +38,10 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   await expect(page.getByLabel('发行人全称')).toHaveValue('浏览器验收合成发行人有限公司');
   await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('合成验收 · 已重命名项目');
   await page.getByRole('link', { name: '任务进度与结果', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
+  const savedProject = page.locator(`.collection-project[data-project-id="${id}"]`).getByRole('link', { name: '合成验收 · 已重命名项目', exact: true });
+  await expect(savedProject).toBeVisible();
+  await expect(savedProject).toHaveAttribute('href', `#/projects/${encodeURIComponent(id)}/files`);
   await page.getByLabel('搜索项目名称或发行人').fill('不存在');
   await expect(page.getByRole('heading', { name: '没有找到匹配的项目' })).toBeVisible();
   await page.getByLabel('搜索项目名称或发行人').fill('');
@@ -50,7 +53,8 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, a);
-  await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
+  await expect(savedProject).toBeVisible();
+  await expect(savedProject).toHaveAttribute('href', `#/projects/${encodeURIComponent(id)}/files`);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, b);
