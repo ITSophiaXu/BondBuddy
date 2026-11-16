@@ -39,6 +39,7 @@ test('current all/group selections total 49, including 3 basic credit items', as
 
 test('historical selection adoption filters only new preparation and keeps old records', async ({page}) => {
   const state = fixture(), history = historicalRounds(state);
+  const serverDraft = structuredClone(state.workspace.draft), revision = state.workspace.revision;
   await install(page, state); await page.goto(`${route}&run=${checkId}`);
   await expect(page.locator('[data-evidence="0:credit-china"]')).toBeAttached();
   await page.locator('#integrity-use-round').click();
@@ -48,11 +49,19 @@ test('historical selection adoption filters only new preparation and keeps old r
   for (const id of retired) await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toHaveCount(0);
   await page.reload(); await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(2);
   expect(historicalRounds(state)).toEqual(history); expect(writes(state)).toEqual([]);
-  // The two remaining historical items only accept companies; the roster has a person.
+  // The retained bankruptcy/local-tax sites still exclude the original person after reload.
+  expect(await page.locator('[name=integrity-site]:checked').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value).sort())).toEqual(['bankruptcy', 'local-tax']);
+  await expect(page.locator('[data-subject-row]')).toHaveCount(3);
+  await expect(page.locator('[data-subject="person-a"][data-field="kind"]')).toHaveValue('person');
+  await expect(page.locator('[data-subject="person-a"][data-field="name"]')).toHaveValue('合成人员甲');
+  await expect(page.locator('[data-subject="person-a"][data-field="identifier"]')).toHaveValue('内部核对尾号7788');
   await page.locator('#integrity-start').click();
-  await expect(page.locator('#integrity-status')).toHaveText('人员需要选择支持人员核查的网站。');
+  await expect(page.locator('#integrity-status')).toHaveText('每个对象至少需要一个可查询的适用官网，请核对人员适用网站和企业注册地。');
   await expect(page.locator('#integrity-confirm')).toHaveCount(0);
+  await expect(page.locator('.integrity-modal[open]')).toHaveCount(0);
   expect(writes(state)).toEqual([]);
+  expect(state.workspace.draft).toEqual(serverDraft); expect(state.workspace.revision).toBe(revision);
+  expect(historicalRounds(state)).toEqual(history);
 });
 
 test('retired-only selection becomes empty and cannot start a check', async ({page}) => {
