@@ -30,7 +30,7 @@ services:
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
     mem_limit: 6g
     cpus: 2
-    pids_limit: 256
+    pids_limit: 512
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
@@ -67,7 +67,7 @@ services:
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
     mem_limit: 7g
     cpus: 2
-    pids_limit: 256
+    pids_limit: 512
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
