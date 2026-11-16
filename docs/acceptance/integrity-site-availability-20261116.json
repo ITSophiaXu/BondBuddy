@@ -1,0 +1,61 @@
+{
+  "checked_date": "2026-11-16",
+  "source": "8209b347d765589fb97c19c990c63718d67ad227",
+  "network": "local Docker direct public egress; not production Beijing egress",
+  "model_calls": 0,
+  "production_mutations": 0,
+  "results": [
+    {
+      "site_id": "customs",
+      "checked_at": "2026-11-16T13:43:39.035Z",
+      "elapsed_ms": 16839,
+      "search_performed": false,
+      "outcome": "failed",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 8490
+      },
+      "captures": []
+    },
+    {
+      "site_id": "customs-credit",
+      "checked_at": "2026-11-16T13:43:55.748Z",
+      "elapsed_ms": 16683,
+      "search_performed": false,
+      "outcome": "failed",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 10648
+      },
+      "captures": [
+        {
+          "kind": "blocker",
+          "title": "访问受限",
+          "url": "https://credit.customs.gov.cn/ccppwebserver/pages/ccpp/html/ccppindex.html",
+          "sha256": "c2b0b1ccefdb9577e6e23fc1cd0447087b98a9e7a49de9b3674cbb80e67b9baf"
+        }
+      ]
+    },
+    {
+      "site_id": "nmpa",
+      "checked_at": "2026-11-16T13:44:07.792Z",
+      "elapsed_ms": 11998,
+      "search_performed": false,
+      "outcome": "failed",
+      "diagnostic": {
+        "code": "http_error",
+        "phase": "open",
+        "http_status": 400,
+        "attempts": 1,
+        "elapsed_ms": 6940
+      },
+      "captures": []
+    }
+  ]
+}

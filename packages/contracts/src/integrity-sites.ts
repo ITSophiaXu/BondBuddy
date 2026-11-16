@@ -90,7 +90,13 @@ const CATALOG_SITES: IntegritySite[] = [
 ];
 // User decision 2026-10-30 (#819): retire these query items from new checks.
 // Keep their exact metadata for immutable queued runs, evidence and free re-exports.
-const RETIRED_SITE_IDS = new Set(['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit']);
+// 2026-11-16: also pause three repeatedly inaccessible entries (#819).
+// Their open-stage HTTP 400 was reproduced locally; see docs/acceptance/integrity-site-availability-20261116.md.
+// This affects only new preparation/quotes/runs, never the frozen scope of an existing run.
+const RETIRED_SITE_IDS = new Set([
+  'credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit',
+  'customs', 'customs-credit', 'nmpa',
+]);
 export const isRetiredIntegritySite = (id: string): boolean => RETIRED_SITE_IDS.has(id);
 export const removeRetiredIntegritySites = (ids: readonly string[]): string[] => ids.filter(id => !isRetiredIntegritySite(id));
 export const INTEGRITY_SELECTABLE_SITES: IntegritySite[] = CATALOG_SITES.filter(s => !isRetiredIntegritySite(s.id));
