@@ -8,9 +8,11 @@ import {requireThat, sha256} from './policy.mjs';
 const ROOT = '/opt/bondbuddy/business-overlays';
 const forbidden = new Set(['runtime.js','queue.js','codex-adapter.js','model-call-budget.js','durable-probe-journal.js']);
 const eightRuntime = new Set(['apps/worker/dist/runtime.js','apps/worker/dist/model-call-budget.js']);
-const safePath = (path, eight=false) => typeof path === 'string' &&
+const recoveryVersion='shared-business-eight-recovery-v1';
+const recoveryRuntime=new Set(['apps/api/dist/queue.js']);
+const safePath = (path, eight=false,recovery=false) => typeof path === 'string' &&
   /^(?:apps\/(?:api|worker)|packages\/contracts)\/dist\/[a-z][a-z0-9-]*\.js$/.test(path) &&
-  (!forbidden.has(path.split('/').at(-1)) || eight && eightRuntime.has(path));
+  (!forbidden.has(path.split('/').at(-1)) || eight && eightRuntime.has(path) || recovery && recoveryRuntime.has(path));
 
 
 const PERFORMANCE_VERSION = 'shared-business-eight-performance-v1';
@@ -63,11 +65,11 @@ export function validateBusinessOverlay(value, pin) {
   if(performance){
     requireThat(value.sha256===pin && /^[a-f0-9]{64}$/.test(pin) && Number.isInteger(value.bytes) && value.bytes>0 && value.bytes<=524288 && validPerformanceFiles(value.files),'BUSINESS_OVERLAY_SCOPE');
   } else {
-  const eight=value?.version==='shared-business-eight-v1', count=eight?25:19;
+  const recovery=value?.version===recoveryVersion,eight=recovery||value?.version==='shared-business-eight-v1',count=recovery?31:eight?25:19;
   requireThat((eight || value?.version === 'shared-business-four-v1') && value.sha256 === pin && /^[a-f0-9]{64}$/.test(pin) &&
     Number.isInteger(value.bytes) && value.bytes > 0 && value.bytes <= 262144 &&
     Array.isArray(value.files) && value.files.length === count && new Set(value.files.map(f=>f.path)).size === count &&
-    value.files.every(f=>safePath(f.path,eight) && /^[a-f0-9]{64}$/.test(f.sha256) &&
+    value.files.every(f=>safePath(f.path,eight,recovery) && /^[a-f0-9]{64}$/.test(f.sha256) &&
       Number.isInteger(f.bytes) && f.bytes > 0 && f.bytes <= 262144), 'BUSINESS_OVERLAY_SCOPE');
   }
   // The bearer URL travels only inside the existing role-bound private envelope.
@@ -83,7 +85,7 @@ export function businessOverlayFiles(archive, descriptor) {
   if(descriptor.version===PERFORMANCE_VERSION)return performanceArchiveFiles(archive,descriptor);
   requireThat(archive.length === descriptor.bytes && sha256(archive) === descriptor.sha256, 'BUSINESS_OVERLAY_ARCHIVE');
   const tar = gunzipSync(archive, {maxOutputLength: 2097152}), result = new Map();
-  const eight=descriptor.version==='shared-business-eight-v1';
+  const recovery=descriptor.version===recoveryVersion,eight=recovery||descriptor.version==='shared-business-eight-v1';
   let offset = 0;
   while (offset + 512 <= tar.length) {
     const h = tar.subarray(offset, offset + 512); offset += 512;
@@ -93,10 +95,10 @@ export function businessOverlayFiles(archive, descriptor) {
     requireThat(!string(345,500) && /^[0-7]+$/.test(sizeText) && (h[156]===0 || h[156]===48), 'BUSINESS_OVERLAY_MEMBER');
     const size = parseInt(sizeText,8);
     requireThat(size <= 262144 && offset + size <= tar.length && !result.has(path), 'BUSINESS_OVERLAY_MEMBER');
-    requireThat(safePath(path,eight) || /^db\/migrations\/018(?:0_batch_four_way|6_shared_batch_capacity)\.sql$/.test(path) || eight && path==='db/migrations/0188_execution_node_eight_capacity.sql', 'BUSINESS_OVERLAY_PATH');
+    requireThat(safePath(path,eight,recovery) || /^db\/migrations\/018(?:0_batch_four_way|6_shared_batch_capacity)\.sql$/.test(path) || eight && path==='db/migrations/0188_execution_node_eight_capacity.sql' || recovery && path==='db/migrations/0189_terminal_recovery_audit.sql', 'BUSINESS_OVERLAY_PATH');
     result.set(path, Buffer.from(tar.subarray(offset,offset+size))); offset += Math.ceil(size/512)*512;
   }
-  requireThat(result.size === (eight?28:21) && descriptor.files.every(f=>result.get(f.path)?.length === f.bytes &&
+  requireThat(result.size === (recovery?35:eight?28:21) && descriptor.files.every(f=>result.get(f.path)?.length === f.bytes &&
     sha256(result.get(f.path))===f.sha256), 'BUSINESS_OVERLAY_FILES');
   return new Map(descriptor.files.map(f=>[f.path,result.get(f.path)]));
 }
@@ -107,11 +109,13 @@ export function businessOverlayCompose(base, directory, files) {
   requireThat(base.startsWith('# Standalone execution nodes only:') && boundary > 0, 'BUSINESS_OVERLAY_COMPOSE');
   const authoring = base.slice(0,boundary), marker = '    volumes:\n';
   requireThat(authoring.split(marker).length===2, 'BUSINESS_OVERLAY_COMPOSE');
-  const mounts = files.map(f=>`      - ${directory}/${f.path}:/app/${f.path}:ro\n`).join('');
+  const mounts = files.filter(f=>f.path!=='apps/worker/dist/run-pipeline-review.js').map(f=>`      - ${directory}/${f.path}:/app/${f.path}:ro\n`).join('');
   const common=new Set(['apps/worker/dist/runtime.js','apps/worker/dist/model-call-budget.js','apps/api/dist/execution-capacity.js',
     'apps/api/dist/batch-admission.js','packages/contracts/dist/workpaper-entry.js',
     'packages/contracts/dist/execution-capacity.js','packages/contracts/dist/index.js','packages/contracts/dist/workpaper-progressive.js']);
-  const reviewMounts=files.filter(f=>common.has(f.path)).map(f=>`      - ${directory}/${f.path}:/app/${f.path}:ro\n`).join('');
+  const recovery=files.some(f=>f.path==='apps/worker/dist/managed-run-retries.js');
+  if(recovery)for(const path of ['apps/api/dist/queue.js','apps/worker/dist/execution-node-runtime.js','apps/worker/dist/run-lease-heartbeat.js','apps/worker/dist/managed-run-retries.js','apps/worker/dist/run-pipeline-review.js'])common.add(path);
+  const reviewMounts=files.filter(f=>common.has(f.path)).map(f=>`      - ${directory}/${f.path}:/app/${f.path==='apps/worker/dist/run-pipeline-review.js'?'apps/worker/dist/run-pipeline.js':f.path}:ro\n`).join('');
   const review=base.slice(boundary);
   requireThat(review.split(marker).length===2,'BUSINESS_OVERLAY_COMPOSE');
   // The legacy descriptor never changes review; the eight-slot revision binds its common runtime closure.

@@ -1,0 +1,160 @@
+{
+  "version": "shared-business-eight-recovery-v1",
+  "files": [
+    {
+      "path": "apps/api/dist/batch-admission.js",
+      "bytes": 1222,
+      "sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de"
+    },
+    {
+      "path": "apps/api/dist/data.js",
+      "bytes": 28554,
+      "sha256": "2f4d0091646af3a2ee7105cd43f684fff2089375292387059523363d5ac3d60e"
+    },
+    {
+      "path": "apps/api/dist/execution-capacity.js",
+      "bytes": 54186,
+      "sha256": "b7d205d3843a4da0b0527b59f817da741a7bdd91d8af07f4eecabbb3d921bf90"
+    },
+    {
+      "path": "apps/api/dist/log-ops.js",
+      "bytes": 96371,
+      "sha256": "31fee091b8f5e8c02ce6f8098bd92e698cde3123ba60d76ced6a5b28ef1c4435"
+    },
+    {
+      "path": "apps/api/dist/m4-workspace.js",
+      "bytes": 76272,
+      "sha256": "2aaaeace82037a600c929df8cd24ac2e4c148d58b9b1637299e2dfa357e2ff56"
+    },
+    {
+      "path": "apps/api/dist/observability.js",
+      "bytes": 24207,
+      "sha256": "1ff245e5adc6509ce2cb7df37d7a11c1b156f4542aca84642ee92434b28cd58b"
+    },
+    {
+      "path": "apps/api/dist/project-file-consistency.js",
+      "bytes": 32456,
+      "sha256": "f5593b1afb23414e303769e17c299c00dba4e9a5020f9c80113e1f1c01af77fd"
+    },
+    {
+      "path": "apps/api/dist/project-file-workspace.js",
+      "bytes": 24926,
+      "sha256": "ed63ee4ca554931f39cb22ef8a03d3bd262d027dea0c3ce4b31ce4d33b79ad99"
+    },
+    {
+      "path": "apps/api/dist/provider-results.js",
+      "bytes": 45975,
+      "sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1"
+    },
+    {
+      "path": "apps/api/dist/queue.js",
+      "bytes": 112822,
+      "sha256": "61be83e48972c632ea70fe278db16739e35e575a5afefbf875c12e7057b5f5d0"
+    },
+    {
+      "path": "apps/api/dist/workpapers.js",
+      "bytes": 52222,
+      "sha256": "abd32e41267427c72c1635de59984a69e17d51c370664c44699d637ed1b0de12"
+    },
+    {
+      "path": "apps/worker/dist/bounded-items.js",
+      "bytes": 1227,
+      "sha256": "fc6b575ad2acb1537b8963dff2289b4556155b20a17a3eab63e0d90c348bc247"
+    },
+    {
+      "path": "apps/worker/dist/deferred-qa-journal.js",
+      "bytes": 756,
+      "sha256": "9ba8d34df3fe4ceb3735ae1db97b0efdbd222bdfd292ad486b3cdb3cda1164ae"
+    },
+    {
+      "path": "apps/worker/dist/execution-node-runtime.js",
+      "bytes": 5019,
+      "sha256": "5aa0c95093b7a13a2d9f8308f3a4381f3f4cec7c6a53ecfe0f133f5928803023"
+    },
+    {
+      "path": "apps/worker/dist/integrity-browser-boundary.js",
+      "bytes": 4155,
+      "sha256": "773af6b2f21deb6051949da0cee02a428509cefc5a25117c698ddc5973f189f4"
+    },
+    {
+      "path": "apps/worker/dist/integrity-browser-stage.js",
+      "bytes": 13035,
+      "sha256": "de9a2381332379fec5145a75850b45534ca82f928a02ba045a2449a7ac95edff"
+    },
+    {
+      "path": "apps/worker/dist/integrity-browser.js",
+      "bytes": 41033,
+      "sha256": "81143d737b289cf3316c4ef06d6e2dcebf31b595adb38ac5e1dce865a0959cba"
+    },
+    {
+      "path": "apps/worker/dist/m4-document-stage.js",
+      "bytes": 12969,
+      "sha256": "ecc20e139dda2696fbb5cc20390d6692db2de14374001495f87f177095cef828"
+    },
+    {
+      "path": "apps/worker/dist/managed-run-retries.js",
+      "bytes": 1555,
+      "sha256": "f53996049bb10d0aa2c9727753f9893cfabcb2416960603d64305e2ad3a703f5"
+    },
+    {
+      "path": "apps/worker/dist/model-call-budget.js",
+      "bytes": 20124,
+      "sha256": "d72229ee16a9d0c8cc05c55bc668eb2e2f01f04b0817b035ceefa6890b225955"
+    },
+    {
+      "path": "apps/worker/dist/project-qa-stage.js",
+      "bytes": 21315,
+      "sha256": "5545352badac6513e933658b5e22aabfc3d974f2e7ec2552bd8c2a903bb64b57"
+    },
+    {
+      "path": "apps/worker/dist/run-lease-heartbeat.js",
+      "bytes": 838,
+      "sha256": "5d3f6d61198251bf1f48d91ce1646184e2f544704329b0612e70f2d7a890c691"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline-review.js",
+      "bytes": 57846,
+      "sha256": "7d8701793418956a57cd47422d092aa560d157fffe2c3c85143eefb7987d71be"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "bytes": 59646,
+      "sha256": "330fbe4f01b693d309680985f0f39c7cfc4dda536241c529a02e36a1f3994df9"
+    },
+    {
+      "path": "apps/worker/dist/runtime.js",
+      "bytes": 37492,
+      "sha256": "5cdbfdd8d828d2d3d548e5940c876e0803e581890644ed1349cb878cb1bf8c57"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-progressive-groups.js",
+      "bytes": 16230,
+      "sha256": "cde0b3a6eb49b8e7a90a50cca8126d2d3cd534c3a38318e722408ba17cc2dfab"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-shared-stage.js",
+      "bytes": 28960,
+      "sha256": "239195fd0c6e43ff8aa1dd68d605e29707b8ce1a5e882d1fb5f2da224dad2554"
+    },
+    {
+      "path": "packages/contracts/dist/execution-capacity.js",
+      "bytes": 17603,
+      "sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff"
+    },
+    {
+      "path": "packages/contracts/dist/index.js",
+      "bytes": 98584,
+      "sha256": "72b056d9f42e30c598a062b2dc6997297cc6ed2232de455e3ab630307935437a"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-entry.js",
+      "bytes": 1778,
+      "sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-progressive.js",
+      "bytes": 5440,
+      "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
+    }
+  ]
+}
