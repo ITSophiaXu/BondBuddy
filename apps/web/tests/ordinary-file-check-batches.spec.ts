@@ -52,6 +52,7 @@ async function fixture(context:BrowserContext,options:Options={}){
 async function mount(page:Page){
   await page.goto('/ordinary-check-harness#consistency?project='+project);
   await page.evaluate(async root=>{const load=(path:string)=>import(path);await load('/src/style.css');await load(root+'styles.css');await load(root+'project-workspace.css');await load('/src/prototype-adapter.css');const {ApiClient}=await load('/src/api.ts'),{FileConsistency}=await load('/src/file-consistency.ts');
+    const {configureBillingTaskRecovery}=await load('/src/billing-task-recovery.ts');configureBillingTaskRecovery(()=>'synthetic-owner');
     const view=new FileConsistency(new ApiClient(()=>{}),(html:string)=>document.querySelector('#content')!.innerHTML=html,()=>true,'synthetic-review','synthetic-owner');(window as any).consistencyPage=view;await view.render();
   },prototypeRoot);await expect(page.locator('[data-fc-start]')).toBeEnabled();
 }
@@ -77,10 +78,16 @@ test('a definite quote conflict permits a fresh quote after rejected submission'
   const f=await fixture(context,{failure:'changed'});await mount(page);await start(page);await expect(page.locator('#fc-check-batches [role="alert"]')).toBeVisible();await start(page);await expect(page.getByRole('heading',{name:'逐份检查已受理'})).toBeVisible();
   const creates=f.calls.filter(c=>c.path===endpoint&&c.method==='POST');expect(creates).toHaveLength(2);expect(creates[0].body.request_id).not.toBe(creates[1].body.request_id);expect(f.calls.filter(c=>c.path.endsWith('/quote'))).toHaveLength(2);
 });
-test('insufficient balance retains the original range and only offers subscription or topup',async({context,page})=>{
-  const f=await fixture(context,{failure:'funds'});await mount(page);await start(page);await expect(page.getByText('积分不足，原文件范围和价格已保存，尚未开始。')).toBeVisible();await expect(page.getByRole('link',{name:'订阅或充值',exact:true})).toBeVisible();
+test('insufficient balance links payment status to the exact original request and retains its range',async({context,page})=>{
+  const f=await fixture(context,{failure:'funds'});await mount(page);await start(page);await expect(page.getByText('积分不足，原文件范围和价格已保存，尚未开始。')).toBeVisible();
+  const funding=page.getByRole('link',{name:'查看积分与支付状态',exact:true});await expect(funding).toBeVisible();await expect(funding).toHaveAttribute('href',/^#\/account\?/);
+  const first=f.calls.filter(c=>c.path===endpoint&&c.method==='POST');expect(first).toHaveLength(1);
+  const query=new URLSearchParams((await funding.getAttribute('href'))!.split('?')[1]),id=query.get('resume_request');expect(id).toMatch(/^[a-f0-9]{64}$/);expect(query.get('return_to')).toBe('#consistency?project='+project);
+  const stored=await page.evaluate(id=>JSON.parse(localStorage.getItem('bondbuddy:billing-task:v2:'+id)??'null'),id);
+  expect(stored).toMatchObject({owner,path:endpoint,requestId:first[0].body.request_id,returnTo:'#consistency?project='+project,state:'needs_funds',requiredPoints:first[0].body.expected_points});expect(stored.body).toEqual(first[0].body);
   await page.locator('[data-file-check-pending]').click();await expect(page.getByRole('heading',{name:'逐份检查已受理'})).toBeVisible();
-  const creates=f.calls.filter(c=>c.path===endpoint&&c.method==='POST');expect(creates[0].body).toEqual(creates[1].body);expect(f.calls.filter(c=>c.path.endsWith('/quote'))).toHaveLength(1);
+  const creates=f.calls.filter(c=>c.path===endpoint&&c.method==='POST');expect(creates).toHaveLength(2);expect(creates[0].body).toEqual(creates[1].body);expect(f.calls.filter(c=>c.path.endsWith('/quote'))).toHaveLength(1);
+  expect(await page.evaluate(id=>localStorage.getItem('bondbuddy:billing-task:v2:'+id),id)).toBeNull();
 });
 test('without Web Locks the page does not quote or submit a chargeable task',async({context,page})=>{
   const f=await fixture(context,{noLocks:true});await mount(page);await start(page);await expect(page.locator('#fc-check-batches [role="alert"]')).toBeVisible();expect(f.calls.filter(c=>c.method==='POST')).toEqual([]);
