@@ -37,11 +37,13 @@ async function withHeader(bytes:Buffer,image=false){
 
 test('workpapers: real per-file paid batch, atomic shortage, partial delivery, maintenance, version identity and isolation',
  {skip:!database,timeout:300000},async()=>{
-  const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
+  // Historical assessment/generation and current paid checks share persisted documents, not a mutable Pool billing default.
+  const legacyPool=new Pool({connectionString:database}),currentPool=new Pool({connectionString:database}),user=randomUUID();let actor=user,pool=legacyPool;
   const store=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
   const origin='http://synthetic-workpaper.test';
-  const server=(automatic:boolean)=>createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,enableSubscriptionBilling:automatic,enableOutcomePricing:automatic,principal:async()=>({userId:actor,csrfVerified:true})});
+  const server=(automatic:boolean)=>createServer({pool:automatic?currentPool:legacyPool,blobs,allowedOrigin:origin,enableRunRuntime:true,
+    ...(automatic?{}:{historicalBillingFixture:true,enableSubscriptionBilling:false,enableOutcomePricing:false}),principal:async()=>({userId:actor,csrfVerified:true})});
   let app=server(false);
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode} ${r.body}`);return r.json();};
@@ -97,9 +99,12 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     assert.equal((await pool.query('SELECT jsonb_array_length(links) AS n FROM bb_project_file_versions WHERE owner_user_id=$1 AND id=$2',[user,first.file.current.version_id])).rows[0].n,1,'full evidence stays in the owned stored version');
     const next=await upload(id,'synthetic-v2.docx',makeSyntheticDocxFixture({text:text.replace('100','200')}),docx,'historical');versions=await ok('GET',base+'/prospectus-versions');
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:versions.versions.find((v:any)=>v.material_id===next.material_id).version_id});
-    await app.close();app=server(true);
+    await app.close();pool=currentPool;app=server(true);
+    const retired=await send('POST',wp+'/assessments',{...request,request_id:randomUUID(),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision});
+    assert.equal(retired.statusCode,409,retired.body);assert.equal(retired.json().code,'BILLING_NOT_READY','current workpapers do not reopen retired assessment creation');
     const quoteRequest={request_id:randomUUID(),workpaper_batch_id:batch.batch_id,source_version_id:source.current_version_id,source_selection_revision:source.selection_revision};
     const quote=await ok('POST',wp+'/check-batches/quote',quoteRequest);assert.equal(quote.items.length,2);assert.equal(quote.excluded.length,1);assert.equal(quote.points,String(2*AUTOMATIC_TASK_TARIFF.check.points));
+    assert.equal(quote.auto_charge,true);assert.ok(quote.items.every((item:any)=>item.auto_charge===true&&item.scope_quote_id),'every current file keeps an executable automatic scope quote');
     const start={...quoteRequest,file_version_ids:quote.items.map((i:any)=>i.file_version_id),price_version:quote.price_version,expected_points:quote.points,scopes:quote.items.map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))};
     const before=await creditBalance(pool,user);assert.equal(before.available,2*AUTOMATIC_TASK_TARIFF.check.points-1);
     const shortage=await send('POST',wp+'/check-batches',start);assert.equal(shortage.statusCode,402,shortage.body);assert.match(shortage.body,new RegExp((2*AUTOMATIC_TASK_TARIFF.check.points).toLocaleString('zh-CN')));
@@ -155,7 +160,7 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_check_evidence WHERE run_id=$1',[imageBatch.items[0].run_id])).rows[0].n,0);
     // Regenerating the exact logical catalogue item appends a new family version;
     // the previous batch retains both its original and its maintenance descendant.
-    await app.close();app=server(false);await fund(WORKPAPER_PRICE.points);
+    await app.close();pool=legacyPool;app=server(false);await fund(WORKPAPER_PRICE.points);
     const adopted=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:imageSource.selection_revision,version_id:request.source_version_id});
     const nextRequest={...request,request_id:randomUUID(),item_ids:[maintained.entry.id],source_selection_revision:adopted.selection_revision};
     await ok('POST',wp+'/assessments',nextRequest);assert.equal(await execute([workpaperAssessmentStage({model:assessor,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
@@ -166,5 +171,5 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     assert.equal(newItem.file.current.file_id,oldItem.file.current.file_id);assert.notEqual(newItem.file.original.version_id,oldItem.file.original.version_id);
     assert.equal(oldItem.file.original.version_id,paid.file_version_id);assert.equal(oldItem.file.current.version_id,maintained.file.current.version_id);assert.equal(oldItem.file.current.latest,false);
     assert.equal(newItem.file.current.latest,true);assert.ok(newItem.file.current.sequence>oldItem.file.current.sequence);
-  }finally{await app.close();await pool.end();}
+  }finally{await app.close();await Promise.all([legacyPool.end(),currentPool.end()]);}
 });
