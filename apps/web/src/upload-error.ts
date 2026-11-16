@@ -24,7 +24,7 @@ export function uploadErrorMessage(error: unknown): string {
       case 'size_limit':
         return `文件超出当前检查限制，尚未保存。请拆分文件后重试。${reference}`;
       case 'encrypted_content':
-        return `文件内容已加密，服务器无法读取。请提供可读取的副本。${reference}`;
+        return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;
       case 'content_mismatch':
         return `文件内容与声明格式不一致，尚未保存。请核对所选文件。${reference}`;
       case 'unsupported_content':
@@ -38,7 +38,7 @@ export function uploadErrorMessage(error: unknown): string {
     }
   }
   if (error.code === 'MATERIAL_CONTENT_MISMATCH') return `文件内容校验与声明不一致，尚未保存。请核对所选文件。${reference}`;
-  if (error.code === 'MATERIAL_ENCRYPTED') return `服务器无法读取加密文件。请提供可读取的副本。${reference}`;
+  if (error.code === 'MATERIAL_ENCRYPTED') return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;
   if (error.code === 'MATERIAL_FORMAT_UNSUPPORTED') return error.details.prospectusDocxOnly
     ? friendlyError(error, 'save') : `服务器暂不支持此文件格式。${reference}`;
   if (error.code === 'VALIDATION_FAILED') return `上传请求不符合限制或会话已过期，请核对文件大小后重试。${reference}`;

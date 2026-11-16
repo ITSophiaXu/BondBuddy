@@ -99,6 +99,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'INPUT_REQUIRED': return error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
       ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
+    case 'MATERIAL_ENCRYPTED': return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请通过原任务入口补足积分后继续。';
