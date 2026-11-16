@@ -10,7 +10,7 @@
     1426,
     1427
   ],
-  "stable_base_commit": "c23abe58cdb960261b988eec32be6b42c2a19bce",
+  "stable_base_commit": "b7e6e13cb7bfd9438e2323b563475748186fbeb7",
   "source_develop_commit": "f029721966a7c08c1158dcce90f6c319d1de3f29",
   "component_only_release": true,
   "public_app_and_business_source_delta": [],
@@ -47,9 +47,9 @@
     },
     {
       "path": "deploy/tencent-elasticity/bootstrap.mjs",
-      "bytes": 6263,
-      "sha256": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "bytes": 8910,
+      "sha256": "c27e29abf6d0c1eb6e3407c1441ac4b74166e5532429400d6c7a8f12b2bddb67",
+      "source_commit": "cffee0200f11ccf9c2849bc6a7eecae537b010a0"
     },
     {
       "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
@@ -197,9 +197,9 @@
     },
     {
       "path": "deploy/tencent-elasticity/node-adapter.mjs",
-      "bytes": 19787,
-      "sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "bytes": 20001,
+      "sha256": "ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248",
+      "source_commit": "cffee0200f11ccf9c2849bc6a7eecae537b010a0"
     },
     {
       "path": "deploy/tencent-elasticity/ops-handler.mjs",
@@ -248,6 +248,12 @@
       "bytes": 22304,
       "sha256": "ba33f4d90d37aa229f982a900a24962558234eabbca31019962db2d6535ee047",
       "source_commit": "5b199cd0d361f897a4e6cf7d256a8784b8043a8a"
+    },
+    {
+      "path": "deploy/tencent-elasticity/business-overlay.mjs",
+      "bytes": 6817,
+      "sha256": "8f8d80a9cbd69a9e3e2d1a36e6b82df950c3845d714d885c25e94c7707ed5b59",
+      "source_commit": "cffee0200f11ccf9c2849bc6a7eecae537b010a0"
     }
   ],
   "source_prs": [
@@ -282,6 +288,30 @@
       "merge": "f029721966a7c08c1158dcce90f6c319d1de3f29",
       "tree": "feee6f267fc091a419ad0e703b056ada847f6263",
       "merge_tree": "feee6f267fc091a419ad0e703b056ada847f6263"
+    },
+    {
+      "number": 1429,
+      "head": "9f89ecd42b75b4854330f854ac2e8593cc9f97fd",
+      "merge": "50011380086a4452c063998ac5073470c30423a5",
+      "state": "MERGED"
+    },
+    {
+      "number": 1431,
+      "head": "3fc9675a1d07adb22119ace5ceb28c9d2e17e413",
+      "merge": "18ec52c732ac2917a514463f06bee192a7fb5b80",
+      "state": "MERGED"
+    },
+    {
+      "number": 1433,
+      "head": "0a686c475c6e06d9a0ab0e61e5574b5b4de1cc3b",
+      "merge": "b4b86c5b0480eb27f9c3a912f2c41992516d78ad",
+      "state": "MERGED"
+    },
+    {
+      "number": 1435,
+      "head": "cffee0200f11ccf9c2849bc6a7eecae537b010a0",
+      "merge": "bdc468c41eab53418be0bdafb6753c4c105ab989",
+      "state": "MERGED"
     }
   ],
   "runtime_payload": {
@@ -318,8 +348,8 @@
   "effective_control_payload": [
     {
       "path": "apps/api/dist/execution-capacity.js",
-      "bytes": 52831,
-      "sha256": "1ff8c4715e9456fbef342ac548508db1ee816b8fb2c9abdcd41e1b9ccd923f34"
+      "bytes": 52851,
+      "sha256": "f1ac8fe7f009d77f35fe387738b888376fe65975de5ef5986de4d3c8361f15ee"
     },
     {
       "path": "apps/api/dist/execution-demand.js",
@@ -353,8 +383,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/bootstrap.mjs",
-      "bytes": 6263,
-      "sha256": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3"
+      "bytes": 8910,
+      "sha256": "c27e29abf6d0c1eb6e3407c1441ac4b74166e5532429400d6c7a8f12b2bddb67"
     },
     {
       "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
@@ -398,8 +428,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/node-adapter.mjs",
-      "bytes": 19787,
-      "sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65"
+      "bytes": 20001,
+      "sha256": "ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248"
     },
     {
       "path": "deploy/tencent-elasticity/ops-handler.mjs",
@@ -474,18 +504,23 @@
     {
       "path": "packages/contracts/dist/workpaper-progressive.js",
       "bytes": 5440,
-      "sha256": "da383c4e17e6c2dbda3536937c910a60aa27a775ccca7939793f5aedbe604bc6"
+      "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
     },
     {
       "path": "deploy/tencent-elasticity/expense-history.mjs",
       "bytes": 7286,
       "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af"
+    },
+    {
+      "path": "deploy/tencent-elasticity/business-overlay.mjs",
+      "bytes": 6817,
+      "sha256": "8f8d80a9cbd69a9e3e2d1a36e6b82df950c3845d714d885c25e94c7707ed5b59"
     }
   ],
-  "control_installation": "Exact effective_control_payload on the existing ops image/package tree: final #1425 control-authority.mjs and #1427 tencent-cvm.mjs override earlier copies. Existing ops Pool owns stop/recover and operation persistence; issuer/runtime remain independent.",
+  "control_installation": "Apply exact effective_control_payload last, retaining1425 authority and1427 Run PENDING checks; add pinned business bootstrap/helper and shared-capacity leaf. Existing ops Pool owns stop/recover; issuer/runtime remain independent. Protected pool and issuer pool image_id must both select img-6cnm1flv.",
   "schema": {
-    "formal_before_count": 182,
-    "after_count": 185,
+    "formal_before_count": 184,
+    "after_count": 187,
     "already_present": "0179",
     "selected_migrations": [
       {
@@ -505,10 +540,17 @@
       }
     ],
     "excluded": [
-      "0180",
-      "0182"
+      "0182",
+      "0185"
     ],
-    "entry": "Unchanged db/migrate.mjs, cwd containing only selected db/migrations; inherit existing protected ops DATABASE_URL."
+    "entry": "Unchanged db/migrate.mjs. Formal business baseline184 already includes0180/0186. Select only missing dynamic0181/0183/0184; preserve additive business schema and audits through rollback.",
+    "observed_previous_count": 182,
+    "business_layer_activated": true,
+    "business_migrations_already_applied": [
+      "0180_batch_four_way.sql",
+      "0186_shared_batch_capacity.sql"
+    ],
+    "business_compatibility_prelude_sha256": "0923c972a41f281b4722f33171bed9647e2f9b50e0315af6fae887e6771dbe38"
   },
   "closed_candidate_config": {
     "enabled": false,
@@ -529,7 +571,8 @@
     "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
     "image_id": "img-6cnm1flv",
     "private_pg_verified": false,
-    "service_credentials_verified": false
+    "service_credentials_verified": false,
+    "business_overlay_sha256": "c6e60a57e4b0ab077d66ba4a70c1779e64b178b0a75bf8d1b2ffdf367af63004"
   },
   "system_image": {
     "image_id": "img-6cnm1flv",
@@ -631,11 +674,16 @@
     "fixed_four_post1414_preimage_sha256": "8dc4ecb254bfed5122ac92f1c4e9561d480a7f15c8b24354245f5f070fa3ab39",
     "authoring_image": "sha256:e1ce3a98ca971cebe08adb8b07eed633878fa32451582be5242e0ec4f82e00d4",
     "review_image": "sha256:05d9c63d459736c44d3ebd1983e65baa1e097fd9efe78a2264583ebdb88e80b7",
-    "compose_sha256": "f47b74667ad30d98953ed72f86e7c940d0d43c17490bbbdb5e2fe0dd6da60002",
     "managed_nodes": false,
     "global_model_limit": 4,
     "budget_available": false,
-    "sequence": "Close managed tasks and same-ACK positive stop before restoring the exact current fixed-four components/config using locks and CAS; retain additive schema and audits."
+    "sequence": "Drain managed tasks and prove same-ACK STOP_CHARGING before restoring latest current fixed-four components/config by fresh locks/CAS. Preserve schema0180/0186, API11/author18, assistant4, Azure parser4 and all audits.",
+    "historical_pre_business_compose_sha256": "f47b74667ad30d98953ed72f86e7c940d0d43c17490bbbdb5e2fe0dd6da60002",
+    "latest_fixed_four_policy": "Preserve published business API11/authoring18 overlay, schema184, review assistant4 and Azure parser4; never restore main parser1 or old business1/2. Fresh component CAS receipts supersede historical post1414 bytes.",
+    "main_pre_dynamic_current_components_sha256": "d251d6c0778202f7554da8665b19c331c1a165e42123cdb65f6fa7b764920bef",
+    "execution_pre_dynamic_current_components_sha256": "832e5ad7b23b1e7330120840dce1af29b50480fd53b4e781f4ca3f88728dfe5a",
+    "execution_private_compose_sha256": "9b007e4c87caec4b6835296f9800f162c63a0aed1e93da645ae6423de742efc2",
+    "business_overlay_source": "deploy/shared-business-capacity/manifest.json at stable master406ee80"
   },
   "release_gates": {
     "full_c23_gold_quality_passed": false,
@@ -644,7 +692,7 @@
     "native_model_overlap_gt4_lte8_verified": false,
     "formal_ops_automatic_same_ACK_stop_verified": false,
     "formal_schema_ACL_activation_executed": false,
-    "note": "Corrected system image NORMAL/cloudinit/unique SYSTEM40 and exact image CAM are verified. No full c23, Web/public API or financial business deployment. Reuse applicable evidence. The original real task/persistence/autonomous Stop P0 chain remains pending; preparation is not production activation.",
+    "note": "Image NORMAL and CAM verified; business API/authoring narrow overlays and additive0180/0186 published independently. All unchanged OCI/runtime/lease/financial-generation evidence reused. Dynamic task overlap/persistence/autonomous Stop P0 chain remains pending; preparation is not production dynamic activation.",
     "release_scope_authorization": "Explicit user instruction: proceed with narrow dynamic infrastructure; only concrete P0 blocks. No further legacy quality exception approval required.",
     "legacy_full_gold_gate_required_for_this_scope": false,
     "legacy_gold_status": "deferred; existing 30/43 failure retained and not relabeled PASS",
@@ -660,7 +708,9 @@
     "1419 final expense history/ops entries",
     "1423 final costcap/cloud-quote-refresh",
     "1425 final control-authority retirement exclusion and retired-target rejection",
-    "1427 final trusted Run PENDING observation before materialized launch checks"
+    "1427 final trusted Run PENDING observation before materialized launch checks",
+    "1429 shared business batch capacity; stable business release1430 and0180/0186 already applied",
+    "1431/1433 plus sandbox-path correction: private-envelope business overlay on cold/warm nodes"
   ],
   "retired_issuer_delta": {
     "source_pr": 1425,
@@ -763,5 +813,32 @@
     "unknown39": "preserve; no automatic replay",
     "backup_and_post1414_rollback": "reuse existing exact references; keep required identity, data and mutual-exclusion protections",
     "new_model_calls_after_unified_P0_acceptance": "none for duplicate cutover verification"
+  },
+  "business_capacity_layer": {
+    "stable_release_master": "406ee80d6781eff808d4e9f4f5d384575086989d",
+    "compatibility_master": "b7e6e13cb7bfd9438e2323b563475748186fbeb7",
+    "public_descriptor": "deploy/tencent-elasticity/business-overlay-artifacts/descriptor.json",
+    "archive": "deploy/tencent-elasticity/business-overlay-artifacts/overlay.tar.gz",
+    "archive_bytes": 137217,
+    "archive_sha256": "c6e60a57e4b0ab077d66ba4a70c1779e64b178b0a75bf8d1b2ffdf367af63004",
+    "runtime_files": 19,
+    "fixed_API_overlay_files": 11,
+    "fixed_authoring_overlay_files": 18,
+    "already_published_by_existing_deployment": true,
+    "private_blob_capability": "issuer serviceTemplate.business_overlay.url only; never public userdata, manifest, argv or logs",
+    "rotation": "No new service. Existing protected configuration maintenance rotates the single-blob read capability before its recorded expiry. Expired capabilities fail closed.",
+    "cold_boot": "Public UserData installs exact adapter/helper by original image preimage CAS; role-bound enrollment supplies private artifact descriptor. Verify archive/regular paths, persist immutable files and per-file RO compose mounts.",
+    "warm_boot": "Verify installed immutable JS hashes and modes before readiness; keep original Compose directory and relative sandbox profile paths.",
+    "execution_capacity_source": {
+      "path": "apps/api/src/execution-capacity.ts",
+      "base_commit": "917ea83be3a08c7af16b1a81d241787c0187b1b2",
+      "deployment_source_sha256": "43b6620d4336431994d97ba27795c5ec83494f1dfab2ec2e35afc5100d0b0113",
+      "compiled_path": "apps/api/dist/execution-capacity.js",
+      "compiled_sha256": "f1ac8fe7f009d77f35fe387738b888376fe65975de5ef5986de4d3c8361f15ee"
+    },
+    "node_OCI_rebuilt": false,
+    "blob_capability_expiry_beijing": "2026-11-23T09:59:31+08:00",
+    "blob_readback_verified_sha256": "c6e60a57e4b0ab077d66ba4a70c1779e64b178b0a75bf8d1b2ffdf367af63004",
+    "blob_ETag": "0x8DF43853FE9A0AF"
   }
 }
