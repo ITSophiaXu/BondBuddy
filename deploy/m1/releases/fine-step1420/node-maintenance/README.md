@@ -15,7 +15,7 @@ tccli tat DescribeInvocationTasks --profile bondbuddy-lighthouse --region ap-bei
 
 保留 RunCommand 原 RequestId、InvocationId 和查询回执；未知派发先查询原调用，不能重复执行。解码 Output 后再解码 gzip_base64，校验 payload_sha256。仅 SUCCESS/Exit 0 加完整节点结果才证明本次检查成功。
 
-这一步只读，不占长时间部署锁，不修改消费者、配置、数据库、IAM、云实例或调度。后续安装须基于实际前像，使用同一生产锁与控制协调锁，正向排空后才重建消费者。候选固定为 e4f5a17ae876f2f31e7d231ab250599f5c0f72ae 下 managed-node-eight；保持系统镜像/OCI、8/8 槽、max2、min_running0、idle300、原节点创建/epoch/调用/账务。现存 helper 与未来启动模板分开验收。
+这一步只读，不占长时间部署锁，不修改消费者、配置、数据库、IAM、云实例或调度。后续安装须基于实际前像，使用同一生产锁与控制协调锁，正向排空后才重建消费者。最初候选 e4f5a17 已由下述恢复兼容候选替代；保持系统镜像/OCI、8/8 槽、max2、min_running0、idle300、原节点创建/epoch/调用/账务。现存 helper 与未来启动模板分开验收。
 
 当前仅交付可执行的前像检查，不代表节点已安装或步骤耗时已入库。
 
@@ -30,3 +30,13 @@ tccli tat DescribeInvocationTasks --profile bondbuddy-lighthouse --region ap-bei
 节点只修改已核对helper与node配置的business pin，保留原OCI/compose/adapter/注册信息。原字节备份在 `/var/lib/bondbuddy/timing1420-recovery-install`；同一调用未知先查询，失败不自动重装。安装后请求原bootstrap服务使用同一个已完成Start/epoch，返回请求不等于节点ready。回滚先正向排空，再恢复该目录备份与主站对应旧pool/authority/templates；保留当前迁移、ACL、业务输入和全部历史调用/账务。
 
 后续验收：节点真实文件及只读挂载、两服务ready、正常业务任务产生sessions/spans、授权dashboard显示各步骤和coverage；未有这些回执前整批仍未完成。
+
+## 控制端准备与回滚
+
+`stage-control.py` 只上传并回读验证公开代码，生成两槽私有模板及pool/authority副本；沿用原SAS到期，保留文件所有权与其余配置。`probe-control.template.py` 复用固定652d4b86适配器，只create、从未start，逐项比较process/HostConfig并删除本次probe；仅5个批准挂载不同。安全回执为control-*.safe.json。
+
+`activate-control.py` 的validate模式已在准确生产前像通过。activate/rollback只在config/deploy/migration及control-tick锁内操作；需台账190、全部node stopped、无managed租约/holder/云pending。先备份精确文件并保存owned pending，随后只TERM/recreate ops、更新并restart独立authority，API/web/PostgreSQL容器保持原ID；不迁移、不回退账务。异常保留pending，不未知重试。节点启动和实际采集另验收。
+
+rollback动作同样要求正向排空及节点stopped；恢复备份helper/bootstrap/authority与精确ops compose，并仅增量更新ops组件记录。节点`rollback-request.json`由既有TAT身份在消费者停止且bootstrap inactive/failed时执行；仅恢复原helper和业务pin，保留当前epoch及其他节点字段，不启动bootstrap或云实例。未来启动必须先匹配控制端回滚模板，不能在处理业务时直接回退。
+
+本批沿用用户已明确批准的日志补丁金样与人工签认例外。远程CI因GitHub账户付款/额度原因未启动，不能称为通过。Windows重跑旧bootstrap测试因无python3命令失败，Linux复验另留回执，不把该失败标为通过。

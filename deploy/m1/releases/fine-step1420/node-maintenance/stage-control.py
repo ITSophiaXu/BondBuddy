@@ -20,7 +20,7 @@ def main():
  ROOT.mkdir(mode=0o700,parents=True,exist_ok=True);need(ROOT.stat().st_uid==0 and ROOT.stat().st_mode&0o077==0,'root_permissions')
  for name in ['private','public']:(ROOT/name).mkdir(mode=0o700,exist_ok=True)
  public=ROOT/'public';private=ROOT/'private'
- expected={'overlay.tar.gz':NEW_PIN,'business-overlay.mjs':'75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4','bootstrap.mjs':'8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e'}
+ expected={'main-cutover-adapter.py':'00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67','overlay.tar.gz':NEW_PIN,'business-overlay.mjs':'75e10607d1886e1b11e3be809d664a4cd362bc2597e238511175bc96487f44e4','bootstrap.mjs':'8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e'}
  for name,digest in expected.items():
   b=base64.b64decode(payload['files'][name]);need(sha(b)==digest,'public_hash');write(public/name,b,0o644)
  desc=payload['descriptor'];need(desc['sha256']==NEW_PIN and desc['bytes']==435959 and len(desc['files'])==70,'descriptor_scope')
@@ -43,18 +43,21 @@ try{await client.uploadData(data,{conditions:{ifNoneMatch:'*'},blobHTTPHeaders:{
 const actual=await client.downloadToBuffer();if(createHash('sha256').update(actual).digest('hex')!==v.sha256)throw Error('readback');
 const url=await client.generateSasUrl({permissions:BlobSASPermissions.parse('r'),startsOn:new Date(Date.now()-300000),expiresOn:new Date(v.expiry)});process.stdout.write(JSON.stringify({url,bytes:actual.length,sha256:v.sha256}));"""
  blob=json.loads(run(['docker','exec','-i','bb-main-api-1','node','--input-type=module','-e',js],json.dumps({'archive':payload['files']['overlay.tar.gz'],'sha256':NEW_PIN,'expiry':expiry}).encode()))
- need(blob['sha256']==NEW_PIN and blob['bytes']==desc['bytes'],'blob_readback');new_desc={**desc,'url':blob['url']};write(private/'business-overlay.descriptor.private.json',(json.dumps(new_desc)+'\n').encode())
+ need(blob['sha256']==NEW_PIN and blob['bytes']==desc['bytes'],'blob_readback');new_desc={**desc,'url':blob['url']};descriptor_path=private/'business-overlay.descriptor.private.json'
+ if descriptor_path.exists():
+  existing=json.loads(descriptor_path.read_bytes());need({k:v for k,v in existing.items() if k!='url'}==desc,'existing_descriptor_drift');new_desc=existing
+ write(descriptor_path,(json.dumps(new_desc)+'\n').encode())
  new_pool=copy.deepcopy(pool);new_authority=copy.deepcopy(authority);new_pool['business_overlay_sha256']=NEW_PIN;new_authority['pool']['business_overlay_sha256']=NEW_PIN
  template_records=[]
  for index,(x,p,b,t) in enumerate(templates,1):
   target=private/f'service-template-{index}.private.json';new=copy.deepcopy(t);new['business_overlay']=new_desc
   for role in ['authoring','review']:new['service_environments'][role]['BB_RELEASE_SHA']=source
-  nb=(json.dumps(new,sort_keys=True,separators=(',',':'))+'\n').encode();write(target,nb)
+  nb=(json.dumps(new,sort_keys=True,separators=(',',':'))+'\n').encode();write(target,nb);os.chown(target,p.stat().st_uid,p.stat().st_gid)
   for config in [new_pool,new_authority['pool']]:
    entry=next(z for z in config['node_secrets'] if z['role_name']==x['role_name']);entry['service_template_file']=str(target)
   template_records.append({'role':x['role_name'],'before_path':str(p),'before_sha256':sha(b),'after_path':str(target),'after_sha256':sha(nb)})
  new_pool_bytes=(json.dumps(new_pool,sort_keys=True,separators=(',',':'))+'\n').encode();new_authority_bytes=(json.dumps(new_authority,sort_keys=True,separators=(',',':'))+'\n').encode()
- write(private/'pool.private.json',new_pool_bytes);write(private/'authority.private.json',new_authority_bytes)
+ write(private/'pool.private.json',new_pool_bytes);os.chown(private/'pool.private.json',effective.stat().st_uid,effective.stat().st_gid);write(private/'authority.private.json',new_authority_bytes)
  volumes=[{'type':'bind','source':str(private/'pool.private.json'),'target':pool_target,'read_only':True}]
  volumes += [{'type':'bind','source':r['after_path'],'target':r['after_path'],'read_only':True} for r in template_records]
  volumes += [{'type':'bind','source':str(public/name),'target':'/app/deploy/tencent-elasticity/'+name,'read_only':True} for name in ['business-overlay.mjs','bootstrap.mjs']]
