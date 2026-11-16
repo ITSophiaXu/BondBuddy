@@ -533,15 +533,15 @@
   },
   "system_image": {
     "image_id": "img-6cnm1flv",
-    "snapshot_id": null,
-    "ImageState": "CREATING",
-    "IsSupportCloudinit": null,
-    "ImageType": null,
+    "snapshot_id": "snap-mzcnbr90",
+    "ImageState": "NORMAL",
+    "IsSupportCloudinit": true,
+    "ImageType": "PRIVATE_IMAGE",
     "system_disk_GiB": 40,
     "create_request_id": "c3caee18-cb7e-4102-b375-53f5605dcbe4",
     "create_original_sha256": "d35b22590f433c39483c24f4c621c1eef0b4350ca56cd74bc4fab7d316625273",
-    "NORMAL_verified": false,
-    "original_capture_sha256": null,
+    "NORMAL_verified": true,
+    "original_capture_sha256": "6afecaf50d67d459d4d8eccd85bcac4b2dbe1c9e4706d5ffd6b3586969465117",
     "current_identity_clean_sha256": "f5d6e0994d70f9ae0c8343dea51cf09e625a6db4cb32e84f085b2403c7db1d23",
     "installation_receipt_sha256": "030d11822c45a11eb15778826db6b6b9b5b74d9e126e53f77e233eea4e1e4b19",
     "host_contracts_import_repair_receipt_sha256": "1eb3468b035605c680bb487152de3a0b3c52c51db473faed42ce3fa7fc327bc8",
@@ -576,7 +576,23 @@
     "source_retirement_verified": false,
     "transport_same_scope_verified": false,
     "source_exact_disks_absent": false,
-    "node_OCI_rebuilt": false
+    "node_OCI_rebuilt": false,
+    "NORMAL_read_RequestId": "da758892-b507-4d3a-a611-a689b0f05704",
+    "SnapshotSet": [
+      {
+        "SnapshotId": "snap-mzcnbr90",
+        "DiskUsage": "SYSTEM_DISK",
+        "DiskSize": 40
+      }
+    ],
+    "snapshot_retained": true,
+    "exact_image_CAM_verified": true,
+    "CAM_policy_id": "294054051",
+    "CAM_only_added_resource": "qcs::cvm:ap-beijing:uin/100006372392:image/img-6cnm1flv",
+    "CAM_summary_sha256": "846aadcf908cda5078c5f1fb80b40c76d737266b21665f785d82af108e97b1da",
+    "CAM_update_ACK": "98806f89-9ab6-4b09-8ea7-f94b2806f1e9",
+    "CAM_full_readback_RequestId": "e0379659-bc32-4fc5-8ad8-646a898f14b1",
+    "CAM_update_is_atomic_CAS": false
   },
   "evidence_reused": {
     "capacity_cases_passed": 14,
@@ -619,7 +635,7 @@
     "native_model_overlap_gt4_lte8_verified": false,
     "formal_ops_automatic_same_ACK_stop_verified": false,
     "formal_schema_ACL_activation_executed": false,
-    "note": "No full c23, Web/public API or financial business deployment. Reuse applicable evidence. Actual corrected image NORMAL and the original real task/persistence/Stop P0 chain remain pending; preparation is not production activation.",
+    "note": "Corrected system image NORMAL/cloudinit/unique SYSTEM40 and exact image CAM are verified. No full c23, Web/public API or financial business deployment. Reuse applicable evidence. The original real task/persistence/autonomous Stop P0 chain remains pending; preparation is not production activation.",
     "release_scope_authorization": "Explicit user instruction: proceed with narrow dynamic infrastructure; only concrete P0 blocks. No further legacy quality exception approval required.",
     "legacy_full_gold_gate_required_for_this_scope": false,
     "legacy_gold_status": "deferred; existing 30/43 failure retained and not relabeled PASS",
