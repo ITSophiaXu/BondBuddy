@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ManagedRunRetries} from './managed-run-retries.js';
-import {nativeExecutionProcesses} from './execution-node-runtime.js';
+import {nativeExecutionProcesses,nativeExecutionChildren} from './execution-node-runtime.js';
 import {spawn} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
 const lease={jobId:'synthetic',runId:'synthetic',owner:'synthetic',token:'old',checkpoint:{},attempts:2};
@@ -40,5 +40,31 @@ test('Linux release inventory sees an orphan after its launcher has exited',{ski
  try{
   const stat=await readFile(`/proc/${orphan}/stat`,'utf8');assert.equal(Number(stat.slice(stat.lastIndexOf(')')+2).split(' ')[1]),1);
   assert.ok(await nativeExecutionProcesses()>before,'orphan is still executable and blocks retry');
+  assert.ok(await nativeExecutionChildren()>before,'orphan also blocks idle and final drain');
  }finally{process.kill(orphan,'SIGKILL');}
+});
+
+
+test('Linux drain ignores an unreaped zombie but still counts its live parent',{skip:process.platform!=='linux'},async()=>{
+ const before=await nativeExecutionProcesses();
+ const launcher=spawn('python3',['-c',`import os,time
+pid=os.fork()
+if pid==0: os._exit(0)
+print(pid,flush=True)
+time.sleep(30)
+`],{stdio:['ignore','pipe','inherit']});
+ const child=await new Promise<number>((resolve,reject)=>{let output='';launcher.once('error',reject);launcher.stdout.on('data',chunk=>{output+=chunk;if(output.includes('\n'))resolve(Number(output.trim()));});});
+ try{
+  let zombie=false;
+  for(let i=0;i<100;i++){
+   const raw=await readFile(`/proc/${child}/stat`,'utf8');
+   if(raw.slice(raw.lastIndexOf(')')+2).split(' ')[0]==='Z'){zombie=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.ok(zombie,'fixture must contain a real unreaped zombie');
+  assert.equal(await nativeExecutionProcesses(),before+1,'only the live launcher counts');
+  assert.equal(await nativeExecutionChildren(),before+1,'heartbeat and final drain use the same proof');
+ }finally{
+  const closed=new Promise<void>(resolve=>launcher.once('close',()=>resolve()));launcher.kill('SIGTERM');await closed;
+ }
 });

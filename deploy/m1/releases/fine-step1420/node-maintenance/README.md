@@ -40,3 +40,12 @@ tccli tat DescribeInvocationTasks --profile bondbuddy-lighthouse --region ap-bei
 rollback动作同样要求正向排空及节点stopped；恢复备份helper/bootstrap/authority与精确ops compose，并仅增量更新ops组件记录。节点`rollback-request.json`由既有TAT身份在消费者停止且bootstrap inactive/failed时执行；仅恢复原helper和业务pin，保留当前epoch及其他节点字段，不启动bootstrap或云实例。未来启动必须先匹配控制端回滚模板，不能在处理业务时直接回退。
 
 本批沿用用户已明确批准的日志补丁金样与人工签认例外。远程CI因GitHub账户付款/额度原因未启动，不能称为通过。Windows重跑旧bootstrap测试因无python3命令失败，Linux复验另留回执，不把该失败标为通过。
+
+
+## 2026-11-16 排空补修 #1488
+
+当前候选归档为 `c4749d922f49eaa8fcbdc334881552dd7db5bdaa540ef154064de5f29e375b5e`（435846 字节）。原恢复兼容日志候选的 70 个运行文件中，仅替换 authoring/review 的 execution-node-runtime.js；其余文件与归档 SQL 均保留。候选源在 recovery-candidate/sources/execution-node-runtime.ts。develop 的 #1485 数据库预检查保留在应用源码；本次生产包沿用已验证的生产恢复源，不携入 #1485 或执行迁移。
+
+16 个 Z 状态已退出进程曾阻止旧节点完成排空。心跳、最终排空和重试释放现共用 namespace 存活进程清单：忽略 Z/X，包含活孤儿，读取失败仍阻塞。两准确生产 OCI、network=none 下 28/28 定向检查通过，包括真实僵尸、活孤儿、恢复、闭包、两槽 UserData 16312 字节。没有生产数据库或模型调用。回执见 recovery-candidate/oci-recovery-validation.json。
+
+暂存目录独立为 `/var/lib/bondbuddy/timing1488-20261116`，保留上一候选及回滚资料。现有节点诊断同步 units 和配置保留。未知结果查原 Invocation，不重发。之前阻塞的 epoch 通过系统现有 operator-fence 流程停止，操作 cb5bca03-be3a-4c3d-b9e4-6f4f28ab05c5，15:01 UTC 已观察 stopped/revision44，没有伪造 graceful-drain 回执。真实步骤日志和 dashboard 需上线后单独验收。

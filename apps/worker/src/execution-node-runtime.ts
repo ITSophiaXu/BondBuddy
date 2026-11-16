@@ -31,13 +31,10 @@ export async function enrollExecutionNodeFromEnv(pool:Pool,options:Parameters<ty
   process_identity:{pid:String(process.pid),process_start:own.start,host_boot_id:(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim(),pid_namespace:await readlink('/proc/self/ns/pid'),namespace_init_start:init.start}});
  return {context:material.context,service_id:material.service_id};
 }
-/** Positive child-tree inventory; unreadable process metadata never means zero. */
+/** Heartbeats and final drain use the same live-process proof as retry release.
+ * Retain this export for existing runtime consumers; exited children are not work. */
 export async function nativeExecutionChildren(){
- const records=new Map<number,{parent:number;start:string}>();
- for(const name of await readdir('/proc')){if(!/^\d+$/.test(name))continue;const row=await stat(Number(name));if(row)records.set(Number(name),row);}
- const children=new Set([process.pid]);let changed=true;
- while(changed){changed=false;for(const [pid,row] of records)if(children.has(row.parent)&&!children.has(pid)){children.add(pid);changed=true;}}
- return children.size-1;
+ return nativeExecutionProcesses();
 }
 
 /** The standalone consumer owns its PID namespace. Count orphaned children too:
