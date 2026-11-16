@@ -1,6 +1,6 @@
 import type {PoolClient} from 'pg';
 import {conflict} from './data.js';
-export const SHARED_BATCH_CAPACITY=4;
+export const SHARED_BATCH_CAPACITY=8;
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 /** Caller holds the frozen batch row; canonical scope serializes all admissions. */
 export async function assertBatchAdmission(c:PoolClient,owner:string,scope:string,batch:string,item:string){
