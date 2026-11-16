@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { M4ViewState } from '@bondbuddy/contracts';
 import { installSixteenthReference } from './upload-sixteenth-reference';
+import { settleUploadConfirmationFault } from './upload-confirmation-faults';
 import { fixture, install, mount, mountQa, ids, now, hash, pin, pinKey, declaration, sourceInfo, savedMaterial, addSaved, currentMaterials, ordinaryFile, work, target, writes, creates, patches, views, members, transfers, downstream, noDownstream, clean, recovery, resume, begin, records, cache, localView, settle, pending, completed, refreshReadOnly, hold, type State } from './assistant-project-copy-sixteenth-fixtures';
 
 const envelope = async (page: Page) => (await records(page))[0].value;
@@ -25,8 +26,8 @@ test('assistant copy actual global shortcut supports generation source without u
   const state = fixture({ sourceKind: 'generation' }); work(state).view.assistant!.action = null; state.cards.set(ids.topic, []); await install(page, state); await mount(page, { form: false }); await page.locator('[data-kind=review]').click(); await expect(page.locator('.ba-form')).toBeVisible(); await settle(page); const before = state.calls.length; await begin(page); await expect.poll(() => state.cards.get(ids.topic)!.length).toBe(1); await completed(page, state); expect(creates(state)).toHaveLength(1); expect(target(state).kind).toBe('review'); expect(writes(state).slice().filter(value => value.path.includes('/projects/' + ids.source + '/materials/uploads'))).toEqual([]); expect(state.calls.slice(before).some(value => value.path.includes('/projects/' + ids.source + '/materials/'))).toBe(true); clean(state);
 });
 
-test('assistant copy actual QA message action from a qa source survives same-host detach and resumes without preparing a task', async ({ page }) => {
-  const state = await install(page, fixture({ sourceKind: 'qa' })); await mountQa(page, state); const host = await page.locator('#qa-agent .bb-assistant').elementHandle(); state.drops.targetCreate = 'after'; await pending(page, state); const first = await envelope(page); await page.evaluate(() => (window as any).qaComponent.dispose()); await expect(page.locator('#qa-agent .bb-assistant')).toHaveCount(0); await page.locator('[data-assistant-dock]').click(); await resume(page).click(); await completed(page, state);
+test('assistant copy global message action from a qa source retains its host while leaving QA and resumes without preparing a task', async ({ page }) => {
+  const state = await install(page, fixture({ sourceKind: 'qa' })); await mountQa(page, state); const host = await page.locator('.bb-assistant').elementHandle(); state.drops.targetCreate = 'after'; await pending(page, state); const first = await envelope(page); await page.evaluate(() => (window as any).qaComponent.dispose()); await expect(page.locator('.bb-assistant')).toBeVisible(); await resume(page).click(); await completed(page, state);
   expect(await host!.evaluate(value => value.parentElement === document.body && value.isConnected)).toBe(true); expect(first.sourceProjectId).toBe(ids.source); expect(first.scopeProjectId).toBe(ids.scope); expect(work(state).topic.source_project_id).toBe(ids.source); allItems(state); noDownstream(state);
 });
 
@@ -136,7 +137,7 @@ for (const prefix of ['bb-assistant-project-copy-v1:', 'bb-assistant-view-v1:'])
 });
 
 for (const missing of ['core', 'business'] as const) for (const accepted of ['before', 'after'] as const) test('assistant copy missing ' + missing + ' during complete ' + accepted + ' acceptance cannot resurrect or advance its operation', async ({ page }) => {
-  const state = await install(page); state.drops.complete = accepted; await mount(page); const release = await hold(state, 'complete', page); await page.evaluate(kind => { for (const key of Object.keys(localStorage)) if (kind === 'business' ? key.startsWith('bb-assistant-project-copy-v1:') : key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-project-copy:')) { localStorage.removeItem(key); dispatchEvent(new StorageEvent('storage', { key, newValue: null })); } }, missing); release(); await settle(page); expect(members(state)).toEqual([]); expect(patchCalls(state)).toEqual([]); expect(views(state)).toEqual([]); expect(transfers(state, 'create')).toHaveLength(1); if (missing === 'business') expect(await records(page)).toEqual([]); noDownstream(state);
+  const state = await install(page); state.drops.complete = accepted; await mount(page); const release = await hold(state, 'complete', page); await page.evaluate(kind => { for (const key of Object.keys(localStorage)) if (kind === 'business' ? key.startsWith('bb-assistant-project-copy-v1:') : key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-project-copy:')) { localStorage.removeItem(key); dispatchEvent(new StorageEvent('storage', { key, newValue: null })); } }, missing); release(); if (accepted === 'after') await settleUploadConfirmationFault(page, state.confirmationFaults); await settle(page); expect(members(state)).toEqual([]); expect(patchCalls(state)).toEqual([]); expect(views(state)).toEqual([]); expect(transfers(state, 'create')).toHaveLength(1); if (missing === 'business') expect(await records(page)).toEqual([]); noDownstream(state);
 });
 
 for (const contender of ['material', 'copy'] as const) test('assistant copy and ' + contender + ' preparation in two pages admit exactly one durable original-topic operation', async ({ page, context }) => {
