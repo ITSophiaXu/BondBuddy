@@ -1,0 +1,102 @@
+{
+  "version": "managed-recovery-source-v1",
+  "base_archive": "5328117c25bcbe0729e753fa1f11576878c2a7bd2885278a9ae85c2bcc9745d3",
+  "fix_commit": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+  "typescript": "5.9.3",
+  "files": [
+    {
+      "path": "apps/api/src/queue.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "d9c8718ca52e126925e671e91f930933ace8d6998c9856c69f1af841dda0bc3e",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "bbe2de2d8d3d8c95323a631c439a4e7a67495b94557b0d0fd81066b50965e72b",
+      "compiled_sha256": "61be83e48972c632ea70fe278db16739e35e575a5afefbf875c12e7057b5f5d0"
+    },
+    {
+      "path": "apps/api/src/execution-capacity.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "5d4043f93405186b20756d8f487f69c3d85186086e2c2ff71187fc48b0b456ba",
+      "compiled_sha256": "b7d205d3843a4da0b0527b59f817da741a7bdd91d8af07f4eecabbb3d921bf90"
+    },
+    {
+      "path": "apps/worker/src/runtime.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "00795a0a787d4eeeab8bb96e1d94e624f22ac1697856190837c336f08b82895d",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "a97e10ba2e7e8db4c2219f1b2fb4acd9311ae6b4c7b45ae25b1a7acfe51b1707",
+      "compiled_sha256": "5cdbfdd8d828d2d3d548e5940c876e0803e581890644ed1349cb878cb1bf8c57"
+    },
+    {
+      "path": "apps/worker/src/run-pipeline.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "341ee817d87a109a85f5beadb9a953d3a2d2405ece587d07d1ac8264ed8064d7",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "604af8eced07776cccb0399db728212e604434520d34c6d5d5e1d846c58bbfb3",
+      "compiled_sha256": "330fbe4f01b693d309680985f0f39c7cfc4dda536241c529a02e36a1f3994df9"
+    },
+    {
+      "path": "apps/worker/src/execution-node-runtime.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "28fd03bc132553c35560d3c58350d69ecff49b22b6f52956fe5455a0d60438f7",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "c0e8a6bc3c02cf0d6ed35b2b7bf3b07370605f0d363d2c1839b34f159ac83086",
+      "compiled_sha256": "5aa0c95093b7a13a2d9f8308f3a4381f3f4cec7c6a53ecfe0f133f5928803023"
+    },
+    {
+      "path": "apps/worker/src/run-lease-heartbeat.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "c57d4ac9a1e9b4e8b563434c7ce0c306fe23a2853c0b81cb3a27c6c3c2c9d1fa",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "69f376e584f1461375446300c569db4787ac7a2e8b3dd82207ce6c50e7c3d531",
+      "compiled_sha256": "5d3f6d61198251bf1f48d91ce1646184e2f544704329b0612e70f2d7a890c691"
+    },
+    {
+      "path": "apps/worker/src/integrity-browser.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "78c33746a81cd7211bd29b19f37401527965d2665a6ba26f37901e192ae9252d",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "02c0e26bfca6b5c21504bc43991aaff4b45833565da1ae72af3326414a53c202",
+      "compiled_sha256": "81143d737b289cf3316c4ef06d6e2dcebf31b595adb38ac5e1dce865a0959cba"
+    },
+    {
+      "path": "apps/worker/src/integrity-browser-boundary.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "5e18049d11c7e93615f13127125ee5f6e4cacadf85c5a1990a36105f7f966bb3",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "37f9ebc101656b7221ec69272579dc59a03eabffd7e41149053d9725e3b15640",
+      "compiled_sha256": "773af6b2f21deb6051949da0cee02a428509cefc5a25117c698ddc5973f189f4"
+    },
+    {
+      "path": "apps/worker/src/integrity-browser-stage.ts",
+      "baseline_source": "1d78ccfec024fb5484a8baeaf87d1ae13bc130f5",
+      "baseline_compiled_sha256": "ca3399011c35ca6337b4cbd66320a88edddfe373d7219ab205a53374c1150b7b",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "50c0fba2fc9a37168bcc541cef6923cfc069efec7244f2103ea109e764ec0af8",
+      "compiled_sha256": "de9a2381332379fec5145a75850b45534ca82f928a02ba045a2449a7ac95edff"
+    },
+    {
+      "path": "apps/worker/src/managed-run-retries.ts",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "bad0204cffb7b0a4facefef709031e3f4699eb33034bf3d4bda7c1a21c5ee299",
+      "compiled_sha256": "f53996049bb10d0aa2c9727753f9893cfabcb2416960603d64305e2ad3a703f5"
+    },
+    {
+      "path": "apps/worker/src/run-pipeline-review.ts",
+      "mount_target": "apps/worker/dist/run-pipeline.js",
+      "service_id": "review",
+      "baseline_source": "9c6ab2c2d995774af48a537cdf0a087959165d10",
+      "baseline_compiled_sha256": "021f553a70a74a7b4170bc99a4f23302f3c52ed80cffb41dccb68c7a767e9416",
+      "fix_source": "670e591b55262e9b9cf7e608eddd75bcb18c3ee4",
+      "source_sha256": "40d12e110474e6d43f75b0400c92b160157fc54baa7bbf8b49e9e89105b35712",
+      "compiled_sha256": "7d8701793418956a57cd47422d092aa560d157fffe2c3c85143eefb7987d71be"
+    }
+  ],
+  "preserved": [
+    "codex-adapter.js",
+    "model-call-budget.js",
+    "durable-probe-journal.js"
+  ],
+  "model_wait_billing_included": false
+}
