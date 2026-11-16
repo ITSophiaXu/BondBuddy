@@ -22,12 +22,18 @@ test('cross-container pools share four durable slots; waiting cancels without ho
   const held = await Promise.all(Array.from({length:4},(_,i)=>a.acquire(undefined,`batch:${i}`)));
   const controller = new AbortController();
   const waiting = b.acquire(controller.signal,'assistant:fresh');
+  try {
   await until(async()=>(await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_waiters')).rows[0].n===1);
   assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders')).rows[0].n,4);
-  assert.equal((await pool.query("SELECT count(*)::integer n FROM pg_stat_activity WHERE datname=current_database() AND application_name='bondbuddy_model_budget' AND state='idle in transaction'")).rows[0].n,0);
+  // Admission checks use short transactions; sample the actual waiting interval
+  // rather than racing the gap between two statements of an in-flight check.
+  await until(async()=>(await pool.query("SELECT count(*)::integer n FROM pg_stat_activity WHERE datname=current_database() AND application_name='bondbuddy_model_budget' AND state='idle in transaction'")).rows[0].n===0);
   controller.abort(); await assert.rejects(waiting);
   assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_waiters')).rows[0].n,0);
-  await Promise.all(held.map(p=>p.release())); await pool.end();
+  } finally {
+    controller.abort();await waiting.then(permit=>permit.release(),()=>undefined);
+    await Promise.all(held.map(p=>p.release()));await pool.end();
+  }
 });
 test('a 250-item batch yields to fresh authoring/assistant scopes before taking all slots again',{skip:!connection,timeout:20000},async()=>{
   const pool = new Pool({connectionString:connection});

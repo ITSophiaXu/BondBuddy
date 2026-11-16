@@ -1,3 +1,4 @@
+import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
 import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
@@ -127,7 +128,8 @@ async function prepareUpdateItems(c:PoolClient,owner:string,id:string,checkId:st
   return items;
 }
 export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
-  return transaction(pool,async c=>{
+  const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
+  const result=await transaction(pool,async c=>{
     const b=(await c.query(`SELECT b.* FROM bb_project_file_update_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
       WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!b)return false;
@@ -151,6 +153,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
       await c.query('INSERT INTO bb_project_file_acceptances(owner_user_id,check_run_id,file_version_id,issue_ids,run_id) VALUES($1,$2,$3,$4,$5)',
         [b.owner_user_id,b.check_run_id,next.manifest.file_version_id,JSON.stringify(next.issue_ids),r.id]);
       await c.query("UPDATE bb_project_file_update_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[b.id,JSON.stringify(items)]);
+      dispatch.value={scope:{ownerUserId:b.owner_user_id,projectId:p.id,runId:r.id,batchId:b.id,workItemId:next.manifest.file_id,itemAttempt:next.attempt??1},batchCreatedAt:b.created_at,operation:'project_file_update'};
     }catch(e){
       await c.query('ROLLBACK TO SAVEPOINT begin_file_patch');
       if(e instanceof Problem&&e.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((e as {code?:string}).code??'')){
@@ -161,6 +164,8 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
     }
     return true;
   });
+  recordCommittedPerformanceDispatch(pool,dispatch.value,startedAt,new Date());
+  return result;
 }
 export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
   const base='/api/v1/projects/:project_id/project-files',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};

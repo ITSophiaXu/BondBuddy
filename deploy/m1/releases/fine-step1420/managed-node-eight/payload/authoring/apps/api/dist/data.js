@@ -1,0 +1,456 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import { Transform, Writable } from 'node:stream';
+import { finished, pipeline } from 'node:stream/promises';
+import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
+import { BlobServiceClient, BlobSASPermissions, SASProtocol } from '@azure/storage-blob';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
+import { UploadSafetyError } from './upload-safety.js';
+export const uid = () => randomUUID();
+export const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+export const canonical = (value) => JSON.stringify(value);
+// Longer than any contract-valid key, so the encoded namespace cannot alias a legacy raw key.
+const encodedExecutionKeyPrefix = `${'~'.repeat(129)}v2:`;
+// Outside the public 128-character key space. A controlled automatic test run
+// retains the browser key in its DTO without claiming the production DB key.
+const autoTestExecutionKeyPrefix = `${'~'.repeat(129)}auto-test:`;
+export const autoTestExecutionKeyStorage = (value) => {
+    if (!/^web-update-[a-f0-9]{64}$/.test(value))
+        throw new Error('Invalid browser update key');
+    return autoTestExecutionKeyPrefix + value;
+};
+export const isAutoTestExecutionKeyStorage = (value) => value.startsWith(autoTestExecutionKeyPrefix) && /^web-update-[a-f0-9]{64}$/.test(value.slice(autoTestExecutionKeyPrefix.length));
+export const executionKeyStorage = (value) => value.includes('\0') || Buffer.from(value, 'utf8').toString('utf8') !== value
+    ? encodedExecutionKeyPrefix + Buffer.from(value, 'utf16le').toString('hex')
+    : value;
+export const executionKeyFromStorage = (value) => {
+    if (isAutoTestExecutionKeyStorage(value))
+        return value.slice(autoTestExecutionKeyPrefix.length);
+    if (!value.startsWith(encodedExecutionKeyPrefix))
+        return value;
+    const hex = value.slice(encodedExecutionKeyPrefix.length);
+    return hex.length > 0 && hex.length % 4 === 0 && /^[a-f0-9]+$/.test(hex)
+        ? Buffer.from(hex, 'hex').toString('utf16le') : value;
+};
+export class Problem extends Error {
+    status;
+    code;
+    uploadReason;
+    uploadDetail;
+    inputIssues;
+    trialLimit;
+    prospectusSelectionRequired;
+    sourceProspectusRequired;
+    prospectusDocxOnly;
+    uploadBytesPending;
+    constructor(status, code, message, uploadReason, uploadDetail) {
+        super(message);
+        this.status = status;
+        this.code = code;
+        this.uploadReason = uploadReason;
+        this.uploadDetail = uploadDetail;
+    }
+}
+export function publicProblem(error, correlationId) {
+    const inspection = error.uploadReason && (error.code === 'MATERIAL_UNREADABLE' || error.code === 'DATA_UNAVAILABLE')
+        ? isUploadInspectionPublicReason(error.uploadDetail) ? error.uploadDetail
+            : isUploadInspectionPublicReason(error.uploadReason) ? error.uploadReason : 'structure_invalid'
+        : undefined;
+    return {
+        code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
+        retryable: error.status === 503 || error.uploadBytesPending === true || inspection === 'inspection_queue_timeout' ||
+            inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
+        field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+            : error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.uploadBytesPending
+                ? [UPLOAD_BYTES_PENDING_FIELD_ERROR]
+                : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
+                    ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
+                    : error.code === 'INPUT_REVISION_CONFLICT' && error.prospectusSelectionRequired
+                        ? [PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]
+                        : error.code === 'MATERIAL_FORMAT_UNSUPPORTED' && error.prospectusDocxOnly
+                            ? [PROSPECTUS_DOCX_ONLY_FIELD_ERROR]
+                            : error.code === 'INPUT_REQUIRED' ? error.sourceProspectusRequired ? [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR] : error.inputIssues ?? [] : [],
+        correlation_id: correlationId,
+    };
+}
+export const missing = () => new Problem(404, 'NOT_FOUND', 'Resource does not exist');
+export const conflict = (code, message) => new Problem(409, code, message);
+export const prospectusSelectionRequired = () => Object.assign(conflict('INPUT_REVISION_CONFLICT', PROSPECTUS_SELECTION_REQUIRED_MESSAGE), { prospectusSelectionRequired: true });
+export const unavailable = () => new Problem(501, 'CAPABILITY_NOT_READY', 'Capability is not connected');
+export async function transaction(pool, fn) {
+    const client = await pool.connect();
+    markAutomaticBillingClient(pool, client);
+    try {
+        await client.query('BEGIN');
+        const result = await fn(client);
+        await client.query('COMMIT');
+        return result;
+    }
+    catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    }
+    finally {
+        clearAutomaticBillingClient(client);
+        client.release();
+    }
+}
+export const date = (value) => new Date(value).toISOString();
+export const projectDto = (p) => ({ ...(p.source_project_id ? { source_project_id: p.source_project_id } : {}), project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
+export const materialDto = (m) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error, signature_assessment: m.signature_assessment ?? null, parse_snapshot_id: typeof m.parse_snapshot_id === 'string' && m.parse_snapshot_id.length > 0 ? m.parse_snapshot_id : null });
+const inputCreditSupplementRefs = (manifest) => {
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || !Object.hasOwn(manifest, 'credit_facility_supplements'))
+        return undefined;
+    const pins = manifest.credit_facility_supplements;
+    if (!Array.isArray(pins) || pins.length > 60)
+        throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+    const seen = new Set();
+    return pins.map(pin => {
+        if (!pin || typeof pin !== 'object' || Array.isArray(pin))
+            throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+        const value = pin;
+        if (typeof value.supplement_id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.supplement_id) ||
+            !Number.isSafeInteger(value.version) || Number(value.version) < 1 || typeof value.request_hash !== 'string' || !/^[a-f0-9]{64}$/.test(value.request_hash))
+            throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+        if (!['user_asserted', 'needs_confirmation', 'conflicted'].includes(String(value.status)) || value.eligible_for_manuscript !== false)
+            throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement status is invalid');
+        const key = value.supplement_id;
+        if (seen.has(key))
+            throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are duplicated');
+        seen.add(key);
+        return { supplement_id: value.supplement_id, version: value.version, request_hash: value.request_hash };
+    });
+};
+export const inputDto = (i) => {
+    const pins = inputCreditSupplementRefs(i.manifest);
+    return { project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), target_confirmation: i.manifest?.target_confirmation ?? { status: 'unconfirmed', market: null, offering: null, document_purpose: null, as_of: null, target_reporting_periods: [], confirmed_by: null, confirmed_at: null }, material_versions: i.material_versions,
+        ...(pins?.length ? { credit_facility_supplements: pins } : {}), rule_pack_version: i.rule_pack_version, template_version: i.template_version,
+        reference_release: i.reference_release, created_at: date(i.created_at) };
+};
+export const runDto = (r) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), channel: r.channel ?? 'production', test_grant_id: r.test_grant_id ?? null, uncovered_items: r.uncovered_items ?? [], state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: r.channel === 'non_production_test' ? 'non_billable_test' : r.billing_mode ?? 'platform_trial', reservation_id: r.reservation_id ?? null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
+export async function project(pool, owner, id, lock = false) {
+    // Project identity keys are immutable. Serialize state/input writers without
+    // blocking sibling metadata foreign-key KEY SHARE locks (or upgrading two
+    // already-held KEY SHARE locks into a delivery/admission deadlock).
+    const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR NO KEY UPDATE OF p' : ''}`, [owner, id]);
+    if (!result.rows[0])
+        throw missing();
+    return result.rows[0];
+}
+/** Caller holds the target project lock; DB run trigger remains the final race guard. */
+export async function assertCanonicalBusinessRunIdle(client, owner, p) {
+    const scope = p.execution_scope_project_id || p.id;
+    if (!p.execution_scope_project_id && p.kind !== 'review' && !(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1', [owner, scope])).rowCount)
+        return;
+    try {
+        const canonicalProject = (await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT', [owner, scope])).rows[0];
+        if (!canonicalProject)
+            throw missing();
+    }
+    catch (error) {
+        if (error.code === '55P03')
+            throw conflict('INPUT_REVISION_CONFLICT', '同一来源项目正在提交任务，请稍后重试。');
+        throw error;
+    }
+    if ((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
+    WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
+    AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')
+    AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision) LIMIT 1`, [owner, scope])).rowCount)
+        throw conflict('PROJECT_RUN_ACTIVE', '同一来源项目已有业务任务执行中，请等待完成或停止任务后执行。');
+}
+export async function run(pool, owner, id, lock = false) {
+    // Runs of a deleted project are owner-safe 404, like the project itself.
+    const result = await pool.query(`SELECT r.* FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+    WHERE r.owner_user_id=$1 AND r.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF r' : ''}`, [owner, id]);
+    if (!result.rows[0])
+        throw missing();
+    return result.rows[0];
+}
+export async function material(pool, owner, projectId, id, version) {
+    const result = await pool.query(`SELECT m.*,(SELECT s.id FROM bb_parse_snapshots s
+      WHERE s.owner_user_id=m.owner_user_id AND s.project_id=m.project_id AND s.material_id=m.id AND s.material_version=m.version
+        AND s.response_status <> 'failed'
+        AND NOT EXISTS(SELECT 1 FROM bb_parse_snapshots newer WHERE newer.owner_user_id=s.owner_user_id AND newer.project_id=s.project_id
+          AND newer.material_id=s.material_id AND newer.material_version=s.material_version AND (newer.created_at,newer.id)>(s.created_at,s.id))
+      LIMIT 1) AS parse_snapshot_id
+    FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.deleted_at IS NULL AND ($4::int IS NULL OR m.version=$4) ORDER BY m.version DESC LIMIT 1`, [owner, projectId, id, version ?? null]);
+    if (!result.rows[0] || result.rows[0].internal_template)
+        throw missing();
+    return result.rows[0];
+}
+const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
+const notFound = (error) => Boolean(error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'));
+async function hashStream(body, path, maxBytes, expected) {
+    const hash = createHash('sha256');
+    const out = path ? createWriteStream(path, { flags: 'wx', mode: 0o600 }) : null;
+    let ownsFile = false;
+    out?.once('open', () => { ownsFile = true; });
+    let byteSize = 0;
+    const hashing = new Transform({ transform(chunk, encoding, callback) {
+            const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+            if (byteSize + value.length > maxBytes) {
+                callback(new Problem(413, 'DATA_UNAVAILABLE', 'Stored object exceeds the bounded read limit'));
+                return;
+            }
+            byteSize += value.length;
+            hash.update(value);
+            callback(null, value);
+        } });
+    try {
+        // pipeline settles the source, transform and file before the caller can
+        // release a spool reservation or let this confirmation slot claim again.
+        await pipeline(body, hashing, out ?? new Writable({ write(_chunk, _encoding, callback) { callback(); } }));
+    }
+    catch (error) {
+        if (ownsFile)
+            await rm(path, { force: true }).catch(() => undefined);
+        throw error;
+    }
+    if (expected !== undefined && byteSize !== expected) {
+        if (path)
+            await rm(path, { force: true }).catch(() => undefined);
+        throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object size changed during bounded read');
+    }
+    return { byteSize, sha256: hash.digest('hex') };
+}
+/** Stage a spooled file to private Blob without loading it into memory. */
+export async function putBlobFile(blobs, key, path, mediaType) {
+    if (blobs.putFile)
+        return blobs.putFile(key, path, mediaType);
+    await blobs.put(key, await readFile(path), mediaType);
+}
+/** Hash a stored object (and optionally copy it to `path`) without holding it in memory. */
+export async function readBlobToFile(blobs, key, path, maxBytes) {
+    if (blobs.readToFile)
+        return blobs.readToFile(key, path, maxBytes);
+    const bytes = await blobs.getIfExistsBounded(key, maxBytes);
+    if (bytes === null)
+        return null;
+    if (path)
+        await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+    return { byteSize: bytes.length, sha256: digest(bytes) };
+}
+export function azureBlobs(connectionString, containerName = 'bondbuddy-private') {
+    const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
+    let ready;
+    const ensure = () => ready ??= container.createIfNotExists();
+    const read = async (key) => {
+        const response = await container.getBlockBlobClient(key).download();
+        const chunks = [];
+        if (response.readableStreamBody)
+            for await (const chunk of response.readableStreamBody)
+                chunks.push(Buffer.from(chunk));
+        return Buffer.concat(chunks);
+    };
+    return {
+        async createUploadUrl(key, expiresAt) {
+            const blob = container.getBlockBlobClient(key);
+            if (new URL(blob.url).protocol !== 'https:' || expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 15 * 60_000)
+                throw new Problem(503, 'DATA_UNAVAILABLE', 'Direct upload signing is unavailable');
+            try {
+                await ensure();
+                return await blob.generateSasUrl({ permissions: BlobSASPermissions.parse('c'), protocol: SASProtocol.Https,
+                    startsOn: new Date(Date.now() - 60_000), expiresOn: expiresAt });
+            }
+            catch {
+                throw new Problem(503, 'DATA_UNAVAILABLE', 'Direct upload signing is unavailable');
+            }
+        },
+        async put(key, bytes, mediaType) { await ensure(); await container.getBlockBlobClient(key).uploadData(bytes, { blobHTTPHeaders: { blobContentType: mediaType } }); },
+        async get(key) { await ensure(); return read(key); },
+        async getIfExists(key) {
+            await ensure();
+            try {
+                return await read(key);
+            }
+            catch (error) {
+                if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'))
+                    return null;
+                throw error;
+            }
+        },
+        async getIfExistsBounded(key, maxBytes) {
+            if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+                throw new Problem(422, 'VALIDATION_FAILED', 'Invalid Blob read limit');
+            await ensure();
+            const blob = container.getBlockBlobClient(key);
+            try {
+                const properties = await blob.getProperties();
+                if (properties.contentLength !== undefined && properties.contentLength > maxBytes)
+                    throw new Problem(413, 'DATA_UNAVAILABLE', 'Stored object exceeds the bounded read limit');
+                const response = await blob.download();
+                const chunks = [];
+                let total = 0;
+                if (response.readableStreamBody)
+                    for await (const chunk of response.readableStreamBody) {
+                        const value = Buffer.from(chunk);
+                        total += value.length;
+                        if (total > maxBytes)
+                            throw new Problem(413, 'DATA_UNAVAILABLE', 'Stored object exceeds the bounded read limit');
+                        chunks.push(value);
+                    }
+                if (properties.contentLength !== undefined && total !== properties.contentLength)
+                    throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object size changed during bounded read');
+                return Buffer.concat(chunks, total);
+            }
+            catch (error) {
+                if (error instanceof Problem)
+                    throw error;
+                if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'))
+                    return null;
+                throw error;
+            }
+        },
+        async exists(key) {
+            await ensure();
+            try {
+                await container.getBlockBlobClient(key).getProperties();
+                return true;
+            }
+            catch (error) {
+                if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'))
+                    return false;
+                throw error;
+            }
+        },
+        async headVersion(key) {
+            await ensure();
+            try {
+                const response = await container.getBlockBlobClient(key).getProperties();
+                if (!response.etag || !Number.isSafeInteger(response.contentLength))
+                    throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object version is unavailable');
+                return { etag: response.etag, byteSize: response.contentLength };
+            }
+            catch (error) {
+                if (notFound(error))
+                    return null;
+                throw error;
+            }
+        },
+        async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); },
+        async deleteIfMatch(key, etag) { return (await container.getBlockBlobClient(key).deleteIfExists({ conditions: { ifMatch: etag } })).succeeded; },
+        async listPage(prefix, continuation, pageSize) {
+            const page = await container.listBlobsFlat({ prefix }).byPage({ continuationToken: continuation, maxPageSize: pageSize }).next();
+            return { items: (page.value?.segment.blobItems ?? []).map((item) => ({ key: item.name, bytes: item.properties.contentLength ?? 0, lastModified: item.properties.lastModified, etag: item.properties.etag ?? '' })), continuation: page.value?.continuationToken || undefined };
+        },
+        async putFile(key, path, mediaType) {
+            await ensure();
+            // Always stage blocks (the SDK would otherwise send objects up to 256 MiB in one buffered request),
+            // so at most blockSize x concurrency bytes are in memory at a time.
+            await container.getBlockBlobClient(key).uploadFile(path, { blockSize: BLOB_BLOCK_BYTES, maxSingleShotSize: BLOB_BLOCK_BYTES, concurrency: 2, blobHTTPHeaders: { blobContentType: mediaType } });
+        },
+        async openRead(key, signal) {
+            await ensure();
+            try {
+                const response = await container.getBlockBlobClient(key).download(0, undefined, { abortSignal: signal });
+                if (!response.readableStreamBody)
+                    throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object has no body');
+                return { body: response.readableStreamBody, contentLength: response.contentLength };
+            }
+            catch (error) {
+                if (error instanceof Problem)
+                    throw error;
+                if (notFound(error))
+                    return null;
+                throw error;
+            }
+        },
+        async readToFile(key, path, maxBytes, options) {
+            if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+                throw new Problem(422, 'VALIDATION_FAILED', 'Invalid Blob read limit');
+            await ensure();
+            try {
+                const response = await container.getBlockBlobClient(key).download();
+                if (response.contentLength !== undefined && response.contentLength > maxBytes) {
+                    const body = response.readableStreamBody;
+                    if (body) {
+                        body.destroy();
+                        await finished(body).catch(() => undefined);
+                    }
+                    throw new Problem(413, 'DATA_UNAVAILABLE', 'Stored object exceeds the bounded read limit');
+                }
+                if (!response.readableStreamBody)
+                    throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object has no body');
+                if (options?.useRanges && (!response.etag || !Number.isSafeInteger(response.contentLength))) {
+                    const body = response.readableStreamBody;
+                    body.destroy();
+                    await finished(body).catch(() => undefined);
+                    throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object version is unavailable');
+                }
+                if (path && response.etag && Number.isSafeInteger(response.contentLength) && (options?.useRanges || response.contentLength > BLOB_RANGE_MIN_BYTES)) {
+                    // Small objects and digest-only legacy reads retain their single streaming read.
+                    // The initial GET supplies a real version; every ranged GET must return that
+                    // same ETag with If-Match, exact Content-Range and exact streamed length.
+                    const initial = response.readableStreamBody;
+                    initial.destroy();
+                    await finished(initial).catch(() => undefined);
+                    try {
+                        return await readBlobRangesToFile(async (offset, count, etag, signal) => {
+                            const range = await container.getBlockBlobClient(key).download(offset, count, { conditions: { ifMatch: etag }, abortSignal: signal });
+                            return { body: range.readableStreamBody, etag: range.etag, contentRange: range.contentRange, contentLength: range.contentLength };
+                        }, path, response.contentLength, response.etag);
+                    }
+                    catch (error) {
+                        // A missing/changed range is a failed full read, never absence or permission
+                        // to retry a new version within this receipt.
+                        if (error instanceof BlobRangeReadError || (error && typeof error === 'object' && 'statusCode' in error && [404, 412, 416].includes(Number(error.statusCode))))
+                            throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored object range or version could not be verified');
+                        throw error;
+                    }
+                }
+                const verified = await hashStream(response.readableStreamBody, path, maxBytes, response.contentLength);
+                // Capture the version from this same full-read response, never a later HEAD.
+                return { ...verified, ...(response.etag ? { etag: response.etag } : {}) };
+            }
+            catch (error) {
+                if (error instanceof Problem)
+                    throw error;
+                if (notFound(error))
+                    return null;
+                throw error;
+            }
+        }
+    };
+}
+export async function verifiedMedia(bytes, declared) {
+    try {
+        return await inspectMaterialUpload(bytes, declared);
+    }
+    catch (error) {
+        if (error instanceof UploadSafetyError) {
+            throw new Problem(error.status, error.code, error.message, error.reason, error.detail);
+        }
+        throw new Problem(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed');
+    }
+}
+/** Validate the upload declaration and stored size without reading document content. */
+export async function verifiedMediaFile(path, byteSize, declared) {
+    try {
+        return await inspectMaterialUploadFile(path, byteSize, declared);
+    }
+    catch (error) {
+        if (error instanceof UploadSafetyError) {
+            throw new Problem(error.status, error.code, error.message, error.reason, error.detail);
+        }
+        throw new Problem(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed');
+    }
+}
+export async function verifiedMediaFileDetailed(path, byteSize, declared) {
+    try {
+        return await inspectMaterialUploadFileDetailed(path, byteSize, declared);
+    }
+    catch (error) {
+        if (error instanceof UploadSafetyError)
+            throw new Problem(error.status, error.code, error.message, error.reason, error.detail);
+        throw new Problem(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed');
+    }
+}
+export function checkedPair(market, offering) {
+    if (market && offering && !isMarketOffering(market, offering))
+        throw new Problem(422, 'VALIDATION_FAILED', 'Market and offering do not match');
+    if (!market && offering)
+        throw new Problem(422, 'VALIDATION_FAILED', 'Market is required for an offering');
+}
+import { markAutomaticBillingClient, clearAutomaticBillingClient } from './automatic-billing-context.js';

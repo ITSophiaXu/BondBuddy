@@ -1,0 +1,15 @@
+{
+  "schema": "fine-step1420-offhost-backup-v1",
+  "started_at": "2026-11-16T06:30:25.728021+00:00",
+  "completed_at": "2026-11-16T06:46:12.959695+00:00",
+  "database_bytes": 2539535383,
+  "ledger_count": 188,
+  "archive_bytes": 422155828,
+  "archive_sha256": "fac992042bedd9e44512cd0bddedf94b26e930fc9cd87c26941a2e2da16bf8f4",
+  "pg_dump_exit": 0,
+  "full_decode_exit": 0,
+  "backup_contains_role_acls": false,
+  "original_roles_and_grants_preserved_on_server": true,
+  "server_archive_written": false,
+  "production_data_changed": false
+}

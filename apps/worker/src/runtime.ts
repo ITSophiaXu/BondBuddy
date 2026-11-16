@@ -1,3 +1,4 @@
+import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren} from './execution-node-runtime.js';
 import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
@@ -191,7 +192,7 @@ export class WorkerRuntime {
           }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              runKinds: this.o.runKinds, interactiveOnly, reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds: this.o.runKinds, interactiveOnly, workerInstanceId:this.o.workerId, reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
@@ -497,6 +498,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     if (shuttingDown) return;
     shuttingDown = true;
     await runtime.stop();
+    await flushPerformanceTraces(pool,2000);
     await pool.end();
     process.exit(0);
   };

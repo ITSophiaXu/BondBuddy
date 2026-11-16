@@ -1,0 +1,27 @@
+{
+  "checks": [
+    {
+      "role": "authoring",
+      "queue_claim_and_reconciliation_prefix_unchanged": true,
+      "stopped_epoch_fence_unchanged": true,
+      "runtime_only_import_worker_id_flush_added": true,
+      "contract_index_only_performance_schema_added": true,
+      "api_package_only_performance_export_added": true,
+      "model_capacity_global_transaction_and_epoch_admission_unchanged": true,
+      "model_capacity_renew_release_tail_unchanged": true,
+      "codex_compiled_bytes_match_previously_tested_frozen_logging_payload": true
+    },
+    {
+      "role": "review",
+      "queue_claim_and_reconciliation_prefix_unchanged": true,
+      "stopped_epoch_fence_unchanged": true,
+      "runtime_only_import_worker_id_flush_added": true,
+      "contract_index_only_performance_schema_added": true,
+      "api_package_only_performance_export_added": true,
+      "model_capacity_global_transaction_and_epoch_admission_unchanged": true,
+      "model_capacity_renew_release_tail_unchanged": true,
+      "codex_compiled_bytes_match_previously_tested_frozen_logging_payload": true
+    }
+  ],
+  "limitations": "Byte/source assertions cover managed seams and unchanged critical bodies, not a substitute for integration/behavioral tests."
+}

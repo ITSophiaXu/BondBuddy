@@ -1,0 +1,186 @@
+{"event":"start","role":"review","files":["apps/worker/dist/model-performance.test.js","apps/worker/dist/performance-io.test.js","apps/worker/dist/run-pipeline-error.test.js","apps/api/dist/execution-demand.test.js","apps/api/dist/execution-key.test.js","apps/worker/dist/execution-node-capacity.pg.test.js","apps/worker/dist/execution-node-drain-runtime.pg.test.js"],"node":"v22.23.2","at":"2026-11-16T04:35:57.481Z"}
+{"role":"review","node":"v22.23.2","platform":"linux","command":["/usr/local/bin/node","--test","--test-concurrency=1","apps/worker/dist/model-performance.test.js","apps/worker/dist/performance-io.test.js","apps/worker/dist/run-pipeline-error.test.js","apps/api/dist/execution-demand.test.js","apps/api/dist/execution-key.test.js","apps/worker/dist/execution-node-capacity.pg.test.js","apps/worker/dist/execution-node-drain-runtime.pg.test.js"],"exit":1,"signal":null,"timed_out":false,"duration_ms":37793,"counts":{"tests":19,"pass":15,"fail":4,"cancelled":0,"skipped":0,"todo":0},"input_manifest_sha256":"f66b42877e548ba31a7765102f90ae4bcd1c92ef520065445d1bba10fe2de54b","input_archive_sha256":"4d2bd42c7d6a6585711504f5d0aad6bb9310691438f48e01d85d20ab7e5cd664","runtime_targets_unchanged":true,"stdout_sha256":"1b1aea394cf6d388b5abee748b137c6d82f9cd85a81ec8beedce68e6cf3a817b","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","isolated_pg":true,"template":"bb_perf_managed1420_template","real_models_called":0,"production_contacted":false}
+TAP version 13
+# Subtest: 250 shared source waiters expose one author, grouped source receipt exposes 32 independent authors
+ok 1 - 250 shared source waiters expose one author, grouped source receipt exposes 32 independent authors
+  ---
+  duration_ms: 689.400854
+  type: 'test'
+  ...
+# Subtest: whole shared plan remains one author; caches and explicit retries become independent without altering membership
+ok 2 - whole shared plan remains one author; caches and explicit retries become independent without altering membership
+  ---
+  duration_ms: 13.569527
+  type: 'test'
+  ...
+# Subtest: ordinary independent files are not collapsed into a shared whole-plan demand
+ok 3 - ordinary independent files are not collapsed into a shared whole-plan demand
+  ---
+  duration_ms: 1.229684
+  type: 'test'
+  ...
+# Subtest: an invalid persisted source or receipt is unready input, never another planning author
+ok 4 - an invalid persisted source or receipt is unready input, never another planning author
+  ---
+  duration_ms: 14.221977
+  type: 'test'
+  ...
+# Subtest: PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox
+not ok 5 - PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox
+  ---
+  duration_ms: 6085.203383
+  type: 'test'
+  location: '/app/apps/api/dist/execution-key.test.js:10:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"code":"INPUT_REQUIRED","message":"请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。","retryable":false,"field_errors":[],"correlation_id":"ae6f6d5e-dfc2-4ec5-ae0c-1e07174d1c8b"}
+    
+    422 !== 202
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 202
+  actual: 422
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///app/apps/api/dist/execution-key.test.js:34:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: managed pool admission, dual capacity, drain, and cloud fencing
+    # Subtest: legacy holder must positively drain before managed policy activation
+    ok 1 - legacy holder must positively drain before managed policy activation
+      ---
+      duration_ms: 647.871747
+      type: 'test'
+      ...
+    # Subtest: unknown Run binds ACK before node registration; first service alone is not ready
+    not ok 2 - unknown Run binds ACK before node registration; first service alone is not ready
+      ---
+      duration_ms: 563.933481
+      type: 'test'
+      location: '/app/apps/worker/dist/execution-node-capacity.pg.test.js:61:13'
+      failureType: 'testCodeFailure'
+      error: 'EXECUTION_RUN_ACCEPTANCE_UNPROVEN'
+      code: 'ERR_TEST_FAILURE'
+      stack: |-
+        file:///app/apps/api/dist/execution-capacity.js:339:19
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async transaction (file:///app/apps/api/dist/data.js:87:24)
+        async finish (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:33:14)
+        async create (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:43:229)
+        async TestContext.<anonymous> (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:62:9)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:61:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    1..2
+not ok 6 - managed pool admission, dual capacity, drain, and cloud fencing
+  ---
+  duration_ms: 1389.903821
+  type: 'test'
+  location: '/app/apps/worker/dist/execution-node-capacity.pg.test.js:23:1'
+  failureType: 'testCodeFailure'
+  error: 'EXECUTION_NODE_EPOCH_MISMATCH'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    node (file:///app/apps/api/dist/execution-capacity.js:25:15)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async file:///app/apps/api/dist/execution-capacity.js:87:19
+    async transaction (file:///app/apps/api/dist/data.js:87:24)
+    async registerExecutionRuntime (file:///app/apps/api/dist/execution-capacity.js:86:5)
+    async enroll (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:48:9)
+    async TestContext.<anonymous> (file:///app/apps/worker/dist/execution-node-capacity.pg.test.js:67:31)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: actual runtime finishes an empty draining session under persistent global pause and retries its positive receipt
+not ok 7 - actual runtime finishes an empty draining session under persistent global pause and retries its positive receipt
+  ---
+  duration_ms: 475.681759
+  type: 'test'
+  location: '/app/apps/worker/dist/execution-node-drain-runtime.pg.test.js:11:1'
+  failureType: 'testCodeFailure'
+  error: 'EXECUTION_RUN_ACCEPTANCE_UNPROVEN'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    file:///app/apps/api/dist/execution-capacity.js:339:19
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async transaction (file:///app/apps/api/dist/data.js:87:24)
+    async TestContext.<anonymous> (file:///app/apps/worker/dist/execution-node-drain-runtime.pg.test.js:18:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: CLI observation metrics distinguish first output from unknown TTFT and parallel tool wall time
+ok 8 - CLI observation metrics distinguish first output from unknown TTFT and parallel tool wall time
+  ---
+  duration_ms: 26.444692
+  type: 'test'
+  ...
+# Subtest: missing tool boundaries stay incomplete and never become fabricated zero-duration tools
+ok 9 - missing tool boundaries stay incomplete and never become fabricated zero-duration tools
+  ---
+  duration_ms: 0.411429
+  type: 'test'
+  ...
+# Subtest: tool tracking is bounded and excludes text items and raw identifiers
+ok 10 - tool tracking is bounded and excludes text items and raw identifiers
+  ---
+  duration_ms: 2.853595
+  type: 'test'
+  ...
+# Subtest: no trace context avoids metric bookkeeping and preserves stage values
+ok 11 - no trace context avoids metric bookkeeping and preserves stage values
+  ---
+  duration_ms: 0.543271
+  type: 'test'
+  ...
+# Subtest: business failures, pauses and stops retain their status while telemetry failure is isolated
+ok 12 - business failures, pauses and stops retain their status while telemetry failure is isolated
+  ---
+  duration_ms: 30.107541
+  type: 'test'
+  ...
+# Subtest: blob instrumentation preserves private receivers, values, errors and records only hashed references
+ok 13 - blob instrumentation preserves private receivers, values, errors and records only hashed references
+  ---
+  duration_ms: 18.708567
+  type: 'test'
+  ...
+# Subtest: storage telemetry unavailable never turns successful storage into a failure
+ok 14 - storage telemetry unavailable never turns successful storage into a failure
+  ---
+  duration_ms: 1.56279
+  type: 'test'
+  ...
+# Subtest: handled unavailable delivery is recorded as a failed promotion
+ok 15 - handled unavailable delivery is recorded as a failed promotion
+  ---
+  duration_ms: 1.537983
+  type: 'test'
+  ...
+# Subtest: pause reasons use a stable public machine code
+ok 16 - pause reasons use a stable public machine code
+  ---
+  duration_ms: 5.874574
+  type: 'test'
+  ...
+# Subtest: unexpected run errors retain diagnostic identifiers without logging input text
+ok 17 - unexpected run errors retain diagnostic identifiers without logging input text
+  ---
+  duration_ms: 2.796702
+  type: 'test'
+  ...
+1..17
+# tests 19
+# suites 0
+# pass 15
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 37606.211181
+
+

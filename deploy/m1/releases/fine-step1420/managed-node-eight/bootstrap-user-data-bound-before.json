@@ -1,0 +1,33 @@
+{
+  "version": "managed-performance-bootstrap-user-data-bound-v1",
+  "host_files": {
+    "bootstrap.mjs": "71efa66df88f9a30a8230bcd06af1559af786f339fddcd0c2f5e1d86589e3fe9",
+    "node-adapter.mjs": "ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248",
+    "compose.yaml": "9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd",
+    "policy.mjs": "0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c",
+    "business-overlay.mjs": "d14cc0d067af9b8872a1df6dab8e04ed9c7c55a6125e395deb1b452bae2d7366"
+  },
+  "source_sha256": "2cce37d19ecc46958d1a18f39e55a1e56f7db9d99e8785788b314011f8d8cb3c",
+  "business_overlay_sha256": "52d5d737b1142ae39214fccd9b3e6d776c0df893ef3e0d0c1d9618fbaadaa4fe",
+  "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
+  "slots": [
+    {
+      "slot": 0,
+      "bytes": 18957,
+      "limit": 16384,
+      "within_bound": false,
+      "sha256": "cdfccec7a22df811326f4f14bcfe2f313525c8efc7fdefe0b722f8c166c29d12",
+      "public_only": true
+    },
+    {
+      "slot": 1,
+      "bytes": 18957,
+      "limit": 16384,
+      "within_bound": false,
+      "sha256": "42b1deb68b7edad287eee51c22dbbe55c1d6e9b41765886042772739f82c92b3",
+      "public_only": true
+    }
+  ],
+  "production_called": false,
+  "secrets_read_or_written": false
+}

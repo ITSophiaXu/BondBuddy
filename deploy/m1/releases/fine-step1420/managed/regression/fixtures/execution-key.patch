@@ -1,0 +1,20 @@
+--- a/apps/api/src/execution-key.test.ts
++++ b/apps/api/src/execution-key.test.ts
+@@ -12,7 +12,7 @@
+   const pool=new Pool({connectionString:connection});
+   const first=`execution-${randomUUID()}`,second=`execution-${randomUUID()}`;
+   let actor:string|null=first;
+-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:true}:null,enableRunStaging:true});
++  const app=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:false,allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:true}:null,enableRunStaging:true});
+   const send=(method:'GET'|'POST',url:string,payload?:unknown)=>app.inject({method,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
+   const makeProject=async()=>{
+     const project=(await send('POST','/api/v1/projects',{name:'Synthetic key test',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id as string;
+@@ -38,7 +38,7 @@
+     assert.equal((await execute(ordinaryKey)).json().run_id,ordinary.json().run_id);
+     assert.equal((await pool.query('SELECT execution_request_id FROM bb_runs WHERE id=$1',[ordinary.json().run_id])).rows[0].execution_request_id,ordinaryKey);
+ 
+-    const disabled=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:first,csrfVerified:true})});
++    const disabled=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:false,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:first,csrfVerified:true})});
+     try {
+       const rejectedKey='disabled\0key',payload={execution_request_id:rejectedKey,...fields};
+       const reject=()=>disabled.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload});

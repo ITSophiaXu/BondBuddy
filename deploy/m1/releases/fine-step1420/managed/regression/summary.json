@@ -1,0 +1,176 @@
+{
+  "version": "managed1420-focused-regression-v1",
+  "status": "passed after test-only fixture correction on identical candidate runtime",
+  "original_failures_retained": true,
+  "baseline_failure_used_as_final_acceptance": false,
+  "results": [
+    {
+      "phase": "focused-regression",
+      "role": "authoring",
+      "counts": {
+        "tests": 23,
+        "pass": 19,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 1,
+      "outer_exit": 1,
+      "duration_ms": 41975,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "80bf5f425e659357889b1e4b8b431d1109f213e144beb269ff16b9293c44f006",
+      "stdout_sha256": "904dc81657737178eb15bdd70914cecd0fbd7aeb0fcb2a144dd36193d2bbb01e",
+      "outer_execution_sha256": "85b0b8ffd08a99c173891356f0017cecf7504a8f76ac55fa2765a9b1028b2d7e",
+      "input_manifest_sha256": "4ea547e449b107fb089a933c91ea49b32cecd34d1ad85ecb17e419d25f40daa5",
+      "input_archive_sha256": "4db50566db9cc5777a5ac342d9d02371ecf0fd9dcbc826d67896613b56eb4750"
+    },
+    {
+      "phase": "focused-regression",
+      "role": "review",
+      "counts": {
+        "tests": 19,
+        "pass": 15,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 1,
+      "outer_exit": 1,
+      "duration_ms": 37793,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "85743cf1ad3f6fca1b270d42ffde98adad6baea675d103fb615ad2f1563810d8",
+      "stdout_sha256": "1b1aea394cf6d388b5abee748b137c6d82f9cd85a81ec8beedce68e6cf3a817b",
+      "outer_execution_sha256": "4c9437c09753073d8b0f7017b3f767035c9d320108374c79580c495aa5c477de",
+      "input_manifest_sha256": "f66b42877e548ba31a7765102f90ae4bcd1c92ef520065445d1bba10fe2de54b",
+      "input_archive_sha256": "4d2bd42c7d6a6585711504f5d0aad6bb9310691438f48e01d85d20ab7e5cd664"
+    },
+    {
+      "phase": "baseline-diagnostic",
+      "role": "authoring",
+      "counts": {
+        "tests": 5,
+        "pass": 1,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 1,
+      "outer_exit": 1,
+      "duration_ms": 28723,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "7cd0cde929d7c16cc6e32ea6fef946fa7b366e03498023dd193ff212b9c2f09b",
+      "stdout_sha256": "304129a7da01d44f2ebb76b35dd704b1e10e3ce3ee24f8449a7abeb196158ef6",
+      "outer_execution_sha256": "8bd1b43e14b72602ef7266ffc0366522d2419083381fc8aaae1bd7e91e771195",
+      "input_manifest_sha256": "5e9a35356c201c8496a488a87c09a59b216c3f9f40df4b71146bce6d8fa3d7bb",
+      "input_archive_sha256": "cae4b5bd8eb2cbd1761cb4f9656339f3b45884ed7ec5e603dbcca4da422edf5f"
+    },
+    {
+      "phase": "baseline-diagnostic",
+      "role": "review",
+      "counts": {
+        "tests": 5,
+        "pass": 1,
+        "fail": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 1,
+      "outer_exit": 1,
+      "duration_ms": 28385,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "637d089c5b29895b882dfd44aaae6899eb9bad9ed0ca3b562beea1ddd41f074e",
+      "stdout_sha256": "7a2ab1678a7b1e0b4d1d6fa975045350eac0598a80b817e2c057c22c08488b26",
+      "outer_execution_sha256": "4257822d1b6e6be39543b5e19936c2f9738bbfe4657804413790029b6cc88cd0",
+      "input_manifest_sha256": "01ddd65f7e818caec412366a41af65e9e2b3601114f4432044af92a73d5e6e4c",
+      "input_archive_sha256": "b13ecd97c9891e13657c1c21570b031bcf68d567bbf0b376283bf879af146b54"
+    },
+    {
+      "phase": "fixture-regression",
+      "role": "authoring",
+      "counts": {
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "outer_exit": 0,
+      "duration_ms": 61028,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "5fbe8e64ebd52e06971aa46ae890c8b31b55a0c3ffb88963ad4a80c45bf5a38f",
+      "stdout_sha256": "4f884fe23e352d0182729387586794e3a127b1dbcc762d5160488b339ee048bf",
+      "outer_execution_sha256": "d328825ecefac3e81621642770c2de831f17d46a022643521798d64cbaeb7a26",
+      "input_manifest_sha256": "ecea733ff5ebee30a56877b58b0c9f7ab18be2008f4b4875cb6bf66dee2400d5",
+      "input_archive_sha256": "bec8cb6fcdf1a92e663712de50aba8a6dcf1776a8e8211a10d372ee8928114cb"
+    },
+    {
+      "phase": "fixture-regression",
+      "role": "review",
+      "counts": {
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "outer_exit": 0,
+      "duration_ms": 61530,
+      "node": "v22.23.2",
+      "runtime_targets_unchanged": true,
+      "summary_sha256": "62aac5e2696664387af7d2f3a22ee7e6a9a0859edb7cd31775defb0a0add7270",
+      "stdout_sha256": "6cc5b59bf92bf21af0508c7a0f9c98cd9ee5c5ea12d84089ad95f6b301bdac00",
+      "outer_execution_sha256": "d7ab7bbe57395151897a09952f6fd68d1de40b71580fc464c468f4cbb25b5d50",
+      "input_manifest_sha256": "d92c339d63d80ed69ac5e773a5e7ee86c296026493770e160d940c6917e308d8",
+      "input_archive_sha256": "d50c07b9b2e0a973a66b4efa8bc8dff3f8c6958b839d2556aab139af839cbb5c"
+    }
+  ],
+  "result_accounting": "Do not add all run counts: initial logging/IO/pipeline/group and demand cases passed; three failed historical fixtures were diagnosed against exact actual preimages, minimally corrected only in test copies, then passed 14/14 per role. The old failures remain unchanged. The earlier legacy-holder pass repeats and must not be double-counted.",
+  "coverage": [
+    "CLI timing and bounded activity tracking",
+    "telemetry errors preserve stage and private-storage behavior",
+    "pipeline error identifiers exclude input text",
+    "authoring group wait/reuse/cancellation timing",
+    "shared demand and independent item keys",
+    "real PostgreSQL managed admission and dual capacity",
+    "epoch registration, drain and stopped-node fencing",
+    "actual worker runtime drain receipt retry under persistent pause",
+    "historical execution-key identity, owner isolation, rejection idempotency and atomic outbox"
+  ],
+  "boundary": {
+    "local_isolated_postgresql_template": "bb_perf_managed1420_template",
+    "migration_count": 188,
+    "linux_node": "22.23.2",
+    "cloud_observations": "explicit synthetic test fixtures persisted by real control APIs",
+    "real_cloud_calls": 0,
+    "real_model_calls": 0,
+    "production_contacted": false,
+    "paid_input_admission_verified": false,
+    "user_acceptance_claimed": false
+  },
+  "fixture_provenance_sha256": "5cbc738c806e668d87d18fe0ecb270ef1b6b0e820518d0870117f4d7e56d8b6e",
+  "observed_final_tool_sessions": {
+    "authoring": {
+      "session_id": 93505,
+      "final_chunk_id": "c5d2c7",
+      "exit_code": 0
+    },
+    "review": {
+      "session_id": 18421,
+      "final_chunk_id": "9a243c",
+      "exit_code": 0
+    }
+  }
+}

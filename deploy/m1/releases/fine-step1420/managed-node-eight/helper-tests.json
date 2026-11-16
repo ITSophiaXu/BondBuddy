@@ -1,0 +1,11 @@
+{
+  "command": [
+    "C:/Users/yingx/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe",
+    "--test",
+    "work\\release1420-managed-node-eight\\helper.test.mjs"
+  ],
+  "exit_code": 0,
+  "stdout_sha256": "9933f7870bfc9620758f3f731ed476f74c54bb2e2daf92fc4776ec72ad3ebb0a",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "production_executed": false
+}

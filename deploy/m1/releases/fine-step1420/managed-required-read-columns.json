@@ -1,0 +1,180 @@
+{
+  "production_changed": false,
+  "query_sha256": "36ce4619c32d35bcb1db4a69442671e595a4b7dd0a900782912d6c8d421b1805",
+  "read_only": true,
+  "result": {
+    "columns": [
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "run_id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "project_id",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "task_kind",
+        "role_name": "bb1361_formal_n1_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "run_id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "project_id",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "task_kind",
+        "role_name": "bb1361_formal_n1_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "run_id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "project_id",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "task_kind",
+        "role_name": "bb1361_formal_n2_author_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "run_id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_jobs"
+      },
+      {
+        "can_select": true,
+        "column_name": "id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "owner_user_id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "project_id",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_runs"
+      },
+      {
+        "can_select": true,
+        "column_name": "task_kind",
+        "role_name": "bb1361_formal_n2_review_v1",
+        "table_name": "bb_runs"
+      }
+    ],
+    "observed_at": "2026-11-16T04:29:16.386403+00:00",
+    "read_only": "on"
+  },
+  "signals_sent": false
+}

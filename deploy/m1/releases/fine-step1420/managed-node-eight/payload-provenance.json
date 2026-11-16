@@ -1,0 +1,504 @@
+[
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/batch-admission.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\batch-admission.js",
+    "before_sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de",
+    "after_sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/data.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\data.js",
+    "before_sha256": "2f4d0091646af3a2ee7105cd43f684fff2089375292387059523363d5ac3d60e",
+    "after_sha256": "2f4d0091646af3a2ee7105cd43f684fff2089375292387059523363d5ac3d60e"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/execution-capacity.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\execution-capacity.js",
+    "before_sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957",
+    "after_sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/log-ops.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\log-ops.js",
+    "before_sha256": "31fee091b8f5e8c02ce6f8098bd92e698cde3123ba60d76ced6a5b28ef1c4435",
+    "after_sha256": "31fee091b8f5e8c02ce6f8098bd92e698cde3123ba60d76ced6a5b28ef1c4435"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/m4-workspace.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\m4-workspace.js",
+    "before_sha256": "2aaaeace82037a600c929df8cd24ac2e4c148d58b9b1637299e2dfa357e2ff56",
+    "after_sha256": "2aaaeace82037a600c929df8cd24ac2e4c148d58b9b1637299e2dfa357e2ff56"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/observability.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\observability.js",
+    "before_sha256": "1ff245e5adc6509ce2cb7df37d7a11c1b156f4542aca84642ee92434b28cd58b",
+    "after_sha256": "1ff245e5adc6509ce2cb7df37d7a11c1b156f4542aca84642ee92434b28cd58b"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/performance-dispatch.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\api\\dist\\performance-dispatch.js",
+    "before_sha256": null,
+    "after_sha256": "34ba2b000e0d58c717f1442a5dfc1daa306bf63cd554167d7ad7c648cd415bda"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/performance-store.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\api\\dist\\performance-store.js",
+    "before_sha256": null,
+    "after_sha256": "48b5792718c4162c0cd10272edbd4c585941c14fa2bfab148640cee0472c5b22"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/performance-trace.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\api\\dist\\performance-trace.js",
+    "before_sha256": null,
+    "after_sha256": "32dd85083e5cda268968f8850a55b9c470a14335bcdaa1157dd8c21d901cc788"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/project-file-consistency.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\api\\dist\\project-file-consistency.js",
+    "before_sha256": "f5593b1afb23414e303769e17c299c00dba4e9a5020f9c80113e1f1c01af77fd",
+    "after_sha256": "2b7010de1aaca4e14c553be8e1280d2a9e888f7688a573aa385c34a8720d7a79"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/project-file-workspace.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\api\\dist\\project-file-workspace.js",
+    "before_sha256": "ed63ee4ca554931f39cb22ef8a03d3bd262d027dea0c3ce4b31ce4d33b79ad99",
+    "after_sha256": "fd35766ba1d341d70f9a8220f815c8abf9ec7b3a54ddc09670b88f04a23ebf03"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/provider-results.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\provider-results.js",
+    "before_sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1",
+    "after_sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/queue.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\api\\dist\\queue.js",
+    "before_sha256": "d9c8718ca52e126925e671e91f930933ace8d6998c9856c69f1af841dda0bc3e",
+    "after_sha256": "8e7f2005e48983d1c5d73594d7e6a8f71ed54d292ffb8512cb43e2b3ca92fdf1"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/dist/workpapers.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\api\\dist\\workpapers.js",
+    "before_sha256": "abd32e41267427c72c1635de59984a69e17d51c370664c44699d637ed1b0de12",
+    "after_sha256": "af9e1218f05b3a882c8f5268f89dc7e81898e225abbeece08193207b6570e92e"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/api/package.json",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\api\\package.json",
+    "before_sha256": "528053d222466bd591787c9a2e9ed4b4f765da6361ab49565a87f1b0b91698f1",
+    "after_sha256": "dc3cba12ee4c6dc9f35928135a4880d16e61d94972b7b42ff9bf2985978626d4"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/bounded-items.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\worker\\dist\\bounded-items.js",
+    "before_sha256": "fc6b575ad2acb1537b8963dff2289b4556155b20a17a3eab63e0d90c348bc247",
+    "after_sha256": "fc6b575ad2acb1537b8963dff2289b4556155b20a17a3eab63e0d90c348bc247"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/codex-adapter.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\codex-adapter.js",
+    "before_sha256": "dc68153bef393c54580a625c64bba4a501d58e60e471358894227d83fac3622c",
+    "after_sha256": "b45c881019eee495684a387e113eb128723bb0cb4a5a12b62656b6e0c2dcaca1"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/deferred-qa-journal.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\worker\\dist\\deferred-qa-journal.js",
+    "before_sha256": "9ba8d34df3fe4ceb3735ae1db97b0efdbd222bdfd292ad486b3cdb3cda1164ae",
+    "after_sha256": "9ba8d34df3fe4ceb3735ae1db97b0efdbd222bdfd292ad486b3cdb3cda1164ae"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/file-authoring-repair.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\file-authoring-repair.js",
+    "before_sha256": "987ea0449dc50a5ccd7c72ae34a60049cbb46568042495c077d8a920ff99a42a",
+    "after_sha256": "9127bdd2ca1f11b53cdcf07f1503ac6a15e5e8eef9c4fd95b3782bed9fc54d8e"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/file-authoring-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\file-authoring-stage.js",
+    "before_sha256": "3428cbd1afef1218ad25d01072edf269276f11b77fc8c12aa9b858a207d840f0",
+    "after_sha256": "61a7dfdb4fadb48f8224e95047fbb1881c11588ac3819ecedd804e11c81f83bf"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/historical-model-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\historical-model-stage.js",
+    "before_sha256": "18b67ab3104de6d2a1bc625f7030ce0fe8e8ce6a3c2d7318c4c35ac2ee183dfd",
+    "after_sha256": "6de8d0f96d531b5b6b4ee8675792f740da2b28da3d7dbd70b40c8f0a0c5eeb49"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/integrity-browser-boundary.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\worker\\dist\\integrity-browser-boundary.js",
+    "before_sha256": "5e18049d11c7e93615f13127125ee5f6e4cacadf85c5a1990a36105f7f966bb3",
+    "after_sha256": "5e18049d11c7e93615f13127125ee5f6e4cacadf85c5a1990a36105f7f966bb3"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/integrity-browser.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\worker\\dist\\integrity-browser.js",
+    "before_sha256": "78c33746a81cd7211bd29b19f37401527965d2665a6ba26f37901e192ae9252d",
+    "after_sha256": "78c33746a81cd7211bd29b19f37401527965d2665a6ba26f37901e192ae9252d"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/m4-document-stage.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\worker\\dist\\m4-document-stage.js",
+    "before_sha256": "ecc20e139dda2696fbb5cc20390d6692db2de14374001495f87f177095cef828",
+    "after_sha256": "c76ccee7e5ca6730bf2f3aef95a65b1119ad859011dfdc383d894a8a6487be72"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/m4-file-workspace.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\m4-file-workspace.js",
+    "before_sha256": "1673fd7e267771dcae2ae8c526dc88f9fbf0c39e2bce348f7ccce72e2c234ec6",
+    "after_sha256": "c05a5e5486ec28572e7b600293c84b2bfbdda18cf5537cb255b62ac3011cc5d6"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/model-call-budget.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\apps\\worker\\dist\\model-call-budget.js",
+    "before_sha256": "d72229ee16a9d0c8cc05c55bc668eb2e2f01f04b0817b035ceefa6890b225955",
+    "after_sha256": "6b1b72137598b9c5ead7c31ae970d8e76f0aa87788a49b96ba2026aea02ac8a6"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/model-performance.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\model-performance.js",
+    "before_sha256": null,
+    "after_sha256": "f880c80ad2aed894e49e49d067878bf08b09467588bf2a9167f94b3b0f457985"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/performance-io.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\performance-io.js",
+    "before_sha256": null,
+    "after_sha256": "55660fa1a91c43acd2ea5fd2bc1026da04bd52991ae467d0578ef44c2151c537"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/project-file-tools.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\project-file-tools.js",
+    "before_sha256": "1ac6cc8d55fdb754348c2bfcd069c7410d8263ed8eb7b45ca68df11d2bbba0bf",
+    "after_sha256": "e66a81f6b139e1e42b628a4bcd0204a574eab4f127c5f7bf3f827697a971da21"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/project-qa-stage.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\worker\\dist\\project-qa-stage.js",
+    "before_sha256": "5545352badac6513e933658b5e22aabfc3d974f2e7ec2552bd8c2a903bb64b57",
+    "after_sha256": "5545352badac6513e933658b5e22aabfc3d974f2e7ec2552bd8c2a903bb64b57"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/run-pipeline.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\worker\\dist\\run-pipeline.js",
+    "before_sha256": "341ee817d87a109a85f5beadb9a953d3a2d2405ece587d07d1ac8264ed8064d7",
+    "after_sha256": "a01d70f9db1c56f7faf06513ff2178d74f156a8bd6bd4d2305dc7810fe205868"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/runtime.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\apps\\worker\\dist\\runtime.js",
+    "before_sha256": "00795a0a787d4eeeab8bb96e1d94e624f22ac1697856190837c336f08b82895d",
+    "after_sha256": "a065b0577a979b331987c621f077a9d4028a1c46ffc8320baa2a6e30fe8096c9"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/unified-model-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\apps\\worker\\dist\\unified-model-stage.js",
+    "before_sha256": "880c8750b64a85982ef50216b2dd736eb53fe79d278dc8f5035ecfce58f6c8df",
+    "after_sha256": "05f8af1718b93c2779a3fdf2d46963f5cd76cb8aeb4ecdac83a060089a8c6982"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/workpaper-progressive-groups.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\worker\\dist\\workpaper-progressive-groups.js",
+    "before_sha256": "cde0b3a6eb49b8e7a90a50cca8126d2d3cd534c3a38318e722408ba17cc2dfab",
+    "after_sha256": "163ff52f6eacd6fc24a124d96220728b69fc9518d9c57ca4807585a2807a3330"
+  },
+  {
+    "service_id": "authoring",
+    "path": "apps/worker/dist/workpaper-shared-stage.js",
+    "origin": "reused exact seven-file logging artifact; node-eight preimage unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\business-overlay\\payload\\apps\\worker\\dist\\workpaper-shared-stage.js",
+    "before_sha256": "239195fd0c6e43ff8aa1dd68d605e29707b8ce1a5e882d1fb5f2da224dad2554",
+    "after_sha256": "dce230fb66b4f7742edff4ace9697210dc7fb01642dc62a465239abad04f211c"
+  },
+  {
+    "service_id": "authoring",
+    "path": "packages/contracts/dist/execution-capacity.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\packages\\contracts\\dist\\execution-capacity.js",
+    "before_sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff",
+    "after_sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff"
+  },
+  {
+    "service_id": "authoring",
+    "path": "packages/contracts/dist/index.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\packages\\contracts\\dist\\index.js",
+    "before_sha256": "72b056d9f42e30c598a062b2dc6997297cc6ed2232de455e3ab630307935437a",
+    "after_sha256": "85499ab282eb7e87c187b1dc75ad1133dda96b033d8994be7cbde97cc8506578"
+  },
+  {
+    "service_id": "authoring",
+    "path": "packages/contracts/dist/performance.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\authoring\\app\\packages\\contracts\\dist\\performance.js",
+    "before_sha256": null,
+    "after_sha256": "5a9579f5a05f3502512a724abfedebd85dd08d180845553722eb79a014d6954e"
+  },
+  {
+    "service_id": "authoring",
+    "path": "packages/contracts/dist/workpaper-entry.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\packages\\contracts\\dist\\workpaper-entry.js",
+    "before_sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1",
+    "after_sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1"
+  },
+  {
+    "service_id": "authoring",
+    "path": "packages/contracts/dist/workpaper-progressive.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\packages\\contracts\\dist\\workpaper-progressive.js",
+    "before_sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb",
+    "after_sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/dist/execution-capacity.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\apps\\api\\dist\\execution-capacity.js",
+    "before_sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957",
+    "after_sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/dist/performance-store.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\api\\dist\\performance-store.js",
+    "before_sha256": null,
+    "after_sha256": "48b5792718c4162c0cd10272edbd4c585941c14fa2bfab148640cee0472c5b22"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/dist/performance-trace.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\api\\dist\\performance-trace.js",
+    "before_sha256": null,
+    "after_sha256": "32dd85083e5cda268968f8850a55b9c470a14335bcdaa1157dd8c21d901cc788"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/dist/queue.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\api\\dist\\queue.js",
+    "before_sha256": "d9c8718ca52e126925e671e91f930933ace8d6998c9856c69f1af841dda0bc3e",
+    "after_sha256": "8e7f2005e48983d1c5d73594d7e6a8f71ed54d292ffb8512cb43e2b3ca92fdf1"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/package.json",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\api\\package.json",
+    "before_sha256": "528053d222466bd591787c9a2e9ed4b4f765da6361ab49565a87f1b0b91698f1",
+    "after_sha256": "dc3cba12ee4c6dc9f35928135a4880d16e61d94972b7b42ff9bf2985978626d4"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/codex-adapter.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\codex-adapter.js",
+    "before_sha256": "dc68153bef393c54580a625c64bba4a501d58e60e471358894227d83fac3622c",
+    "after_sha256": "b45c881019eee495684a387e113eb128723bb0cb4a5a12b62656b6e0c2dcaca1"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/file-authoring-repair.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\file-authoring-repair.js",
+    "before_sha256": "987ea0449dc50a5ccd7c72ae34a60049cbb46568042495c077d8a920ff99a42a",
+    "after_sha256": "9127bdd2ca1f11b53cdcf07f1503ac6a15e5e8eef9c4fd95b3782bed9fc54d8e"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/file-authoring-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\file-authoring-stage.js",
+    "before_sha256": "3428cbd1afef1218ad25d01072edf269276f11b77fc8c12aa9b858a207d840f0",
+    "after_sha256": "61a7dfdb4fadb48f8224e95047fbb1881c11588ac3819ecedd804e11c81f83bf"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/historical-model-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\historical-model-stage.js",
+    "before_sha256": "18b67ab3104de6d2a1bc625f7030ce0fe8e8ce6a3c2d7318c4c35ac2ee183dfd",
+    "after_sha256": "6de8d0f96d531b5b6b4ee8675792f740da2b28da3d7dbd70b40c8f0a0c5eeb49"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/m4-file-workspace.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\m4-file-workspace.js",
+    "before_sha256": "1673fd7e267771dcae2ae8c526dc88f9fbf0c39e2bce348f7ccce72e2c234ec6",
+    "after_sha256": "c05a5e5486ec28572e7b600293c84b2bfbdda18cf5537cb255b62ac3011cc5d6"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/model-call-budget.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\apps\\worker\\dist\\model-call-budget.js",
+    "before_sha256": "d72229ee16a9d0c8cc05c55bc668eb2e2f01f04b0817b035ceefa6890b225955",
+    "after_sha256": "6b1b72137598b9c5ead7c31ae970d8e76f0aa87788a49b96ba2026aea02ac8a6"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/model-performance.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\model-performance.js",
+    "before_sha256": null,
+    "after_sha256": "f880c80ad2aed894e49e49d067878bf08b09467588bf2a9167f94b3b0f457985"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/performance-io.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\performance-io.js",
+    "before_sha256": null,
+    "after_sha256": "55660fa1a91c43acd2ea5fd2bc1026da04bd52991ae467d0578ef44c2151c537"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/project-file-tools.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\project-file-tools.js",
+    "before_sha256": "1ac6cc8d55fdb754348c2bfcd069c7410d8263ed8eb7b45ca68df11d2bbba0bf",
+    "after_sha256": "e66a81f6b139e1e42b628a4bcd0204a574eab4f127c5f7bf3f827697a971da21"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/run-pipeline.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\run-pipeline.js",
+    "before_sha256": "021f553a70a74a7b4170bc99a4f23302f3c52ed80cffb41dccb68c7a767e9416",
+    "after_sha256": "f284559da228d08c82ebdb566b804c0a0f3eb5aa6d263e961e0ccbef1db71df5"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/runtime.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\apps\\worker\\dist\\runtime.js",
+    "before_sha256": "00795a0a787d4eeeab8bb96e1d94e624f22ac1697856190837c336f08b82895d",
+    "after_sha256": "a065b0577a979b331987c621f077a9d4028a1c46ffc8320baa2a6e30fe8096c9"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/worker/dist/unified-model-stage.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\apps\\worker\\dist\\unified-model-stage.js",
+    "before_sha256": "880c8750b64a85982ef50216b2dd736eb53fe79d278dc8f5035ecfce58f6c8df",
+    "after_sha256": "0f01385cd2542539aaaf3063d1a337d8a401702cd3c55aae50b371f32c5e9885"
+  },
+  {
+    "service_id": "review",
+    "path": "packages/contracts/dist/execution-capacity.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\packages\\contracts\\dist\\execution-capacity.js",
+    "before_sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff",
+    "after_sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff"
+  },
+  {
+    "service_id": "review",
+    "path": "packages/contracts/dist/index.js",
+    "origin": "node-eight actual source plus original logging; semantic emission verified",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-node-eight\\overlay\\packages\\contracts\\dist\\index.js",
+    "before_sha256": "72b056d9f42e30c598a062b2dc6997297cc6ed2232de455e3ab630307935437a",
+    "after_sha256": "85499ab282eb7e87c187b1dc75ad1133dda96b033d8994be7cbde97cc8506578"
+  },
+  {
+    "service_id": "review",
+    "path": "packages/contracts/dist/performance.js",
+    "origin": "reused exact verified OCI logging file",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-managed-integration\\oci-payload\\review\\app\\packages\\contracts\\dist\\performance.js",
+    "before_sha256": null,
+    "after_sha256": "5a9579f5a05f3502512a724abfedebd85dd08d180845553722eb79a014d6954e"
+  },
+  {
+    "service_id": "review",
+    "path": "packages/contracts/dist/workpaper-progressive.js",
+    "origin": "actual node-eight business payload unchanged",
+    "source_file": "C:\\Users\\yingx\\.codex\\worktrees\\release-fine-step-timing-1420\\BondBuddy-release-pr1314-20261113\\work\\release1420-cutover\\node-eight-preimages-20261116T061953Z\\business-overlay\\packages\\contracts\\dist\\workpaper-progressive.js",
+    "before_sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb",
+    "after_sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
+  },
+  {
+    "service_id": "review",
+    "path": "apps/api/dist/batch-admission.js",
+    "origin": "preserve latest live review-import dependency fix linked to issue1361",
+    "before_sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de",
+    "after_sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de"
+  },
+  {
+    "service_id": "review",
+    "path": "packages/contracts/dist/workpaper-entry.js",
+    "origin": "preserve latest live review-import dependency fix linked to issue1361",
+    "before_sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1",
+    "after_sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1"
+  }
+]

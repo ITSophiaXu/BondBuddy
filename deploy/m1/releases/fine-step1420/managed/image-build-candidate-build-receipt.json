@@ -1,0 +1,69 @@
+{
+  "version": "fine-step1420-cached-oci-build-v1",
+  "head": "1ebd17e62ac29ae98b776a157861fc56430cf08e",
+  "manifest_sha256": "4181f5151fe86285f8351354ca54772ac46dfde8a7c0856ed41c76cfb06f3e65",
+  "resources_before": {
+    "observed_at": "2026-11-16T04:31:40.757103+00:00",
+    "available_bytes": 2858901504,
+    "load5": 0.4619140625,
+    "memory_available_kib": 13476568
+  },
+  "scope": {
+    "paid_cloud_calls": 0,
+    "model_calls": 0,
+    "production_configuration_writes": 0,
+    "consumer_starts": 0,
+    "npm_installs": 0
+  },
+  "components": {
+    "authoring": {
+      "parent_image_id": "sha256:861a93b76a21edd03764a02d22cf4f3ad66579b9d1d6e79fcc21616c9b1c3576",
+      "candidate_image_id": "sha256:a25756ab6b879a5e43e1bc9e7b2b6147185457185e5ea1dedc63b6dc19a9a48c",
+      "candidate_tag": "bondbuddy-timing1420-candidate:authoring-4181f5151fe8",
+      "parent_layer_count": 124,
+      "candidate_layer_count": 125,
+      "added_size_bytes": 121931,
+      "parent_layers_and_runtime_configuration_preserved": true,
+      "dockerfile_sha256": "40694f2411d3f9e500b31b14dd9dff7b8b75e5d672b8f9354e51b9edc638fe4f",
+      "overlay_sha256": "92ce4a980ddb594722e8d1df797714e41bd610976d43957151109487b4cf261e",
+      "verification": {
+        "status": "PASS",
+        "verified_files": 18,
+        "syntax_checked": 17,
+        "node": "v22.23.4",
+        "network": "none",
+        "entrypoint": "artifact-verification-only",
+        "runtime_or_provider_executed": false
+      }
+    },
+    "review": {
+      "parent_image_id": "sha256:ea4f4de5d307485ecda4c22c6d105132bc51549b4b6bbe477e6d7db6f2a684a2",
+      "candidate_image_id": "sha256:2b147a7a207f913dd3f6eb5619631b85a449f003506785a8edb72e6f9f2477ce",
+      "candidate_tag": "bondbuddy-timing1420-candidate:review-4181f5151fe8",
+      "parent_layer_count": 123,
+      "candidate_layer_count": 124,
+      "added_size_bytes": 135548,
+      "parent_layers_and_runtime_configuration_preserved": true,
+      "dockerfile_sha256": "90b9843e636d262bf6de4070ef6f09b447b6e3da95b414eeb564fef7ec62beea",
+      "overlay_sha256": "781e6543d16f376d2d7a62aa74bd09b7fbe3e50a337b26d01cc2acb0ffccf00d",
+      "verification": {
+        "status": "PASS",
+        "verified_files": 18,
+        "syntax_checked": 17,
+        "node": "v22.23.4",
+        "network": "none",
+        "entrypoint": "artifact-verification-only",
+        "runtime_or_provider_executed": false
+      }
+    }
+  },
+  "resources_after": {
+    "observed_at": "2026-11-16T04:32:03.460842+00:00",
+    "available_bytes": 2855669760,
+    "load5": 0.546875,
+    "memory_available_kib": 13460640
+  },
+  "production_execution_enabled": false,
+  "candidate_only": true,
+  "status": "PASS"
+}
