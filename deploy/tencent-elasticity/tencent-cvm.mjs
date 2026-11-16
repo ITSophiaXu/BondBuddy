@@ -1,6 +1,6 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig, retainedNodePin, nodeLaunchConfig, requireRetainedRequest} from './policy.mjs';
-import {bootstrapUserData} from './bootstrap.mjs';
+import {bootstrapUserData,warmBootstrapUserData} from './bootstrap.mjs';
 import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
 const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', lighthouse: '2020-03-24'};
@@ -85,13 +85,13 @@ export class TencentTransport {
   }
 }
 
-export function runParameters(config, request, clientToken, userData, slot, opId) {
+export function runParameters(config, request, clientToken, userData, slot, opId, retainedInstanceId) {
   validateConfig(config, {apply: true,expenditure:false});
   requireThat(/^[a-f0-9]{64}$/.test(clientToken), 'CLIENT_TOKEN_BOUND');
   requireThat(request.account_id === config.account_id && request.region === config.region && request.instance_id === null &&
     request.instance_count === 1 && request.source_sha256 === config.source_sha256 && request.image_sha256 === config.image_sha256, 'LAUNCH_BINDING');
   requireThat(Number.isInteger(slot) && slot >= 0 && slot < 2, 'INVENTORY_SLOT');
-  requireThat(userData===bootstrapUserData(config,request,slot),'BOOTSTRAP_SLOT_MANIFEST_DRIFT');
+  requireThat(userData===(retainedInstanceId?warmBootstrapUserData(config,request,slot,retainedInstanceId):bootstrapUserData(config,request,slot)),'BOOTSTRAP_SLOT_MANIFEST_DRIFT');
   requireThat(Buffer.byteLength(userData) <= 16384, 'USER_DATA_BOUND');
   return {InstanceChargeType: 'POSTPAID_BY_HOUR', InstanceCount: 1, ClientToken: clientToken,
     Placement: {Zone: config.zone}, InstanceType: config.instance_type, ImageId: config.image_id,
@@ -262,8 +262,8 @@ export class TencentCvm {
       requireRetainedRequest(this.config,i.instance_id,operation.request);
       const config=nodeLaunchConfig(this.config,i.instance_id);
       const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
-      const oldParams=runParameters(config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(config,oldRequest,this.config.role_names.indexOf(i.role_name)),
-        this.config.role_names.indexOf(i.role_name),i.create_operation_id);
+      const oldParams=runParameters(config,oldRequest,executionCloudClientToken(i.create_operation_id),warmBootstrapUserData(config,oldRequest,this.config.role_names.indexOf(i.role_name),i.instance_id),
+        this.config.role_names.indexOf(i.role_name),i.create_operation_id,i.instance_id);
       requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});
     }

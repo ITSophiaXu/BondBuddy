@@ -349,15 +349,16 @@
     {
       "path": "apps/api/dist/batch-admission.js",
       "bytes": 1222,
-      "sha256": "ba22ed4d635a4e34dea43a694e12ea3c10fc061f4bae66b0bcbacbb119717e20",
-      "payload_file": "deploy/tencent-elasticity/control-overlay-artifacts/apps/api/dist/batch-admission.js",
+      "sha256": "9c81145358e5b1a0fdf3d199718a6bb888d1ff2ac1069cc60ec61cd16bb156de",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/batch-admission.js",
       "mount_target": "/app/apps/api/dist/batch-admission.js",
       "resolve_sibling_of": "@bondbuddy/api/execution-capacity"
     },
     {
       "path": "apps/api/dist/execution-capacity.js",
-      "bytes": 52851,
-      "sha256": "f1ac8fe7f009d77f35fe387738b888376fe65975de5ef5986de4d3c8361f15ee"
+      "bytes": 53093,
+      "sha256": "b9f80d741978c4b1963e3f61a8d6eb4bbb9c33b5d10c4d6a8e46206b4c6c8957",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/execution-capacity.js"
     },
     {
       "path": "apps/api/dist/execution-demand.js",
@@ -391,8 +392,9 @@
     },
     {
       "path": "deploy/tencent-elasticity/bootstrap.mjs",
-      "bytes": 8910,
-      "sha256": "c27e29abf6d0c1eb6e3407c1441ac4b74166e5532429400d6c7a8f12b2bddb67"
+      "bytes": 11191,
+      "sha256": "71efa66df88f9a30a8230bcd06af1559af786f339fddcd0c2f5e1d86589e3fe9",
+      "payload_file": "deploy/tencent-elasticity/bootstrap.mjs"
     },
     {
       "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
@@ -446,8 +448,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/policy.mjs",
-      "bytes": 8791,
-      "sha256": "7ff2353ac0585ed73177d4033390223ea190c28f7727c274b5bfe5ad2bd41a06"
+      "bytes": 8823,
+      "sha256": "0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c"
     },
     {
       "path": "deploy/tencent-elasticity/private-egress.mjs",
@@ -476,9 +478,10 @@
     },
     {
       "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
-      "bytes": 23400,
-      "sha256": "e9986aeb2b2e5e4482267f0786c9d2e7e3a5e378cf04823e140dbb2bf7190e15",
-      "source_commit": "475c8dd2d58a8caed30bc9fb4ed725f02285efe4"
+      "bytes": 23557,
+      "sha256": "37e83e85e66bd2e413d3e7aa9edfabc337486f1d3519a9365009d05135150bf8",
+      "source_commit": "475c8dd2d58a8caed30bc9fb4ed725f02285efe4",
+      "payload_file": "deploy/tencent-elasticity/tencent-cvm.mjs"
     },
     {
       "path": "deploy/tencent-elasticity/transport-issuer.mjs",
@@ -502,19 +505,21 @@
     },
     {
       "path": "packages/contracts/dist/execution-capacity.js",
-      "bytes": 17572,
-      "sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3"
+      "bytes": 17603,
+      "sha256": "1a565d839617a41a4541601d5365061717865412d44003b46093dbebfcd883ff",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/packages/contracts/dist/execution-capacity.js"
     },
     {
       "path": "packages/contracts/dist/index.js",
       "bytes": 98584,
       "sha256": "72b056d9f42e30c598a062b2dc6997297cc6ed2232de455e3ab630307935437a",
-      "payload_file": "deploy/tencent-elasticity/control-overlay-artifacts/packages/contracts/dist/index.js"
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/packages/contracts/dist/index.js"
     },
     {
       "path": "packages/contracts/dist/workpaper-progressive.js",
       "bytes": 5440,
-      "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
+      "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/packages/contracts/dist/workpaper-progressive.js"
     },
     {
       "path": "deploy/tencent-elasticity/expense-history.mjs",
@@ -523,8 +528,175 @@
     },
     {
       "path": "deploy/tencent-elasticity/business-overlay.mjs",
-      "bytes": 6817,
-      "sha256": "8f8d80a9cbd69a9e3e2d1a36e6b82df950c3845d714d885c25e94c7707ed5b59"
+      "bytes": 7933,
+      "sha256": "d3a18dd9e4c05e84c363a01a9c2ed4afb61353d21ee673d0f004b6f4c8662c38"
+    },
+    {
+      "path": "apps/api/dist/workpapers.js",
+      "bytes": 52222,
+      "sha256": "abd32e41267427c72c1635de59984a69e17d51c370664c44699d637ed1b0de12",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/workpapers.js",
+      "mount_target": "/app/apps/api/dist/workpapers.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/project-file-workspace.js",
+      "bytes": 24926,
+      "sha256": "ed63ee4ca554931f39cb22ef8a03d3bd262d027dea0c3ce4b31ce4d33b79ad99",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/project-file-workspace.js",
+      "mount_target": "/app/apps/api/dist/project-file-workspace.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/project-file-consistency.js",
+      "bytes": 32456,
+      "sha256": "f5593b1afb23414e303769e17c299c00dba4e9a5020f9c80113e1f1c01af77fd",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/project-file-consistency.js",
+      "mount_target": "/app/apps/api/dist/project-file-consistency.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/provider-results.js",
+      "bytes": 45975,
+      "sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/provider-results.js",
+      "mount_target": "/app/apps/api/dist/provider-results.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/project-qa-stage.js",
+      "bytes": 21315,
+      "sha256": "5545352badac6513e933658b5e22aabfc3d974f2e7ec2552bd8c2a903bb64b57",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/project-qa-stage.js",
+      "mount_target": "/app/apps/worker/dist/project-qa-stage.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/data.js",
+      "bytes": 28554,
+      "sha256": "2f4d0091646af3a2ee7105cd43f684fff2089375292387059523363d5ac3d60e",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/data.js",
+      "mount_target": "/app/apps/api/dist/data.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/m4-workspace.js",
+      "bytes": 76272,
+      "sha256": "2aaaeace82037a600c929df8cd24ac2e4c148d58b9b1637299e2dfa357e2ff56",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/m4-workspace.js",
+      "mount_target": "/app/apps/api/dist/m4-workspace.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/observability.js",
+      "bytes": 24207,
+      "sha256": "1ff245e5adc6509ce2cb7df37d7a11c1b156f4542aca84642ee92434b28cd58b",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/observability.js",
+      "mount_target": "/app/apps/api/dist/observability.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/api/dist/log-ops.js",
+      "bytes": 96371,
+      "sha256": "31fee091b8f5e8c02ce6f8098bd92e698cde3123ba60d76ced6a5b28ef1c4435",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/api/dist/log-ops.js",
+      "mount_target": "/app/apps/api/dist/log-ops.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "bytes": 59376,
+      "sha256": "341ee817d87a109a85f5beadb9a953d3a2d2405ece587d07d1ac8264ed8064d7",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/run-pipeline.js",
+      "mount_target": "/app/apps/worker/dist/run-pipeline.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/deferred-qa-journal.js",
+      "bytes": 756,
+      "sha256": "9ba8d34df3fe4ceb3735ae1db97b0efdbd222bdfd292ad486b3cdb3cda1164ae",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/deferred-qa-journal.js",
+      "mount_target": "/app/apps/worker/dist/deferred-qa-journal.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/bounded-items.js",
+      "bytes": 1227,
+      "sha256": "fc6b575ad2acb1537b8963dff2289b4556155b20a17a3eab63e0d90c348bc247",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/bounded-items.js",
+      "mount_target": "/app/apps/worker/dist/bounded-items.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/m4-document-stage.js",
+      "bytes": 12969,
+      "sha256": "ecc20e139dda2696fbb5cc20390d6692db2de14374001495f87f177095cef828",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/m4-document-stage.js",
+      "mount_target": "/app/apps/worker/dist/m4-document-stage.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-shared-stage.js",
+      "bytes": 28960,
+      "sha256": "239195fd0c6e43ff8aa1dd68d605e29707b8ce1a5e882d1fb5f2da224dad2554",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/workpaper-shared-stage.js",
+      "mount_target": "/app/apps/worker/dist/workpaper-shared-stage.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-progressive-groups.js",
+      "bytes": 16230,
+      "sha256": "cde0b3a6eb49b8e7a90a50cca8126d2d3cd534c3a38318e722408ba17cc2dfab",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/workpaper-progressive-groups.js",
+      "mount_target": "/app/apps/worker/dist/workpaper-progressive-groups.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-entry.js",
+      "bytes": 1778,
+      "sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/packages/contracts/dist/workpaper-entry.js",
+      "mount_target": "/app/packages/contracts/dist/workpaper-entry.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/runtime.js",
+      "bytes": 35777,
+      "sha256": "00795a0a787d4eeeab8bb96e1d94e624f22ac1697856190837c336f08b82895d",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/runtime.js",
+      "mount_target": "/app/apps/worker/dist/runtime.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/model-call-budget.js",
+      "bytes": 20124,
+      "sha256": "d72229ee16a9d0c8cc05c55bc668eb2e2f01f04b0817b035ceefa6890b225955",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/model-call-budget.js",
+      "mount_target": "/app/apps/worker/dist/model-call-budget.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/integrity-browser.js",
+      "bytes": 40584,
+      "sha256": "78c33746a81cd7211bd29b19f37401527965d2665a6ba26f37901e192ae9252d",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/integrity-browser.js",
+      "mount_target": "/app/apps/worker/dist/integrity-browser.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "apps/worker/dist/integrity-browser-boundary.js",
+      "bytes": 1676,
+      "sha256": "5e18049d11c7e93615f13127125ee5f6e4cacadf85c5a1990a36105f7f966bb3",
+      "payload_file": "deploy/tencent-elasticity/node-eight-artifacts/apps/worker/dist/integrity-browser-boundary.js",
+      "mount_target": "/app/apps/worker/dist/integrity-browser-boundary.js",
+      "scope": "execution-runtime"
+    },
+    {
+      "path": "deploy/tencent-elasticity/compose.yaml",
+      "bytes": 3384,
+      "sha256": "9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd",
+      "payload_file": "deploy/tencent-elasticity/compose.yaml",
+      "scope": "execution-host"
     }
   ],
   "control_installation": "Apply exact effective_control_payload last, retaining1425 authority and1427 Run PENDING checks; add pinned business bootstrap/helper and shared-capacity leaf. Existing ops Pool owns stop/recover; issuer/runtime remain independent. Protected pool and issuer pool image_id must both select img-6cnm1flv.",
@@ -850,5 +1022,51 @@
     "blob_capability_expiry_beijing": "2026-11-23T09:59:31+08:00",
     "blob_readback_verified_sha256": "c6e60a57e4b0ab077d66ba4a70c1779e64b178b0a75bf8d1b2ffdf367af63004",
     "blob_ETag": "0x8DF43853FE9A0AF"
+  },
+  "node_eight_increment": {
+    "base_master": "f4894e7f0899777aff5dba3d45d17f7239035d62",
+    "refs": [
+      1361
+    ],
+    "limits": {
+      "node": 8,
+      "global": 8,
+      "provider": 8,
+      "max_nodes": 2,
+      "min_running": 0,
+      "idle_seconds": 300
+    },
+    "migration": "db/migrations/0188_execution_node_eight_capacity.sql",
+    "frozen_batch_metadata_unchanged": true,
+    "node_OCI_rebuilt": false,
+    "public_descriptor": "deploy/tencent-elasticity/node-eight-artifacts/descriptor.json",
+    "archive": "deploy/tencent-elasticity/node-eight-artifacts/overlay.tar.gz",
+    "archive_bytes": 188569,
+    "archive_sha256": "5328117c25bcbe0729e753fa1f11576878c2a7bd2885278a9ae85c2bcc9745d3",
+    "runtime_files": 25,
+    "memory_GiB": {
+      "authoring": 6,
+      "review": 7
+    },
+    "cpu_cores": {
+      "authoring": 2,
+      "review": 2
+    },
+    "pids_limit_per_container": 512,
+    "source_snapshots": [
+      {
+        "path": "deploy/tencent-elasticity/node-eight-sources/api-execution-capacity.ts",
+        "bytes": 47913,
+        "sha256": "f738646bb5ccecbb9879a9c645fb35939b3a50147f454f142b147d6e1ff42cb6"
+      },
+      {
+        "path": "deploy/tencent-elasticity/node-eight-sources/contracts-execution-capacity.ts",
+        "bytes": 20556,
+        "sha256": "77573430c022120fd91568b6afec64b44bf6874f3abb6623320b12022236cc76"
+      }
+    ],
+    "preserved_api_source_baseline_sha256": "43b6620d4336431994d97ba27795c5ec83494f1dfab2ec2e35afc5100d0b0113",
+    "preserved_contract_compiled_baseline_sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3",
+    "retained_warm_bootstrap": "Exact existing public creation bytes pinned per instance and original launch manifest; final complete launch hash is still required. No replay of RunInstances or weaker identity binding."
   }
 }
