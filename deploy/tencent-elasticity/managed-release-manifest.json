@@ -347,6 +347,14 @@
   },
   "effective_control_payload": [
     {
+      "path": "apps/api/dist/batch-admission.js",
+      "bytes": 1222,
+      "sha256": "ba22ed4d635a4e34dea43a694e12ea3c10fc061f4bae66b0bcbacbb119717e20",
+      "payload_file": "deploy/tencent-elasticity/control-overlay-artifacts/apps/api/dist/batch-admission.js",
+      "mount_target": "/app/apps/api/dist/batch-admission.js",
+      "resolve_sibling_of": "@bondbuddy/api/execution-capacity"
+    },
+    {
       "path": "apps/api/dist/execution-capacity.js",
       "bytes": 52851,
       "sha256": "f1ac8fe7f009d77f35fe387738b888376fe65975de5ef5986de4d3c8361f15ee"
