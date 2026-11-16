@@ -4,7 +4,7 @@ import {INTEGRITY_SELECTABLE_SITES, INTEGRITY_SITES, IntegrityDraftSchema, remov
 import {Value} from '@sinclair/typebox/value';
 import {validateIntegrityDraft} from './integrity.js';
 
-const retired = ['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit'];
+const retired = ['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit', 'customs', 'customs-credit', 'nmpa'];
 const draft = (site_ids: string[]): IntegrityDraft => ({subjects: [{id: 'company', kind: 'company', name: '合成测试企业', identifier: '', role: '发行人', province: '北京', city: '北京市'}], site_ids, notes: ''});
 
 test('new saves and checks reject each retired item, including mixed active scopes', () => {
@@ -13,8 +13,8 @@ test('new saves and checks reject each retired item, including mixed active scop
   }
 });
 
-test('49 current items remain executable; empty and unknown scopes still fail', () => {
-  assert.equal(INTEGRITY_SELECTABLE_SITES.length, 49);
+test('46 current items remain executable; empty and unknown scopes still fail', () => {
+  assert.equal(INTEGRITY_SELECTABLE_SITES.length, 46);
   assert.doesNotThrow(() => validateIntegrityDraft(draft(INTEGRITY_SELECTABLE_SITES.map(site => site.id)), true));
   assert.throws(() => validateIntegrityDraft(draft([]), true), {code: 'INPUT_REQUIRED'});
   assert.throws(() => validateIntegrityDraft(draft(['unknown']), true), {code: 'VALIDATION_FAILED'});
