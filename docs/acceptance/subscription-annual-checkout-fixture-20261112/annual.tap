@@ -1,0 +1,65 @@
+TAP version 13
+# Subtest: annual payment, monthly release, original consideration and whole-contract refunds
+    # Subtest: real default clock retains exact milliseconds through verified payment and lot issuance
+    ok 1 - real default clock retains exact milliseconds through verified payment and lot issuance
+      ---
+      duration_ms: 200.988867
+      type: 'test'
+      ...
+    # Subtest: one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year
+    ok 2 - one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year
+      ---
+      duration_ms: 213.416995
+      type: 'test'
+      ...
+    # Subtest: cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash
+    ok 3 - cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash
+      ---
+      duration_ms: 404.696925
+      type: 'test'
+      ...
+    # Subtest: seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice
+    ok 4 - seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice
+      ---
+      duration_ms: 246.897871
+      type: 'test'
+      ...
+    # Subtest: failed cash refund unfreezes its issued batch and allows overdue paid installments
+    ok 5 - failed cash refund unfreezes its issued batch and allows overdue paid installments
+      ---
+      duration_ms: 161.232621
+      type: 'test'
+      ...
+    # Subtest: legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request
+    ok 6 - legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request
+      ---
+      duration_ms: 170.038161
+      type: 'test'
+      ...
+    # Subtest: year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary
+    ok 7 - year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary
+      ---
+      duration_ms: 258.392299
+      type: 'test'
+      ...
+    # Subtest: actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal
+    ok 8 - actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal
+      ---
+      duration_ms: 1697.653424
+      type: 'test'
+      ...
+    1..8
+ok 1 - annual payment, monthly release, original consideration and whole-contract refunds
+  ---
+  duration_ms: 3366.708994
+  type: 'test'
+  ...
+1..1
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5363.400377

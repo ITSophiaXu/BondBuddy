@@ -1,0 +1,86 @@
+TAP version 13
+# Subtest: annual payment, monthly release, original consideration and whole-contract refunds
+    # Subtest: real default clock retains exact milliseconds through verified payment and lot issuance
+    ok 1 - real default clock retains exact milliseconds through verified payment and lot issuance
+      ---
+      duration_ms: 94.8764
+      type: 'test'
+      ...
+    # Subtest: one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year
+    ok 2 - one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year
+      ---
+      duration_ms: 101.500883
+      type: 'test'
+      ...
+    # Subtest: cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash
+    ok 3 - cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash
+      ---
+      duration_ms: 278.35625
+      type: 'test'
+      ...
+    # Subtest: seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice
+    ok 4 - seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice
+      ---
+      duration_ms: 165.224566
+      type: 'test'
+      ...
+    # Subtest: failed cash refund unfreezes its issued batch and allows overdue paid installments
+    ok 5 - failed cash refund unfreezes its issued batch and allows overdue paid installments
+      ---
+      duration_ms: 121.594359
+      type: 'test'
+      ...
+    # Subtest: legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request
+    not ok 6 - legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request
+      ---
+      duration_ms: 102.320968
+      type: 'test'
+      location: '/workspace/apps/api/dist/subscriptions-annual.pg.test.js:158:17'
+      failureType: 'testCodeFailure'
+      error: |-
+        The validation function is expected to return "true". Received false
+
+        Caught error:
+
+        Error: 请先关闭并核实原自动续费授权，再手动开通下一周期。 原付款请求已结束且未创建订单，请刷新账户后重新选择。
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      stack: |-
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async TestContext.<anonymous> (file:///workspace/apps/api/dist/subscriptions-annual.pg.test.js:171:13)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (file:///workspace/apps/api/dist/subscriptions-annual.pg.test.js:158:9)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary
+    ok 7 - year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary
+      ---
+      duration_ms: 286.039944
+      type: 'test'
+      ...
+    # Subtest: actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal
+    ok 8 - actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal
+      ---
+      duration_ms: 1832.711895
+      type: 'test'
+      ...
+    1..8
+not ok 1 - annual payment, monthly release, original consideration and whole-contract refunds
+  ---
+  duration_ms: 2999.514611
+  type: 'test'
+  location: '/workspace/apps/api/dist/subscriptions-annual.pg.test.js:16:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 9
+# suites 0
+# pass 7
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4423.185357
