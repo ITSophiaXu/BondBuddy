@@ -4,14 +4,16 @@ import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
 import {readdir,stat} from 'node:fs/promises';
 import {join} from 'node:path';
-import {Pool} from 'pg';
+import {Pool,type QueryConfig} from 'pg';
 import {BlobServiceClient} from '@azure/storage-blob';
 import {createServer} from '@bondbuddy/api';
 import {azureBlobs,digest} from '@bondbuddy/api/data';
+import {spoolDirectory} from '@bondbuddy/api/upload-spool';
 import {WorkerRuntime} from './runtime.js';
 import {UploadConfirmationRuntime} from './upload-confirmation-runtime.js';
 import {UPLOAD_CONFIRMATION_SMALL_MAX_BYTES} from '@bondbuddy/api/upload-confirmation';
 import {isolatedTestDatabase} from './test-database.js';
+import {makeWorkerDocxFixture} from './docx-test-fixture.js';
 
 const connection=await isolatedTestDatabase(undefined,'confirmation-reserved-slot');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -19,6 +21,23 @@ const MiB=1024*1024;
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 function gate(){let release!:()=>void;const wait=new Promise<void>(resolve=>{release=resolve;});return {wait,release};}
 async function until(check:()=>Promise<boolean>,ms=15000){const end=Date.now()+ms;while(!await check()){if(Date.now()>end)throw new Error('Synthetic confirmation timed out');await sleep(25);}}
+async function confirmationPhase(phase:string,pending:Promise<unknown>,pool:Pool,owner:string,events:Record<string,unknown>[]){
+  const started=Date.now();let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+    await Promise.race([pending,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Synthetic confirmation barrier timed out')),60000);})]);
+  }catch{
+    // Bounded, allowlisted diagnostics: no object keys, URLs, credentials or material bytes.
+    let confirmations:unknown='diagnostics unavailable';
+    try{
+      const diagnosticQuery:QueryConfig<string[]> & {query_timeout:number}={text:`SELECT c.state,c.byte_size,c.error->>'code' AS error_code,c.last_error->>'code' AS last_error_code,
+      o.delivery_attempts,(o.lease_until>now()) AS leased,(o.delivered_at IS NOT NULL) AS delivered
+      FROM bb_upload_confirmations c JOIN bb_outbox o ON o.id=c.outbox_id WHERE c.owner_user_id=$1 ORDER BY c.byte_size DESC,c.state`,values:[owner],query_timeout:1500};
+      confirmations=(await pool.query(diagnosticQuery)).rows;
+    }catch{/* preserve the phase failure */}
+    throw new Error(JSON.stringify({synthetic:true,phase,elapsed_ms:Date.now()-started,confirmations,
+      events:events.slice(-12).map(e=>({kind:e.kind,lane:e.lane,outcome:e.outcome,phase:e.phase,elapsed_ms:e.elapsed_ms}))}));
+  }finally{if(timer)clearTimeout(timer);}
+}
 
 for(const standalone of [false,true])for(const smallSlot of [false,true])test(`one 71 MiB confirmation and a reserved small lane: standalone=${standalone}, enabled=${smallSlot}`,{skip:!connection||!storage},async()=>{
   const pool=new Pool({connectionString:connection,options:'-c jit=off'}),owner='reserved-'+randomUUID(),container='bb943-'+randomUUID().replaceAll('-','');
@@ -32,7 +51,8 @@ for(const standalone of [false,true])for(const smallSlot of [false,true])test(`o
     const projectId=project.json().project_id;
     await pool.query("UPDATE bb_projects SET update_details=jsonb_build_object('authoring_mode','unified_v1') WHERE id=$1",[projectId]);
     const upload=async(bytes:number,fill:number)=>{
-      const body=Buffer.alloc(bytes,fill),declaration={byte_size:body.length,sha256:digest(body)};
+      const body=makeWorkerDocxFixture({externalLink:false,byteSize:bytes,paddingByte:fill}),declaration={byte_size:body.length,sha256:digest(body)};
+      assert.equal(body.length,bytes,'valid synthetic DOCX retains the exact upload size');
       const created=await send('POST',`/api/v1/projects/${projectId}/materials/uploads`,{filename:`synthetic-${bytes}-${fill}.docx`,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',role:'historical',...declaration});assert.equal(created.statusCode,201,created.body);
       const u=created.json();assert.equal((await send('PUT',u.upload_url,body)).statusCode,204);
       assert.equal((await send('POST',`/api/v1/projects/${projectId}/materials/uploads/${u.upload_id}/complete`,declaration)).statusCode,202);
@@ -49,7 +69,7 @@ for(const standalone of [false,true])for(const smallSlot of [false,true])test(`o
       try{
         if(small.some(u=>u.key===key))await started.wait;
         const proof=await read(key,path,limit,options);
-        const root=process.env.BB_UPLOAD_SPOOL_DIR!;
+        const root=spoolDirectory();
         const sizes=await Promise.all((await readdir(root)).map(async name=>{try{return (await stat(join(root,name))).size;}catch{return 0;}}));
         peakSpoolBytes=Math.max(peakSpoolBytes,sizes.reduce((a,b)=>a+b,0));
         if(key===big.key){started.release();await blocked.wait;}return proof;
@@ -58,10 +78,10 @@ for(const standalone of [false,true])for(const smallSlot of [false,true])test(`o
     };
     const events:Record<string,unknown>[]=[];
     runtime=standalone?new UploadConfirmationRuntime({pool,blobs,smallSlot,pollMs:100,log:event=>events.push(event)}):new WorkerRuntime({pool,blobs,kinds:['parse'],concurrency:1,interactiveSlots:0,parseSlots:0,uploadConfirmationEnabled:true,uploadConfirmationSmallSlot:smallSlot,pollMs:100,drainMs:10000,heartbeatMs:1000,workerId:'synthetic943-'+randomUUID(),log:event=>events.push(event)});
-    const start=Date.now();runtime.start();await started.wait;
+    const start=Date.now();runtime.start();await confirmationPhase('first large full read',started.wait,pool,owner,events);
     const savedSmall=async()=>Number((await pool.query("SELECT count(*)::int n FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=ANY($2::text[])",[owner,small.map(u=>u.id)])).rows[0].n);
     if(smallSlot){
-      await until(async()=>await savedSmall()===small.length);
+      await confirmationPhase('reserved small lane completed while large held',until(async()=>await savedSmall()===small.length),pool,owner,events);
       assert.equal((await pool.query('SELECT state FROM bb_upload_confirmations WHERE upload_id=$1',[big.id])).rows[0].state,'verifying');
       assert.equal((await pool.query('SELECT o.delivery_attempts FROM bb_outbox o JOIN bb_upload_confirmations c ON c.outbox_id=o.id WHERE c.upload_id=$1',[otherBig.id])).rows[0].delivery_attempts,0,'small lane never claims another large object');
       assert.ok(peak<=2);assert.equal(peak,2);
@@ -70,7 +90,7 @@ for(const standalone of [false,true])for(const smallSlot of [false,true])test(`o
       await sleep(500);assert.equal(await savedSmall(),0,'serial baseline remains blocked by the large confirmation');assert.equal(peak,1);
     }
     const blockedElapsed=Date.now()-start;blocked.release();
-    await until(async()=>Number((await pool.query("SELECT count(*)::int n FROM bb_upload_confirmations WHERE owner_user_id=$1 AND state='completed'",[owner])).rows[0].n)===5);
+    await confirmationPhase('all five confirmations completed',until(async()=>Number((await pool.query("SELECT count(*)::int n FROM bb_upload_confirmations WHERE owner_user_id=$1 AND state='completed'",[owner])).rows[0].n)===5),pool,owner,events);
     await runtime.stop();runtime=undefined;
     assert.ok(peakSpoolBytes<=116*MiB);if(smallSlot)assert.ok(peakSpoolBytes>71*MiB);
     const rows=(await pool.query('SELECT u.id,u.byte_size,u.sha256,u.received_bytes,u.received_sha256,count(m.id)::int materials FROM bb_uploads u LEFT JOIN bb_material_versions m ON m.upload_id=u.id WHERE u.owner_user_id=$1 GROUP BY u.id',[owner])).rows;
@@ -79,7 +99,7 @@ for(const standalone of [false,true])for(const smallSlot of [false,true])test(`o
     if(standalone)for(const phase of ['read','inspection','commit'])assert.ok(events.some(e=>e.kind==='upload_confirmation_phase'&&e.phase===phase&&Number(e.elapsed_ms)>=0));
     console.log(JSON.stringify({synthetic:true,small_slot:smallSlot,bulk_bytes:71*MiB,small_completed_before_bulk:smallSlot?small.length:0,peak_reads:peak,peak_spool_bytes:peakSpoolBytes,blocked_observation_ms:blockedElapsed}));
   }finally{
-    blocked.release();await runtime?.stop();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();
+    started.release();blocked.release();await runtime?.stop();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();
     if(before===undefined)delete process.env.BB_UPLOAD_SPOOL_MAX_BYTES;else process.env.BB_UPLOAD_SPOOL_MAX_BYTES=before;
   }
 });
@@ -96,7 +116,8 @@ test('split consumers claim disjoint sizes; small commits while the large full-r
     const project=await send('POST','/api/v1/projects',{name:'Synthetic split confirmation',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(project.statusCode,201,project.body);
     const id=project.json().project_id;
     const upload=async(size:number,fill:number)=>{
-      const bytes=Buffer.alloc(size,fill),declaration={byte_size:size,sha256:digest(bytes)};
+      const bytes=makeWorkerDocxFixture({externalLink:false,byteSize:size,paddingByte:fill}),declaration={byte_size:size,sha256:digest(bytes)};
+      assert.equal(bytes.length,size,'valid synthetic DOCX retains the exact size boundary');
       const created=await send('POST',`/api/v1/projects/${id}/materials/uploads`,{filename:`synthetic-split-${fill}.docx`,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',role:'historical',...declaration});assert.equal(created.statusCode,201,created.body);
       const u=created.json(),path=`/api/v1/projects/${id}/materials/uploads/${u.upload_id}/complete`;
       assert.equal((await send('PUT',u.upload_url,bytes)).statusCode,204);assert.equal((await send('POST',path,declaration)).statusCode,202);
@@ -109,10 +130,10 @@ test('split consumers claim disjoint sizes; small commits while the large full-r
     largeBlobs.readToFile=async(key,...args)=>{assert.equal(key,large.key,'large consumer cannot read a small upload');largeReads++;const proof=await largeRead(key,...args);fullRead.release();await blocked.wait;return proof;};
     smallBlobs.readToFile=async(key,...args)=>{assert.ok(small.some(u=>u.key===key),'small consumer cannot read a large upload');smallReads++;return smallRead(key,...args);};
     azure=new UploadConfirmationRuntime({pool,blobs:largeBlobs,lane:'large',smallSlot:false,pollMs:100,log:e=>events.push(e)}).start();
-    await fullRead.wait;
+    await confirmationPhase('split large full read',fullRead.wait,pool,owner,events);
     for(const u of small)assert.equal((await pool.query("SELECT delivery_attempts FROM bb_outbox WHERE aggregate_id=$1 AND event_type='upload.complete_requested'",[u.id])).rows[0].delivery_attempts,0,'large loop leaves small attempts untouched');
     main=new WorkerRuntime({pool,blobs:smallBlobs,kinds:['parse'],concurrency:1,parseSlots:0,interactiveSlots:0,uploadConfirmationEnabled:true,uploadConfirmationLane:'small',uploadConfirmationSmallSlot:false,pollMs:100,drainMs:1,heartbeatMs:1000,workerId:'split-'+randomUUID(),log:e=>events.push(e)}).start();
-    await until(async()=>(await pool.query("SELECT count(*)::int n FROM bb_upload_confirmations WHERE upload_id=ANY($1::text[]) AND state='completed'",[small.map(u=>u.id)])).rows[0].n===2);
+    await confirmationPhase('split small lane completed while large held',until(async()=>(await pool.query("SELECT count(*)::int n FROM bb_upload_confirmations WHERE upload_id=ANY($1::text[]) AND state='completed'",[small.map(u=>u.id)])).rows[0].n===2),pool,owner,events);
     assert.equal((await pool.query('SELECT state FROM bb_upload_confirmations WHERE upload_id=$1',[large.id])).rows[0].state,'verifying');
     assert.equal(largeReads,1);assert.equal(smallReads,2);
     assert.ok(events.some(e=>e.kind==='upload_confirmation'&&e.lane==='small'&&e.outcome==='completed'));
@@ -128,7 +149,7 @@ test('split consumers claim disjoint sizes; small commits while the large full-r
     for(const lane of ['small','large'])for(const phase of ['read','inspection','commit'])assert.ok(events.some(e=>e.kind==='upload_confirmation_phase'&&e.lane===lane&&e.phase===phase));
     console.log(JSON.stringify({synthetic:true,placement:'size-split',small_completed_during_large_read_gate:small.length,large_reads:largeReads,small_reads:smallReads}));
   }finally{
-    blocked.release();await Promise.all([main?.stop(),azure?.stop()]);await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();
+    fullRead.release();blocked.release();await Promise.all([main?.stop(),azure?.stop()]);await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();
     if(before===undefined)delete process.env.BB_UPLOAD_SPOOL_MAX_BYTES;else process.env.BB_UPLOAD_SPOOL_MAX_BYTES=before;
   }
 });
