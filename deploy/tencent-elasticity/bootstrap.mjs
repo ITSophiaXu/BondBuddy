@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {gzipSync} from 'node:zlib';
+import {gzipSync, gunzipSync, brotliCompressSync, constants as zlibConstants} from 'node:zlib';
 import {randomUUID} from 'node:crypto';
 import {open, rename, unlink} from 'node:fs/promises';
 import {constants} from 'node:fs';
@@ -16,6 +16,24 @@ function businessBootstrap(config) {
   const compose=readFileSync(new URL('compose.yaml',import.meta.url));
   const payload=gzipSync(JSON.stringify({pin:config.business_overlay_sha256,files,compose:{content:compose.toString('utf8'),sha256:sha256(compose)}}),{level:9,mtime:0}).toString('base64');
   return `python3 - <<'BB_BUSINESS_CODE'\nimport os,json,gzip,base64,hashlib,stat\nfrom pathlib import Path\nassert os.geteuid()==0\np=json.loads(gzip.decompress(base64.b64decode('${payload}')))\nh=lambda b:hashlib.sha256(b).hexdigest()\ndef regular(f):\n s=f.lstat();assert stat.S_ISREG(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0;return f.read_bytes()\ndef save(f,b):\n t=f.with_name(f.name+'.business-install');fd=os.open(t,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n with os.fdopen(fd,'wb') as o:o.write(b);o.flush();os.fsync(o.fileno())\n os.replace(t,f)\nbc=Path('/etc/bondbuddy/elastic-bootstrap.json');nc=Path('/etc/bondbuddy/elastic-node.json')\nbefore=regular(bc);b=json.loads(before);nodebefore=regular(nc);n=json.loads(nodebefore)\na=Path(b['adapter_path']);assert str(a).startswith('/opt/bondbuddy/') and a.name=='node-adapter.mjs'\nparent=a.parent\nfor d in [parent,*parent.parents]:\n s=d.lstat();assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0\nactual=regular(a);assert h(actual)==b['adapter_sha256'] and h(actual) in ['a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65',p['files']['node-adapter.mjs']['sha256']]\nfor f,v in [(a,actual),(bc,before),(nc,nodebefore)]:\n backup=f.with_name(f.name+'.before-node-eight')\n if not backup.exists():\n  fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n  with os.fdopen(fd,'wb') as o:o.write(v);o.flush();os.fsync(o.fileno())\nfor name,item in p['files'].items():\n raw=item['content'].encode();assert h(raw)==item['sha256'];f=parent/name\n if f.exists():\n  prior=regular(f);backup=f.with_name(f.name+'.before-node-eight')\n  if not backup.exists():\n   fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n   with os.fdopen(fd,'wb') as o:o.write(prior);o.flush();os.fsync(o.fileno())\n save(f,raw)\ncf=Path(n['compose_file']);oldcompose=regular(cf)\nassert h(oldcompose)==n['compose_sha256'] and h(oldcompose) in ['3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489','e2945a653787183d3f1f295580248116b8f5bc6fdc86e93427fa2469fdfaee2f',p['compose']['sha256']]\ncb=cf.with_name(cf.name+'.before-node-eight')\nif not cb.exists():\n fd=os.open(cb,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n with os.fdopen(fd,'wb') as o:o.write(oldcompose);o.flush();os.fsync(o.fileno())\nraw=p['compose']['content'].encode();assert h(raw)==p['compose']['sha256'];save(cf,raw)\nn['compose_sha256']=p['compose']['sha256']\nn['business_overlay_sha256']=p['pin'];b['adapter_sha256']=p['files']['node-adapter.mjs']['sha256']\nassert regular(nc)==nodebefore and regular(bc)==before\nsave(nc,json.dumps(n,separators=(',',':')).encode());save(bc,json.dumps(b,separators=(',',':')).encode())\nBB_BUSINESS_CODE\n`;
+}
+
+
+/** Keep the same public Python installer and file bytes inside one bounded
+ * Brotli stream. /usr/bin/node is already required by the image bootstrap unit. */
+function compactBusinessBootstrap(script) {
+  if(!script)return '';
+  const prefix="python3 - <<'BB_BUSINESS_CODE'\n", suffix='BB_BUSINESS_CODE\n';
+  requireThat(script.startsWith(prefix)&&script.endsWith(suffix),'BUSINESS_BOOTSTRAP_ENCODING');
+  const program=script.slice(prefix.length,-suffix.length);
+  const line=/^p=json\.loads\(gzip\.decompress\(base64\.b64decode\('([A-Za-z0-9+/=]+)'\)\)\)$/m;
+  const match=program.match(line);requireThat(match,'BUSINESS_BOOTSTRAP_ENCODING');
+  const payload=gunzipSync(Buffer.from(match[1],'base64'),{maxOutputLength:131072}).toString('utf8');
+  const decoded=program.replace(line,()=>`p=json.loads(${JSON.stringify(payload)})`);
+  requireThat(Buffer.byteLength(decoded)<=131072,'BUSINESS_BOOTSTRAP_ENCODING');
+  const encoded=brotliCompressSync(decoded,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:11}}).toString('base64');
+  const decoder='import {brotliDecompressSync} from "node:zlib";const chunks=[];for await(const b of process.stdin)chunks.push(b);process.stdout.write(brotliDecompressSync(Buffer.concat(chunks),{maxOutputLength:131072}));';
+  return `${prefix}import base64,subprocess\nexec(compile(subprocess.run(['/usr/bin/node','--input-type=module','-e',${JSON.stringify(decoder)}],input=base64.b64decode('${encoded}'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30).stdout,'bondbuddy-public-business-bootstrap','exec'))\n${suffix}`;
 }
 
 /** Public cloud-init only. All credentials are issued later to a role-bound node. */
@@ -35,7 +53,7 @@ export function bootstrapUserData(config, request, slot=0) {
   requireThat(!/[\r\n']/.test(publicJson), 'PUBLIC_MANIFEST_ENCODING');
   // The reviewed image must already contain Docker, Node and this oneshot unit.
   // No personal SSH key, provider token, PG password or enrollment token here.
-  return `#!/bin/sh\nset -eu\numask 077\ninstall -d -m 700 /etc/bondbuddy\nprintf '%s' '${publicJson}' > /etc/bondbuddy/elastic-public.json\n${businessBootstrap(config)}systemctl start bondbuddy-execution-bootstrap.service\n`;
+  return `#!/bin/sh\nset -eu\numask 077\ninstall -d -m 700 /etc/bondbuddy\nprintf '%s' '${publicJson}' > /etc/bondbuddy/elastic-public.json\n${compactBusinessBootstrap(businessBootstrap(config))}systemctl start bondbuddy-execution-bootstrap.service\n`;
 }
 
 /** Reproduce an existing instance's exact public creation bytes after a code update.
