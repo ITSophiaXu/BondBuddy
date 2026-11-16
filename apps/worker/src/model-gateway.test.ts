@@ -8,8 +8,8 @@ import { execFileSync } from 'node:child_process';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gzipSync } from 'node:zlib';
-import { analyzeModelRequest, formatModelGatewayExecLogSection, imageDimensions, modelGatewayRequestLog, selectModelGatewayProxy, startModelGateway, MODEL_GATEWAY_EXEC_LOG_MARKER, MODEL_GATEWAY_LARGE_REQUEST_BYTES, type ModelGatewayRecord } from './model-gateway.js';
+import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
+import { analyzeModelRequest, formatModelGatewayExecLogSection, imageDimensions, modelGatewayRequestLog, selectModelGatewayProxy, startModelGateway, MODEL_GATEWAY_EXEC_LOG_MARKER, MODEL_GATEWAY_LARGE_REQUEST_BYTES, type ModelGatewayRecord, type ModelGatewayPayloadRejection } from './model-gateway.js';
 import { createCodexExecLogCapture, loadCodexAdapterConfig, runCodexProcess, DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig } from './codex-adapter.js';
 
 const SECRET = 'SYNTHETIC-PRIVATE-CONTENT-7f3a';
@@ -165,6 +165,159 @@ test('provider 413 passes through unchanged and is summarized for diagnosis', as
   assert.equal(line?.image_count, 2);
   assert.equal(line?.run_id, 'run-1');
   assert.equal(gateway.records()[0].response?.content_type, 'html');
+});
+
+test('enforcement requires an explicit positive safe budget within the gateway resource ceiling', async () => {
+  for (const maxRequestBytes of [undefined, 0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 256 * 1024 * 1024 + 1]) {
+    await assert.rejects(startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:9', mode: 'enforce', maxRequestBytes }), /MODEL_GATEWAY_BUDGET_INVALID/);
+  }
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:9', mode: 'enforce', maxRequestBytes: 256 * 1024 * 1024 });
+  assert.equal(gateway.summary().mode, 'enforce');
+  await gateway.close();
+});
+
+test('enforcement preserves requests through the exact byte limit and latches before an oversized request reaches upstream', async t => {
+  const received: Buffer[] = [], rejected: ModelGatewayPayloadRejection[] = [];
+  const upstream = createServer(async (req, res) => { received.push(await collect(req)); res.end('{}'); });
+  const port = await listen(upstream), maxRequestBytes = 512;
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes, onPayloadRejected: event => rejected.push(event) });
+  t.after(async () => { await gateway.close(); await closeServer(upstream); });
+  const below = Buffer.from('{}'), exact = Buffer.from('{' + ' '.repeat(maxRequestBytes - 2) + '}'), above = Buffer.alloc(maxRequestBytes + 1, 32);
+  assert.equal((await post(gateway.baseUrl + '/responses', below)).status, 200);
+  assert.equal((await post(gateway.baseUrl + '/responses', exact)).status, 200);
+  const denied = await post(gateway.baseUrl + '/responses', above);
+  assert.equal(denied.status, 413);
+  assert.equal(JSON.parse(denied.body.toString()).error.code, 'MODEL_REQUEST_BUDGET_EXCEEDED');
+  assert.equal((await post(gateway.baseUrl + '/responses', below)).status, 413, 'a changed retry cannot bypass the latched process');
+  assert.deepEqual(received, [below, exact]);
+  assert.deepEqual(rejected, [{ source: 'local', reason: 'wire_bytes', code: 'MODEL_REQUEST_BUDGET_EXCEEDED', status: 413, request_bytes: above.length, max_request_bytes: maxRequestBytes }]);
+  assert.equal(gateway.summary().gateway_rejected, 2);
+  assert.ok(!JSON.stringify(gateway.records()).includes(KEY));
+});
+
+test('enforcement counts streamed chunked bytes and remains latched if its callback throws', async t => {
+  let hits = 0, callbacks = 0;
+  const upstream = createServer(async (req, res) => { hits++; await collect(req); res.end('{}'); });
+  const port = await listen(upstream), maxRequestBytes = 32;
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes,
+    onPayloadRejected: () => { callbacks++; throw new Error('synthetic lifecycle failure'); } });
+  t.after(async () => { await gateway.close(); await closeServer(upstream); });
+  const status = await new Promise<number>((resolve, reject) => {
+    const req = httpRequest(gateway.baseUrl + '/responses', { method: 'POST', headers: { 'content-type': 'application/json' } }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+    req.on('error', reject);
+    req.write(Buffer.alloc(16, 32)); req.write(Buffer.alloc(17, 32)); req.end();
+  });
+  assert.equal(status, 413);
+  assert.equal((await post(gateway.baseUrl + '/responses', Buffer.from('{}'))).status, 413);
+  assert.equal(callbacks, 1);
+  assert.equal(hits, 0);
+});
+
+test('enforcement rejects an oversized unfinished stream immediately and blocks concurrent follow-up requests', { timeout: 5000 }, async t => {
+  let hits = 0;
+  const callbacks: ModelGatewayPayloadRejection[] = [];
+  const upstream = createServer(async (req, res) => { hits++; await collect(req); res.end('{}'); });
+  const port = await listen(upstream);
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes: 64,
+    onPayloadRejected: event => callbacks.push(event) });
+  t.after(async () => { await gateway.close(); await closeServer(upstream); });
+  let unfinished!: ReturnType<typeof httpRequest>;
+  const status = await new Promise<number>((resolve, reject) => {
+    unfinished = httpRequest(gateway.baseUrl + '/responses', { method: 'POST' }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+    t.after(() => unfinished.destroy());
+    unfinished.on('error', reject);
+    unfinished.write(Buffer.alloc(128, 32)); // Deliberately never end this request before checking the latch.
+  });
+  assert.equal(status, 413);
+  assert.equal(callbacks.length, 1);
+  assert.equal(callbacks[0]?.request_bytes, 128);
+  assert.equal((await post(gateway.baseUrl + '/responses', Buffer.from('{}'))).status, 413);
+  assert.equal(hits, 0);
+  assert.equal(gateway.summary().gateway_rejected, 2);
+  unfinished.end();
+});
+
+test('enforcement bounds decoded gzip, deflate and brotli bodies while preserving accepted wire bytes', async t => {
+  for (const [encoding, compress] of [['gzip', gzipSync], ['deflate', deflateSync], ['br', brotliCompressSync]] as const) {
+    const received: Buffer[] = [], rejected: ModelGatewayPayloadRejection[] = [];
+    const upstream = createServer(async (req, res) => { assert.equal(req.headers['content-encoding'], encoding); received.push(await collect(req)); res.end('{}'); });
+    const port = await listen(upstream), maxRequestBytes = 512;
+    const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes, onPayloadRejected: event => rejected.push(event) });
+    t.after(async () => { await gateway.close(); await closeServer(upstream); });
+    const exact = Buffer.from('{' + ' '.repeat(maxRequestBytes - 2) + '}'), accepted = compress(exact);
+    assert.equal((await post(gateway.baseUrl + '/responses', accepted, { 'content-encoding': encoding })).status, 200);
+    assert.deepEqual(received, [accepted], 'compression and the JSON/tool structure remain untouched');
+    const over = compress(Buffer.from(JSON.stringify({ input: SECRET.repeat(1000) })));
+    assert.ok(over.length < maxRequestBytes);
+    assert.equal((await post(gateway.baseUrl + '/responses', over, { 'content-encoding': encoding })).status, 413);
+    assert.equal(received.length, 1, 'a compressed body cannot bypass the decoded budget');
+    assert.equal(rejected[0]?.reason, 'decoded_bytes');
+    assert.equal(rejected[0]?.request_bytes, over.length);
+    assert.equal(rejected[0]?.code, 'MODEL_REQUEST_BUDGET_EXCEEDED');
+  }
+});
+
+test('enforcement rejects unverifiable encoding without relabeling it as oversized or forwarding it', async t => {
+  for (const encoding of ['unknown', 'gzip, br', 'gzip']) {
+    let hits = 0;
+    const rejected: ModelGatewayPayloadRejection[] = [];
+    const upstream = createServer(async (req, res) => { hits++; await collect(req); res.end('{}'); });
+    const port = await listen(upstream);
+    const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes: 512, onPayloadRejected: event => rejected.push(event) });
+    t.after(async () => { await gateway.close(); await closeServer(upstream); });
+    const denied = await post(gateway.baseUrl + '/responses', Buffer.from('{}'), { 'content-encoding': encoding });
+    assert.equal(denied.status, 415);
+    assert.equal(JSON.parse(denied.body.toString()).error.code, 'MODEL_REQUEST_ENCODING_INVALID');
+    assert.equal(rejected[0]?.reason, 'encoding_unverifiable');
+    assert.equal((await post(gateway.baseUrl + '/responses', Buffer.alloc(513))).status, 415, 'the first rejection is retained');
+    assert.equal(rejected.length, 1);
+    assert.equal(hits, 0);
+  }
+});
+
+test('enforcement budgets the complete image history and retains usage from earlier successful requests', async t => {
+  let hits = 0;
+  const rejected: ModelGatewayPayloadRejection[] = [];
+  const upstream = createServer(async (req, res) => { hits++; await collect(req); res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end(sseEvents('resp_before_budget')); });
+  const port = await listen(upstream);
+  const first = responsesBody(), one = Buffer.from(JSON.stringify(first));
+  const history = Buffer.from(JSON.stringify({ ...first, input: [...first.input, first.input[2]] }));
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes: one.length, onPayloadRejected: event => rejected.push(event) });
+  t.after(async () => { await gateway.close(); await closeServer(upstream); });
+  assert.equal((await post(gateway.baseUrl + '/responses', one)).status, 200);
+  assert.equal((await post(gateway.baseUrl + '/responses', history)).status, 413);
+  assert.equal(hits, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(gateway.summary().usage.input_tokens, 1200, 'rejecting a later request does not erase real earlier usage');
+  const saved = JSON.stringify([rejected, gateway.summary(), gateway.records()]);
+  assert.ok(!saved.includes(SECRET) && !saved.includes(KEY), 'rejection telemetry contains no prompt, image data or credentials');
+});
+
+test('enforcement latches on upstream 413 headers before its response finishes and never resends', { timeout: 5000 }, async t => {
+  let hits = 0;
+  let finishResponse: (() => void) | undefined;
+  let rejectObserved!: (event: ModelGatewayPayloadRejection) => void;
+  const observed = new Promise<ModelGatewayPayloadRejection>(resolve => { rejectObserved = resolve; });
+  const upstream = createServer(async (req, res) => {
+    hits++; await collect(req); res.writeHead(413, { 'content-type': 'text/html' }); res.flushHeaders();
+    finishResponse = () => res.end('<html>synthetic provider 413</html>');
+  });
+  const port = await listen(upstream), callbacks: ModelGatewayPayloadRejection[] = [];
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port, mode: 'enforce', maxRequestBytes: 512,
+    onPayloadRejected: event => { callbacks.push(event); rejectObserved(event); } });
+  t.after(async () => { finishResponse?.(); await gateway.close(); await closeServer(upstream); });
+  const pending = post(gateway.baseUrl + '/responses', Buffer.from('{}'));
+  const event = await observed;
+  assert.equal(event.source, 'upstream');
+  assert.equal(event.reason, 'upstream_413');
+  assert.equal(event.code, 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+  const retry = await post(gateway.baseUrl + '/responses', Buffer.from('{}'));
+  assert.equal(retry.status, 413);
+  assert.equal(JSON.parse(retry.body.toString()).error.code, 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+  assert.equal(hits, 1);
+  assert.equal(callbacks.length, 1);
+  finishResponse!();
+  assert.equal((await pending).body.toString(), '<html>synthetic provider 413</html>');
 });
 
 test('large successful requests are reported live; the threshold is the request size', () => {
@@ -326,10 +479,11 @@ test('exec-log capture reserves room for the appendix and never exceeds its limi
   assert.throws(() => createCodexExecLogCapture(4096, 4096), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });
 
-test('gateway mode is off unless explicitly set to measure', () => {
+test('gateway mode is off unless measurement or explicitly budgeted enforcement is selected', () => {
   assert.equal(loadCodexAdapterConfig({}).model_gateway, undefined);
   assert.equal('model_gateway' in loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'off' }), false);
   assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'measure' }).model_gateway, 'measure');
+  assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: '512' }).model_gateway, 'enforce');
   for (const value of ['on', 'MEASURE', 'enforce', '1'])
     assert.throws(() => loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: value }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });

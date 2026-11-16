@@ -322,7 +322,22 @@ export async function recordProviderCallObservation(
     // A provider's explicit invalid_request_error is a request rejection, with no
     // generated result to reconcile. Keep usage unknown; all other unmeasured failures
     // still require reconciliation because the request may have consumed tokens.
-    const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0;
+    // A file author's previous local work may survive an explicit HTTP 413. Keep
+    // unknown usage intact while the worker checks its bounded recovery policy.
+    const payloadRejected=observation.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && observation.usage.status==='unknown' && candidateCount===0;
+    const payloadRecovery=observation.outcome==='failed' && payloadRejected && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    // The local output cap terminates the child process but leaves supplier usage
+    // unknown. Preserve that pending observation while a separate recovery sweep
+    // verifies termination and the retained workspace before permitting a new call.
+    const outputLimitRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_OUTPUT_TOO_LARGE'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const timeoutRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_TIMEOUT'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0
+      || payloadRejected&&!payloadRecovery;
     const providerBlocked = observation.outcome === 'failed' && observation.usage.status === 'unknown' && candidateCount === 0 &&
       ['MODEL_PROVIDER_BALANCE_EXHAUSTED', 'MODEL_PROVIDER_AUTH_FAILED', 'MODEL_PROVIDER_RATE_LIMITED'].includes(observation.error_code ?? '');
     const failed=observation.outcome==='failed' && (measuredWithoutConflict || rejected);
@@ -376,7 +391,9 @@ export async function recordProviderCallObservation(
       await appendCallFinished(client,observation,'paused');
     } else {
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
-      await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':'provider_result_pending');
+      await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':
+        payloadRecovery?'file_authoring_payload_recovery_pending':outputLimitRecovery?'file_authoring_output_limit_recovery_pending':timeoutRecovery?'file_authoring_timeout_recovery_pending':'provider_result_pending',
+        'run.state_changed',payloadRecovery?'MODEL_PROVIDER_PAYLOAD_TOO_LARGE':outputLimitRecovery?'MODEL_OUTPUT_TOO_LARGE':timeoutRecovery?'MODEL_TIMEOUT':undefined);
       await appendCallFinished(client,observation,'paused');
     }
     return {attempt_status:nextAttemptStatus,usage_status:usageStatus,idempotent:false};

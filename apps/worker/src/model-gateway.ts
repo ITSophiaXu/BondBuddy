@@ -1,11 +1,13 @@
-// #994 measurement-only model gateway.
+// #994 model request measurement and optional byte-budget enforcement.
 //
 // One loopback listener per Codex process. Codex sends its Responses API requests here
 // (base_url=http://127.0.0.1:<port>) and every request is forwarded unchanged to the
 // configured provider, through the same allow-list egress proxy the child would use.
 // The gateway records sizes, counts, status codes, safe identifiers and usage only.
 // Content is inspected transiently in memory, never persisted. Allowed Responses
-// requests within the resource limit are forwarded without modification or retries.
+// requests retain the configured origin/base path and are forwarded unchanged.
+// Enforcement blocks oversized or unverifiable bodies before forwarding and
+// stops after provider 413; the gateway never retries or compresses requests.
 import { createServer, request as httpRequest, Agent as HttpAgent, type IncomingHttpHeaders, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import { Agent as HttpsAgent, request as httpsRequest, type AgentOptions as HttpsAgentOptions, type RequestOptions as HttpsRequestOptions } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
@@ -14,7 +16,7 @@ import type { Duplex } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 import * as zlib from 'node:zlib';
 
-export const MODEL_GATEWAY_MODES = ['off', 'measure'] as const;
+export const MODEL_GATEWAY_MODES = ['off', 'measure', 'enforce'] as const;
 export type ModelGatewayMode = typeof MODEL_GATEWAY_MODES[number];
 export const MODEL_GATEWAY_RECORD_VERSION = 'model-gateway-measure-v1';
 /** Appended after the Codex [stdout]/[stderr] sections of a private attempt exec log. */
@@ -22,7 +24,8 @@ export const MODEL_GATEWAY_EXEC_LOG_MARKER = '\n[bondbuddy-model-gateway]\n';
 /** Requests at or above this size are also reported in the live worker log. */
 export const MODEL_GATEWAY_LARGE_REQUEST_BYTES = 4 * 1024 * 1024;
 
-const DEFAULT_MAX_REQUEST_BYTES = 256 * 1024 * 1024;
+export const MODEL_GATEWAY_MAX_REQUEST_BYTES = 256 * 1024 * 1024;
+const DEFAULT_MAX_REQUEST_BYTES = MODEL_GATEWAY_MAX_REQUEST_BYTES;
 const MAX_DECODED_REQUEST_BYTES = 256 * 1024 * 1024;
 const MAX_SSE_LINE_CHARS = 16 * 1024 * 1024;
 const MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -89,7 +92,7 @@ export type ModelGatewayRecord = {
   gateway_error: string | null;
 };
 export type ModelGatewaySummary = {
-  kind: 'summary'; v: string; mode: 'measure'; upstream_host: string; proxied: boolean;
+  kind: 'summary'; v: string; mode: 'measure' | 'enforce'; upstream_host: string; proxied: boolean;
   requests: number; completed: number; client_closed: number; upstream_errors: number; gateway_rejected: number;
   status_counts: Record<string, number>;
   total_request_bytes: number; max_request_bytes: number; max_request_seq: number | null; last_request_bytes: number | null;
@@ -101,16 +104,21 @@ export type ModelGatewaySummary = {
 
 // ---------------------------------------------------------------- request analysis
 
-function decodeBody(body: Buffer, encoding: string): Buffer | null {
-  const options = { maxOutputLength: MAX_DECODED_REQUEST_BYTES };
+type DecodedBody = { kind: 'decoded'; body: Buffer } | { kind: 'too_large' | 'unverifiable' };
+function decodeBody(body: Buffer, encoding: string, maxBytes = MAX_DECODED_REQUEST_BYTES): DecodedBody {
+  const options = { maxOutputLength: maxBytes };
   try {
-    if (encoding === 'gzip' || encoding === 'x-gzip') return zlib.gunzipSync(body, options);
-    if (encoding === 'deflate') return zlib.inflateSync(body, options);
-    if (encoding === 'br') return zlib.brotliDecompressSync(body, options);
+    if (encoding === 'gzip' || encoding === 'x-gzip') return { kind: 'decoded', body: zlib.gunzipSync(body, options) };
+    if (encoding === 'deflate') return { kind: 'decoded', body: zlib.inflateSync(body, options) };
+    if (encoding === 'br') return { kind: 'decoded', body: zlib.brotliDecompressSync(body, options) };
     const zstd = (zlib as unknown as { zstdDecompressSync?: (b: Buffer, o: object) => Buffer }).zstdDecompressSync;
-    if (encoding === 'zstd' && zstd) return zstd(body, options);
-  } catch { /* measured as encoded below */ }
-  return null;
+    if (encoding === 'zstd' && zstd) return { kind: 'decoded', body: zstd(body, options) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ERR_BUFFER_TOO_LARGE') return { kind: 'too_large' };
+  }
+  // Unsupported/stacked encodings, unavailable decoders and malformed bytes cannot
+  // establish a decoded byte budget. Measurement still reports these as encoded.
+  return { kind: 'unverifiable' };
 }
 
 /** Best-effort width/height from the image header; never decodes the whole image. */
@@ -190,8 +198,8 @@ export function analyzeModelRequest(body: Buffer, contentEncoding?: string | nul
   let json = body;
   if (encoding && encoding !== 'identity') {
     const decoded = decodeBody(body, encoding);
-    if (!decoded) return { ...shape, analysis: 'encoded' };
-    json = decoded;
+    if (decoded.kind !== 'decoded') return { ...shape, analysis: 'encoded' };
+    json = decoded.body;
   }
   shape.json_bytes = json.length;
   let parsed: unknown;
@@ -411,12 +419,24 @@ function modelRequestTarget(raw: string | undefined, upstream: URL, prefix: stri
 
 // ---------------------------------------------------------------- gateway
 
+export type ModelGatewayPayloadRejection = {
+  source: 'local' | 'upstream';
+  reason: 'wire_bytes' | 'decoded_bytes' | 'encoding_unverifiable' | 'upstream_413';
+  code: 'MODEL_REQUEST_BUDGET_EXCEEDED' | 'MODEL_REQUEST_ENCODING_INVALID' | 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE';
+  status: 413 | 415;
+  request_bytes: number;
+  max_request_bytes: number;
+};
 export type ModelGatewayOptions = {
   upstreamBaseUrl: string;
   proxyEnv?: Record<string, string>;
+  mode?: 'measure' | 'enforce';
   /** Test-only trust anchor for a synthetic TLS upstream; production uses the system store. */
   tlsCa?: string | Buffer;
   onRecord?: (record: ModelGatewayRecord) => void;
+  /** Exactly once after the first enforcement rejection; the gateway remains latched. */
+  onPayloadRejected?: (rejection: ModelGatewayPayloadRejection) => void;
+  /** Required in enforce mode; applies to both wire bytes and decoded body bytes. */
   maxRequestBytes?: number;
 };
 export type ModelGateway = {
@@ -428,6 +448,10 @@ export type ModelGateway = {
 };
 
 export async function startModelGateway(options: ModelGatewayOptions): Promise<ModelGateway> {
+  const mode = options.mode ?? 'measure';
+  if (!['measure', 'enforce'].includes(mode) || mode === 'enforce' &&
+      (!Number.isSafeInteger(options.maxRequestBytes) || options.maxRequestBytes! < 1 || options.maxRequestBytes! > DEFAULT_MAX_REQUEST_BYTES))
+    throw new Error('MODEL_GATEWAY_BUDGET_INVALID');
   const upstream = new URL(options.upstreamBaseUrl);
   if (!['https:', 'http:'].includes(upstream.protocol) || upstream.username || upstream.password || upstream.search || upstream.hash)
     throw new Error('MODEL_GATEWAY_UPSTREAM_INVALID');
@@ -441,12 +465,19 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
 
   const records: ModelGatewayRecord[] = [];
   let seq = 0, dropped = 0;
-  const summary: ModelGatewaySummary = { kind: 'summary', v: MODEL_GATEWAY_RECORD_VERSION, mode: 'measure', upstream_host: upstream.host, proxied: !!proxy,
+  const summary: ModelGatewaySummary = { kind: 'summary', v: MODEL_GATEWAY_RECORD_VERSION, mode, upstream_host: upstream.host, proxied: !!proxy,
     requests: 0, completed: 0, client_closed: 0, upstream_errors: 0, gateway_rejected: 0, status_counts: {},
     total_request_bytes: 0, max_request_bytes: 0, max_request_seq: null, last_request_bytes: null, max_image_count: 0, max_image_data_url_bytes: 0,
     first_413_seq: null, first_413_request_bytes: null,
     usage: { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, responses_with_usage: 0 }, records_retained: 0, records_dropped: 0 };
   const upstreamRequests = new Set<ReturnType<typeof httpRequest>>();
+  let payloadRejection: ModelGatewayPayloadRejection | null = null;
+  const latchPayloadRejection = (rejection: ModelGatewayPayloadRejection) => {
+    if (payloadRejection) return;
+    payloadRejection = rejection;
+    // The budget remains enforced even if a lifecycle observer fails.
+    try { options.onPayloadRejected?.(structuredClone(rejection)); } catch { /* already latched */ }
+  };
 
   const keep = (record: ModelGatewayRecord) => {
     summary.requests++;
@@ -494,7 +525,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       if (done) return;
       done = true;
       record.outcome = outcome;
-      record.gateway_error = gatewayError;
+      record.gateway_error ??= gatewayError;
       try { record.response = meter ? meter.finish() : null; } catch { record.response = null; }
       record.duration_ms = Number((process.hrtime.bigint() - t0) / 1000000n);
       keep(record);
@@ -505,16 +536,46 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
 
     const chunks: Buffer[] = [];
     let received = 0, tooLarge = false;
+    const rejectPayload = (rejection: ModelGatewayPayloadRejection, first: boolean) => {
+      chunks.length = 0;
+      record.request_bytes = received;
+      reject(res, rejection.status, rejection.code);
+      finalize('gateway_rejected', rejection.code);
+      if (first) latchPayloadRejection(rejection);
+    };
+    if (payloadRejection) { req.resume(); rejectPayload(payloadRejection, false); return; }
     req.on('data', (chunk: Buffer) => {
+      if (done) return;
       received += chunk.length;
-      if (received > maxRequestBytes) tooLarge = true; else chunks.push(chunk);
+      if (payloadRejection) { rejectPayload(payloadRejection, false); return; }
+      if (received > maxRequestBytes) {
+        tooLarge = true;
+        if (mode === 'enforce') rejectPayload({ source: 'local', reason: 'wire_bytes', code: 'MODEL_REQUEST_BUDGET_EXCEEDED', status: 413,
+          request_bytes: received, max_request_bytes: maxRequestBytes }, true);
+      } else chunks.push(chunk);
     });
     req.on('close', () => { if (!req.complete) { record.request_bytes = received; finalize('client_closed', null); } });
     req.on('end', () => {
+      if (done) return;
       record.request_bytes = received;
-      if (tooLarge) { chunks.length = 0; reject(res, 413, 'GATEWAY_REQUEST_LIMIT'); finalize('gateway_rejected', 'GATEWAY_REQUEST_LIMIT'); return; }
+      if (payloadRejection) { rejectPayload(payloadRejection, false); return; }
+      if (tooLarge) {
+        chunks.length = 0; reject(res, 413, 'GATEWAY_REQUEST_LIMIT'); finalize('gateway_rejected', 'GATEWAY_REQUEST_LIMIT');
+        return;
+      }
       const body = Buffer.concat(chunks);
       chunks.length = 0;
+      const encoding = typeof req.headers['content-encoding'] === 'string' ? req.headers['content-encoding'].trim().toLowerCase() : null;
+      if (mode === 'enforce' && encoding && encoding !== 'identity') {
+        const decoded = decodeBody(body, encoding, maxRequestBytes);
+        if (decoded.kind !== 'decoded') {
+          const tooLarge = decoded.kind === 'too_large';
+          rejectPayload({ source: 'local', reason: tooLarge ? 'decoded_bytes' : 'encoding_unverifiable',
+            code: tooLarge ? 'MODEL_REQUEST_BUDGET_EXCEEDED' : 'MODEL_REQUEST_ENCODING_INVALID', status: tooLarge ? 413 : 415,
+            request_bytes: received, max_request_bytes: maxRequestBytes }, true);
+          return;
+        }
+      }
       const upstreamReq = send(target, { method: req.method, headers: forwardRequestHeaders(req.headers, upstream.host, body.length), agent });
       upstreamRequests.add(upstreamReq);
       upstreamReq.once('close', () => upstreamRequests.delete(upstreamReq));
@@ -526,6 +587,13 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
         ures.on('close', () => { if (!ures.complete) { res.destroy(); finalize('upstream_error', 'UPSTREAM_STREAM_ABORTED'); } });
         ures.on('error', () => { res.destroy(); finalize('upstream_error', 'UPSTREAM_STREAM_ERROR'); });
         ures.pipe(res);
+        if (mode === 'enforce' && ures.statusCode === 413) {
+          // Retain the authoritative response classification if the callback stops
+          // Codex before the provider finishes its body or connection cleanup.
+          record.gateway_error = 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE';
+          latchPayloadRejection({ source: 'upstream', reason: 'upstream_413', code: 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',
+            status: 413, request_bytes: received, max_request_bytes: maxRequestBytes });
+        }
       });
       upstreamReq.on('error', error => {
         if (!meter) reject(res, 502, errorCode(error)); else res.destroy();
@@ -534,8 +602,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       res.on('close', () => { if (!res.writableFinished) { upstreamReq.destroy(); finalize('client_closed', null); } });
       upstreamReq.end(body);
       // Analysis runs after the bytes are handed to the upstream socket.
-      const encoding = req.headers['content-encoding'];
-      try { record.request = analyzeModelRequest(body, typeof encoding === 'string' ? encoding : null); } catch { record.request = null; }
+      try { record.request = analyzeModelRequest(body, encoding); } catch { record.request = null; }
     });
   };
 
