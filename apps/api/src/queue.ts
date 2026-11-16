@@ -1054,7 +1054,7 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
       throw refuse();
     // Serialize with submissions and other recoveries; the M3 database mutex remains in force.
     if(!project||project.kind!=='review'||project.deleted_at)throw refuse();
-    const active=await client.query("SELECT 1 FROM bb_runs WHERE project_id=$1 AND owner_user_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')",[r.project_id,r.owner_user_id]);
+    const active=await client.query("SELECT 1 FROM bb_runs WHERE project_id=$1 AND owner_user_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision)",[r.project_id,r.owner_user_id]);
     const artifacts=await client.query('SELECT 1 FROM bb_review_reports WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_review_artifacts WHERE run_id=$1 UNION ALL SELECT 1 FROM bb_artifact_versions WHERE run_id=$1',[r.id]);
     if(active.rowCount||artifacts.rowCount||await providerCallNeedsReconciliation(client,j.id))throw refuse();
     const last=(await client.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND seq=$2',[r.id,r.event_cursor])).rows[0]?.payload;

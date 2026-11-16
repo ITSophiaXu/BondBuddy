@@ -8,7 +8,8 @@ export async function assertBatchAdmission(c:PoolClient,owner:string,scope:strin
     throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
   const active=(await c.query(`SELECT bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
-    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,scope,terminal])).rows;
+    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))
+    AND NOT bb_is_integrity_input(r.owner_user_id,r.project_id,r.input_revision)`,[owner,scope,terminal])).rows;
   if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!==batch||r.membership?.[1]===item))
     throw conflict('PROJECT_RUN_ACTIVE','已有业务任务执行中。');
 }

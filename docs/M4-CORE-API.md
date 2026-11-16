@@ -1,3 +1,13 @@
+## 2026-11-16 诚信核查独立并行（#1441）
+
+诚信核查的 `check` 与 `export` 是独立工作流，可以与同项目及同 canonical 来源的募集书更新、复核、材料制作和问答并行。它们继续使用 `task_kind=generation`、`integrity_v1` 作业和原有账务/成果契约；不将历史诚信任务改成 QA。数据库通过不可变输入的 `version=integrity-round-v1` 和 `operation=check/export` 识别诚信，不依赖尚未插入的作业或诚信轮次记录。文书之间原有互斥、批次成员与容量规则保持不变。
+
+同一账号、同一项目一次只允许一个未终态诚信任务，包含排队、暂停、等待补充及导出；已有请求按原幂等键返回，不重复预留。API 返回 `PROJECT_RUN_ACTIVE` 时明确提示正在执行的是诚信任务；新增数据库 trigger 同时约束插入与终态恢复。已获准任务的普通进度/续跑状态变更不再次锁定项目，保留原租约和账务锁顺序。
+
+诚信仍追加 `bb_input_revisions`，但不覆盖募集书使用的 `bb_projects.latest_input_revision`，也不增加募集书草稿版本。因此单独启动诚信不会使已锁定的募集书报价失效。所有新募集书输入在项目锁内按该项目 `max(revision)+1` 分配，避免与独立工作流的输入编号冲突。原任务的输入、hash、核查轮、成果、价格和积分记录保持原样，worker 继续按每个 run 的准确输入版本读取。
+
+统一发布时须先应用新增迁移 `0188_integrity_independent_runs.sql`，再启用本版 API；新 API 的准入查询依赖该迁移提供的函数。迁移不回写历史任务和输入。回退 API 时至少保留 `max(revision)+1` 的分配修复：新版本可能已存在超过募集书 latest 指针的诚信输入，直接恢复旧 `latest+1` 分配会产生主键冲突。测试结果与实际发布状态另行登记，本节仅说明实现行为和兼容边界。
+
 ## 2026-10-15 案例模板与新增材料
 
 以 [案例模板决定](product-decisions/2026-10-15-material-case-templates.md) 为准。材料枚举新增 `application`、`recommendation`；前者支持沪深普通私募，后者支持 `nafmii/ppn` 和 `nafmii/mtn`。`input.fields.case_template_id` 可明确指定该范围的版式变体；服务端校验匹配，不接受跨范围回退。
@@ -39,11 +49,11 @@ M4 保留 Codex CLI 服务端 worker。`m4_document_v1` 与 `m4_qa_v1` 使用独
 | `GET /artifacts/:artifact_id/versions/:artifact_version/preview` | 准确 artifact 原文预览；没有提取文本时如实提示，保留 Word 下载 |
 | `GET /artifacts/:artifact_id/versions/:artifact_version/bytes` | owner 授权、准确版本/hash 核验下载。QA 是文本，不伪装 Word |
 
-表中简写路径均接 `/api/v1/m4`。话题的材料可来自本账号其他项目；每次采用/执行重新验证归属与准确版本。执行 scope 优先从明确原稿/改稿底稿的项目派生，并锁定 canonical 项目。完整更新、复核和材料制作跨话题互斥；QA 可同时运行。运行中改变材料只保存后继输入，不能重绑定当前 run 的 scope。
+表中简写路径均接 `/api/v1/m4`。话题的材料可来自本账号其他项目；每次采用/执行重新验证归属与准确版本。执行 scope 优先从明确原稿/改稿底稿的项目派生，并锁定 canonical 项目。完整更新、复核和材料制作跨话题互斥；QA 和独立诚信核查可同时运行，诚信自身按本页 2026-11-16 说明串行。运行中改变材料只保存后继输入，不能重绑定当前 run 的 scope。
 
 跨业务入口先显示原需求和准确来源，由用户在新建更新／复核项目明确采用。`handoffs/bind` 请求含 `message_id`、`message_version`、`target_project_id` 和准确 `source_material`；API 从本账号话题的原 user 消息重新校验来源项目、材料 ID／version／hash，并派生 `execution_scope_project_id`，不接受客户端指定 scope。成功响应的 `binding` 固定上述身份及 canonical scope，页面核对响应后才复用现有 owner 文件接口复制原稿及保存目标要求。没有固定来源时只采用意图，并提示用户明确待处理稿，不能声称已经绑定来源。
 
-首次绑定只增加目标 `draft_revision`、写 scope 和同事务 outbox，不修改文件或已有任务，不预留积分；重复同 scope 是只读幂等。已有非 QA 业务任务历史、已采用其他 canonical、或已经被其他项目用作 canonical 的目标不能重绑定。原来源正在制作不阻断采用草稿；新目标执行仍受同 scope 非 QA 互斥，API 返回 `PROJECT_RUN_ACTIVE`，页面提示同一来源已有任务执行中；DB trigger 保留兜底。QA 可以并行。
+首次绑定只增加目标 `draft_revision`、写 scope 和同事务 outbox，不修改文件或已有任务，不预留积分；重复同 scope 是只读幂等。已有非 QA、非诚信业务任务历史、已采用其他 canonical、或已经被其他项目用作 canonical 的目标不能重绑定。原来源正在制作不阻断采用草稿；新目标执行仍受同 scope 非 QA、非诚信文书互斥，API 返回 `PROJECT_RUN_ACTIVE`，页面提示同一来源已有任务执行中；DB trigger 保留兜底。QA 可以并行。
 
 采用形成的 canonical 关系不能在后续换源时拆散：已被其他业务采用为 canonical 的 M4 话题须另建话题使用新来源。执行前对源项目及 canonical 取锁并重新核对派生 scope，防并发绑定后沿用旧 scope。新增路径使用 `FOR UPDATE NOWAIT`；与已有保存／提交重叠时返回 `INPUT_REVISION_CONFLICT`，提示稍后重新核对并明确操作，避免不同锁顺序死锁。此情形与 `PROJECT_RUN_ACTIVE` 的业务任务互斥提示分别展示；不透传后端原始错误消息。付费更新／复核的旧报价随目标 draft 变化失效；既有任务及旧免费输入快照仍按原输入保留，但执行受当前 canonical mutex 约束，不能称为全量旧输入废弃。
 

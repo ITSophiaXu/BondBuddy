@@ -843,7 +843,8 @@ export function createServer(settings: Settings = {}) {
         (b.requirement_message_ids.length!==requirementMessageIds.length ||
          [...b.requirement_message_ids].sort().some((messageId,index)=>messageId!==requirementMessageIds[index])))
         throw conflict('INPUT_REVISION_CONFLICT','Requirement message IDs do not match the locked project message set');
-      const revision=(p.latest_input_revision??0)+1;
+      // Independent workflows also append immutable inputs without changing the authoring pointer.
+      const revision=Number((await client.query('SELECT COALESCE(max(revision),0)+1 n FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].n);
       if(b.user_reference && (p.kind!=='generation'||!p.market||!p.offering))
         throw new Problem(422,'VALIDATION_FAILED','User reference requires a generation target');
       const referenceScope={owner:user,projectId:id,revision,market:String(p.market),offering:String(p.offering)};

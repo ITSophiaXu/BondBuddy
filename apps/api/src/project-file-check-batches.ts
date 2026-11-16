@@ -51,7 +51,7 @@ async function prepare(c:PoolClient,owner:string,id:string,b:FileCheckBatchQuote
 }
 async function idle(c:PoolClient,owner:string,id:string,p:any){
   await assertCanonicalBusinessRunIdle(c,owner,p);
-  if((await c.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>\'qa\' AND NOT(state=ANY($3::text[]))',[owner,id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','请先完成或结束本项目正在进行的任务。');
+  if((await c.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>\'qa\' AND NOT(state=ANY($3::text[])) AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision)',[owner,id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','请先完成或结束本项目正在进行的任务。');
 }
 async function requirePoints(c:PoolClient,owner:string,points:bigint){
   await lockCreditAccount(c,owner);const balance=await creditBalanceExact(c,owner);
