@@ -31,10 +31,21 @@ async function capture(page:Page,name:string,selector:string){
 test('audit review entry and recovery',async({page})=>{
  const s=review.fixture();s.materials.clear();s.draft.source_material_ref=null;s.draft.material_versions=[];s.draft.evidence_links=[];
  await review.install(page,s);await review.mount(page);await capture(page,'review-entry','#review-upload-groups');
+ const missingBytes=page.waitForResponse(response=>new URL(response.url()).pathname===`/api/v1/projects/${review.ids.project}/materials/uploads/review-twelfth-U-1/complete`&&response.status()===422);
  s.dropPut='before';await page.locator('[data-review-upload-role=audit]').setInputFiles(review.file);
+ expect(await (await missingBytes).json()).toMatchObject({code:'MATERIAL_UNREADABLE',field_errors:[{field:'upload_session',code:'bytes_pending'}]});
+ // Keep the original ten-minute unknown-PUT budget; only advance the installed browser clock.
+ await page.clock.fastForward(600_001);
  await expect(review.recovery(page).getByRole('button',{name:'重试',exact:true})).toBeVisible();
+ await expect(review.recovery(page).getByRole('button',{name:'重试',exact:true})).toBeEnabled();
+ expect(review.uploads(s,'create')).toHaveLength(1);expect(review.uploads(s,'bytes')).toHaveLength(1);
+ expect([...s.uploads.keys()]).toEqual(['review-twelfth-U-1']);expect(s.uploads.get('review-twelfth-U-1')!.received).toBe(false);
+ expect(s.materials.size).toBe(0);expect(review.draftWrites(s)).toEqual([]);expect(await review.records(page)).toHaveLength(1);
+ for(const complete of review.uploads(s,'complete'))expect(complete).toEqual({method:'POST',path:`/projects/${review.ids.project}/materials/uploads/review-twelfth-U-1/complete`,search:'',body:{byte_size:review.file.buffer.length,sha256:review.hash(review.file.buffer)}});
+ const originalWrites=structuredClone(review.writes(s));
  await capture(page,'review-recovery','#review-upload-groups');
  await review.recovery(page).locator('[data-review-recovery-remove]').click();await expect(review.recovery(page)).toHaveCount(0);review.noBusiness(s);
+ expect(review.writes(s)).toEqual(originalWrites);expect(await review.records(page)).toHaveLength(0);
 });
 
 test('shared picker supports keyboard, drag, single-file errors and disabled fields',async({page})=>{
@@ -88,9 +99,26 @@ test('shared upload reference at desktop and mobile widths',async({page})=>{
 });
 test('audit topic generation material entry and recovery',async({page})=>{
  const s=await m4.install(page);await m4.mount(page);await capture(page,'topic-entry','[data-m4-drop=material]');
+ const originalDrafts=structuredClone(s.workspace.drafts),originalMaterials=structuredClone([...s.materials]);
+ const missingBytes=page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname===`/api/v1/projects/${m4.ids.project}/materials/uploads/m4-thirteenth-U-1/complete`&&response.status()===422);
  s.dropPut='before';await page.locator('[data-m4-upload=material]').last().setInputFiles(m4.file);
+ expect(await (await missingBytes).json()).toMatchObject({code:'MATERIAL_UNREADABLE',field_errors:[{field:'upload_session',code:'bytes_pending'}]});
+ await expect(m4.recovery(page).locator('[data-m4-recovery-remove]')).toBeDisabled();
+ const originalRecords=await m4.records(page);expect(originalRecords).toHaveLength(1);
+ expect(originalRecords[0].value).toMatchObject({owner:m4.ids.owner,projectId:m4.ids.project,topicId:m4.ids.topic,purpose:'material',documentType:'private_summary',items:[{index:0,stage:'prepared',declaration:{filename:m4.file.name,byte_size:m4.file.buffer.length,sha256:m4.hash(m4.file.buffer)}}]});
+ // Keep the original ten-minute unknown-PUT budget; only advance the installed browser clock.
+ await page.clock.fastForward(600_001);
+ await expect(m4.recovery(page).locator('[data-m4-recovery-action=resume]')).toBeEnabled();
+ await expect(m4.recovery(page).locator('[data-m4-recovery-remove]')).toBeEnabled();
+ expect(m4.uploads(s,'create')).toHaveLength(1);expect(m4.uploads(s,'bytes')).toHaveLength(1);
+ expect([...s.uploads.keys()]).toEqual(['m4-thirteenth-U-1']);expect(s.uploads.get('m4-thirteenth-U-1')!.received).toBe(false);
+ expect(m4.libraryWrites(s)).toEqual([]);expect(m4.draftWrites(s)).toEqual([]);expect(await m4.records(page)).toEqual(originalRecords);
+ for(const complete of m4.uploads(s,'complete'))expect(complete).toEqual({method:'POST',path:`/projects/${m4.ids.project}/materials/uploads/m4-thirteenth-U-1/complete`,search:'',body:{byte_size:m4.file.buffer.length,sha256:m4.hash(m4.file.buffer)}});
+ const originalWrites=structuredClone(m4.writes(s));
  await expect(m4.recovery(page)).toBeVisible();await capture(page,'topic-recovery','.m4-upload-recovery-list');
  await m4.recovery(page).locator('[data-m4-recovery-remove]').click();await expect(m4.recovery(page)).toHaveCount(0);m4.noBusiness(s);
+ expect(m4.writes(s)).toEqual(originalWrites);expect(await m4.records(page)).toHaveLength(0);
+ expect(s.workspace.drafts).toEqual(originalDrafts);expect([...s.materials]).toEqual(originalMaterials);
 });
 test('audit project file import',async({page})=>{
  const s=await files.open(page);await page.locator('#import-project-file').click();
