@@ -10,4 +10,12 @@ export type FileAuthoringCapture = {
   owner_user_id:string; project_id:string; run_id:string; job_id:string;
   input_revision:number; input_hash:string; attempt_id:string; logical_call_id:string;
   prepared_at:string;
+  /** Host deadline fixed by the first modern intent for this logical call. */
+  deadline_at?:string;
 } & ({state:'prepared'; failure_code:null} | FileAuthoringCaptureOutcome);
+
+/** Format validation only: an expired deadline remains valid durable evidence. */
+export function isFileAuthoringDeadline(value:unknown):value is string {
+  return typeof value==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString()===value;
+}

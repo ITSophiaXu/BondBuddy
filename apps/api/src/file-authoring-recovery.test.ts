@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validFileAuthoringRecovery } from './queue.js';
-import { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
+import { FILE_AUTHORING_RECOVERY_LIMITS, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, MODEL_ADAPTER_ERROR_CODES, isFileAuthoringDeadline } from '@bondbuddy/contracts';
 
 const scope={owner:'owner',project:'project',run:'run',inputHash:'a'.repeat(64),attempt:'attempt',logical:'file-authoring-v1'};
 const file=(path:string,size=10)=>({path,key:`owners/owner/projects/project/runs/run/file-authoring/recovery/attempt/${'b'.repeat(64)}/${path}`,sha256:'b'.repeat(64),byte_size:size});
@@ -34,4 +34,20 @@ test('recovery metadata rejects traversal, duplicate files, bad hashes and resou
   assert.equal(validFileAuthoringRecovery({...snapshot(),files:exactBytes},scope),true,'exact per-file and total byte caps remain accepted');
   reject([...exactBytes.slice(0,-1),file('output/last',12*1024*1024)]);
   assert.equal(validFileAuthoringRecovery({...snapshot(),files:[file('input.json'),file('output/empty',0)]},scope),true);
+});
+
+
+test('deadline evidence is canonical, optional for legacy snapshots, and retains expired values for terminal handling',()=>{
+  assert.equal(FILE_AUTHORING_CONTEXT_ROTATION_LIMIT,32);
+  assert.equal(MODEL_ADAPTER_ERROR_CODES.filter(code=>code==='MODEL_CONTEXT_ROTATION_REQUIRED').length,1);
+  for(const deadline_at of ['2026-11-16T00:00:00.000Z','2000-01-01T00:00:00.000Z']){
+    assert.equal(isFileAuthoringDeadline(deadline_at),true);
+    assert.equal(validFileAuthoringRecovery({...snapshot(),deadline_at},scope),true);
+  }
+  for(const deadline_at of [undefined,null,0,'invalid','2026-11-16','2026-11-16T00:00:00Z',
+    '2026-11-16T08:00:00.000+08:00','2026-02-30T00:00:00.000Z']){
+    assert.equal(isFileAuthoringDeadline(deadline_at),false);
+    assert.equal(validFileAuthoringRecovery({...snapshot(),deadline_at},scope),false);
+  }
+  assert.equal(validFileAuthoringRecovery(snapshot(),scope),true);
 });

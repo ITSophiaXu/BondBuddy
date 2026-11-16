@@ -195,6 +195,45 @@ class PdfPagesTests(unittest.TestCase):
                 self.assertNotIn('image_base64', path.read_text())
                 self.assertNotIn('rendered_image', path.read_text())
 
+    def test_forced_ocr_on_partial_native_page_is_reused_by_auto_and_search(self):
+        native_pdf(self.source, ['Financial statement header'])
+        with patch.object(pages, 'ocr_runtime_identity', return_value=RUNTIME), patch.object(pages, 'render_ocr_page', side_effect=ocr_result) as render:
+            with self.open() as pdf:
+                native = pdf.read(1, ocr='never')
+                self.assertEqual(native['image_count'], 0)
+                self.assertEqual(native['records'][0]['text'], 'Financial statement header')
+                forced = pdf.read(1, ocr='force')
+                self.assertEqual(forced['records'][0]['text'], 'Revenue 123,456.78')
+                self.assertEqual(pdf.read(1), forced)
+                self.assertEqual(pdf.search('123,456.78')['matches'], forced['records'])
+                with patch.object(pdf, '_existing_ocr', side_effect=AssertionError('never must stay native')):
+                    self.assertEqual(pdf.read(1, ocr='never'), native)
+            # A fresh context has no in-memory OCR identity; discover and verify
+            # the saved evidence without rendering the same page again.
+            with self.open() as pdf, patch.object(pages, 'render_ocr_page', side_effect=AssertionError('cached OCR was ignored')):
+                self.assertEqual(pdf.read(1), forced)
+                result = pdf.search('123,456.78')
+                self.assertEqual(result['matches'], forced['records'])
+                self.assertEqual(result['pages_without_ocr'], [])
+                self.assertIsNone(result['next_cursor'])
+                self.assertEqual(pdf.read(1, ocr='never'), native)
+            self.assertEqual(render.call_count, 1)
+
+    def test_partial_native_page_cannot_hide_a_corrupt_forced_ocr_cache(self):
+        native_pdf(self.source, ['Financial statement header'])
+        with patch.object(pages, 'ocr_runtime_identity', return_value=RUNTIME), patch.object(pages, 'render_ocr_page', side_effect=ocr_result):
+            with self.open() as pdf:
+                pdf.read(1, ocr='force')
+                path, _ = pdf._cache_path(1, 'ocr')
+                value = json.loads(path.read_bytes())
+                value['data']['records'][0]['text'] = 'Changed financial number'
+                path.write_bytes(pages.encoded(value))
+            with self.open() as pdf:
+                for action in (lambda: pdf.read(1), lambda: pdf.search('Revenue')):
+                    with self.assertRaisesRegex(pages.PdfPageError, 'PDF_CACHE_INVALID'):
+                        action()
+                self.assertEqual(pdf.read(1, ocr='never')['mode'], 'native')
+
     def test_snapshot_relocation_reuses_ocr_without_absolute_cache_paths(self):
         scanned_pdf(self.source)
         with patch.object(pages, 'ocr_runtime_identity', return_value=RUNTIME), patch.object(pages, 'render_ocr_page', side_effect=ocr_result) as render:

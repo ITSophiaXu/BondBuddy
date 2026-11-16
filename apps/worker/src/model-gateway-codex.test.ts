@@ -202,7 +202,7 @@ child.on('error',()=>process.exit(1));child.on('close',code=>process.exit(code??
   const events: Record<string, unknown>[] = [];
   const result = await runCodexProcess({ ...s.config, command: [process.execPath, wrapper, codex!, mcp] }, {
     prompt: 'Call the bounded image tool once for scratch/synthetic.png.', cwd: s.cwd, codexHome: s.home, home: s.home,
-    schemaFile: null, ephemeral: true, resumeThreadId: null, fileAuthoring: true, captureExecLog: true,
+    schemaFile: null, ephemeral: true, resumeThreadId: null, fileAuthoring: true, contextRotation:true, captureExecLog: true,
     onEvent: event => events.push(event), gatewayLog: () => {},
   });
   const item = events.find(event => event.type === 'item.completed' && (event.item as { type?: string })?.type === 'mcp_tool_call')?.item as {
@@ -217,6 +217,8 @@ child.on('error',()=>process.exit(1));child.on('close',code=>process.exit(code??
   assert.ok(content.some(block => block.type === 'text' && block.text?.startsWith(marker)),
     'the adapter can inspect item.result.content without scraping an error string');
   assert.ok(!content.some(block => block.type === 'image'));
+  assert.equal(result.stop,'context_rotation');
+  assert.equal(classifyCodexResult(result,()=>({ok:true,value:{}})).error_code,'MODEL_CONTEXT_ROTATION_REQUIRED');
   assert.ok(upstream.received.every(request => !JSON.stringify(request.body).includes('data:image/')));
 });
 

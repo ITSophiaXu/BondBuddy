@@ -7,8 +7,8 @@ import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
 import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/billing.js';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
-import { emptyUpdateDetails,INITIAL_FIXED_PRICES, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
-import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns } from '@bondbuddy/api/queue';
+import { emptyUpdateDetails,INITIAL_FIXED_PRICES, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
+import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns,resolveOperatorReconciliation } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,providerResultObjectKey,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -16,7 +16,7 @@ import { isolatedTestDatabase } from './test-database.js';
 const configured=!!process.env.BB_TEST_DATABASE_URL;
 for(const [localFailure,localPrefix] of [['MODEL_OUTPUT_TOO_LARGE','file_authoring_output_limit'],['MODEL_TIMEOUT','file_authoring_timeout']] as const)
 test(`${localFailure} recovery preserves work, unknown usage and the original reservation while bounding retries`,
-  {skip:!configured,timeout:600000},async()=>{
+  {skip:!configured,timeout:600000},async t=>{
   const connection=await isolatedTestDatabase(undefined,`file-authoring-${localFailure}`);
   const pool=new Pool({connectionString:connection}),owner=`payload-${uid()}`,objects=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
@@ -25,20 +25,20 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
   const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
-    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean;
+    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean;deadline?:string;
     capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure};
   type Lease=NonNullable<Awaited<ReturnType<typeof claim>>>;
   async function observe(lease:Lease,project:string,inputHash:string,n:number,options:Options={}){
     const logical=options.logical??'file-authoring-v1',content=Buffer.from('synthetic file authoring prompt');
-    const error=options.error??'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',outputLimit=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(error);
+    const error=options.error??'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',outputLimit=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(error);
     const objectKey=`users/${owner}/projects/${project}/snapshots/${uid()}`;await blobs.put(objectKey,content,'text/plain');
     const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
     if(options.snapshot==='none'&&logical==='file-authoring-v1'&&n===1)
       await checkpointStage(pool,lease,'file_authoring_v1_prompt',{snapshot_id:prompt},false);
-    const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt,fileAuthoringRecoveryCapture:!!options.capture});
+    const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt,fileAuthoringRecoveryCapture:!!options.capture,...(options.deadline!==undefined?{fileAuthoringDeadlineAt:options.deadline}:{})});
     if(options.capture){
       const marker=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0].checkpoint.file_authoring_recovery_captures[attempt];
-      assert.equal(marker.state,'prepared');assert.equal(marker.attempt_id,attempt);assert.equal(marker.input_hash,inputHash);
+      assert.equal(marker.state,'prepared');assert.equal(marker.attempt_id,attempt);assert.equal(marker.input_hash,inputHash);assert.equal(marker.deadline_at,options.deadline);
       assert.equal(marker.owner_user_id,owner);assert.equal(marker.run_id,lease.runId);assert.equal(marker.project_id,project);assert.equal(marker.input_revision,1);
       assert.deepEqual((lease.checkpoint.file_authoring_recovery_captures as any)[attempt],marker);
       await assert.rejects(recordFileAuthoringCaptureOutcome(pool,{...lease,owner:'foreign'},attempt,logical,{state:'failed',failure_code:'storage_failed'}));
@@ -58,7 +58,8 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
       const key=`owners/${owner}/projects/${project}/runs/${lease.runId}/file-authoring/recovery/${attempt}/${sha256}/${path}`;
       await blobs.put(key,bytes,'application/json');
       await checkpointStage(pool,lease,'file_authoring_recovery',{version:'file-authoring-recovery-v1',input_hash:options.snapshot==='bad'?'bad':inputHash,
-        attempt_id:attempt,logical_call_id:logical,files:[{path,key,sha256,byte_size:bytes.length}]},false);
+        attempt_id:attempt,logical_call_id:logical,files:[{path,key,sha256,byte_size:bytes.length}],
+        ...(options.deadline!==undefined?{deadline_at:options.deadline}:{})},false);
     }
     if(options.capture&&options.capture!=='prepared'){
       if(options.capture==='write_failed'){
@@ -121,6 +122,121 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     const third=await observe(next,f.project,f.inputHash,3,{capture:'saved'});assert.equal(await third.recover(),true);
     assert.equal((await row(f.lease.runId)).state,'failed');assert.equal(await third.recover(),false);
     assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[f.lease.runId])).rows[0].payload.reason,'file_authoring_payload_retries_exhausted');
+    if(localFailure==='MODEL_TIMEOUT'){
+      const deadline=new Date(Date.now()+3600_000).toISOString(),rotation='MODEL_CONTEXT_ROTATION_REQUIRED';
+      const userPaused=await fixture({error:rotation,capture:'saved',deadline});
+      assert.equal((await action(pool,owner,userPaused.lease.runId,'pause')).state,'paused');
+      assert.equal((await pool.query('SELECT user_pause_requested FROM bb_jobs WHERE id=$1',[userPaused.lease.jobId])).rows[0].user_pause_requested,true,
+        'a user pause during context rotation must persist before recovery');
+      assert.equal(await userPaused.recover(),true);
+      assert.deepEqual(await row(userPaused.lease.runId),{state:'paused',stage:'user_paused'});
+      assert.equal(await claim(pool,30),null,'context rotation cannot override the user pause');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[userPaused.lease.jobId])).rows[0].n,1);
+      assert.equal((await action(pool,owner,userPaused.lease.runId,'resume')).state,'queued');
+      assert.equal((await claim(pool,30))?.runId,userPaused.lease.runId);
+      await end(userPaused.lease.runId);
+      // Each image context may emit only two largest previews. Four complete
+      // rotations already pass the old six-image/three-context failure point.
+      let rotating=await fixture({error:rotation,capture:'saved',deadline});
+      const original=(await pool.query('SELECT id,input_hash,input_revision,reservation_id FROM bb_runs WHERE id=$1',[rotating.lease.runId])).rows[0];
+      for(let n=1;n<=4;n++){
+        assert.equal(await rotating.recover(),true);
+        assert.deepEqual(await row(rotating.lease.runId),{state:'queued',stage:'queued'});
+        const cp=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[rotating.lease.jobId])).rows[0].checkpoint;
+        assert.equal(cp.operator_reconciliations[rotating.attempt].reason_code,'file_authoring_context_rotation');
+        assert.equal(cp.operator_reconciliations[rotating.attempt].deadline_at,deadline);
+        assert.equal(Object.values(cp.operator_reconciliations).filter((entry:any)=>entry.reason_code==='file_authoring_context_rotation').length,n);
+        assert.equal(Object.values(cp.operator_reconciliations).filter((entry:any)=>String(entry.reason_code).endsWith('_auto_retry')).length,0);
+        assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[rotating.attempt])).rows[0].usage_status,'unknown');
+        const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotating.lease.runId);
+        if(n===1){
+          for(const nextDeadline of [undefined,new Date(Date.parse(deadline)+1000).toISOString(),new Date(Date.parse(deadline)-1000).toISOString()]){
+            await assert.rejects(recordPotentialCall(pool,lease,rotating.logical,n+1,{modelId:'synthetic',fileAuthoringRecoveryCapture:true,
+              ...(nextDeadline!==undefined?{fileAuthoringDeadlineAt:nextDeadline}:{})}),error=>(error as {code:string}).code==='INPUT_REVISION_CONFLICT');
+          }
+          await assert.rejects(recordPotentialCall(pool,lease,rotating.logical,n+1,{modelId:'synthetic'}),/deadline changed/,
+            'ordinary operator retry cannot remove the first intent deadline');
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].n,1);
+        }
+        rotating=await observe(lease,rotating.project,rotating.inputHash,n+1,{error:n===4?'MODEL_PROVIDER_PAYLOAD_TOO_LARGE':rotation,capture:'saved',deadline});
+      }
+      assert.deepEqual((await pool.query('SELECT id,input_hash,input_revision,reservation_id FROM bb_runs WHERE id=$1',[rotating.lease.runId])).rows[0],original);
+      // Normal rotation neither spends nor expands the original fault allowance.
+      for(let n=0;n<3;n++){
+        assert.equal(await rotating.recover(),true);
+        assert.equal((await row(rotating.lease.runId)).state,n===2?'failed':'queued');
+        if(n<2){const lease=await claim(pool,300);assert.ok(lease);rotating=await observe(lease,rotating.project,rotating.inputHash,n+6,{capture:'saved',deadline});}
+      }
+      assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[rotating.lease.runId])).rows[0].payload.reason,'file_authoring_payload_retries_exhausted');
+
+      const capped=await fixture({error:rotation,capture:'saved',deadline,logical:'file-authoring-size-repair-2'});
+      const priorRotations=Object.fromEntries(Array.from({length:FILE_AUTHORING_CONTEXT_ROTATION_LIMIT-1},(_,n)=>[`rotation-${n}`,{
+        reason_code:'file_authoring_context_rotation',decision:'retry_unknown_usage',logical_call_id:'file-authoring-v1',deadline_at:deadline}]));
+      await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',$2::jsonb) WHERE id=$1",[capped.lease.jobId,JSON.stringify(priorRotations)]);
+      assert.equal(await capped.recover(),true);assert.equal((await row(capped.lease.runId)).state,'queued','the 32nd run-wide rotation is permitted');
+      const cappedLease=await claim(pool,300);assert.ok(cappedLease);
+      const cappedNext=await observe(cappedLease,capped.project,capped.inputHash,2,{error:rotation,capture:'saved',deadline,logical:capped.logical});
+      assert.equal(await cappedNext.recover(),true);assert.equal((await row(capped.lease.runId)).state,'failed');
+      assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[capped.lease.runId])).rows[0].payload.reason,'file_authoring_context_rotation_limit_exhausted');
+
+      for(const options of [{error:rotation},{error:rotation,capture:'saved'}] satisfies Options[]){
+        const legacy=await fixture(options);assert.equal(await legacy.recover(),false);
+        assert.deepEqual(await row(legacy.lease.runId),{state:'paused',stage:'provider_reconcile'});await end(legacy.lease.runId);
+      }
+      const mismatched=await fixture({error:rotation,capture:'saved',deadline});
+      await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,file_authoring_recovery,deadline_at}',$2::jsonb) WHERE id=$1",[mismatched.lease.jobId,JSON.stringify(new Date(Date.parse(deadline)+1000).toISOString())]);
+      assert.equal(await mismatched.recover(),false);await end(mismatched.lease.runId);
+
+      for(const error of [rotation,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_TIMEOUT']){
+        const expired=await fixture({error,capture:'saved',deadline});
+        const clock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);
+        try{assert.equal(await expired.recover(),true);}finally{clock.mock.restore();}
+        assert.deepEqual(await row(expired.lease.runId),{state:'failed',stage:'failed'});
+        const terminal=(await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[expired.lease.runId])).rows[0].payload;
+        assert.equal(terminal.reason,'file_authoring_context_deadline_exhausted');assert.equal(terminal.error_code,'MODEL_TIMEOUT');
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[expired.lease.jobId])).rows[0].n,1);
+      }
+      const manual=await fixture({error:'MODEL_STREAM_BROKEN',capture:'saved',deadline});
+      await resolveOperatorReconciliation(pool,{runId:manual.lease.runId,attemptId:manual.attempt,decision:'retry_unknown_usage',reasonCode:'synthetic_operator_retry',actor:'synthetic'});
+      const manualLease=await claim(pool,300);assert.ok(manualLease);assert.equal(manualLease.runId,manual.lease.runId);
+      const manualAudit=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[manualLease.jobId])).rows[0].checkpoint.operator_reconciliations[manual.attempt];
+      assert.equal(manualAudit.deadline_at,deadline);
+      for(const nextDeadline of [undefined,new Date(Date.parse(deadline)+1000).toISOString()])
+        await assert.rejects(recordPotentialCall(pool,manualLease,manual.logical,2,{modelId:'synthetic',fileAuthoringRecoveryCapture:true,
+          ...(nextDeadline!==undefined?{fileAuthoringDeadlineAt:nextDeadline}:{})}),/deadline changed/);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[manualLease.jobId])).rows[0].n,1);
+      await end(manual.lease.runId);
+      const admission=await prepareFixture(),past=new Date(Date.now()-1000).toISOString();
+      await assert.rejects(recordPotentialCall(pool,admission.lease,'file-authoring-v1',1,{modelId:'synthetic',fileAuthoringRecoveryCapture:true,fileAuthoringDeadlineAt:past}),/AUTHORING_CONTEXT_DEADLINE_EXCEEDED/);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[admission.lease.jobId])).rows[0].n,0);
+      assert.notEqual((await pool.query('SELECT state FROM bb_evidence_gate_events ORDER BY seq DESC LIMIT 1')).rows[0]?.state,'paused',
+        'the host deadline is not an evidence-storage outage');
+      await end(admission.lease.runId);
+
+      // If the deadline expires between intent and spawn, keep not-sent fact but
+      // finish the run normally instead of entering a permanent reconcile loop.
+      for(const [field,value] of [['valid',null],['project_id','other-project'],['input_revision',2],['input_hash','f'.repeat(64)]] as const){
+        const preSpawn=await prepareFixture(),content=Buffer.from('synthetic pre-spawn deadline');
+        const objectKey=`users/${owner}/projects/${preSpawn.project}/snapshots/${uid()}`;await blobs.put(objectKey,content,'text/plain');
+        const prompt=await saveSnapshotRef(pool,{owner,projectId:preSpawn.project,runId:preSpawn.lease.runId,kind:'model_request',version:1,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
+        const preSpawnDeadline=new Date(Date.now()+60_000).toISOString();
+        const attempt=await recordPotentialCall(pool,preSpawn.lease,'file-authoring-v1',1,{modelId:'synthetic',promptSnapshotId:prompt,fileAuthoringRecoveryCapture:true,fileAuthoringDeadlineAt:preSpawnDeadline});
+        if(field!=='valid')await pool.query('UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,$2::text[],$3::jsonb) WHERE id=$1',
+          [preSpawn.lease.jobId,['file_authoring_recovery_captures',attempt,field],JSON.stringify(value)]);
+        const notSent:ProviderCallObservation={owner_user_id:owner,project_id:preSpawn.project,run_id:preSpawn.lease.runId,trace_id:preSpawn.lease.runId,job_id:preSpawn.lease.jobId,
+          logical_call_id:'file-authoring-v1',attempt_no:1,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt,
+          provider_request_id:null,outcome:'confirmed_not_sent',finish_reason:'context_deadline_exhausted',error_code:'MODEL_TIMEOUT',
+          usage:{status:'unknown',input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null,total_tokens:null},
+          result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
+        const clock=t.mock.method(Date,'now',()=>Date.parse(preSpawnDeadline)+1);
+        try{await recordProviderCallObservation(pool,blobs,notSent,()=>true,{lease:preSpawn.lease,source:'provider'});}finally{clock.mock.restore();}
+        assert.deepEqual(await row(preSpawn.lease.runId),field==='valid'?{state:'failed',stage:'failed'}:{state:'paused',stage:'provider_reconcile'},
+          `${field}: only a capture matching the complete locked input may authorize deadline failure`);
+        assert.equal((await pool.query('SELECT status FROM bb_model_call_attempts WHERE id=$1',[attempt])).rows[0].status,'confirmed_not_sent');
+        assert.equal(await claim(pool,30),null);
+        if(field!=='valid')await end(preSpawn.lease.runId);
+      }
+    }
     for(const options of [{runtime:false},{error:'MODEL_TURN_FAILED'},{exit:false},{observationError:'MODEL_STREAM_BROKEN'},{conflict:true},
       {logical:'review-v1'},{adapter:'codex-file-authoring-1'},{error:'MODEL_PROVIDER_REQUEST_REJECTED'},
       {error:localFailure,runtime:false},{error:localFailure,exit:false},
@@ -179,6 +295,26 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[total.lease.runId])).rows[0].payload.reason,`${localPrefix}_retries_exhausted`);
     await publishPrices(pool,{id:'synthetic-payload-prices',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'Payload recovery billing regression'});
     await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1000000,expiresAt:null,actor:'synthetic',reason:'Synthetic recovery credits'}));
+    if(localFailure==='MODEL_TIMEOUT'){
+      const deadline=new Date(Date.now()+3600_000).toISOString(),balanceBefore=await creditBalanceExact(pool,owner);
+      const rotatingPaid=await fixture({paid:true,error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
+      const held=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows[0];
+      assert.equal(held.state,'held');
+      const usageBefore=(await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[rotatingPaid.attempt])).rows;
+      assert.equal(await rotatingPaid.recover(),true);
+      assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows,[held],
+        'normal rotation does not release, replace, reset or charge the original reservation');
+      const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
+      const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
+      const clock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);
+      try{assert.equal(await next.recover(),true);}finally{clock.mock.restore();}
+      assert.deepEqual(await row(rotatingPaid.lease.runId),{state:'failed',stage:'failed'});
+      const released=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows;
+      assert.equal(released.length,1);assert.equal(released[0].id,held.id);assert.equal(released[0].state,'released');assert.ok(released[0].finalized_at);
+      assert.equal(await creditBalanceExact(pool,owner).then(x=>x.available),balanceBefore.available,'the ordinary failure transaction releases/refunds authoring credits');
+      assert.deepEqual((await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[rotatingPaid.attempt])).rows,usageBefore,
+        'terminal credit settlement cannot rewrite earlier unknown supplier usage');
+    }
     const paid=await fixture({paid:true,error:localFailure,capture:'saved'});
     const reservationBefore=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[paid.lease.runId])).rows;
     const eventsBefore=(await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[paid.lease.runId])).rows;

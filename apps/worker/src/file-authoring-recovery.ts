@@ -5,13 +5,14 @@ import { isDeepStrictEqual } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import { checkpointStage, recordFileAuthoringCaptureOutcome } from '@bondbuddy/api/queue';
 import type { StageContext } from './run-pipeline.js';
-import { FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringCaptureFailure, type FileAuthoringCaptureOutcome } from '@bondbuddy/contracts';
+import { FILE_AUTHORING_RECOVERY_LIMITS, isFileAuthoringDeadline, type FileAuthoringCaptureFailure, type FileAuthoringCaptureOutcome } from '@bondbuddy/contracts';
 export { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
 
 export const FILE_AUTHORING_RECOVERY_STAGE = 'file_authoring_recovery';
 
 export type FileAuthoringRecovery = {
   version: 'file-authoring-recovery-v1'; input_hash: string; attempt_id: string; logical_call_id: string;
+  deadline_at?: string;
   files: { path: string; key: string; sha256: string; byte_size: number }[];
 };
 type Limits = { files: number; fileBytes: number; totalBytes: number };
@@ -46,6 +47,7 @@ function validate(ctx: StageContext, value: unknown, logicalCallId: string): ass
   const s = value as FileAuthoringRecovery;
   if (!s || s.version !== 'file-authoring-recovery-v1' || s.input_hash !== ctx.run.input_hash.trim()
     || !hash.test(s.input_hash) || !id.test(s.attempt_id) || s.logical_call_id !== logicalCallId || !logical.test(s.logical_call_id)
+    || s.deadline_at!==undefined&&!isFileAuthoringDeadline(s.deadline_at)
     || !Array.isArray(s.files) || !s.files.length || s.files.length > FILE_AUTHORING_RECOVERY_LIMITS.files) throw unsafe();
   const seen = new Set<string>(); let total = 0;
   for (const f of s.files) {
@@ -60,6 +62,14 @@ function validate(ctx: StageContext, value: unknown, logicalCallId: string): ass
     if (seen.has(parent)) throw unsafe();
 }
 
+/** The first durable intent binds every later send, including operator retries. */
+export function fileAuthoringContextDeadline(ctx:StageContext,logicalCallId:string):string|undefined {
+  const captures=Object.values(ctx.lease.checkpoint.file_authoring_recovery_captures??{}) as {logical_call_id?:string;deadline_at?:unknown}[];
+  const bound=captures.filter(c=>c.logical_call_id===logicalCallId&&c.deadline_at!==undefined).map(c=>c.deadline_at);
+  if(bound.some(value=>!isFileAuthoringDeadline(value)||value!==bound[0]))throw unsafe();
+  return bound[0] as string|undefined;
+}
+
 /** A saved working directory alone never authorizes another model send. */
 export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId: string): FileAuthoringRecovery | null {
   const stages = ctx.lease.checkpoint.stages as Record<string, unknown> | undefined;
@@ -67,9 +77,12 @@ export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId
   if (!saved || saved.logical_call_id !== logicalCallId) return null;
   const dispositions = ctx.lease.checkpoint.operator_reconciliations as Record<string, Record<string, unknown>> | undefined;
   const audit = dispositions?.[saved.attempt_id];
-  if (!audit || !['file_authoring_payload_auto_retry', 'file_authoring_output_limit_auto_retry', 'file_authoring_timeout_auto_retry'].includes(String(audit.reason_code)) || audit.decision !== 'retry_unknown_usage'
+  if (!audit || !['file_authoring_payload_auto_retry', 'file_authoring_output_limit_auto_retry', 'file_authoring_timeout_auto_retry', 'file_authoring_context_rotation'].includes(String(audit.reason_code)) || audit.decision !== 'retry_unknown_usage'
     || audit.attempt_id !== saved.attempt_id || audit.logical_call_id !== logicalCallId) return null;
   validate(ctx, saved, logicalCallId);
+  const bound=fileAuthoringContextDeadline(ctx,logicalCallId);
+  if(saved.deadline_at!==audit.deadline_at || bound!==undefined&&saved.deadline_at!==bound
+    || audit.reason_code==='file_authoring_context_rotation'&&!saved.deadline_at)throw unsafe();
   return saved;
 }
 
@@ -103,10 +116,12 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
 /** Snapshot all mutable work, then publish the checkpoint only after Blob readback.
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
-  checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter;
+  checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
+  const bound=fileAuthoringContextDeadline(ctx,intent.logical_call_id),deadlineAt=options.deadlineAt??bound;
+  if(deadlineAt!==undefined&&!isFileAuthoringDeadline(deadlineAt)||bound!==undefined&&deadlineAt!==bound)throw unsafe();
   if (!Number.isSafeInteger(limits.files) || limits.files < 1 || limits.files > FILE_AUTHORING_RECOVERY_LIMITS.files
     || !Number.isSafeInteger(limits.fileBytes) || limits.fileBytes < 1 || limits.fileBytes > FILE_AUTHORING_RECOVERY_LIMITS.fileBytes
     || !Number.isSafeInteger(limits.totalBytes) || limits.totalBytes < 1 || limits.totalBytes > FILE_AUTHORING_RECOVERY_LIMITS.totalBytes) throw unsafe();
@@ -130,7 +145,7 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
   // below still independently verify identity, size, links and unchanged bytes.
   for (const path of ['input.json','scratch', 'output']) await walk(path);
   const snapshot: FileAuthoringRecovery = { version: 'file-authoring-recovery-v1', input_hash: ctx.run.input_hash.trim(),
-    attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, files: [] };
+    attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, ...(deadlineAt?{deadline_at:deadlineAt}:{}), files: [] };
   let total = 0;
   for (const path of paths) {
     const bytes = await regularBytes(root, path, limits.fileBytes, ctx.signal); total += bytes.length;

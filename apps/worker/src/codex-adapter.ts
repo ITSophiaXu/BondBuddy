@@ -18,7 +18,7 @@ import { fileCompletionArgs } from './file-authoring-completion.js';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import { createMaterialToolTrace, isMaterialModelEnvelope, validateMaterialToolTrace, type MaterialToolTrace, type MaterialModelEnvelope } from './material-tool-trace.js';
 import { REVIEW_TOOLS, createReviewToolTrace, reviewModelEnvelopeAsync, validateReviewToolData, validateReviewToolTraceAsync, type ReviewToolData, type ReviewToolTrace, type ReviewModelEnvelope } from './review-tools.js';
-import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
+import { isFileAuthoringDeadline, type ModelAdapterAttemptRecord, type ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import { CODEX_EXEC_LOG_MAX_BYTES } from '@bondbuddy/api/exec-logs';
@@ -386,7 +386,7 @@ export type CodexProcessResult = {
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
   tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
-  stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed' | 'payload_rejected' | 'gateway_failed';
+  stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed' | 'payload_rejected' | 'gateway_failed' | 'context_rotation' | 'deadline_exceeded';
 };
 
 /** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact.
@@ -434,8 +434,9 @@ function withLoopbackNoProxy(env: Record<string, string>) {
 // bounded stdout/stderr evidence; it is never logged to the process output.
 // Measure/enforce use a per-process loopback gateway (#994). Only enforce blocks
 // requests; its startup failure must never fall back to an unguarded provider route.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   return withPerformanceSpan('model.exec', { adapter: 'codex_exec', model_id: c.model_id, model_provider: c.model_provider }, async span => {
+  if(o.deadlineAt!==undefined&&!isFileAuthoringDeadline(o.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -485,6 +486,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   // case do not launch a process, even briefly, with an already-aborted signal.
   if (o.signal?.aborted) { await closeGateway(); r.stop = 'cancelled'; performance.finish('cancelled', { result_status: 'cancelled_before_spawn' }); return r; }
   if (gatewayFailed) { r.stop = 'gateway_failed'; performance.finish('failed', { result_status: r.stop }); return r; }
+  if(o.deadlineAt!==undefined&&Date.parse(o.deadlineAt)<=Date.now()){await closeGateway();r.stop='deadline_exceeded';performance.finish('failed',{result_status:r.stop});return r;}
   return new Promise<CodexProcessResult>(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
@@ -524,7 +526,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       stop('payload_rejected', false);
     };
     if (payloadRejected) stopRejectedPayload();
-    const timer = setTimeout(() => stop('timeout', false), c.timeout_ms);
+    const remaining=o.deadlineAt===undefined?c.timeout_ms:Math.max(1,Math.min(c.timeout_ms,Date.parse(o.deadlineAt)-Date.now()));
+    const timer = setTimeout(() => stop('timeout', false), remaining);
     const onAbort = () => stop('cancelled', false);
     const noteProviderError = (error: unknown) => {
       const code = providerErrorCode(error);
@@ -562,8 +565,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
           if (o.fileAuthoring && ev.type === 'item.completed' && type === 'mcp_tool_call' && item?.server === 'bb_images' && item?.tool === 'view_image') {
             const result = item.result as { content?: { type?: string; text?: string }[] } | null;
             if (Array.isArray(result?.content) && result.content.some(part => part.type === 'text' && part.text?.startsWith(AUTHORING_IMAGE_BUDGET_SIGNAL + '.'))) {
-              payloadTooLarge = true;
-              stopRejectedPayload?.();
+              if(o.contextRotation)stop('context_rotation', false);
+              else{payloadTooLarge=true;stopRejectedPayload?.();}
               return;
             }
           }
@@ -658,6 +661,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   const usage = r.turn_completed ? r.usage : unknown;
   if (r.stop === 'spawn_failed') return { outcome: 'confirmed_not_sent', error_code: 'MODEL_SPAWN_FAILED', finish_reason: null, usage: unknown };
   if (r.stop === 'gateway_failed') return { outcome: 'failed', error_code: 'MODEL_ADAPTER_CONFIG_INVALID', finish_reason: 'gateway_unavailable', usage: unknown };
+  if (r.stop === 'deadline_exceeded') return { outcome: 'confirmed_not_sent', error_code: 'MODEL_TIMEOUT', finish_reason: 'context_deadline_exhausted', usage: unknown };
+  if (r.stop === 'context_rotation') return { outcome: 'pending_reconcile', error_code: 'MODEL_CONTEXT_ROTATION_REQUIRED', finish_reason: 'image_context_budget', usage: unknown };
   if (r.stop === 'tool') return { outcome: 'failed', error_code: 'MODEL_TOOL_ATTEMPT_BLOCKED', finish_reason: 'tool_blocked', usage };
   if (r.stop === 'cancelled') return { outcome: 'pending_reconcile', error_code: 'MODEL_CANCELLED', finish_reason: 'interrupted', usage };
   // Earlier requests in this CLI call may have consumed tokens. Do not mark the
@@ -708,7 +713,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; recovery?: boolean; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -849,8 +854,20 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       let attemptAttributes: Record<string, unknown> = {};
       const cancelAttempt = () => { attemptStatus = 'cancelled'; return cancelledResult(); };
       const permit = await withPerformanceSpan('model.capacity.wait', {}, async span => {
-        try { return await journal.acquireCallSlot?.(input.signal); }
-        catch (error) { if (input.signal?.aborted) { span.end('cancelled'); attemptSpan.end('cancelled'); } throw error; }
+        const deadlineAt=input.fileWorkspace?.deadlineAt;
+        if(deadlineAt!==undefined&&!isFileAuthoringDeadline(deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+        const remaining=deadlineAt===undefined?undefined:Date.parse(deadlineAt)-Date.now();
+        if(remaining!==undefined&&remaining<=0)throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
+        const deadline=new AbortController();
+        const timer=remaining===undefined?undefined:setTimeout(()=>deadline.abort(Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED')),Math.min(remaining,2147483647));
+        const signal=remaining===undefined?input.signal:input.signal?AbortSignal.any([input.signal,deadline.signal]):deadline.signal;
+        try { return await journal.acquireCallSlot?.(signal); }
+        catch (error) {
+          if (input.signal?.aborted) { span.end('cancelled'); attemptSpan.end('cancelled'); }
+          else if (deadline.signal.aborted) throw deadline.signal.reason;
+          throw error;
+        }
+        finally { if(timer)clearTimeout(timer); }
       });
       const executionSignal = permit?.signal ?? input.signal;
       let attemptDir: string | undefined;
@@ -898,13 +915,15 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if (executionSignal?.aborted) return cancelAttempt();
         await withPerformanceSpan('model.admission.check', {}, () => input.beforeIntent?.());
         if (executionSignal?.aborted) return cancelAttempt();
+        if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+        if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
         await withPerformanceSpan('model.intent.persist', {}, () => journal.recordIntent(intent)); // durable before spawn
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if (raw.stop === 'cancelled') reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
@@ -956,7 +975,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         return classified;
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
-        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
+        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
             !input.signal?.aborted && !executionSignal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
         }

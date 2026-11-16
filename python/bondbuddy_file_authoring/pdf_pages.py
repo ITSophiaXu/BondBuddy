@@ -225,6 +225,17 @@ class PdfPages:
         except (KeyError, TypeError, json.JSONDecodeError, OSError) as error:
             raise PdfPageError("PDF_CACHE_INVALID") from error
 
+    def _existing_ocr(self, page):
+        # A forced OCR read can add evidence to a page with only vector drawing
+        # and a partial text layer. Do not infer cache availability from images.
+        # Avoid requiring the optional OCR runtime for uncached native pages.
+        native_path, _ = self._cache_path(page, "native")
+        if self._ocr_identity is None and not any(
+                candidate != native_path
+                for candidate in native_path.parent.parent.glob(f"*/{native_path.name}")):
+            return None
+        return self._cached(page, "ocr")
+
     def _store(self, data, mode):
         self._unchanged()
         validate_page(data, data["page"], mode)
@@ -269,10 +280,11 @@ class PdfPages:
         if type(number) is not int or not 1 <= number <= self.page_count or ocr not in {"auto", "never", "force"}:
             raise PdfPageError("PDF_PAGE_REQUEST_INVALID")
         native = self._native(number)
-        if ocr != "force" and native["records"] and not native["image_count"]:
-            return native
         if ocr == "never":
             return native
+        if ocr != "force" and native["records"] and not native["image_count"]:
+            cached = self._existing_ocr(number)
+            return cached if cached is not None else native
         cached = self._cached(number, "ocr")
         if cached is not None:
             return cached
@@ -334,21 +346,20 @@ class PdfPages:
         end = min(self.page_count, page + max_pages - 1)
         for number in range(page, end + 1):
             data = self._page(number, "never")
-            if not data["records"] or data["image_count"]:
-                try:
-                    cached = self._cached(number, "ocr")
-                except Exception as error:
-                    # Lack of an OCR runtime never starts OCR or hides a corrupt cache.
-                    if isinstance(error, PdfPageError):
-                        raise
-                    cached = None
-                if cached is None and not data["records"]:
-                    result["pages_without_ocr"].append(number)
-                    continue
-                if cached is not None:
-                    data = cached
-                elif data["image_count"]:
-                    result["pages_without_ocr"].append(number)
+            try:
+                cached = self._existing_ocr(number)
+            except Exception as error:
+                # Lack of an OCR runtime never starts OCR or hides a corrupt cache.
+                if isinstance(error, PdfPageError):
+                    raise
+                cached = None
+            if cached is not None:
+                data = cached
+            elif not data["records"]:
+                result["pages_without_ocr"].append(number)
+                continue
+            elif data["image_count"]:
+                result["pages_without_ocr"].append(number)
             result["searched_pages"].append(number)
             records = fragments(data["records"])
             original_text = {record["record_id"]: record["text"] for record in data["records"]}

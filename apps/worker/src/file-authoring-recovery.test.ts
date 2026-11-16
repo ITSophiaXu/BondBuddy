@@ -9,7 +9,7 @@ import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import type { StageContext } from './run-pipeline.js';
 import type { UnifiedInput } from './unified-input.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
-import { authorizedFileAuthoringRecovery, recoverFileAuthoringInput, restoreFileAuthoringWork,
+import { authorizedFileAuthoringRecovery, fileAuthoringContextDeadline, recoverFileAuthoringInput, restoreFileAuthoringWork,
   saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_STAGE, FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringRecovery } from './file-authoring-recovery.js';
 
 const intent = { call_id: 'call-one', logical_call_id: 'file-authoring-v1' };
@@ -26,7 +26,7 @@ function fixture() {
   };
   const authorize = (snapshot: FileAuthoringRecovery, reason = 'file_authoring_payload_auto_retry') => {
     ctx.lease.checkpoint.operator_reconciliations = { [snapshot.attempt_id]: { attempt_id: snapshot.attempt_id,
-      logical_call_id: snapshot.logical_call_id, reason_code: reason, decision: 'retry_unknown_usage' } };
+      logical_call_id: snapshot.logical_call_id, reason_code: reason, decision: 'retry_unknown_usage', ...(snapshot.deadline_at?{deadline_at:snapshot.deadline_at}:{}) } };
   };
   return { ctx, objects, checkpoint, authorize, writes: () => writes };
 }
@@ -150,7 +150,7 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
         authoring: { version: 'unified_v1', requirements: [], source_prospectuses: [], knowledge: [], knowledge_status: 'authoring_reference_not_compliance_approval' } } };
     const config = { command: [process.execPath], model_id: 'synthetic', model_provider: 'synthetic', base_url: 'http://localhost', wire_api: 'responses' as const,
       model_config_version: 'test', reasoning_effort: null, credential: { kind: 'env' as const, name: 'SYNTHETIC_TOKEN' }, work_root: root,
-      timeout_ms: 1000, kill_grace_ms: 100, max_output_bytes: 4096, max_schema_reasks: 0, disabled_features: [], path_env: '' };
+      timeout_ms: 10000, kill_grace_ms: 100, max_output_bytes: 4096, max_schema_reasks: 0, disabled_features: [], path_env: '' };
     let turns = 0;
     const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint, model: options => ({ name: 'model_generation', run: async () => {
       turns++; const cwd = join(root, `attempt-${turns}`); await mkdir(cwd);
@@ -168,6 +168,7 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
       } else {
         assert.match(options.name, /^file_authoring_v1_resume_[a-f0-9]{12}$/);
         assert.equal(options.fileWorkspace!.recovery, true);
+        assert.equal(options.fileWorkspace!.deadlineAt,(f.ctx.lease.checkpoint.stages as Record<string,FileAuthoringRecovery>)[FILE_AUTHORING_RECOVERY_STAGE].deadline_at);
         assert.equal(await readFile(join(cwd, 'output/operations.json'), 'utf8'), '{"saved":true}');
         assert.equal(await readFile(join(cwd, 'scratch/工作记录.md'), 'utf8'), 'already extracted data');
         assert.deepEqual(await readFile(join(cwd, 'materials/m0.docx')), source);
@@ -178,8 +179,15 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
     } }) });
     assert.equal((await stage().run(f.ctx)).kind, 'stopped');
     const snapshot = (f.ctx.lease.checkpoint.stages as Record<string, unknown>)[FILE_AUTHORING_RECOVERY_STAGE] as FileAuthoringRecovery;
+    assert.ok(snapshot.deadline_at);
     f.authorize(snapshot); f.ctx.checkpoint = {};
     assert.equal((await stage().run(f.ctx)).kind, 'stopped'); assert.equal(turns, 2); assert.equal(f.writes(), 1);
+    const expired={...snapshot,deadline_at:new Date(Date.now()-1000).toISOString()};
+    (f.ctx.lease.checkpoint.stages as Record<string,FileAuthoringRecovery>)[FILE_AUTHORING_RECOVERY_STAGE]=expired;f.authorize(expired,'file_authoring_context_rotation');
+    assert.deepEqual(await stage().run(f.ctx),{kind:'fail',code:'MODEL_TIMEOUT'});
+    assert.equal(turns,3,'the expired deadline is checked during preparation before any new provider call');
+    const reuse=fileAuthoringStage({load:async()=>input,config,model:()=>({name:'model_generation',run:async()=>({kind:'done',value:'already-completed'})})});
+    assert.deepEqual(await reuse.run(f.ctx),{kind:'done',value:'already-completed'},'deadline expiry cannot block reuse of a completed result');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -228,5 +236,34 @@ test('1271-file workspaces save and restore completely while 4097 files cannot p
     await assert.rejects(saveFileAuthoringRecovery(f.ctx,source,intent,{checkpoint:f.checkpoint}),/AUTHORING_RECOVERY_UNSAFE/);
     assert.equal(f.writes(),2,'excess files must not publish a partial checkpoint');
     assert.equal(f.objects.size,objectsBefore,'file count is rejected before any additional Blob writes');
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+
+test('context rotation retains the first intent deadline across snapshots and rejects missing or extended bindings',async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-context-deadline-'));
+  try{
+    await workspace(root);
+    const deadline=new Date(Date.now()+60000).toISOString();
+    f.ctx.lease.checkpoint.file_authoring_recovery_captures={first:{logical_call_id:intent.logical_call_id,deadline_at:deadline}};
+    assert.equal(fileAuthoringContextDeadline(f.ctx,intent.logical_call_id),deadline);
+    const snapshot=await saveFileAuthoringRecovery(f.ctx,root,intent,{checkpoint:f.checkpoint});
+    assert.equal(snapshot.deadline_at,deadline);
+    f.authorize(snapshot,'file_authoring_context_rotation');
+    assert.deepEqual(authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id),snapshot);
+    const extended=new Date(Date.parse(deadline)+1000).toISOString();
+    await assert.rejects(saveFileAuthoringRecovery(f.ctx,root,intent,{checkpoint:f.checkpoint,deadlineAt:extended}),/AUTHORING_RECOVERY_UNSAFE/);
+    const audit=f.ctx.lease.checkpoint.operator_reconciliations as Record<string,Record<string,unknown>>;
+    audit[intent.call_id].deadline_at=extended;
+    assert.throws(()=>authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id),/AUTHORING_RECOVERY_UNSAFE/);
+    audit[intent.call_id].deadline_at=deadline;
+    const stages=f.ctx.lease.checkpoint.stages as Record<string,FileAuthoringRecovery>;
+    delete stages[FILE_AUTHORING_RECOVERY_STAGE].deadline_at;
+    assert.throws(()=>authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id),/AUTHORING_RECOVERY_UNSAFE/);
+    const legacy={...snapshot};delete legacy.deadline_at;
+    f.ctx.lease.checkpoint.file_authoring_recovery_captures={};stages[FILE_AUTHORING_RECOVERY_STAGE]=legacy;f.authorize(legacy,'file_authoring_context_rotation');
+    assert.throws(()=>authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id),/AUTHORING_RECOVERY_UNSAFE/);
+    f.authorize(legacy,'file_authoring_payload_auto_retry');
+    assert.deepEqual(authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id),legacy,'historical faults keep their prior restore contract');
   }finally{await rm(root,{recursive:true,force:true});}
 });

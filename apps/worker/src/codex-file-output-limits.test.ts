@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { runCodexProcess, runContainedModelCall, classifyCodexResult, loadCodexAdapterConfig,
   assertCodexConfig, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
-import { AUTHORING_IMAGE_BUDGET_SIGNAL } from './authoring-image-tools.js';
+import { AUTHORING_IMAGE_BUDGET_SIGNAL, AUTHORING_IMAGE_MAX_BYTES, createAuthoringImageBudget } from './authoring-image-tools.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 import { saveFileAuthoringRecovery, restoreFileAuthoringWork, type FileAuthoringRecovery } from './file-authoring-recovery.js';
 import type { StageContext } from './run-pipeline.js';
@@ -125,7 +126,7 @@ test('multiple complete events and a trailing complete line without newline are 
   } finally { await s.cleanup(); }
 });
 
-for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_PROVIDER_PAYLOAD_TOO_LARGE'] as const)
+for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_CONTEXT_ROTATION_REQUIRED'] as const)
 test(`${failure} snapshots terminated work before observation and cleanup, then only audited retry restores it`, async () => {
   const s = await setup({ authoring_timeout_ms: failure==='MODEL_TIMEOUT'?3000:10000, file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
   try {
@@ -135,7 +136,7 @@ test(`${failure} snapshots terminated work before observation and cleanup, then 
       lease: { checkpoint: {} }, checkpoint: {}, signal: new AbortController().signal,
       blobs: { put: async (key: string, bytes: Buffer) => { saved.set(key, Buffer.from(bytes)); },
         getIfExistsBounded: async (key: string, max: number) => { const bytes=saved.get(key); return bytes && bytes.length<=max ? bytes : null; } } } as unknown as StageContext;
-    const input = s.input([{ path: 'output/partial.txt', text: 'synthetic partial' }, { path: 'scratch/state.json', text: '{"done":1}' }, ...(failure==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?[{event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Save and continue in a fresh context.'}],isError:false}}},hang:true}]:[{ raw: failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048), hang: true }])]);
+    const input = s.input([{ path: 'output/partial.txt', text: 'synthetic partial' }, { path: 'scratch/state.json', text: '{"done":1}' }, ...(failure==='MODEL_CONTEXT_ROTATION_REQUIRED'?[{event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Save and continue in a fresh context.'}],isError:false}}},hang:true}]:failure==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?[{event:{type:'error',message:'HTTP 413 Payload Too Large'},hang:true}]:[{ raw: failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048), hang: true }])]);
     input.fileWorkspace!.onFailure = async (cwd, intent) => {
       snapshots++; cwdSeen = cwd; assert.equal(intent.attempt_no, 1); assert.equal(journal.observations.length, 0);
       const pid = Number(await readFile(join(cwd, 'synthetic-pid'), 'utf8'));
@@ -192,4 +193,138 @@ test('file output limits reject invalid or unbounded host configuration', () => 
   for (const limits of [{ event_bytes: 0, final_message_bytes: 1 }, { event_bytes: Infinity, final_message_bytes: 1 },
     { event_bytes: 4096, final_message_bytes: 4097 }, { event_bytes: 33 * 1024 * 1024, final_message_bytes: 1 }])
     assert.throws(() => assertCodexConfig({ ...config, file_output_limits: limits }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
+
+test('an expired context deadline never spawns the provider and has an explicit not-sent outcome',async()=>{
+  const s=await setup();
+  try{
+    const result=await s.run([{event:message('must not run')},{event:complete}],{deadlineAt:new Date(Date.now()-1000).toISOString()});
+    assert.equal(result.stop,'deadline_exceeded');assert.equal(result.exit_code,null);
+    assert.equal(classify(result).outcome,'confirmed_not_sent');assert.equal(classify(result).error_code,'MODEL_TIMEOUT');
+    await assert.rejects(readFile(join(s.root,'synthetic-pid')),{code:'ENOENT'});
+  }finally{await s.cleanup();}
+});
+
+test('deadline expiry before intent or during persistence cannot send another model request',async()=>{
+  for(const phase of ['before_intent','after_intent'] as const){
+    const s=await setup(),journal=new MemoryCodexJournal(),marker=join(s.root,'provider-started');
+    try{
+      const input=s.input([{path:marker,text:'unexpected'},{event:message('done')},{event:complete}]);
+      const prepare=input.fileWorkspace!.prepare;
+      input.fileWorkspace!.prepare=async cwd=>{
+        await prepare(cwd);
+        input.fileWorkspace!.deadlineAt=new Date(Date.now()+(phase==='before_intent'?-1000:60000)).toISOString();
+      };
+      if(phase==='after_intent'){
+        const record=journal.recordIntent.bind(journal);
+        journal.recordIntent=async intent=>{await record(intent);input.fileWorkspace!.deadlineAt=new Date(Date.now()-1).toISOString();};
+        const result=await runContainedModelCall(input,journal,s.config);
+        assert.equal(result.status,'failed');assert.equal(result.error_code,'MODEL_TIMEOUT');
+        assert.equal(journal.intents.length,1);assert.equal(journal.observations[0].observation.outcome,'confirmed_not_sent');
+        assert.equal(journal.runtimes[0].finish_reason,'context_deadline_exhausted');
+      }else{
+        await assert.rejects(runContainedModelCall(input,journal,s.config),/AUTHORING_CONTEXT_DEADLINE_EXCEEDED/);
+        assert.equal(journal.intents.length,0);assert.equal(journal.observations.length,0);
+      }
+      await assert.rejects(readFile(marker),{code:'ENOENT'});
+    }finally{await s.cleanup();}
+  }
+});
+
+test('a restored context uses only its remaining deadline instead of a fresh authoring timeout',async()=>{
+  const s=await setup({authoring_timeout_ms:10000});
+  try{
+    const result=await s.run([{event:message('started'),hang:true}],{deadlineAt:new Date(Date.now()+1500).toISOString()});
+    assert.equal(result.stop,'timeout');assert.equal(classify(result).error_code,'MODEL_TIMEOUT');
+    assert(result.duration_ms<7000,'the old deadline must terminate the child before a fresh 10 second budget');
+    assert.equal(result.turn_completed,false);
+  }finally{await s.cleanup();}
+});
+
+
+test('eight maximum-size previews cross four contexts and finish without reporting a provider fault',async()=>{
+  const s=await setup({file_output_limits:{event_bytes:512*1024,final_message_bytes:1024}});
+  try{
+    const journal=new MemoryCodexJournal(),objects=new Map<string,Buffer>();
+    const ctx={run:{id:'run',owner_user_id:'owner',project_id:'project',input_hash:'a'.repeat(64)},lease:{checkpoint:{}},checkpoint:{},signal:new AbortController().signal,
+      blobs:{put:async(key:string,bytes:Buffer)=>{objects.set(key,Buffer.from(bytes));},getIfExistsBounded:async(key:string,max:number)=>{const bytes=objects.get(key);return bytes&&bytes.length<=max?bytes:null;}}} as unknown as StageContext;
+    let saved:FileAuthoringRecovery|undefined,seen=0;
+    const deadlineAt=new Date(Date.now()+60000).toISOString(),data=Buffer.alloc(AUTHORING_IMAGE_MAX_BYTES,7).toString('base64');
+    const inlineBytes=Buffer.byteLength(`data:image/jpeg;base64,${data}`);
+    for(let context=0;context<4;context++){
+      const budget=createAuthoringImageBudget(),steps:Step[]=[];
+      for(let image=0;image<2;image++){
+        assert.equal(budget.consume(inlineBytes),true);seen++;
+        steps.push({event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{content:[{type:'image',mimeType:'image/jpeg',data}]}}}});
+      }
+      steps.push({path:'output/partial.txt',text:String(seen)});
+      if(context<3){
+        assert.equal(budget.consume(inlineBytes),false);
+        steps.push({event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{isError:false,content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Continue saved work.'}]}}},hang:true});
+      }else steps.push({event:message('done')},{event:complete});
+      const input=s.input(steps),prepare=input.fileWorkspace!.prepare;
+      input.fileWorkspace!.deadlineAt=deadlineAt;input.fileWorkspace!.recovery=!!saved;
+      input.fileWorkspace!.prepare=async cwd=>{await prepare(cwd);if(saved)await restoreFileAuthoringWork(ctx,cwd,saved);};
+      input.fileWorkspace!.onFailure=async(cwd,intent)=>{saved=await saveFileAuthoringRecovery(ctx,cwd,intent,{deadlineAt,checkpoint:async(_pool,lease,stage,value)=>{lease.checkpoint={stages:{[stage]:value}};}});};
+      const result=await runContainedModelCall(input,journal,s.config);
+      if(context<3){
+        assert.equal(result.status,'needs_reconcile');assert.equal(result.error_code,'MODEL_CONTEXT_ROTATION_REQUIRED');
+        assert.equal(saved!.deadline_at,deadlineAt);
+        const last=result.attempts.at(-1)!;journal.prior={call_id:last.call_id,attempt_no:last.attempt_no,status:'failed',observed:true,operator_retry:true};
+      }else{assert.equal(result.status,'completed');assert.deepEqual(result.value,{text:'8'});}
+    }
+    assert.equal(seen,8);assert.equal(journal.intents.length,4);
+    assert.deepEqual(journal.observations.slice(0,3).map(row=>[row.observation.error_code,row.observation.usage.status]),Array(3).fill(['MODEL_CONTEXT_ROTATION_REQUIRED','unknown']));
+    assert.ok(journal.observations.every(row=>row.observation.error_code!=='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'));
+  }finally{await s.cleanup();}
+});
+
+
+test('deadline expiry does not invalidate a completed result that needs no provider send',async()=>{
+  const s=await setup(),journal=new MemoryCodexJournal();
+  try{
+    const input=s.input([]);input.fileWorkspace!.deadlineAt=new Date(Date.now()-1000).toISOString();
+    input.fileWorkspace!.prepare=async()=>{throw Error('completed result must not prepare a new execution');};
+    journal.prior={call_id:'finished',attempt_no:1,status:'completed',observed:true};
+    journal.readCompleted=async()=>({value:{text:'saved'},result_sha256:'a'.repeat(64)});
+    const result=await runContainedModelCall(input,journal,s.config);
+    assert.equal(result.status,'reused');assert.deepEqual(result.value,{text:'saved'});assert.equal(journal.intents.length,0);
+  }finally{await s.cleanup();}
+});
+
+
+test('a restored deadline also bounds the capacity wait before any new intent',async()=>{
+  const s=await setup(),journal=new MemoryCodexJournal();
+  try{
+    const input=s.input([]);input.fileWorkspace!.deadlineAt=new Date(Date.now()+1000).toISOString();
+    let waits=0,wrappedAbort=false;
+    Object.assign(journal,{acquireCallSlot:async(signal?:AbortSignal)=>{
+      waits++;
+      try{await delay(10000,undefined,{signal});}
+      catch(error){
+        assert.equal((error as Error).name,'AbortError');
+        assert.equal((error as Error).cause,signal?.reason);
+        wrappedAbort=true;
+        throw error;
+      }
+    }});
+    const started=Date.now();
+    await assert.rejects(runContainedModelCall(input,journal,s.config),/AUTHORING_CONTEXT_DEADLINE_EXCEEDED/);
+    assert.equal(waits,1);assert.equal(wrappedAbort,true);assert.equal(journal.intents.length,0);assert(Date.now()-started<5000);
+  }finally{await s.cleanup();}
+});
+
+
+test('only a host-enabled recoverable authoring context treats the image control signal as normal rotation',async()=>{
+  const s=await setup();
+  try{
+    const event={type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{isError:false,content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Saved work.'}]}}};
+    const ordinary=await s.run([{event,hang:true}]);
+    assert.equal(classify(ordinary).error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+    assert.equal(classify(ordinary).outcome,'failed','unrelated file routes must not acquire an unsupported pending rotation');
+    const recoverable=await s.run([{event,hang:true}],{contextRotation:true});
+    assert.equal(classify(recoverable).error_code,'MODEL_CONTEXT_ROTATION_REQUIRED');
+    assert.equal(classify(recoverable).outcome,'pending_reconcile');
+  }finally{await s.cleanup();}
 });
