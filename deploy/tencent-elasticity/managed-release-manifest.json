@@ -573,9 +573,9 @@
     "source_instance_same_ACK_STOP_CHARGING": true,
     "source_stop_request_id": "8fb65c77-a4ea-4fe0-858c-4f698f72c0ed",
     "source_stop_original_sha256": "d30a1fdbcc4a1d0fa58aa820e89c365e2ce42a02840834953d39fe9696bd54ed",
-    "source_retirement_verified": false,
+    "source_retirement_verified": true,
     "transport_same_scope_verified": false,
-    "source_exact_disks_absent": false,
+    "source_exact_disks_absent": true,
     "node_OCI_rebuilt": false,
     "NORMAL_read_RequestId": "da758892-b507-4d3a-a611-a689b0f05704",
     "SnapshotSet": [
@@ -592,7 +592,16 @@
     "CAM_summary_sha256": "846aadcf908cda5078c5f1fb80b40c76d737266b21665f785d82af108e97b1da",
     "CAM_update_ACK": "98806f89-9ab6-4b09-8ea7-f94b2806f1e9",
     "CAM_full_readback_RequestId": "e0379659-bc32-4fc5-8ad8-646a898f14b1",
-    "CAM_update_is_atomic_CAS": false
+    "CAM_update_is_atomic_CAS": false,
+    "source_retirement_terminate_ACK": "406028c7-c618-40fe-be77-49c0f3cfba15",
+    "source_retirement_original_sha256": "2ee704ca175aa5d9a7a7e7fa8c51eff29427e9df5520c037ebfeb09dbd35c8bb",
+    "source_retirement_full_inventory_sha256": "b0ff94be599c01de684f9f9e08e1e9b8b43576619da4ef5fae66d7a11ddbbaab",
+    "source_retirement_CBS_sha256": "aa311f7e5ee925384f66c80fe1e2aedb33d2f5a23c5b8540f0838b47be6e58c6",
+    "source_retirement_image_retained_sha256": "ba390f04ec9412cea0042aab93b66b1e405b512a493941ba9ddf0c73c7084a2a",
+    "source_retirement_kind": "exact authorized management Terminate with full inventory/CBS absence; retain original PG history",
+    "source_retirement_full_inventory_TotalCount": 0,
+    "physical_slots_free_after_source_retirement": 2,
+    "source_disk_liability_upper_cutoff_utc": "2026-11-16T01:13:27.988Z"
   },
   "evidence_reused": {
     "capacity_cases_passed": 14,
