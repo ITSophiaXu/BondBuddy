@@ -491,6 +491,7 @@ export class ReviewWorkspace {
         case 'cancel':void this.cancelRun();break;
         case 'pause':void this.controlRun('pause');break;
         case 'resume':void this.controlRun('resume');break;
+        case 'refresh-status':void this.refresh();break;
         case 'recharge':this.rechargeDialog();break;
         case 'upload':this.setTab('materials');this.page?.querySelector<HTMLInputElement>('[data-review-upload-role]')?.click();break;
         case 'retry-upload':{const row=this.uploadRows.get(target.dataset.uploadKey??'');if(row?.error&&row.file&&!row.envelopeId){this.uploadRows.delete(target.dataset.uploadKey??'');void this.upload([row.file],row.role,row.target);}break;}
