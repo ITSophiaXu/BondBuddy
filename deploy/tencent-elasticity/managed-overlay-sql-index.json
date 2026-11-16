@@ -1,0 +1,111 @@
+{
+  "version": "managed-overlay-sql-roots-v1",
+  "infrastructure_source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+  "components": {
+    "authoring": {
+      "entrypoint": "apps/worker/dist/runtime.js",
+      "base_source_sha": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+      "source_manifest_sha256": "730d5793d28ad5c3a04fc8940071a8acdf1019d1024c42d39da5bdbc19a012be",
+      "run_kinds": [
+        "update",
+        "generation",
+        "qa"
+      ],
+      "assistant_enabled": false
+    },
+    "review": {
+      "entrypoint": "apps/worker/dist/runtime.js",
+      "base_source_sha": "9c6ab2c2d995774af48a537cdf0a087959165d10",
+      "source_manifest_sha256": "f1983e2a336ffeb3ba9b721179cac6f313cd1aa415d6cbc7b93cf10ddbd06bbb",
+      "run_kinds": [
+        "review"
+      ],
+      "assistant_enabled": true
+    }
+  },
+  "runtime_capacity_roots": {
+    "apps/worker/src/execution-node-runtime.ts": [
+      "enrollExecutionNodeFromEnv -> registerExecutionRuntime"
+    ],
+    "apps/worker/src/runtime.ts": [
+      "executionNodeForPool",
+      "executionNodeState",
+      "heartbeatExecutionRuntime"
+    ],
+    "apps/worker/src/model-call-budget.ts": [
+      "PgModelCallBudget.acquire",
+      "PgModelCallBudget.reconcileOwnExitedProcesses",
+      "permit.bindProcess/renew/release"
+    ],
+    "apps/api/src/queue.ts": [
+      "claim -> executionClaimGate",
+      "providerCallNeedsReconciliation export",
+      "fenceStoppedExecutionEpoch (control-only caller)"
+    ],
+    "apps/worker/src/durable-probe-journal.ts": [
+      "existing acquireCallSlot -> modelCallBudgetFor.acquire with job ID and lease token"
+    ],
+    "apps/worker/src/review-assistant.ts": [
+      "claimReviewAssistant -> executionClaimGate",
+      "ReviewAssistantJournal.acquireCallSlot -> assistant admission"
+    ]
+  },
+  "control_roots": {
+    "apps/worker/src/ops-scheduler.ts": [
+      "existing ops tick -> createExecutionPoolOpsHandler",
+      "executionCapacityControl",
+      "executionCloudExpenseLedger",
+      "bindExecutionRegistration"
+    ],
+    "deploy/tencent-elasticity/ops-handler.mjs": [
+      "current controller/transport/bootstrap closure; no second scheduler"
+    ],
+    "deploy/tencent-elasticity/transport-issuer.mjs": [
+      "current #1412 trusted database binding and issuer-specific SQL"
+    ]
+  },
+  "helpers": {
+    "apps/api/package.json": [
+      "./execution-capacity export only"
+    ],
+    "packages/contracts/src/index.ts": [
+      "./execution-capacity export"
+    ],
+    "packages/contracts/src/workpapers.ts": [
+      "./workpaper-progressive export where absent"
+    ],
+    "packages/contracts/src/workpaper-progressive.ts": [
+      "WORKPAPER_PLAN_GROUP_SIZE",
+      "workpaperPlanGroupIds",
+      "workpaperAdmissionOrder",
+      "WorkpaperProgressive max_parallel type 2|4; original default constant unchanged"
+    ]
+  },
+  "new_runtime_tables": [
+    "bb_execution_nodes",
+    "bb_execution_node_sessions",
+    "bb_execution_capacity_policy",
+    "bb_model_capacity_scopes",
+    "bb_model_capacity_holders",
+    "bb_model_capacity_waiters"
+  ],
+  "runtime_read_only_control_table": "bb_execution_cloud_operations",
+  "runtime_cloud_operations_write": false,
+  "seam_patch_sha256": {
+    "managed-overlay-queue.patch": "a686136929205eda1f86fe2c250da8629a4d436949115ebd31c901b2b30199ec",
+    "managed-overlay-durable-probe-journal.patch": "5004f473f322d9ec83d2143739c4921f59b1d4596a858bf515377efd89847686"
+  },
+  "source_and_file_hash_index": "managed-overlay.candidates.json",
+  "payload_byte_hash_index": "managed-overlay-artifacts/manifest.json",
+  "existing_business_sql": "unchanged component base and formal timing queue; use role-specific existing reachability mapping",
+  "migration_requires": [
+    "0179 already applied",
+    "0181",
+    "0183",
+    "0184"
+  ],
+  "migration_excludes": [
+    "0180",
+    "0182"
+  ]
+}

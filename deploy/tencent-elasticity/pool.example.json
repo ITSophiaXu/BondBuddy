@@ -19,6 +19,7 @@
   "quote_sha256": null,
   "network_review_sha256": null,
   "image_id": null,
+  "retained_nodes": [],
   "image_sha256": null,
   "source_sha256": null,
   "vpc_id": null,

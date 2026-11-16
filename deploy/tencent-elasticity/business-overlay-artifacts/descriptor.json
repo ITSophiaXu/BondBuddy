@@ -1,0 +1,102 @@
+{
+  "version": "shared-business-four-v1",
+  "sha256": "c6e60a57e4b0ab077d66ba4a70c1779e64b178b0a75bf8d1b2ffdf367af63004",
+  "bytes": 137217,
+  "files": [
+    {
+      "path": "apps/api/dist/batch-admission.js",
+      "bytes": 1222,
+      "sha256": "ba22ed4d635a4e34dea43a694e12ea3c10fc061f4bae66b0bcbacbb119717e20"
+    },
+    {
+      "path": "apps/api/dist/workpapers.js",
+      "bytes": 52222,
+      "sha256": "abd32e41267427c72c1635de59984a69e17d51c370664c44699d637ed1b0de12"
+    },
+    {
+      "path": "apps/api/dist/project-file-workspace.js",
+      "bytes": 24926,
+      "sha256": "ed63ee4ca554931f39cb22ef8a03d3bd262d027dea0c3ce4b31ce4d33b79ad99"
+    },
+    {
+      "path": "apps/api/dist/project-file-consistency.js",
+      "bytes": 32456,
+      "sha256": "f5593b1afb23414e303769e17c299c00dba4e9a5020f9c80113e1f1c01af77fd"
+    },
+    {
+      "path": "apps/api/dist/provider-results.js",
+      "bytes": 45975,
+      "sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1"
+    },
+    {
+      "path": "apps/worker/dist/project-qa-stage.js",
+      "bytes": 21315,
+      "sha256": "06b9f0d4cd4b0d5f835e289e0e95d426e2aa75d2d963b5bec785217799f94552"
+    },
+    {
+      "path": "apps/api/dist/execution-capacity.js",
+      "bytes": 52851,
+      "sha256": "f1ac8fe7f009d77f35fe387738b888376fe65975de5ef5986de4d3c8361f15ee"
+    },
+    {
+      "path": "apps/api/dist/data.js",
+      "bytes": 28554,
+      "sha256": "2f4d0091646af3a2ee7105cd43f684fff2089375292387059523363d5ac3d60e"
+    },
+    {
+      "path": "apps/api/dist/m4-workspace.js",
+      "bytes": 76272,
+      "sha256": "2aaaeace82037a600c929df8cd24ac2e4c148d58b9b1637299e2dfa357e2ff56"
+    },
+    {
+      "path": "apps/api/dist/observability.js",
+      "bytes": 24207,
+      "sha256": "1ff245e5adc6509ce2cb7df37d7a11c1b156f4542aca84642ee92434b28cd58b"
+    },
+    {
+      "path": "apps/api/dist/log-ops.js",
+      "bytes": 96371,
+      "sha256": "31fee091b8f5e8c02ce6f8098bd92e698cde3123ba60d76ced6a5b28ef1c4435"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "bytes": 59376,
+      "sha256": "341ee817d87a109a85f5beadb9a953d3a2d2405ece587d07d1ac8264ed8064d7"
+    },
+    {
+      "path": "apps/worker/dist/deferred-qa-journal.js",
+      "bytes": 756,
+      "sha256": "9ba8d34df3fe4ceb3735ae1db97b0efdbd222bdfd292ad486b3cdb3cda1164ae"
+    },
+    {
+      "path": "apps/worker/dist/bounded-items.js",
+      "bytes": 1227,
+      "sha256": "fc6b575ad2acb1537b8963dff2289b4556155b20a17a3eab63e0d90c348bc247"
+    },
+    {
+      "path": "apps/worker/dist/m4-document-stage.js",
+      "bytes": 12969,
+      "sha256": "ecc20e139dda2696fbb5cc20390d6692db2de14374001495f87f177095cef828"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-shared-stage.js",
+      "bytes": 28960,
+      "sha256": "239195fd0c6e43ff8aa1dd68d605e29707b8ce1a5e882d1fb5f2da224dad2554"
+    },
+    {
+      "path": "apps/worker/dist/workpaper-progressive-groups.js",
+      "bytes": 16230,
+      "sha256": "cde0b3a6eb49b8e7a90a50cca8126d2d3cd534c3a38318e722408ba17cc2dfab"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-entry.js",
+      "bytes": 1778,
+      "sha256": "15baf4ef7fb0c956c5cab6a228edd626ffef90fab3c3bf314f26316af010a0c1"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-progressive.js",
+      "bytes": 5440,
+      "sha256": "90642c07aa6148ce2a77bec3ef04b2e2ba9ddf0323ecd83ffb0e3f302ad321fb"
+    }
+  ]
+}

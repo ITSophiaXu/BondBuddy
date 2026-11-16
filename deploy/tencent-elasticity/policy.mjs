@@ -7,9 +7,36 @@ export function requireThat(condition, code) { if (!condition) throw new Error(c
 const hash = x => typeof x === 'string' && /^[a-f0-9]{64}$/.test(x);
 const id = (x, prefix) => typeof x === 'string' && new RegExp(`^${prefix}-[a-z0-9]+$`).test(x);
 
+/** Operator-owned pins name existing instances, never an image allowlist. */
+export function retainedNodePin(c, instanceId) {
+  const pins=c.retained_nodes===undefined?[]:c.retained_nodes;
+  requireThat(Array.isArray(pins)&&pins.length<=2,'RETAINED_NODE_PINS');
+  const keys=['instance_id','image_id','image_sha256','source_sha256','role_name','create_operation_id','launch_manifest_sha256','launch_binding_sha256'];
+  requireThat(pins.every(p=>p&&Object.keys(p).length===keys.length&&Object.keys(p).every(k=>keys.includes(k))&&
+    id(p.instance_id,'ins')&&id(p.image_id,'img')&&c.role_names?.includes(p.role_name)&&
+    /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(p.create_operation_id??'')&&
+    ['image_sha256','source_sha256','launch_manifest_sha256','launch_binding_sha256'].every(k=>hash(p[k])))&&
+    ['instance_id','role_name','create_operation_id'].every(k=>new Set(pins.map(p=>p[k])).size===pins.length),'RETAINED_NODE_PINS');
+  return pins.find(p=>p.instance_id===instanceId);
+}
+
+/** All other launch parameters remain current and must reproduce the old hash. */
+export function nodeLaunchConfig(c, instanceId) {
+  const p=retainedNodePin(c,instanceId);
+  return p?{...c,image_id:p.image_id,image_sha256:p.image_sha256,source_sha256:p.source_sha256}:c;
+}
+
+export function requireRetainedRequest(c, instanceId, request) {
+  const p=retainedNodePin(c,instanceId);
+  if(p)requireThat(request?.account_id===c.account_id&&request.region===c.region&&
+    request.source_sha256===p.source_sha256&&request.image_sha256===p.image_sha256&&
+    request.launch_manifest_sha256===p.launch_manifest_sha256&&canonical(request.services)===canonical(c.services),'RETAINED_NODE_REQUEST_DRIFT');
+}
+
 /** Provider configuration, not a second capacity policy. PG remains authoritative. */
 export function validateConfig(c, {apply = false, expenditure = true} = {}) {
   requireThat(c?.version === 'tencent-execution-pool-v1', 'CONFIG_VERSION');
+  retainedNodePin(c);
   requireThat(c.region === 'ap-beijing' && c.zone === 'ap-beijing-7' && c.instance_type === 'SA9.LARGE16', 'RESOURCE_SCOPE');
   requireThat(/^\d{1,20}$/.test(c.account_id) && /^[a-z0-9-]{1,40}$/.test(c.pool_tag), 'OWNERSHIP_SCOPE');
   requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) && c.max_owned === 2, 'POOL_BOUND');
@@ -66,6 +93,7 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
       Number.isFinite(Date.parse(n.idle_since)) && now - Date.parse(n.idle_since) >= config.idle_seconds * 1000)));
     if (spare) return {kind: 'drain', identity: spare.identity, revision: spare.revision};
   }
+  if (snapshot.policy.launch_blocked_by_operation_id) return hold('authorization_denial');
   if (!snapshot.policy.budget_available) return hold('budget');
   if (snapshot.policy.cooldown_until && now < Date.parse(snapshot.policy.cooldown_until)) return hold('policy_cooldown');
   const demand = snapshot.groups.filter(g => g.effective_queued_work > 0 &&
