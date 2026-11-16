@@ -19,9 +19,10 @@ test('explicit completed baseline uses the existing content-update tier, not the
 });
 
 const connection=await isolatedTestDatabase(undefined,'global-assistant');
-test('global assistant persistence, owner isolation, no implicit execution and create retries',{skip:!connection,timeout:90000},async()=>{
+test('historical contract: global assistant persistence, owner isolation, no implicit execution and create retries',{skip:!connection,timeout:90000},async()=>{
   const pool=new Pool({connectionString:connection}),user=randomUUID(),other=randomUUID();let actor=user;
-  const app=createServer({pool,principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,allowedOrigin:'http://bondbuddy.test'});
+  // This scenario retains the historical 4500-point dynamic contract.
+  const app=createServer({pool,historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.json();};
   try{
