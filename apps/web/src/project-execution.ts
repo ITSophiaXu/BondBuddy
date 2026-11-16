@@ -84,12 +84,13 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
-  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
+  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE','MATERIAL_ENCRYPTED'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
   if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
+  if (reason === 'MATERIAL_ENCRYPTED') return '历史／参考募集说明书已加密，无法读取。请用 Word 打开文件，移除打开密码或加密后另存为未加密的 DOCX，再点击“继续修改”替换原稿并重新开始。原任务和已保存材料会保留。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
