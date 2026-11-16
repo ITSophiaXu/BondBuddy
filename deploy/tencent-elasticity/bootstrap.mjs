@@ -38,6 +38,23 @@ export function bootstrapUserData(config, request, slot=0) {
   return `#!/bin/sh\nset -eu\numask 077\ninstall -d -m 700 /etc/bondbuddy\nprintf '%s' '${publicJson}' > /etc/bondbuddy/elastic-public.json\n${businessBootstrap(config)}systemctl start bondbuddy-execution-bootstrap.service\n`;
 }
 
+/** Reproduce an existing instance's exact public creation bytes after a code update.
+ * Pins are operator-owned and tied to the original immutable launch manifest. */
+export function warmBootstrapUserData(config, request, slot, instanceId) {
+  const pins=config.retained_warm_bootstraps??[];
+  const keys=['instance_id','launch_manifest_sha256','user_data_sha256','user_data_base64'];
+  requireThat(Array.isArray(pins)&&pins.length<=2&&new Set(pins.map(p=>p?.instance_id)).size===pins.length&&
+    pins.every(p=>p&&Object.keys(p).length===keys.length&&Object.keys(p).every(k=>keys.includes(k))&&
+      /^ins-[a-z0-9]+$/.test(p.instance_id??'')&&/^[a-f0-9]{64}$/.test(p.launch_manifest_sha256??'')&&
+      /^[a-f0-9]{64}$/.test(p.user_data_sha256??'')&&typeof p.user_data_base64==='string'&&p.user_data_base64.length<=40000), 'WARM_BOOTSTRAP_PINS');
+  const pin=pins.find(p=>p.instance_id===instanceId);
+  if(!pin)return bootstrapUserData(config,request,slot);
+  const bytes=Buffer.from(pin.user_data_base64,'base64');
+  requireThat(pin.launch_manifest_sha256===request.launch_manifest_sha256&&bytes.toString('base64')===pin.user_data_base64&&
+    sha256(bytes)===pin.user_data_sha256&&bytes.toString().startsWith('#!/bin/sh\n'), 'WARM_BOOTSTRAP_BINDING');
+  return bytes.toString();
+}
+
 async function boundedJson(response) {
   requireThat(response.ok, 'BOOTSTRAP_HTTP');
   let size = 0; const chunks = [];

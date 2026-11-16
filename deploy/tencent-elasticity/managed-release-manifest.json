@@ -392,8 +392,9 @@
     },
     {
       "path": "deploy/tencent-elasticity/bootstrap.mjs",
-      "bytes": 9904,
-      "sha256": "209b04babc4139ef5763e9844d2b54365a6449bdc2823d2e8f0b7614afe33d20"
+      "bytes": 11191,
+      "sha256": "71efa66df88f9a30a8230bcd06af1559af786f339fddcd0c2f5e1d86589e3fe9",
+      "payload_file": "deploy/tencent-elasticity/bootstrap.mjs"
     },
     {
       "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
@@ -477,9 +478,10 @@
     },
     {
       "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
-      "bytes": 23400,
-      "sha256": "e9986aeb2b2e5e4482267f0786c9d2e7e3a5e378cf04823e140dbb2bf7190e15",
-      "source_commit": "475c8dd2d58a8caed30bc9fb4ed725f02285efe4"
+      "bytes": 23557,
+      "sha256": "37e83e85e66bd2e413d3e7aa9edfabc337486f1d3519a9365009d05135150bf8",
+      "source_commit": "475c8dd2d58a8caed30bc9fb4ed725f02285efe4",
+      "payload_file": "deploy/tencent-elasticity/tencent-cvm.mjs"
     },
     {
       "path": "deploy/tencent-elasticity/transport-issuer.mjs",
@@ -1064,6 +1066,7 @@
       }
     ],
     "preserved_api_source_baseline_sha256": "43b6620d4336431994d97ba27795c5ec83494f1dfab2ec2e35afc5100d0b0113",
-    "preserved_contract_compiled_baseline_sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3"
+    "preserved_contract_compiled_baseline_sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3",
+    "retained_warm_bootstrap": "Exact existing public creation bytes pinned per instance and original launch manifest; final complete launch hash is still required. No replay of RunInstances or weaker identity binding."
   }
 }
