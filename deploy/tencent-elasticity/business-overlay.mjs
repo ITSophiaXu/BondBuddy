@@ -56,6 +56,7 @@ export function businessOverlayCompose(base, directory, files) {
   requireThat(authoring.split(marker).length===2, 'BUSINESS_OVERLAY_COMPOSE');
   const mounts = files.map(f=>`      - ${directory}/${f.path}:/app/${f.path}:ro\n`).join('');
   const common=new Set(['apps/worker/dist/runtime.js','apps/worker/dist/model-call-budget.js','apps/api/dist/execution-capacity.js',
+    'apps/api/dist/batch-admission.js','packages/contracts/dist/workpaper-entry.js',
     'packages/contracts/dist/execution-capacity.js','packages/contracts/dist/index.js','packages/contracts/dist/workpaper-progressive.js']);
   const reviewMounts=files.filter(f=>common.has(f.path)).map(f=>`      - ${directory}/${f.path}:/app/${f.path}:ro\n`).join('');
   const review=base.slice(boundary);
