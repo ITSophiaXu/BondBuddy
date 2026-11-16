@@ -133,7 +133,8 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
   const active=(await c.query(`SELECT r.id,bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
-    AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
+    AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)
+    AND NOT bb_is_integrity_input(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
   if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
     throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
 }

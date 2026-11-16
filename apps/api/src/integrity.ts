@@ -4,7 +4,7 @@ import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SUBJECT_LIMIT,INTEGRITY_COMMERCIAL_RULE,IntegrityScopeMeasurementSchema,integrityLockedScopeValid,integrityPricingScope,integrityScopeMeasurement,inferIntegrityRegion,INTEGRITY_SITES,isRetiredIntegritySite,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
-import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle,digest,type PrivateBlobs} from './data.js';
+import {project,transaction,uid,conflict,Problem,date,digest,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {enqueue} from './queue.js';
 import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.js';
@@ -48,16 +48,15 @@ async function reserve(c:PoolClient,owner:string,run:any,manifest:IntegrityInput
  if(manifest.scope_quote_id)await bindCommerceScopeRun(c,owner,manifest.scope_quote_id,run.id);
 }
 async function createRun(c:PoolClient,owner:string,p:any,key:string,requestHash:string,manifest:IntegrityInput,scopeHash?:string){
- await assertCanonicalBusinessRunIdle(c,owner,p);
  if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
- if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[]))",[owner,p.id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目有任务正在执行，请完成后再开始核查。');
+ if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND bb_is_integrity_input(owner_user_id,project_id,input_revision) AND NOT(state=ANY($3::text[]))",[owner,p.id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目已有诚信核查任务正在执行，请完成或结束后再开始核查。');
  const revision=Number((await c.query('SELECT coalesce(max(revision),0)+1 n FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[owner,p.id])).rows[0].n);
  const hash=inputManifestHash(manifest),runId=manifest.operation==='check'?manifest.round_id:uid();
  await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,'[]','[]')",[p.id,revision,owner,p.draft_revision,hash,manifest]);
  const run=(await c.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *",[runId,owner,p.id,revision,hash,key,requestHash])).rows[0];
  await c.query('INSERT INTO bb_integrity_runs(run_id,owner_user_id,project_id,round_id,sequence,operation,manifest,input_hash) SELECT $1,$2,$3,$4,coalesce(max(sequence),0)+1,$5,$6,$7 FROM bb_integrity_runs WHERE project_id=$3',[runId,owner,p.id,manifest.round_id,manifest.operation,manifest,hash]);
  if(manifest.operation==='check')await reserve(c,owner,run,manifest,scopeHash);
- await c.query('UPDATE bb_projects SET latest_input_revision=$3 WHERE owner_user_id=$1 AND id=$2',[owner,p.id,revision]);
+ // Integrity has its own draft and run input; keep the authoring input/quote pointer unchanged.
  await enqueue(c,run,'integrity_v1');await event(c,owner,p.id,'integrity.started',{run_id:runId,round_id:manifest.round_id,operation:manifest.operation});return runId;
 }
 async function existing(c:PoolClient,owner:string,key:string,hash:string){

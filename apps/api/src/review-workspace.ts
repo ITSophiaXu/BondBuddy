@@ -376,7 +376,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const prior = (await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2', [user, key])).rows[0];
       if (prior) { if (prior.request_hash.trim() !== requestHash) throw conflict('IDEMPOTENCY_CONFLICT', 'Execution key already used'); return runDto(prior); }
       await assertCanonicalBusinessRunIdle(client,user,p);
-      const active = await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1', [user, id, finalStates]);
+      const active = await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision) LIMIT 1', [user, id, finalStates]);
       if (active.rowCount) throw conflict('INPUT_REVISION_CONFLICT', 'A project task is still active; stop it or wait before another execution');
       const current = await draft(client, user, id);
       if (current.version !== b.expected_input_version) stale();
@@ -454,7 +454,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const prior=(await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
       if(prior){if(prior.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Execution key already used');return runDto(prior);}
       await assertCanonicalBusinessRunIdle(client,user,p);
-      if((await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) LIMIT 1',[user,id,finalStates])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','A project task is still active');
+      if((await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND NOT(state=ANY($3::text[])) AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision) LIMIT 1',[user,id,finalStates])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','A project task is still active');
       const source=(await client.query(`SELECT r.input_revision,r.input_hash,e.snapshot,e.source_report_id,i.manifest,a.artifact_id,a.artifact_version,v.sha256
         FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id AND e.owner_user_id=r.owner_user_id AND e.project_id=r.project_id
         JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision

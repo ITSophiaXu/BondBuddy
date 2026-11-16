@@ -19,7 +19,7 @@ const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 async function available(c:PoolClient,owner:string,id:string){
   const p=await project(c,owner,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
   await assertCanonicalBusinessRunIdle(c,owner,p);
-  if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>'qa' AND NOT(state=ANY($3::text[]))",[owner,id,terminal])).rowCount)
+  if((await c.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>'qa' AND NOT(state=ANY($3::text[])) AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision)",[owner,id,terminal])).rowCount)
     throw conflict('PROJECT_RUN_ACTIVE','此项目正在处理其他任务，请完成或结束后再试。');
   return p;
 }

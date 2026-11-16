@@ -69,7 +69,7 @@ export function registerWorkpaperPaidChecks(app:FastifyInstance,db:()=>Pool,owne
       if(!b.file_version_ids||b.expected_points!==prepared.points||b.price_version!==prepared.version)throw conflict('QUOTE_CHANGED','检查范围和价格已变化，请刷新。');
       for(const item of prepared.items)if(item.price.scope_quote_id)await assertScopeQuote(c,b.scopes?.find(s=>s.file_version_id===item.manifest.files[0].file_version_id)?.scope_quote_id,user,id,'project_file_check',item.price.scope_hash,item.price.points);
       await assertCanonicalBusinessRunIdle(c,user,prepared.p);
-      if((await c.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>\'qa\' AND NOT(state=ANY($3::text[]))',[user,id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','项目仍有任务执行中，请完成后再检查。');
+      if((await c.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind<>\'qa\' AND NOT(state=ANY($3::text[])) AND NOT bb_is_integrity_input(owner_user_id,project_id,input_revision)',[user,id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','项目仍有任务执行中，请完成后再检查。');
       // Check the exact entire obligation before creating any child or freezing a lot.
       await requireFileUpdateCredits(c,user,prepared.points,true);
       const batchId=uid();await c.query(`INSERT INTO bb_workpaper_paid_check_batches(id,owner_user_id,project_id,workpaper_batch_id,request_id,request_hash,source,points) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[batchId,user,id,b.workpaper_batch_id,b.request_id,hash,prepared.source,prepared.points]);
