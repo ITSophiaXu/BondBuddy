@@ -22,15 +22,15 @@ services:
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
       BB_PLATFORM_PROBE_ENABLED: '0'
-      BB_WORKER_CONCURRENCY: '4'
-      BB_MODEL_CALL_CONCURRENCY: '4'
+      BB_WORKER_CONCURRENCY: '8'
+      BB_MODEL_CALL_CONCURRENCY: '8'
       NODE_OPTIONS: --max-old-space-size=1024
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
-    mem_limit: 3g
-    cpus: 1.5
-    pids_limit: 256
+    mem_limit: 6g
+    cpus: 2
+    pids_limit: 512
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
@@ -58,16 +58,16 @@ services:
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
       BB_PLATFORM_PROBE_ENABLED: '0'
-      BB_REVIEW_ASSISTANT_SLOTS: '4'
-      BB_WORKER_CONCURRENCY: '4'
-      BB_MODEL_CALL_CONCURRENCY: '4'
+      BB_REVIEW_ASSISTANT_SLOTS: '8'
+      BB_WORKER_CONCURRENCY: '8'
+      BB_MODEL_CALL_CONCURRENCY: '8'
       NODE_OPTIONS: --max-old-space-size=2048
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
-    mem_limit: 6g
-    cpus: 1.5
-    pids_limit: 256
+    mem_limit: 7g
+    cpus: 2
+    pids_limit: 512
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
