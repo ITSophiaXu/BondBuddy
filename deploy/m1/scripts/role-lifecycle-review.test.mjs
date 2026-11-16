@@ -1,41 +1,76 @@
 // Stateful synthetic Docker failures exercise the actual ordinary deploy/rollback scripts.
 // Real Compose renders configs/hashes; the unchanged isolated PG/SSH SQL evidence is separate.
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, rmSync, existsSync, appendFileSync, writeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 const root=resolve(import.meta.dirname,'../../..'),area=mkdtempSync(join(root,'.role-review-'));
 process.on('exit',()=>rmSync(area,{recursive:true,force:true}));
 const realDocker=execFileSync('which',['docker'],{encoding:'utf8'}).trim();
 const hash=s=>createHash('sha256').update(s).digest('hex');
+// Diagnostic-only phase names and numeric IDs: never emit commands, paths or environment values.
+let caseId=0,fixtureId=0,caseStarted,renderFiles=[];
+const elapsed=started=>Number(process.hrtime.bigint()-started)/1e6;
+function timing(phase,event,duration=0,fixture=0,count) {
+ writeSync(2,'ROLE_LIFECYCLE_TIMING '+JSON.stringify({case:caseId,fixture,phase,event,duration_ms:Number(duration.toFixed(3)),...(count===undefined?{}:{count})})+'\n');
+}
+function timed(phase,fixture,action) {
+ const started=process.hrtime.bigint();timing(phase,'start',0,fixture);
+ try{return action();}finally{timing(phase,'end',elapsed(started),fixture);}
+}
+function composeRender(args,action,file) {
+ const started=process.hrtime.bigint();
+ try{return action();}finally{appendFileSync(file,JSON.stringify({phase:args.includes('--hash')?'compose.hash':args.includes('--format')?'compose.json':'compose.other',duration_ms:elapsed(started)})+'\n');}
+}
+beforeEach(()=>{caseId++;renderFiles=[];caseStarted=process.hrtime.bigint();timing('case','start');});
+afterEach(()=>{
+ const duration=elapsed(caseStarted);
+ for(const {file,fixture}of renderFiles){
+  const totals=new Map();
+  if(existsSync(file))for(const line of readFileSync(file,'utf8').trim().split('\n').filter(Boolean)){
+   const row=JSON.parse(line),total=totals.get(row.phase)||{count:0,duration:0};total.count++;total.duration+=row.duration_ms;totals.set(row.phase,total);
+  }
+  for(const [phase,total]of totals)timing(phase,'summary',total.duration,fixture,total.count);
+ }
+ timing('case','end',duration);
+});
 const base={POSTGRES_PASSWORD:'synthetic',BB_MAIN_DATABASE_URL:'postgresql://bondbuddy:synthetic@postgres:5432/bondbuddy',BB_EXECUTION_DATABASE_URL:'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy',BB_PUBLIC_ORIGIN:'https://bondbuddy.test',BB_TERMS_VERSION:'synthetic',BB_TRIAL_SOURCE_SALT:'synthetic',AZURE_STORAGE_CONNECTION_STRING:'synthetic',BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic',BB_PG_SSH_HOST:'synthetic.test',BB_PG_SSH_USER:'tunnel',BB_PG_SSH_KEY_FILE:'/dev/null',BB_PG_SSH_KNOWN_HOSTS_FILE:'/dev/null',BB_INTEGRITY_MODE:'disabled'};
 function fixture(role,{covered=true,current=true}={}) {
+ const id=++fixtureId;
+ return timed('fixture.initialize',id,()=>{
  const dir=mkdtempSync(join(area,role+'-'));mkdirSync(join(dir,'deploy'),{recursive:true});cpSync(join(root,'deploy/m1'),join(dir,'deploy/m1'),{recursive:true});mkdirSync(join(dir,'bin'));
+ const timings=join(dir,'render-timings.jsonl');renderFiles.push({file:timings,fixture:id});
  for(const name of ['smoke.sh','install-codex-file-sandbox.sh'])writeFileSync(join(dir,'deploy/m1/scripts',name),'#!/bin/sh\nexit 0\n');
  const git=(...a)=>execFileSync('git',['-C',dir,...a],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ const {A,B}=timed('fixture.source_seal',id,()=>{
  git('init','-q');git('config','user.name','muhualing');git('config','user.email','12086605+muhualing@users.noreply.github.com');git('remote','add','origin','https://github.com/ITSophiaXu/BondBuddy.git');
  writeFileSync(join(dir,'package.json'),JSON.stringify({type:'commonjs'}));writeFileSync(join(dir,'synthetic-app.txt'),'A');git('add','.');git('commit','-qm','synthetic A');const A=git('rev-parse','HEAD');
  writeFileSync(join(dir,'synthetic-app.txt'),'B');git('add','synthetic-app.txt');git('commit','-qm','synthetic B');const B=git('rev-parse','HEAD');git('update-ref','refs/remotes/origin/test',B);
+ return {A,B};
+ });
  const state=covered?join(dir,'retained-state'):join(dir,`deploy/m1/state-${role}`);mkdirSync(state,{recursive:true});
  const file=join(dir,'private.env'),overlay=join(dir,'private.yaml'),runtime=join(dir,'runtime.json'),calls=join(dir,'calls');
  writeFileSync(overlay,'services: {}\n');
  const values={...base,BB_DEPLOY_ROLE:role,COMPOSE_PROJECT_NAME:`bb-${role}`,BB_FILE_TEMPLATE_HOST_DIR:dir,BB_PAYMENT_SECRETS_DIR:dir,BB_DEPLOY_SCRIPT_SHA:B,...(covered?{BB_ROLE_STATE_DIR:state,BB_ROLE_OVERRIDE_FILE:overlay,BB_ROLE_OVERRIDE_SHA256:hash(readFileSync(overlay)),BB_PARSE_ROLE:'main'}:{})};
  const envWrite=()=>writeFileSync(file,Object.entries(values).map(([k,v])=>`${k}=${v}`).join('\n'),{mode:0o600});envWrite();
  if(current)writeFileSync(join(state,'current'),A.slice(0,12)+'\n');writeFileSync(calls,'');
- const environment={...process.env,PATH:join(dir,'bin')+':'+process.env.PATH,BB_ENV_FILE:file,TEST_REAL_DOCKER:realDocker,TEST_CALLS:calls,TEST_RUNTIME:runtime,TEST_A:A,TEST_B:B,TEST_STATE:state};delete environment.BB_STATE_DIR;
+ const environment={...process.env,PATH:join(dir,'bin')+':'+process.env.PATH,BB_ENV_FILE:file,TEST_REAL_DOCKER:realDocker,TEST_CALLS:calls,TEST_RUNTIME:runtime,TEST_A:A,TEST_B:B,TEST_STATE:state,TEST_TIMINGS:timings};delete environment.BB_STATE_DIR;
  // The model is deliberately stateful: up really changes its service ID/hash before failure.
  writeFileSync(join(dir,'bin/docker'),`#!/usr/bin/env node
 const fs=require('fs'),cp=require('child_process'),crypto=require('crypto');
+const {appendFileSync}=fs,elapsed=${elapsed.toString()};
+${composeRender.toString()}
 const a=process.argv.slice(2),e=process.env,db=JSON.parse(fs.readFileSync(e.TEST_RUNTIME)),out=x=>process.stdout.write(String(x)+'\\n');
 const digest=x=>'sha256:'+crypto.createHash('sha256').update(x).digest('hex');
 fs.appendFileSync(e.TEST_CALLS,JSON.stringify(a)+'\\n');
-function render(args){return cp.execFileSync(e.TEST_REAL_DOCKER,args,{env:e,encoding:'utf8',stdio:['ignore','pipe','pipe']});}
+function render(args){return composeRender(args,()=>cp.execFileSync(e.TEST_REAL_DOCKER,args,{env:e,encoding:'utf8',stdio:['ignore','pipe','pipe']}),e.TEST_TIMINGS);}
 function img(ref){if(ref==='postgres:16')return {id:db.pgId,source:null};const tag=ref.split(':').at(-1),commit=tag===e.TEST_A.slice(0,12)?e.TEST_A:tag===e.TEST_B.slice(0,12)?e.TEST_B:'c'.repeat(40);const target=ref.includes('sha256:')?null:ref.slice(0,ref.lastIndexOf(':'));if(!target){for(const x of Object.values(db.containers))if(x.image===ref)return{id:ref,source:x.source};return{id:ref,source:'c'.repeat(40)};}return{id:db.drift && tag===e.TEST_A.slice(0,12)?digest('drift'):digest(target+commit),source:commit};}
 if(a[0]==='compose'){
  const ci=a.indexOf('config');
- if(ci>=0){process.stdout.write(render(a));process.exit(0);}
+ // Flush complete Compose JSON before exiting; pipe-backed stdout writes are asynchronous.
+ if(ci>=0){fs.writeFileSync(1,render(a));process.exit(0);}
  const pi=a.indexOf('ps');if(pi>=0){const s=a.at(-1);if(s==='worker-parse'&&db.role==='execution'&&db.parseRole==='main')process.exit(0);if(db.containers[s])out(s);process.exit(0);}
  const up=a.indexOf('up'),stop=a.indexOf('stop');
  if(a.includes('logs')&&(a.includes('--follow')||a.includes('-f'))||up>=0&&e.TEST_SLOW_UP){fs.writeFileSync(e.TEST_READY,'ready');setInterval(()=>{},1000);return;}
@@ -60,12 +95,13 @@ if(a[0]==='inspect'){const service=a.at(-1),v=db.containers[service];if(!v)proce
 process.exit(0);
 `,{mode:0o755});
  const composeArgs=sha=>['compose','--project-directory',join(dir,'deploy/m1'),'--project-name',values.COMPOSE_PROJECT_NAME,'-f',join(dir,`deploy/m1/compose.${role}.yaml`),...(covered?['-f',overlay]:[]),'--profile','*','--env-file',file];
- const render=(sha,args)=>execFileSync(realDocker,[...composeArgs(sha),'config',...args],{env:{...process.env,BB_IMAGE_TAG:sha.slice(0,12),POSTGRES_PASSWORD:role==='execution'?'unused-no-local-database':'synthetic',...(covered?{BB_ROLE_PARSE_PROFILE:role==='main'?'bb-parse-active':'bb-parse-inactive',BB_ROLE_PARSE_REPLICAS:role==='main'?'1':'0'}:{})},encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ const render=(sha,args)=>composeRender(args,()=>execFileSync(realDocker,[...composeArgs(sha),'config',...args],{env:{...process.env,BB_IMAGE_TAG:sha.slice(0,12),POSTGRES_PASSWORD:role==='execution'?'unused-no-local-database':'synthetic',...(covered?{BB_ROLE_PARSE_PROFILE:role==='main'?'bb-parse-active':'bb-parse-inactive',BB_ROLE_PARSE_REPLICAS:role==='main'?'1':'0'}:{})},encoding:'utf8',stdio:['ignore','pipe','pipe']}),timings);
  const c=JSON.parse(render(A,['--format','json'])),hashes=Object.fromEntries(render(A,['--hash','*']).trim().split('\n').map(x=>x.split(/\s+/)));
  const containers={};for(const [service,s]of Object.entries(c.services)){if(service==='migrate'||service==='upload-confirmation'&&Number(s.deploy?.replicas)===0||service==='worker-parse'&&role==='execution'&&covered||service==='worker-parse'&&role==='main'&&!covered)continue;const target=s.image.slice(0,s.image.lastIndexOf(':'));containers[service]={image:service==='postgres'?'sha256:'+hash('PG'): 'sha256:'+hash(target+A),source:service==='postgres'?null:A,configHash:hashes[service]};}
  const initial={role,parseRole:covered?'main':'execution',project:values.COMPOSE_PROJECT_NAME,pgName:'bb-main_pgdata',pgId:'sha256:'+hash('PG'),containers};writeFileSync(runtime,JSON.stringify(initial));
- const cmd=(script,args,extra={})=>spawnSync('bash',[join(dir,'deploy/m1/scripts',script),...args],{cwd:dir,env:{...environment,TEST_DEPLOY_ENTRY:script==='deploy-role.sh'?'1':'0',...extra},encoding:'utf8'});
+ const cmd=(script,args,extra={})=>timed(script==='deploy-role.sh'?'command.deploy':'command.compose',id,()=>spawnSync('bash',[join(dir,'deploy/m1/scripts',script),...args],{cwd:dir,env:{...environment,TEST_DEPLOY_ENTRY:script==='deploy-role.sh'?'1':'0',...extra},encoding:'utf8'}));
  return {dir,state,file,overlay,values,envWrite,environment,runtime,calls,A,B,initial,git,cmd,read:()=>JSON.parse(readFileSync(runtime)),save:x=>writeFileSync(runtime,JSON.stringify(x))};
+ });
 }
 for(const role of ['main','execution'])test(`${role}: partial B failure leaves A current; ordinary rollback accepts only sealed A/B and restores missing services`,()=>{
  const f=fixture(role),primary=role==='main'?'api':'worker';
@@ -146,8 +182,8 @@ for(const role of ['main','execution'])for(const stage of ['early','partial'])te
  assert.match(readFileSync(join(f.state,`images-${f.B.slice(0,12)}.txt`),'utf8'),/resume_first=1/);
  assert.equal(f.read().containers[primary].source,f.B);assert.equal(f.read().pgName,'bb-main_pgdata');assert.equal(f.read().pgId,f.initial.pgId);
 });
-async function ready(file,child){for(let i=0;i<750;i++){if(existsSync(file))return;if(child.exitCode!==null)throw new Error(`long command exited: code=${child.exitCode}, signal=${child.signalCode}`);await new Promise(r=>setTimeout(r,20));}throw new Error('long command not ready');}
-async function stop(child){if(child.exitCode!==null)return;const exited=new Promise(r=>child.once('exit',r));process.kill(-child.pid,'SIGTERM');await exited;}
+async function ready(file,child){const started=process.hrtime.bigint();timing('lock.ready','start',0,fixtureId);try{for(let i=0;i<750;i++){if(existsSync(file))return;if(child.exitCode!==null)throw new Error(`long command exited: code=${child.exitCode}, signal=${child.signalCode}`);await new Promise(r=>setTimeout(r,20));}throw new Error('long command not ready');}finally{timing('lock.ready','end',elapsed(started),fixtureId);}}
+async function stop(child){const started=process.hrtime.bigint();timing('lock.stop','start',0,fixtureId);try{if(child.exitCode!==null)return;const exited=new Promise(r=>child.once('exit',r));process.kill(-child.pid,'SIGTERM');await exited;}finally{timing('lock.stop','end',elapsed(started),fixtureId);}}
 test('logs --follow and local logs -f release the read lock; global flags reject and real write lock remains exclusive',async()=>{
  const f=fixture('main');
  for(const flag of ['--follow','-f']){
