@@ -1,7 +1,7 @@
 import {expect,test,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {assertFixture,checkId,exportId,otherOwnerId,ownerId,projectId,sha} from './integrity-continuation-fixtures';
+import {assertFixture,checkId,exportId,otherOwnerId,ownerId,projectId,sha,now} from './integrity-continuation-fixtures';
 import {installUpload,uploadFixture,type UploadState} from './integrity-upload-eleventh-fixtures';
 import {installEleventhReference} from './upload-eleventh-reference';
 
@@ -13,16 +13,37 @@ const modal=(page:Page)=>page.locator('.integrity-modal[open]');
 const cacheKey=`bb-integrity-recovery:${ownerId}:${projectId}`;
 test.afterEach(async({page})=>assertFixture(page));
 async function open(page:Page,state=uploadFixture()){
+ await page.clock.install({time:new Date(now)});
  await page.addInitScript(({key,owner,project,draft,revision,roundId})=>{if(localStorage.getItem(key))return;localStorage.setItem(key,JSON.stringify({version:'integrity-recovery-cache-v1',owner,project,value:{revision,draft,evidenceDraft:{roundId,subjectId:'company-a',siteId:'credit-china',url:'https://www.creditchina.gov.cn/',time:'',note:'',conclusion:'unresolved'}}}));},{key:cacheKey,owner:ownerId,project:projectId,draft:state.workspace.draft,revision:state.workspace.revision,roundId:checkId});
  await installUpload(page,state);page.on('dialog',dialog=>void dialog.accept());await page.goto(route);await expect(page.locator('#integrity-records')).toBeVisible();return state;
 }
 async function evidence(page:Page){await page.locator('#integrity-resume-evidence').click();await expect(page.locator('#integrity-evidence-form')).toBeVisible();}
 async function fill(page:Page){await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('合成核对：原发行人与原网站事项，实际查询时间和结论保持不变。');}
 async function choose(page:Page,input=pdf){await modal(page).locator('[name=file]').setInputFiles(input);}
-async function unknown(page:Page,state:UploadState){state.unavailable=true;await evidence(page);await fill(page);await choose(page);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect(state.manuals).toEqual([]);expect(state.uploads).toHaveLength(1);}
+async function failedConfirmations(page:Page,state:UploadState){
+ // Advance the existing three two-second retries, retaining all four real requests.
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.completes.length;}).toBe(4);
+ await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();
+ expect(state.completes).toEqual(Array(4).fill('synthetic-eleventh-u-1'));
+ exactOriginalCompletions(state);expect(state.uploads).toHaveLength(1);expect(state.puts).toHaveLength(1);noBusiness(state);
+}
+async function unknown(page:Page,state:UploadState){state.unavailable=true;await evidence(page);await fill(page);await choose(page);await failedConfirmations(page,state);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect(state.manuals).toEqual([]);expect(state.uploads).toHaveLength(1);}
 async function reopen(page:Page){await page.reload();await expect(page.locator('#integrity-records')).toBeVisible();await page.locator('#integrity-resume-evidence').click();await expect(page.locator('#integrity-confirm-upload')).toBeVisible();}
 const noBusiness=(s:UploadState)=>{expect(s.manuals).toEqual([]);expect(s.drafts).toEqual([]);expect(s.checks).toEqual([]);expect(s.exports).toEqual([]);};
 async function stored(page:Page){return page.evaluate(key=>JSON.parse(localStorage.getItem(key)!).value,cacheKey);}
+const transportWrites=(state:UploadState)=>state.calls.filter(call=>call.method!=='GET');
+function exactOriginalCompletions(state:UploadState){
+ const calls=state.calls.filter(call=>call.method==='POST'&&call.path.endsWith('/complete'));
+ expect(calls).toHaveLength(state.completes.length);
+ for(const call of calls)expect(call).toMatchObject({path:`/projects/${projectId}/materials/uploads/synthetic-eleventh-u-1/complete`,body:{byte_size:bytes.length,sha256:sha(bytes.toString())}});
+}
+async function missingBytesBudget(page:Page,action:()=>Promise<unknown>){
+ const missing=page.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/uploads/synthetic-eleventh-u-1/complete')&&response.status()===422);
+ await action();const response=await missing;
+ expect(await response.json()).toMatchObject({code:'MATERIAL_UNREADABLE',field_errors:[{field:'upload_session',code:'bytes_pending'}]});
+ // Consume the production ten-minute uncertainty budget; the retry assertion stays at its original budget.
+ await page.clock.fastForward(600001);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();
+}
 
 test.describe('integrity eleventh functional',()=>{
  test.skip(reference,'Old-component comparison runs only the two visual cases.');
@@ -38,12 +59,31 @@ test.describe('integrity eleventh functional',()=>{
   await page.locator('#integrity-evidence-save').click();await expect.poll(()=>state.manuals.length).toBe(1);expect(state.manuals[0].body.material).toEqual(retained.evidenceDraft.material);expect(state.calls.some(call=>call.method==='GET'&&call.path.endsWith('/materials/synthetic-eleventh-evidence')&&call.search==='?version=4')).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  });
  test('unknown PUT checks the original completion before sending the file again',async({page})=>{
-  const state=await open(page);state.putFault='after';await evidence(page);await fill(page);await choose(page);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect(state.completes).toEqual([]);await reopen(page);await page.locator('#integrity-confirm-upload').click();await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.completes).toEqual(['synthetic-eleventh-u-1']);expect(state.puts).toHaveLength(1);expect(state.uploads).toHaveLength(1);noBusiness(state);
+  const state=await open(page);state.putFault='after';await unknown(page,state);const original=await stored(page);await reopen(page);expect(state.completes).toEqual(Array(4).fill('synthetic-eleventh-u-1'));expect(await stored(page)).toEqual(original);state.unavailable=false;await page.locator('#integrity-confirm-upload').click();await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.completes).toEqual(Array(5).fill('synthetic-eleventh-u-1'));exactOriginalCompletions(state);expect(state.puts).toHaveLength(1);expect(state.uploads).toHaveLength(1);noBusiness(state);
+ });
+ test('healthy original completion automatically reconciles an accepted PUT with a lost response',async({page})=>{
+  const state=await open(page);state.putFault='after';await evidence(page);await fill(page);await choose(page);await expect(page.locator('#integrity-selected-evidence')).toContainText('文件已保存');await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.completes).toEqual(['synthetic-eleventh-u-1']);exactOriginalCompletions(state);expect(state.puts).toHaveLength(1);expect(state.uploads).toHaveLength(1);noBusiness(state);
+ });
+ test('explicit same-file selection after expiry keeps an already accepted original upload',async({page})=>{
+  const state=await open(page);state.putFault='after';state.uploadLifetimeMs=10000;await unknown(page,state);await page.clock.fastForward(10001);const original=await stored(page);state.unavailable=false;await choose(page);await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.completes).toEqual(Array(5).fill('synthetic-eleventh-u-1'));exactOriginalCompletions(state);expect(state.uploads).toHaveLength(1);expect(state.puts).toHaveLength(1);expect((await stored(page)).evidenceDraft).toMatchObject({...original.evidenceDraft,material:{source_project_id:projectId,material_id:'synthetic-eleventh-evidence',material_version:1,sha256:sha(bytes.toString())}});noBusiness(state);
  });
  test('missing bytes require the same selected file; a different file never creates a replacement',async({page})=>{
-  const state=await open(page);state.putFault='before';await evidence(page);await fill(page);await choose(page);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();await reopen(page);await page.locator('#integrity-confirm-upload').click();await expect(modal(page).locator('[role=status]').last()).toContainText('相同内容的文件');expect(state.uploads).toHaveLength(1);
-  await choose(page,{...pdf,buffer:Buffer.from('Different evidence content')});await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect(state.uploads).toHaveLength(1);noBusiness(state);
-  await choose(page);await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.uploads).toHaveLength(2);expect(state.puts).toHaveLength(2);noBusiness(state);
+  const state=await open(page);state.putFault='before';state.uploadLifetimeMs=10000;await evidence(page);await fill(page);
+  await missingBytesBudget(page,()=>choose(page));await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();
+  const original=await stored(page),declaration=structuredClone(state.uploads[0]);expect(state.sessions.get('synthetic-eleventh-u-1')!.received).toBe(false);
+  // The initial File is still cached, but the confirm button must not opt in to replacement.
+  await missingBytesBudget(page,()=>page.locator('#integrity-confirm-upload').click());expect(state.uploads).toHaveLength(1);expect(state.puts).toHaveLength(1);expect(await stored(page)).toEqual(original);noBusiness(state);
+  const count=state.completes.length;await reopen(page);expect(state.completes).toHaveLength(count);await expect(modal(page).locator('[name=file]')).toHaveValue('');
+  await missingBytesBudget(page,()=>page.locator('#integrity-confirm-upload').click());await expect(modal(page).locator('[role=status]').last()).toContainText('相同内容的文件');await expect(modal(page).locator('[role=status]').last()).toContainText('保存结果仍待确认');const originalError=(await page.locator('#integrity-status').textContent())!;expect(originalError).not.toBe('');await expect(modal(page).locator('[role=status]').last()).toContainText(originalError);expect(state.uploads).toHaveLength(1);expect(state.puts).toHaveLength(1);expect(await stored(page)).toEqual(original);exactOriginalCompletions(state);noBusiness(state);
+  const unchanged=structuredClone(transportWrites(state));
+  for(const wrong of [{...pdf,buffer:Buffer.from('Different evidence content')},{...pdf,buffer:Buffer.alloc(bytes.length,120)},{...pdf,name:'不同媒体类型.png',mimeType:'image/png'}]){
+   await choose(page,wrong);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect(state.uploads).toHaveLength(1);expect(transportWrites(state)).toEqual(unchanged);expect(state.puts).toHaveLength(1);expect(await stored(page)).toEqual(original);expect(state.sessions.get('synthetic-eleventh-u-1')!.declaration).toEqual(declaration);noBusiness(state);
+  }
+  const before=state.calls.length;await choose(page);await expect(page.locator('#integrity-confirm-upload')).toHaveCount(0);expect(state.uploads).toHaveLength(2);expect(state.puts).toHaveLength(2);noBusiness(state);
+  expect(state.calls.slice(before).filter(call=>call.method!=='GET').map(call=>call.path)).toEqual([`/projects/${projectId}/materials/uploads/synthetic-eleventh-u-1/complete`,`/projects/${projectId}/materials/uploads`,`/projects/${projectId}/materials/uploads/synthetic-eleventh-u-2/complete`]);
+  expect(state.uploads).toEqual([declaration,declaration]);expect(state.puts).toEqual(['synthetic-eleventh-u-1','synthetic-eleventh-u-2']);
+  expect((await stored(page)).evidenceDraft).toMatchObject({...original.evidenceDraft,material:{source_project_id:projectId,material_id:'synthetic-eleventh-evidence',material_version:1,sha256:sha(bytes.toString())}});
+  expect(state.sessions.get('synthetic-eleventh-u-2')!.received).toBe(true);
  });
  for(const field of ['sha256','byte_size','media_type','role'] as const)test(`a schema-valid ${field} mismatch never reaches the evidence form or business POST`,async({page})=>{
   const state=await open(page);state.mismatch=field;await evidence(page);await fill(page);await choose(page);await expect(page.locator('#integrity-confirm-upload')).toBeEnabled();expect((await stored(page)).evidenceDraft.material).toBeUndefined();noBusiness(state);expect(state.uploads).toHaveLength(1);
