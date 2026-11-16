@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
+import { emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
@@ -23,7 +25,7 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
-import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadiness, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
+import { codexModelStage, createMaterialsReadyStage, defaultRunStages, inputLockStage, materialsReadiness, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractor } from './fact-candidate-producer.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv, type ProviderCallReconciler } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -53,8 +55,10 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   let owner = `runtime-owner-${randomUUID()}`;
   const alice = owner, mallory = `runtime-other-${randomUUID()}`, operator = `runtime-operator-${randomUUID()}`;
   const reviewer = `runtime-reviewer-${randomUUID()}`, grantor = `runtime-grantor-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true, stream: { pollMs: 50, maxDurationMs: 1500 } });
-  const closedApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: false });
+  // Preserve the original pre-commercial runtime contract: same-input attempts, missing-source
+  // worker pauses, historical checkpoints and single-Word delivery. Current admission is covered below.
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), historicalBillingFixture: true, enablePaidAuthoring: false, enableRunRuntime: true, stream: { pollMs: 50, maxDurationMs: 1500 } });
+  const closedApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), historicalBillingFixture: true, enablePaidAuthoring: false, enableRunRuntime: false });
   const send = (method: string, url: string, payload?: unknown, extra: { contentType?: string; headers?: Record<string, string>; target?: typeof app } = {}) => (extra.target ?? app).inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(extra.contentType ? { 'content-type': extra.contentType } : {}), ...(extra.headers ?? {}) }, payload: payload as any });
   const root = await mkdtemp(join(tmpdir(), 'bb-runtime-'));
@@ -744,5 +748,117 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     await app.close(); await closedApp.close();
     await rm(root, { recursive: true, force: true });
     await pool.end();
+  }
+});
+
+test('current runtime admission keeps one quoted run and reuses its model checkpoint through dual-Word settlement', { skip: !connection || !blobConnection }, async () => {
+  const database = await isolatedTestDatabase('BB_TEST_RUNTIME_DATABASE_URL', 'runtime-current-admission');
+  const pool = new Pool({ connectionString: database });
+  const blobs = azureBlobs(blobConnection!, `bb-current-runtime-${randomUUID()}`);
+  const originalOwner = `current-runtime-${randomUUID()}`;
+  let owner = originalOwner;
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }),
+    enableRunRuntime: true, paymentProviders: [], stream: { pollMs: 50, maxDurationMs: 1500 } });
+  const send = (method: string, url: string, payload?: unknown, headers: Record<string, string> = {}) =>
+    app.inject({ method: method as any, url, headers: { origin: ORIGIN, ...headers }, payload: payload as any });
+  const root = await mkdtemp(join(tmpdir(), 'bb-current-runtime-'));
+  // The fake CLI and synthetic Word bytes test runtime mechanics, not live model or document quality.
+  const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek',
+    base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null,
+    credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 5000,
+    kill_grace_ms: 100, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin' };
+  const revision = makeWorkerDocxFixture({ externalLink: false, text: 'Synthetic current runtime revision Word' });
+  const clean = makeWorkerDocxFixture({ externalLink: false, text: 'Synthetic current runtime clean Word' });
+  const model = codexModelStage({ name: 'model_generation', logicalCallId: 'current-runtime-generation', config, schema, validate: isAnswer,
+    resultSchemaVersion: 'answer-v1', buildPrompt: async ctx => `SYNTHETIC current runtime prompt for run ${ctx.run.id}. SCENARIO:structured` });
+  const delivery: RunStage = { name: 'word_delivery', run: async ctx => {
+    assert.deepEqual(ctx.values.get('model_generation'), { answer: 'OK', n: 16 });
+    return { kind: 'deliver', bytes: revision, cleanBytes: clean, wordSummary: { synthetic: true }, deliveryPolicy: 'generated_pair_v1' };
+  } };
+  const stages = [inputLockStage, materialsReadyStage, model, delivery];
+  const runRow = async (runId: string) => (await pool.query(`SELECT r.*,j.id AS job_id,j.state AS job_state,j.checkpoint
+    FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1`, [runId])).rows[0];
+  const attempts = async (jobId: string) => (await pool.query('SELECT attempt_no,status FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY attempt_no', [jobId]))
+    .rows.map(row => [row.attempt_no, row.status]);
+  const frames = (body: string) => body.split('\n\n').filter(Boolean).filter(frame => !frame.startsWith(':') && !frame.startsWith('retry:')).map(frame => {
+    const fields = Object.fromEntries(frame.split('\n').map(line => [line.slice(0, line.indexOf(':')), line.slice(line.indexOf(':') + 2)]));
+    return { id: fields.id ? Number(fields.id) : undefined, event: fields.event, data: JSON.parse(fields.data) };
+  });
+  try {
+    const created = await send('POST', '/api/v1/projects', { name: 'Synthetic current runtime', kind: 'update',
+      issuer_name: 'Synthetic runtime issuer', market: 'sse', offering: 'private',
+      update_details: { ...emptyUpdateDetails(), reporting_cutoff: '2026-09-30',
+        target_reporting_periods: reportingWindow('sse', 'private', '2026-09-30') } });
+    assert.equal(created.statusCode, 201, created.body);
+    const project = created.json().project_id as string;
+    const input = (await lockSyntheticAuthoringInput(app, project)).json();
+    const request = { project_id: project, input_revision: input.input_revision, input_hash: input.input_hash, task_kind: 'update',
+      input_manifest_ref: 'synthetic-current-runtime', storage_origin: 'cloud', workspace_id: 'synthetic-current-worker' };
+    const unquoted = await send('POST', '/api/v1/runs/execute', { ...request, execution_request_id: randomUUID() });
+    assert.equal(unquoted.statusCode, 409, unquoted.body); assert.equal(unquoted.json().code, 'QUOTE_REQUIRED');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [project])).rows[0].n, 0);
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, project, input);
+    const execution = { ...request, execution_request_id: randomUUID(), quote_id: quoteId };
+    const concurrent = await Promise.all(Array.from({ length: 10 }, () => send('POST', '/api/v1/runs/execute', execution)));
+    assert.ok(concurrent.every(response => response.statusCode === 202), concurrent.map(response => response.body).join('\n'));
+    const runId = concurrent[0].json().run_id as string;
+    assert.ok(concurrent.every(response => response.json().run_id === runId));
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [project])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE run_id=$1', [runId])).rows[0].n, 1);
+    assert.deepEqual((await pool.query('SELECT quote_id,state FROM bb_credit_reservations WHERE run_id=$1', [runId])).rows,
+      [{ quote_id: quoteId, state: 'held' }]);
+    const changedKeyPayload = await send('POST', '/api/v1/runs/execute', { ...execution, input_hash: 'f'.repeat(64) });
+    assert.equal(changedKeyPayload.statusCode, 409, changedKeyPayload.body);
+
+    await assert.rejects(runPipelineOnce({ pool, blobs, stages, afterStage: async stage => {
+      if (stage === 'model_generation') throw new Error('SYNTHETIC_CRASH');
+    } }), /SYNTHETIC_CRASH/);
+    let row = await runRow(runId);
+    assert.equal(row.job_state, 'running'); assert.equal(row.billing_mode, 'fixed_credits');
+    assert.ok(row.checkpoint.stages.input_lock && row.checkpoint.stages.materials_ready && row.checkpoint.stages.model_generation);
+    const modelCheckpoint = row.checkpoint.stages.model_generation;
+    assert.deepEqual(await attempts(row.job_id), [[1, 'completed']]);
+    assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1', [runId])).rows[0].state, 'held');
+    assert.equal(await runPipelineOnce({ pool, blobs, stages }), 'idle', 'an unexpired current run lease is not stolen');
+    await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [row.job_id]);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages }), 'succeeded');
+    row = await runRow(runId);
+    assert.equal(row.state, 'succeeded');
+    assert.deepEqual(await attempts(row.job_id), [[1, 'completed']], 'the accepted model result is reused without a second provider call');
+    assert.deepEqual(row.checkpoint.stages.model_generation, modelCheckpoint);
+    assert.deepEqual([row.input_revision, row.input_hash.trim()], [input.input_revision, input.input_hash], 'recovery retains the exact admitted input');
+    const pair = row.checkpoint.stages.word_delivery_pair;
+    assert.equal(pair.revision_artifact_id, row.artifact_id); assert.ok(pair.clean_artifact_id);
+    assert.notEqual(pair.clean_artifact_id, pair.revision_artifact_id);
+    assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1', [runId])).rows[0].state, 'settled');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1', [runId])).rows[0].n, 1);
+    for (const [artifactId, bytes] of [[pair.revision_artifact_id, revision], [pair.clean_artifact_id, clean]] as const) {
+      const artifact = await send('GET', `/api/v1/artifacts/${artifactId}`);
+      assert.equal(artifact.statusCode, 200, artifact.body);
+      const downloaded = await send('GET', artifact.json().download_url);
+      assert.equal(downloaded.statusCode, 200, downloaded.body); assert.equal(sha(downloaded.rawPayload), sha(bytes));
+    }
+    const replay = await send('POST', '/api/v1/runs/execute', execution);
+    assert.equal(replay.statusCode, 202, replay.body); assert.equal(replay.json().run_id, runId);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [project])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE run_id=$1', [runId])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1', [project])).rows[0].n, 1);
+    const stream = await send('GET', `/api/v1/runs/${runId}/stream`);
+    assert.equal(stream.statusCode, 200, stream.body);
+    const allFrames = frames(stream.body), seqs = allFrames.filter(frame => frame.id !== undefined).map(frame => frame.id!);
+    assert.equal(allFrames[0].event, 'snapshot'); assert.equal(allFrames[0].data.state, 'succeeded');
+    assert.ok(seqs.length >= 2); assert.deepEqual(seqs, seqs.map((_, index) => index + 1));
+    assert.equal(allFrames.at(-1)!.data.reason, 'terminal');
+    const resumed = await send('GET', `/api/v1/runs/${runId}/stream`, undefined, { 'last-event-id': String(seqs.length - 2) });
+    assert.equal(resumed.statusCode, 200, resumed.body);
+    assert.deepEqual(frames(resumed.body).filter(frame => frame.id !== undefined).map(frame => frame.id), [seqs.length - 1, seqs.length]);
+    assert.ok(!frames(resumed.body).some(frame => frame.event === 'snapshot'));
+    assert.deepEqual((await pool.query("SELECT state FROM bb_run_events WHERE run_id=$1 AND state IN ('succeeded','failed','cancelled','rejected')", [runId])).rows,
+      [{ state: 'succeeded' }]);
+    owner = `foreign-current-runtime-${randomUUID()}`;
+    assert.equal((await send('GET', `/api/v1/runs/${runId}/stream`)).statusCode, 404);
+    assert.equal((await send('GET', `/api/v1/artifacts/${pair.clean_artifact_id}`)).statusCode, 404);
+  } finally {
+    await app.close(); await rm(root, { recursive: true, force: true }); await pool.end();
   }
 });
