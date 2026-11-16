@@ -1,0 +1,6 @@
+# Public bootstrap hashes and compressed size must not vary with checkout line endings.
+bootstrap.mjs text eol=lf
+business-overlay.mjs text eol=lf
+node-adapter.mjs text eol=lf
+compose.yaml text eol=lf
+policy.mjs text eol=lf

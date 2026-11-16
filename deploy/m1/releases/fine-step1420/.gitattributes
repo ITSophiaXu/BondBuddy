@@ -1,0 +1,4 @@
+# Hash-bound release fixtures preserve original bytes on all hosts.
+# Permit CRLF terminators while retaining all other normal whitespace checks.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+*.md text eol=lf

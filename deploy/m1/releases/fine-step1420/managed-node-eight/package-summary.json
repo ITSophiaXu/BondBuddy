@@ -1,0 +1,42 @@
+{
+  "version": "managed-node-eight-performance-package-v1",
+  "runtime_entries": 63,
+  "authoring_entries": 40,
+  "review_entries": 23,
+  "sql_entries": 3,
+  "archive_bytes": 422175,
+  "uncompressed_tar_bytes": 1873920,
+  "archive_sha256": "52d5d737b1142ae39214fccd9b3e6d776c0df893ef3e0d0c1d9618fbaadaa4fe",
+  "source_sha256": "2785ac5aa8106e1f13b2715b952efe0367a48bea413be8a72ae70127805cb5f0",
+  "helper_sha256": "d14cc0d067af9b8872a1df6dab8e04ed9c7c55a6125e395deb1b452bae2d7366",
+  "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
+  "system_image_id": "img-6cnm1flv",
+  "production_executed": false,
+  "helper_tests": {
+    "pass": 4,
+    "fail": 0,
+    "skipped": 0,
+    "node": "v24.22.1"
+  },
+  "first_original_oci_import_attempt": {
+    "authoring": "PASS",
+    "review": "FAIL missing batch-admission.js",
+    "failure_preserved": "oci-import-execution.stdout.log",
+    "initial_bundle_sha256": "79583e04ea633c9fca71ca7da4917729a20d156cc302d0b2465dbba338f06a73",
+    "fixed_by_preserving_live_review_import_delta": true,
+    "second_oci_import_verification": "PASS authoring/review; Node22.23.4; no network/DB/provider/worker"
+  },
+  "bootstrap_sha256": "8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e",
+  "bootstrap_tests": {
+    "pass": 3,
+    "fail": 0,
+    "skipped": 0,
+    "actual_slot_bytes": [
+      15904,
+      15904
+    ],
+    "limit": 16384,
+    "no_installer_execution": true
+  },
+  "oci_import_fixed_evidence_sha256": "c3da78acfd83f98961b5b16861a7cbb6a5174e8a23f494c4c139254470feb08b"
+}

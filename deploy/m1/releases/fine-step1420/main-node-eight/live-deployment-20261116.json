@@ -1,0 +1,331 @@
+{
+  "schema": "fine-step1420-live-deployment-status-v1",
+  "recorded_at": "2026-11-16T07:22:53.087044+00:00",
+  "overall_status": "PARTIAL_WORKER_NOT_DEPLOYED",
+  "feature_pr": 1420,
+  "feature_develop_merge": "bcba46f10cd651748606cbc397c02b437e49320d",
+  "release": {
+    "verified_at": "2026-11-16T07:14:37.333684+00:00",
+    "release_prs": [
+      1428,
+      1457
+    ],
+    "merge_commit": "e4f5a17ae876f2f31e7d231ab250599f5c0f72ae",
+    "github": {
+      "headRefOid": "ad169f45b9b32f734718c92f7952b4b76e608545",
+      "mergeCommit": {
+        "oid": "e4f5a17ae876f2f31e7d231ab250599f5c0f72ae"
+      },
+      "mergedAt": "2026-11-16T07:12:51Z",
+      "state": "MERGED"
+    },
+    "package_sha256": "aa1da9be0c08677d4cdd10634689ddd7394c02c335ba83ef04798e6de0c89070",
+    "github_content_verified": true,
+    "standard_quality_receipt": false,
+    "real_model_golden_completed": false,
+    "independent_human_signoff_completed": false,
+    "runtime_candidates_changed_by_1457": false
+  },
+  "main": {
+    "status": "DEPLOYED_VERIFIED",
+    "finished_at": "2026-11-16T07:15:26.692492+00:00",
+    "remote_receipts": "/var/lib/bondbuddy/main1420-cutover-r3-20261116",
+    "roles": [
+      {
+        "config_verified": true,
+        "database_restored": false,
+        "existing_worker_progress_allowed": true,
+        "files": 23,
+        "id": "13d603c31c18d69b962c2ec6250d33afda238ff112102c38fbaf08dd1815606e",
+        "image": "sha256:e995a4928f4ec16048ac6b5c5cc136bf9582baf758bc71361cb08e20f4a9eb85",
+        "role": "api",
+        "rollback": false
+      },
+      {
+        "config_verified": true,
+        "database_restored": false,
+        "existing_worker_progress_allowed": true,
+        "files": 2,
+        "id": "aeb2503978f86affa354a45d1612159e27145d62399bb5900350817615c0b9cd",
+        "image": "sha256:22cc3fc268cad7bd2f77ae7f7e85680a939f2d06a2424c53a8aa11a5d0017a1d",
+        "role": "ops",
+        "rollback": false
+      },
+      {
+        "config_verified": true,
+        "database_restored": false,
+        "existing_worker_progress_allowed": true,
+        "files": 4,
+        "id": "613a3329937fd201a14484090c281dd5ecdf1b75e839c94eb4a6be626ec96cab",
+        "image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be",
+        "role": "web",
+        "rollback": false
+      }
+    ],
+    "steps": [
+      "prepare",
+      "close_ingress",
+      "wait_natural_activity",
+      "hold_control_barrier",
+      "stop_api_ops",
+      "canonical_0185",
+      "performance_acl",
+      "switch_api",
+      "switch_web",
+      "switch_ops",
+      "verify_internal",
+      "restore_ingress",
+      "verify_live",
+      "commit_main_components",
+      "complete"
+    ],
+    "migration": {
+      "applied": "0185_performance_spans.sql",
+      "ledger_before": 188,
+      "ledger_after": 189,
+      "managed_performance_acl_applied": true
+    },
+    "other_records_preserved": true,
+    "current_components_sha256": "81ad9744752d08be43e87471639cc13da1d0cc5ca5995c5ebaa79c1c925ac983",
+    "live_checks": [
+      {
+        "body_sha256": "d3035e2a590234ea5e63ec0b15a5788286b83f3a7c55f142c24aabe6b5d6cb8d",
+        "direct": false,
+        "origin": true,
+        "path": "/healthz",
+        "status": 200
+      },
+      {
+        "body_sha256": "b7af45d2a91b57796772cbe4825e5804ba66e06eb26209bd311750da95b33817",
+        "direct": false,
+        "origin": true,
+        "path": "/api/v1/me",
+        "status": 401
+      },
+      {
+        "body_sha256": "a609ab785063e79f20563101fabdb08c1e67edc51633577e7b3e426315e6b0ae",
+        "direct": false,
+        "origin": true,
+        "path": "/api/v1/admin/performance/summary",
+        "status": 401
+      },
+      {
+        "body_sha256": "82ebc9919806fd408c157397044fbad9f654d4d4a55dc3c59a49e7a99f156b89",
+        "direct": false,
+        "origin": true,
+        "path": "/admin/index.html",
+        "status": 200
+      },
+      {
+        "body_sha256": "705e02103614bd8aa68c5aeb0bf0e8250d9b8aaf23db969516dc478ecf1fb62d",
+        "direct": false,
+        "origin": true,
+        "path": "/assets/admin-cFfbTtH3.css",
+        "status": 200
+      },
+      {
+        "body_sha256": "2f292fa16132435d9a98c9436c12dded823003d08b5e062d88899ec707613257",
+        "direct": false,
+        "origin": true,
+        "path": "/assets/admin-f9kFtfWE.js",
+        "status": 200
+      },
+      {
+        "body_sha256": "9170f4b4a14f979bebbbe7e833ed8d68537bdc424f591dc9d16ec0d70c8254ed",
+        "direct": false,
+        "origin": true,
+        "path": "/assets/schema-formats-BUP0coFn.js",
+        "status": 200
+      },
+      {
+        "body_sha256": "d3035e2a590234ea5e63ec0b15a5788286b83f3a7c55f142c24aabe6b5d6cb8d",
+        "direct": false,
+        "origin": false,
+        "path": "/healthz",
+        "status": 200
+      },
+      {
+        "body_sha256": "b28979c75fc3ddcf3e6a38133fe7d46e0903891d713b5fb057d7d46018a43247",
+        "direct": false,
+        "origin": false,
+        "path": "/api/v1/me",
+        "status": 401
+      },
+      {
+        "body_sha256": "ab126b4ada73e9a3d9735aae9a2370088dcd1af4d066f6c7265e1e9da841ac75",
+        "direct": false,
+        "origin": false,
+        "path": "/api/v1/admin/performance/summary",
+        "status": 401
+      },
+      {
+        "body_sha256": "82ebc9919806fd408c157397044fbad9f654d4d4a55dc3c59a49e7a99f156b89",
+        "direct": false,
+        "origin": false,
+        "path": "/admin/index.html",
+        "status": 200
+      },
+      {
+        "body_sha256": "705e02103614bd8aa68c5aeb0bf0e8250d9b8aaf23db969516dc478ecf1fb62d",
+        "direct": false,
+        "origin": false,
+        "path": "/assets/admin-cFfbTtH3.css",
+        "status": 200
+      },
+      {
+        "body_sha256": "2f292fa16132435d9a98c9436c12dded823003d08b5e062d88899ec707613257",
+        "direct": false,
+        "origin": false,
+        "path": "/assets/admin-f9kFtfWE.js",
+        "status": 200
+      },
+      {
+        "body_sha256": "9170f4b4a14f979bebbbe7e833ed8d68537bdc424f591dc9d16ec0d70c8254ed",
+        "direct": false,
+        "origin": false,
+        "path": "/assets/schema-formats-BUP0coFn.js",
+        "status": 200
+      }
+    ],
+    "active_managed_worker_tasks_stopped": false
+  },
+  "authorized_api_verification": {
+    "authenticated_get_only_business_operations": true,
+    "checks": [
+      {
+        "method": "POST",
+        "path": "/api/v1/auth/login",
+        "status": 200
+      },
+      {
+        "body_sha256": "af0da34c17b64921ff8e70fffbc89b6fa7a9445ef03cf8407b99d913231acb00",
+        "bytes": 16,
+        "method": "GET",
+        "path": "/api/v1/admin/inspection/access",
+        "status": 200
+      },
+      {
+        "audit_id": "48e3b2b8-8484-499a-9b53-dde6825c4085",
+        "body_sha256": "a50e7f8dd0e2f92aca6f87cc550368782b5924439b5d8883c14bc378d66675fa",
+        "bytes": 598,
+        "coverage": {
+          "complete": false,
+          "complete_session_count": 0,
+          "dropped_spans": 0,
+          "flush_errors": 0,
+          "instrumented_run_count": 0,
+          "invalid_attributes": 0,
+          "purged_session_count": 0,
+          "run_count": 135,
+          "session_count": 0,
+          "span_count": 0,
+          "unfinished_span_count": 0,
+          "uninstrumented_run_count": 135
+        },
+        "item_count": 0,
+        "method": "GET",
+        "path": "/api/v1/admin/performance/summary",
+        "status": 200
+      },
+      {
+        "audit_id": "48a8a20f-10fb-4f18-b0af-732fb6c3c68d",
+        "body_sha256": "d4c6c5572de373062ed3c1a9acd6dfdf0843ba83526196f5c84ffcede56bbab8",
+        "bytes": 741,
+        "coverage": {
+          "complete": false,
+          "complete_session_count": 0,
+          "dropped_spans": 0,
+          "flush_errors": 0,
+          "instrumented_run_count": 0,
+          "invalid_attributes": 0,
+          "purged_session_count": 0,
+          "run_count": 1,
+          "session_count": 0,
+          "span_count": 0,
+          "unfinished_span_count": 0,
+          "uninstrumented_run_count": 1
+        },
+        "item_count": 0,
+        "method": "GET",
+        "path": "/api/v1/admin/performance/runs/b0bfda95-98a6-47fc-94b2-c70bf4bfc07b",
+        "session_count": 0,
+        "status": 200,
+        "total": 0
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/auth/logout",
+        "status": 204
+      },
+      {
+        "body_sha256": "64093a1021840bac78beba3d22f9b9402e3cb78205901bf42f59b30c26d3d7d7",
+        "bytes": 147,
+        "method": "GET",
+        "path": "/api/v1/me",
+        "status": 401
+      }
+    ],
+    "existing_account": "admin_ops",
+    "logout_confirmed": true,
+    "observed_at": "2026-11-16T07:20:28.278473+00:00",
+    "origin": "https://bondbuddy.gululai.com",
+    "permissions_changed": false,
+    "post_logout_session_rejected": true,
+    "run_id": "b0bfda95-98a6-47fc-94b2-c70bf4bfc07b",
+    "session_fabricated": false,
+    "status": "PASS",
+    "task_creation": false
+  },
+  "parser_observed": {
+    "name": "bb-execution-worker-parse-1",
+    "id": "4efdd17b1ed3e987bfb7c1fecf88b5854de201f45bd939697a6201372ba6d8f8",
+    "image": "sha256:bd8b15bdf589f26da4a6f11d17fe38271e309ee0c1484569ba4ce2da830e11f7",
+    "running": true,
+    "status": "running",
+    "started_at": "2026-11-16T01:46:28.754746267Z",
+    "exit_code": 0,
+    "restart_policy": {
+      "Name": "unless-stopped",
+      "MaximumRetryCount": 0
+    }
+  },
+  "managed_worker": {
+    "status": "NOT_DEPLOYED",
+    "live_fine_step_collection_verified": false,
+    "candidate_verified_offline": true,
+    "existing_system_image": "img-6cnm1flv",
+    "candidate_overlay_sha256": "52d5d737b1142ae39214fccd9b3e6d776c0df893ef3e0d0c1d9618fbaadaa4fe",
+    "candidate_source_sha256": "2785ac5aa8106e1f13b2715b952efe0367a48bea413be8a72ae70127805cb5f0",
+    "blocked_by": "Current Tencent operations role denies TAT read access; no established node SSH maintenance path. Existing retained warm bootstrap does not install the new helper.",
+    "tat_read_only_denial": {
+      "account_id": "100006372392",
+      "agent": {
+        "error": {
+          "code": "UnauthorizedOperation",
+          "request_id": "5e196572-a298-4986-af68-f8a91ac14fbd"
+        }
+      },
+      "observed_at": "2026-11-16T06:42:46.330Z",
+      "production_changed": false,
+      "read_only": true,
+      "role_id": "4611686018450406472"
+    },
+    "iam_or_cloud_action_allowlist_expanded": false,
+    "retained_bootstrap_evidence_rewritten": false,
+    "artificial_demand_created": false
+  },
+  "acceptance": {
+    "standard_quality_receipt": false,
+    "real_model_golden_completed": false,
+    "independent_human_signoff_completed": false,
+    "deployment_authorization": "Explicit user batch authorization and logging-only exception, recorded in deployment-authorization.md"
+  },
+  "evidence_sha256": {
+    "main-cutover-r3.stdout.log": "557ed0cafddcb74c9bbe4b498cfc804c5405a0e44e32c2ac4d384fd3e55143d4",
+    "main-cutover-r3.execution.json": "9a51cddec830bb09579c2d251d633c9f0791d56e2717566de302dff12e9eb558",
+    "merged-release-source-r3.json": "19e47cb1b7e9cfae900037661effeb50c25e0bde3eb4312e73d2eaa723839f45",
+    "authorized-performance-live.json": "ce59703d36e9bbdad4c166df81175f7be2b4b6596b9fb69454ebbbee1a35820f",
+    "authorized-performance-live-csrf-corrected.json": "06f81d5cfe5ea2a8052774721193a73c76c53092f45ed303bb936a1d58341815",
+    "authorized-performance-csrf-fix-receipt.json": "eddbc3fe7245ee58c85735c77d8e275b807e5784e268ade32502aa4d7b3f6609"
+  }
+}

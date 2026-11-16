@@ -1,0 +1,75 @@
+{
+  "schema": "fine-step1420-develop-validation-v1",
+  "recorded_at": "2026-11-16T07:25:14.805521+00:00",
+  "base_develop": "372d2ec529b1d36eb43735a7b1b0c9e5dcd2bb54",
+  "node": "v22.14.0",
+  "python": "Python 3.14.3",
+  "tests": [
+    {
+      "command": "node --test deploy/m1/releases/fine-step1420/managed-node-eight/helper.test.mjs deploy/m1/releases/fine-step1420/managed-node-eight/bootstrap-encoding.test.mjs",
+      "pass": 8,
+      "fail": 0,
+      "skipped": 0,
+      "bounds_bytes": [
+        15904,
+        15904
+      ],
+      "limit_bytes": 16384,
+      "python_ast_payload_equivalence": true
+    },
+    {
+      "command": "python3 -m unittest discover -s deploy/m1/releases/fine-step1420/main-node-eight -p 'test_*.py' -v",
+      "pass": 28,
+      "fail": 0,
+      "skipped": 0,
+      "io": "synthetic"
+    }
+  ],
+  "checked_sources": {
+    "deploy/tencent-elasticity/bootstrap.mjs": "8a160df7157942f1703c4c7d99e57fa7642b3d9931dc97ba2e1cf0354a55c94e",
+    "deploy/tencent-elasticity/business-overlay.mjs": "d14cc0d067af9b8872a1df6dab8e04ed9c7c55a6125e395deb1b452bae2d7366",
+    "deploy/m1/releases/fine-step1420/managed-node-eight/bootstrap-encoding.test.mjs": "a385495762bd9533154cee2c2038f63e56aabdaf98a54a254bc4b9457ca95db3",
+    "deploy/m1/releases/fine-step1420/managed-node-eight/helper.test.mjs": "9701613d728fd3bc3f1e84b20201dfd027e01cd615d664bc8b50900cd5224dc6",
+    "deploy/m1/releases/fine-step1420/main-node-eight/main-cutover-adapter.py": "00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67",
+    "deploy/m1/releases/fine-step1420/main-node-eight/run_main_cutover.py": "fbacafbefeaa9b8b34e9863e48ca80e4aa91f84ca2ea41b003575436213ab99d",
+    "deploy/m1/releases/fine-step1420/main-node-eight/test_main_cutover.py": "d5f44d7b4800d2222f1bc890e1860ae70a338cab27a96035dba24abce8db73c7",
+    "deploy/m1/releases/fine-step1420/main-node-eight/test_main_driver.py": "bfa57940140941e023efa5222a76e7d5990ea5b056b76ee136e6a8bedc506805",
+    "deploy/m1/releases/fine-step1420/main-node-eight/test_hostconfig_defaults.py": "c0094f7465f44025c3eaa811e9affacf70fe0457a53b3016cbf0a018bf9a0be8"
+  },
+  "git_diff_check_passed": true,
+  "historical_original_oci_tests_reused_not_rerun": true,
+  "production_calls_in_backport_tests": false,
+  "db_or_model_calls": false,
+  "git_diff_check_command": "git diff --cached --check",
+  "git_whitespace_policy": "Hash-bound fixture directory permits CR at end of line via .gitattributes; blank-at-eol, blank-at-eof and space-before-tab checks remain enabled.",
+  "independent_review": {
+    "agent": "prepare_scoped_release",
+    "scope": "PASS",
+    "python": "Python 3.12.14",
+    "main_tests_pass": 28,
+    "main_tests_fail": 0,
+    "main_tests_skipped": 0,
+    "production_actions": false
+  },
+  "postdeploy_main_readonly": {
+    "path": "main-node-eight/postdeploy-main-readonly-20261116T072626Z.json",
+    "sha256": "d4b0924f0da6fb4acbd147d2c6d6e9b1abb0b97cb9ac2a7f02786123e51de344",
+    "scope": "main API/ops/web only; no worker payload installation"
+  },
+  "selected_files": 51,
+  "sensitive_pattern_scan": {
+    "files_and_tar_members_checked": true,
+    "matched_patterns": [],
+    "patterns": [
+      "private key",
+      "GitHub token",
+      "signed URL",
+      "database URL password"
+    ]
+  },
+  "postdeploy_azure_parser_readonly": {
+    "path": "main-node-eight/postdeploy-azure-parser-readonly-20261116T072845Z.json",
+    "sha256": "8f44bb7a502e112e0418ae8fb0ef759744947017bf78cb4a7643ba23a8fd75de",
+    "scope": "parser observed running with zero restarts; no production actions"
+  }
+}

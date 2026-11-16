@@ -1,0 +1,116 @@
+{
+  "schema": "fine-step1420-develop-backport-selection-v1",
+  "base_develop": "372d2ec529b1d36eb43735a7b1b0c9e5dcd2bb54",
+  "source_master": "e4f5a17ae876f2f31e7d231ab250599f5c0f72ae",
+  "source_prs": [
+    1428,
+    1457
+  ],
+  "production_sources": [
+    "deploy/tencent-elasticity/bootstrap.mjs",
+    "deploy/tencent-elasticity/business-overlay.mjs"
+  ],
+  "retained_develop_behavior": "No other runtime/config/policy code changed; line endings for public bootstrap inputs normalized only.",
+  "archive_scope": "Verified 40 authoring + 23 review files and 3 pinned SQL bytes; archived payload is test/release evidence, not activated by this PR.",
+  "new_tests_import_production_sources": true,
+  "historical_oci_receipt_not_rerun": true,
+  "production_called": false,
+  "files": {
+    "behavior-preservation.json": {
+      "bytes": 1023,
+      "sha256": "4f3dd0f04f6a13875a134b9c5d9505cd6a99331991406192e0fbde44b17e5adf"
+    },
+    "boot-public-config.json": {
+      "bytes": 833,
+      "sha256": "bc9d5598e06908fd444428f553be3379190aa22536e0321faae978707652e1a1"
+    },
+    "bootstrap-encoding.test.mjs": {
+      "bytes": 5101,
+      "sha256": "a385495762bd9533154cee2c2038f63e56aabdaf98a54a254bc4b9457ca95db3"
+    },
+    "bootstrap-equivalence.json": {
+      "bytes": 749,
+      "sha256": "2b913e3189902b26df41a69e937c0b5b8489abbdb05dc09df0980f25adede304"
+    },
+    "bootstrap-user-data-bound.json": {
+      "bytes": 1318,
+      "sha256": "e03986c47381e36da2157b0e6fd39dc06f0bdeb01a22cbd157fc1d5c29275ef5"
+    },
+    "descriptor.json": {
+      "bytes": 12966,
+      "sha256": "ae69f5a4aa6acc7fb0868f0c94eaf8493e5522154c303f0c721508b95d7fcb09"
+    },
+    "helper.test.mjs": {
+      "bytes": 4944,
+      "sha256": "9701613d728fd3bc3f1e84b20201dfd027e01cd615d664bc8b50900cd5224dc6"
+    },
+    "oci-import-fixed-verification.json": {
+      "bytes": 840,
+      "sha256": "c3da78acfd83f98961b5b16861a7cbb6a5174e8a23f494c4c139254470feb08b"
+    },
+    "overlay.tar.gz": {
+      "bytes": 422175,
+      "sha256": "52d5d737b1142ae39214fccd9b3e6d776c0df893ef3e0d0c1d9618fbaadaa4fe"
+    },
+    "package-summary.json": {
+      "bytes": 1561,
+      "sha256": "1e6d81553dfb39e021878605f47dcefeedcb2bf4730ff073254abe760d48ba54"
+    },
+    "payload-provenance.json": {
+      "bytes": 34535,
+      "sha256": "a465c81b40f8df100cfc71096eced0d535d338a6ad30c111cb8f4daeac6939a5"
+    },
+    "role-paths.json": {
+      "bytes": 2785,
+      "sha256": "f844d370541e277b36c9b88bbe918970490590a563d468ded5ce350b44674a8b"
+    },
+    "semantic-build.json": {
+      "bytes": 957,
+      "sha256": "f448b6e8237dcde79f2a5f64054b1e4f15b818bb376c12f5dfbc7e93f5c25c1b"
+    },
+    "source-descriptor.json": {
+      "bytes": 13156,
+      "sha256": "2785ac5aa8106e1f13b2715b952efe0367a48bea413be8a72ae70127805cb5f0"
+    },
+    "boot-reference/bootstrap.mjs": {
+      "bytes": 11191,
+      "sha256": "71efa66df88f9a30a8230bcd06af1559af786f339fddcd0c2f5e1d86589e3fe9"
+    },
+    "boot-reference/business-overlay.mjs": {
+      "bytes": 14782,
+      "sha256": "d14cc0d067af9b8872a1df6dab8e04ed9c7c55a6125e395deb1b452bae2d7366"
+    },
+    "boot-reference/compose.yaml": {
+      "bytes": 3384,
+      "sha256": "9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd"
+    },
+    "boot-reference/node-adapter.mjs": {
+      "bytes": 20001,
+      "sha256": "ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248"
+    },
+    "boot-reference/policy.mjs": {
+      "bytes": 8823,
+      "sha256": "0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c"
+    },
+    "fixtures/business-overlay.before.mjs": {
+      "bytes": 8018,
+      "sha256": "ea741b7168ef9ae6ea7823b1e5b9472163190a4baf8bdefba6b0b71b28e796e9"
+    },
+    "fixtures/eight-descriptor.json": {
+      "bytes": 4445,
+      "sha256": "9370afc0d1b0586ccbf9668d71a0ab87bab04df7d56db0e4d91aa159afcaf046"
+    },
+    "fixtures/four-descriptor.json": {
+      "bytes": 3405,
+      "sha256": "53cb7032a70a24e1d2aee0ed164361436de6aa24c4be4357fbb0b70912c43df2"
+    },
+    "fixtures/four-overlay.tar.gz": {
+      "bytes": 139561,
+      "sha256": "2323495579f239f8454d9c51a9fe90086b9b42eb229e7efb2b0565ed6a4ddc9a"
+    },
+    "fixtures/policy.mjs": {
+      "bytes": 8823,
+      "sha256": "0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c"
+    }
+  }
+}
