@@ -16,21 +16,28 @@ const safePath = (path, eight=false,recovery=false) => typeof path === 'string' 
 
 
 const PERFORMANCE_VERSION = 'shared-business-eight-performance-v1';
+const RECOVERY_PERFORMANCE_VERSION = 'shared-business-eight-performance-recovery-v1';
+const isPerformanceVersion = version => [PERFORMANCE_VERSION, RECOVERY_PERFORMANCE_VERSION].includes(version);
 const performancePaths = Object.freeze({"authoring":["apps/api/dist/batch-admission.js","apps/api/dist/data.js","apps/api/dist/execution-capacity.js","apps/api/dist/log-ops.js","apps/api/dist/m4-workspace.js","apps/api/dist/observability.js","apps/api/dist/performance-dispatch.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/project-file-consistency.js","apps/api/dist/project-file-workspace.js","apps/api/dist/provider-results.js","apps/api/dist/queue.js","apps/api/dist/workpapers.js","apps/api/package.json","apps/worker/dist/bounded-items.js","apps/worker/dist/codex-adapter.js","apps/worker/dist/deferred-qa-journal.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/integrity-browser-boundary.js","apps/worker/dist/integrity-browser.js","apps/worker/dist/m4-document-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/project-qa-stage.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","apps/worker/dist/workpaper-progressive-groups.js","apps/worker/dist/workpaper-shared-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"],"review":["apps/api/dist/batch-admission.js","apps/api/dist/execution-capacity.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/queue.js","apps/api/package.json","apps/worker/dist/codex-adapter.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"]});
 const performanceSql = Object.freeze({"db/migrations/0180_batch_four_way.sql":{"bytes":10196,"sha256":"9529796afd9564dafb8f1a9fff5b792444b66b934838870430471f0d787b2caf"},"db/migrations/0186_shared_batch_capacity.sql":{"bytes":967,"sha256":"841e463b7f0b470be96b5e24ac3181445f95635068fcc6d437f3c9f50fb2539f"},"db/migrations/0188_execution_node_eight_capacity.sql":{"bytes":1605,"sha256":"c921711132ead5585a9976d6fb1343cec746b2fef55a60a2262f61be78f836a6"}});
 
+const recoveryPerformancePaths = Object.freeze({"authoring":["apps/api/dist/batch-admission.js","apps/api/dist/data.js","apps/api/dist/execution-capacity.js","apps/api/dist/log-ops.js","apps/api/dist/m4-workspace.js","apps/api/dist/observability.js","apps/api/dist/performance-dispatch.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/project-file-consistency.js","apps/api/dist/project-file-workspace.js","apps/api/dist/provider-results.js","apps/api/dist/queue.js","apps/api/dist/workpapers.js","apps/api/package.json","apps/worker/dist/bounded-items.js","apps/worker/dist/codex-adapter.js","apps/worker/dist/deferred-qa-journal.js","apps/worker/dist/execution-node-runtime.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/integrity-browser-boundary.js","apps/worker/dist/integrity-browser-stage.js","apps/worker/dist/integrity-browser.js","apps/worker/dist/m4-document-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/managed-run-retries.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/project-qa-stage.js","apps/worker/dist/run-lease-heartbeat.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","apps/worker/dist/workpaper-progressive-groups.js","apps/worker/dist/workpaper-shared-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"],"review":["apps/api/dist/batch-admission.js","apps/api/dist/execution-capacity.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/queue.js","apps/api/package.json","apps/worker/dist/codex-adapter.js","apps/worker/dist/execution-node-runtime.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/managed-run-retries.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/run-lease-heartbeat.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"]});
+const recoveryPerformanceSql = Object.freeze({...performanceSql,"db/migrations/0189_terminal_recovery_audit.sql":{"bytes":1416,"sha256":"babe66b762a71248157a8b9b1d0c5687803dad8afbd1e578242cc4b3bf208f94"}});
+const performanceProfile = version => version===RECOVERY_PERFORMANCE_VERSION ? {paths:recoveryPerformancePaths,sql:recoveryPerformanceSql,count:70} : {paths:performancePaths,sql:performanceSql,count:63};
+
 function performanceKey(f) { return `${f.service_id}/${f.path}`; }
-function validPerformanceFiles(files) {
-  return Array.isArray(files) && files.length === 63 && new Set(files.map(performanceKey)).size === 63 &&
+function validPerformanceFiles(files, version = files?.length===70 ? RECOVERY_PERFORMANCE_VERSION : PERFORMANCE_VERSION) {
+  const {paths,count}=performanceProfile(version);
+  return Array.isArray(files) && files.length === count && new Set(files.map(performanceKey)).size === count &&
     files.every(f=>f && Object.keys(f).length === 4 && Object.keys(f).every(k=>['service_id','path','sha256','bytes'].includes(k)) &&
-      Object.hasOwn(performancePaths,f.service_id) && performancePaths[f.service_id].includes(f.path) &&
+      Object.hasOwn(paths,f.service_id) && paths[f.service_id].includes(f.path) &&
       /^[a-f0-9]{64}$/.test(f.sha256) && Number.isInteger(f.bytes) && f.bytes > 0 && f.bytes <= 262144) &&
-    Object.entries(performancePaths).every(([role,paths])=>files.filter(f=>f.service_id===role).length===paths.length);
+    Object.entries(paths).every(([role,paths])=>files.filter(f=>f.service_id===role).length===paths.length);
 }
 function performanceArchiveFiles(archive,descriptor) {
-  requireThat(validPerformanceFiles(descriptor.files) && archive.length===descriptor.bytes && sha256(archive)===descriptor.sha256,'BUSINESS_OVERLAY_ARCHIVE');
+  requireThat(validPerformanceFiles(descriptor.files,descriptor.version) && archive.length===descriptor.bytes && sha256(archive)===descriptor.sha256,'BUSINESS_OVERLAY_ARCHIVE');
   const tar=gunzipSync(archive,{maxOutputLength:4194304}), result=new Map();
-  const expected=new Map([...descriptor.files.map(f=>[performanceKey(f),f]),...Object.entries(performanceSql)]);
+  const expected=new Map([...descriptor.files.map(f=>[performanceKey(f),f]),...Object.entries(performanceProfile(descriptor.version).sql)]);
   let offset=0,ended=false;
   while(offset+512<=tar.length){
     const h=tar.subarray(offset,offset+512);offset+=512;
@@ -45,7 +52,7 @@ function performanceArchiveFiles(archive,descriptor) {
     const bytes=Buffer.from(tar.subarray(offset,offset+size));requireThat(sha256(bytes)===entry.sha256,'BUSINESS_OVERLAY_FILE_HASH');
     result.set(name,bytes);offset+=Math.ceil(size/512)*512;
   }
-  requireThat(ended && result.size===66 && [...expected.keys()].every(p=>result.has(p)),'BUSINESS_OVERLAY_FILES');
+  requireThat(ended && result.size===expected.size && [...expected.keys()].every(p=>result.has(p)),'BUSINESS_OVERLAY_FILES');
   return new Map(descriptor.files.map(f=>[performanceKey(f),result.get(performanceKey(f))]));
 }
 function performanceCompose(base,directory,files) {
@@ -61,9 +68,9 @@ function performanceCompose(base,directory,files) {
 }
 
 export function validateBusinessOverlay(value, pin) {
-  const performance=value?.version===PERFORMANCE_VERSION;
+  const performance=isPerformanceVersion(value?.version);
   if(performance){
-    requireThat(value.sha256===pin && /^[a-f0-9]{64}$/.test(pin) && Number.isInteger(value.bytes) && value.bytes>0 && value.bytes<=524288 && validPerformanceFiles(value.files),'BUSINESS_OVERLAY_SCOPE');
+    requireThat(value.sha256===pin && /^[a-f0-9]{64}$/.test(pin) && Number.isInteger(value.bytes) && value.bytes>0 && value.bytes<=524288 && validPerformanceFiles(value.files,value.version),'BUSINESS_OVERLAY_SCOPE');
   } else {
   const recovery=value?.version===recoveryVersion,eight=recovery||value?.version==='shared-business-eight-v1',count=recovery?31:eight?25:19;
   requireThat((eight || value?.version === 'shared-business-four-v1') && value.sha256 === pin && /^[a-f0-9]{64}$/.test(pin) &&
@@ -82,7 +89,7 @@ export function validateBusinessOverlay(value, pin) {
 
 /** Read only regular USTAR members; never let tar create links or arbitrary paths. */
 export function businessOverlayFiles(archive, descriptor) {
-  if(descriptor.version===PERFORMANCE_VERSION)return performanceArchiveFiles(archive,descriptor);
+  if(isPerformanceVersion(descriptor.version))return performanceArchiveFiles(archive,descriptor);
   requireThat(archive.length === descriptor.bytes && sha256(archive) === descriptor.sha256, 'BUSINESS_OVERLAY_ARCHIVE');
   const tar = gunzipSync(archive, {maxOutputLength: 2097152}), result = new Map();
   const recovery=descriptor.version===recoveryVersion,eight=recovery||descriptor.version==='shared-business-eight-v1';
@@ -167,7 +174,7 @@ export async function installBusinessOverlay(descriptor, config, {fetchImpl=fetc
     const f=await open(ROOT,constants.O_RDONLY|constants.O_DIRECTORY);try{await f.sync();}finally{await f.close();}
   }
   await directory(target);
-  for(const entry of descriptor.files)await file(join(target,descriptor.version===PERFORMANCE_VERSION?performanceKey(entry):entry.path),entry);
+  for(const entry of descriptor.files)await file(join(target,isPerformanceVersion(descriptor.version)?performanceKey(entry):entry.path),entry);
   try {await lstat(composeFile);}catch(e){if(e.code!=='ENOENT')throw e;await write(composeFile,Buffer.from(compose));}
   await file(composeFile,{bytes:Buffer.byteLength(compose),sha256:sha256(compose)});
   return {compose_file:composeFile,compose_sha256:sha256(compose)};
