@@ -3,20 +3,22 @@ import {randomUUID} from 'node:crypto';
 import test from 'node:test';
 import {Pool} from 'pg';
 import {WORKPAPER_PRICE,workpaperChapters,workpaperProgressiveSelection,billingWireRoute,encodeBillingDto,emptyFileGenerationPreparation,type WorkpaperBatch} from '@bondbuddy/contracts';
-import {createServer} from './server.js';
-import {digest,transaction,type PrivateBlobs} from './data.js';
-import {grantCredits} from './billing.js';
-import {makeSyntheticDocxFixture} from './docx-fixtures.js';
-import {headerlessCatalogueXlsx} from './workpaper-catalogue-fixture.js';
+import {createServer} from '../../api/dist/server.js';
+import {digest,transaction,type PrivateBlobs} from '../../api/dist/data.js';
+import {grantCredits} from '../../api/dist/billing.js';
+import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
+import {headerlessCatalogueXlsx} from '../../api/dist/workpaper-catalogue-fixture.js';
 import {isolatedTestDatabase} from './test-database.js';
-import {advanceWorkpaperBatch,pauseSharedWorkpaperBatch} from './workpapers.js';
-import {inputManifestHash} from './production-rule-pin.js';
-import {claim,promoteWordArtifact,finish} from './queue.js';
-import {registerM4Artifacts} from './m4-workspace.js';
+import {advanceWorkpaperBatch,pauseSharedWorkpaperBatch} from '../../api/dist/workpapers.js';
+import {inputManifestHash} from '../../api/dist/production-rule-pin.js';
+import {claim,promoteWordArtifact,finish} from '../../api/dist/queue.js';
+import {registerM4Artifacts} from '../../api/dist/m4-workspace.js';
 
-const configured=!!process.env.BB_TEST_DATABASE_URL;
+// This integration suite belongs to worker: API must build before worker.
+const database=await isolatedTestDatabase(undefined,'execution-node-eight');
+const configured=!!database;
 async function fixture(key:string,chapters=9,automatic=false,credits=3000000,legacy=false){
- const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL}),user=randomUUID();let actor:string=user;
+ const pool=new Pool({connectionString:database}),user=randomUUID();let actor:string=user;
  const objects=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,Buffer.from(b));},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
   getIfExistsBounded:async(k,max)=>{const b=objects.get(k);return b&&b.length<=max?b:null;},exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
  const apiPool=legacy?new Proxy(pool,{get(target,key){
@@ -80,12 +82,12 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000,leg
 import {spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {writeFileSync} from 'node:fs';
-import {WorkerRuntime} from '../../worker/dist/runtime.js';
-import {PgModelCallBudget} from '../../worker/dist/model-call-budget.js';
-import {configureExecutionCapacity,executionCapacityControl,bindExecutionRegistration,registerExecutionRuntime} from './execution-capacity.js';
+import {WorkerRuntime} from './runtime.js';
+import {PgModelCallBudget} from './model-call-budget.js';
+import {configureExecutionCapacity,executionCapacityControl,bindExecutionRegistration,registerExecutionRuntime} from '../../api/dist/execution-capacity.js';
 const until=async(check:()=>Promise<boolean>,message:string)=>{for(let i=0;i<400;i++){if(await check())return;await delay(25);}throw Error(message);};
 test('eight real native children share one managed node and a frozen 250-file batch', {skip:!configured,timeout:60000},async()=>{
- const f=await fixture('eight',125,false,3000000,true),runtimePool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL,max:20});
+ const f=await fixture('eight',125,false,3000000,true),runtimePool=new Pool({connectionString:database,max:20});
  let worker:WorkerRuntime|undefined;const children:ReturnType<typeof spawn>[]=[],records:any[]=[],logs:any[]=[];let release!:()=>void;
  const overlap=new Promise<void>(r=>{release=r;}),control=executionCapacityControl(f.pool),hash='a'.repeat(64),identity={account_id:'synthetic',region:'synthetic',instance_id:'eight-native',epoch:randomUUID()};
  try{
