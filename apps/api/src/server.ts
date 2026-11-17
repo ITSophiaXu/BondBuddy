@@ -78,7 +78,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertAuthoringAuditRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -783,6 +783,7 @@ export function createServer(settings: Settings = {}) {
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
         assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
+      if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode !== 'unified_v1') assertAuthoringAuditRequired(resolved);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
       let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
@@ -925,7 +926,10 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
-        if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
+        if (['update','generation'].includes(p.kind)) {
+          assertAuthoringSourceRequired(resolved, authoring.previous_output);
+          assertAuthoringAuditRequired(resolved);
+        }
         inheritPreviousOutputFormat(authoring);
         try {
           const snapshot=await lockNoneBaseline(client,{owner:user,projectId:id},p.kind,resolved,authoring,b.first_draft_confirmation,new Date().toISOString());
@@ -1519,6 +1523,7 @@ export function createServer(settings: Settings = {}) {
         assertAuthoringSourceRequired(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.previous_output);
         assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
       }
+      if (['update','generation'].includes(lockedKind)) assertAuthoringAuditRequired(input.rows[0].manifest.materials);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
