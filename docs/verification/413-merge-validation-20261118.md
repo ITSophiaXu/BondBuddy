@@ -25,6 +25,7 @@ Linux arm64 / Node22.23.4 / PostgreSQL16；真实 Codex0.169.0，binary SHA256 `
 | 16个定向Node suite | 180/180 PASS，0 fail/skip |
 | Python bounded_image/pdf_pages/continuation/fixed_edit | 116/116 PASS，0 fail/skip |
 | 4个真实PG恢复/锁/账务suite | 10/10 PASS，0 fail/skip |
+| Linux VM worker-isolation / split-deploy | 37/37 PASS，0 fail/skip |
 | `scripts/preflight-host-render/verify.mjs` | PASS；纯分页失败可交接后host通过，混合事实/正文骤减仍拒绝，60→20页仍拒绝 |
 
 Node覆盖adapter、exec-log、gateway、origin、图片和continuation工具、文件输出限制/恢复/说明/SessionStart、格式/交付/篇幅修复、真实Copilot协议和真实CLI模型请求。真实CLI目录断言确认没有原生view_image且受控MCP实际输出JPEG。
@@ -45,7 +46,7 @@ PG覆盖 `file-authoring-payload-recovery.pg.test`、`unified-timeout-recovery.t
 
 ## 可核对证据
 
-本地收据 `receipt.json` SHA256：`a49481544c990fe84307892761ef3feb3036d77f46ea207a9da541fda4088fa9`，目录 `/Users/chrisliu/Downloads/BondBuddy-413-merge-20261118/`。日志不包含客户材料或真实凭据。
+本地收据 `receipt.json` SHA256：`5a02fadfe3ba9cfb138895c8ad23e96613ff1e225e5c6f0c6c6c7ceee6d12de5`，目录 `/Users/chrisliu/Downloads/BondBuddy-413-merge-20261118/`。日志不包含客户材料或真实凭据。
 
 | 日志 | SHA256 |
 |---|---|
@@ -54,3 +55,7 @@ PG覆盖 `file-authoring-payload-recovery.pg.test`、`unified-timeout-recovery.t
 | `node-final.tap` | `620709c10897a93b3c2b4fb98ac19d401a591f2431be7319bbbc00aeae50465e` |
 | `pg-confirmed.tap` | `6f92e5099899664ffafcd952920c77436ddc69851a5319e4f5d2466c7a7c5207` |
 | `host-render-final.json` | `4b190ae1478fd9ec09dd4f3c35225c850df9fc88e992de462dd9e473510c5b61` |
+
+补充部署检查：先前唯一export-target失败在develop基线相同，定位为Linux测试VM缺少脚本必需的ripgrep。临时提供官方ripgrep15.2.0（发行包SHA256=800b1e7206afe799dfb5a6901f23147cfaabe0e52210538100f61e86e1740915）后，原脚本和全部断言不变，37/37通过；未修改产品导出逻辑。
+
+部署日志 `deploy-confirmed.tap` SHA256：`b8479ac879c892c836d371f56304be34c48fe70a37969d423c09f02faea39a8d`。全部产品与测试源码对应 `c8464fcf82927c0beecad99c377ea5f4cd66998f`，此后仅补充本文验证记录。
