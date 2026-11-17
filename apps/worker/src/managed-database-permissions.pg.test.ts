@@ -69,6 +69,29 @@ test('captured consumer ACL supports real admission, result persistence and term
     await assert.rejects(worker.query('TRUNCATE public.bb_evidence_gate_events'),{code:'42501'});
     await assert.rejects(worker.query('SELECT public.bb_lock_evidence_gate(NULL)'),{code:'22004'});
   });
+  await t.test('preflight rejects a missing indirect workpaper mutex dependency before enrollment',async()=>{
+    await admin.query(`REVOKE SELECT ON public.bb_workpaper_paid_check_items FROM ${ident(role)}`);
+    await assert.rejects(assertManagedDatabasePrivileges(worker),
+      /MANAGED_DATABASE_PRIVILEGES_MISSING:workpaper_paid_check_items$/);
+    await apply('managed-execution-prerequisites.sql');
+    await assertManagedDatabasePrivileges(worker);
+    const rights=(await admin.query(`SELECT
+      has_table_privilege($1,'public.bb_workpaper_paid_check_items','SELECT') AS read,
+      has_table_privilege($1,'public.bb_workpaper_paid_check_items','INSERT,UPDATE,DELETE,TRUNCATE') AS mutate`,[role])).rows[0];
+    assert.deepEqual(rights,{read:true,mutate:false});
+    await admin.query(`REVOKE SELECT(purpose) ON public.bb_platform_principals FROM ${ident(role)}`);
+    await assert.rejects(assertManagedDatabasePrivileges(worker),/MANAGED_DATABASE_PRIVILEGES_MISSING:platform_probe_owner$/);
+    await apply('managed-execution-prerequisites.sql');
+    const platform=(await admin.query(`SELECT has_table_privilege($1,'public.bb_platform_principals','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') AS broad,
+      has_column_privilege($1,'public.bb_platform_principals','user_id','SELECT') AND has_column_privilege($1,'public.bb_platform_principals','purpose','SELECT') AS required`,[role])).rows[0];
+    assert.deepEqual(platform,{broad:false,required:true});
+    await admin.query(`REVOKE INSERT(manifest) ON public.bb_m4_executions FROM ${ident(role)}`);
+    await admin.query(`REVOKE INSERT(charged_points) ON public.bb_credit_reservations FROM ${ident(role)}`);
+    await assert.rejects(assertManagedDatabasePrivileges(worker),
+      /MANAGED_DATABASE_PRIVILEGES_MISSING:reservation_charged_points_insert,workpaper_execution_insert$/);
+    await apply('managed-execution-prerequisites.sql');
+    assert.equal((await admin.query("SELECT has_table_privilege($1,'public.bb_m4_executions','INSERT,UPDATE,DELETE,TRUNCATE') AS broad",[role])).rows[0].broad,false);
+  });
   await t.test('preflight detects missing individual activity and settlement column grants',async()=>{
     await admin.query(`REVOKE INSERT(lease_token) ON public.bb_run_model_activity FROM ${ident(role)}`);
     await admin.query(`REVOKE UPDATE(updated_at) ON public.bb_run_model_activity FROM ${ident(role)}`);

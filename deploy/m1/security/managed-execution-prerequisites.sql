@@ -8,7 +8,15 @@ GRANT USAGE ON SEQUENCE public.bb_model_capacity_order TO :"runtime_role";
 GRANT UPDATE(state,finalized_at)
  ON public.bb_credit_reservations TO :"runtime_role";
 GRANT SELECT ON public.bb_project_file_check_attempts TO :"runtime_role";
+-- bb_m3_project_run_mutex reads these immutable batch identities as the caller.
+GRANT SELECT ON public.bb_workpaper_paid_check_items TO :"runtime_role";
+-- Both run/job INSERT guards check the reserved platform identity.
+GRANT SELECT(user_id,purpose) ON public.bb_platform_principals TO :"runtime_role";
 GRANT EXECUTE ON FUNCTION public.bb_lock_evidence_gate(boolean) TO :"runtime_role";
+-- The progressive consumer creates the child execution and its reservation.
+GRANT INSERT(run_id,owner_user_id,topic_id,manifest,input_hash)
+ ON public.bb_m4_executions TO :"runtime_role";
+GRANT INSERT(charged_points) ON public.bb_credit_reservations TO :"runtime_role";
 -- Full-source workers also contain the 0182 activity writer.
 GRANT SELECT, DELETE ON public.bb_run_model_activity TO :"runtime_role";
 GRANT INSERT(request_id,owner_user_id,run_id,job_id,lease_token,state),
