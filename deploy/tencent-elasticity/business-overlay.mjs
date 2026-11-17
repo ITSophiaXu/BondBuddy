@@ -27,7 +27,6 @@ const recoveryPerformancePaths = Object.freeze({"authoring":["apps/api/dist/batc
 const recoveryPerformanceSql = Object.freeze({...performanceSql,"db/migrations/0189_terminal_recovery_audit.sql":{"bytes":1416,"sha256":"babe66b762a71248157a8b9b1d0c5687803dad8afbd1e578242cc4b3bf208f94"}});
 const permissionsPaths = Object.fromEntries(Object.entries(recoveryPerformancePaths).map(([role,paths])=>[role,[...paths,'apps/api/dist/evidence-gate.js','apps/worker/dist/managed-database-preflight.js'].sort()]));
 const permissionsSql = Object.freeze({...recoveryPerformanceSql,'db/migrations/0190_managed_evidence_gate_lock.sql':{"bytes": 940, "sha256": "91977d6f5a83896738469def69ebc2a4e0757851a7e9fee21c75eb2ad07bbb3d"}});
-// Retain the current permission closure; add only encrypted-source classification.
 const encryptedPaths = Object.fromEntries(Object.entries(permissionsPaths).map(([role,paths])=>[role,[...paths,'apps/worker/dist/file-authoring-format.js','python/bondbuddy_file_authoring/fixed_edit.py'].sort()]));
 const performanceProfile = version => version===ENCRYPTED_VERSION ? {paths:encryptedPaths,sql:permissionsSql,count:78} : version===PERMISSIONS_VERSION ? {paths:permissionsPaths,sql:permissionsSql,count:74} : version===RECOVERY_PERFORMANCE_VERSION ? {paths:recoveryPerformancePaths,sql:recoveryPerformanceSql,count:70} : {paths:performancePaths,sql:performanceSql,count:63};
 
@@ -85,7 +84,6 @@ export function validateBusinessOverlay(value, pin) {
     value.files.every(f=>safePath(f.path,eight,recovery) && /^[a-f0-9]{64}$/.test(f.sha256) &&
       Number.isInteger(f.bytes) && f.bytes > 0 && f.bytes <= 262144), 'BUSINESS_OVERLAY_SCOPE');
   }
-  // The bearer URL travels only inside the existing role-bound private envelope.
   let url; try { url = new URL(value.url); } catch { throw Error('BUSINESS_OVERLAY_URL'); }
   requireThat(url.protocol === 'https:' && /^[a-z0-9]{3,24}\.blob\.core\.windows\.net$/.test(url.hostname) &&
     url.pathname.startsWith('/bondbuddy-private/') && !url.username && !url.password && !url.hash &&
@@ -131,7 +129,6 @@ export function businessOverlayCompose(base, directory, files) {
   const reviewMounts=files.filter(f=>common.has(f.path)).map(f=>`      - ${directory}/${f.path}:/app/${f.path==='apps/worker/dist/run-pipeline-review.js'?'apps/worker/dist/run-pipeline.js':f.path}:ro\n`).join('');
   const review=base.slice(boundary);
   requireThat(review.split(marker).length===2,'BUSINESS_OVERLAY_COMPOSE');
-  // The legacy descriptor never changes review; the eight-slot revision binds its common runtime closure.
   return authoring.replace(marker,marker+mounts)+(files.some(f=>f.path==='apps/worker/dist/runtime.js')?review.replace(marker,marker+reviewMounts):review);
 }
 
@@ -160,8 +157,7 @@ export async function installBusinessOverlay(descriptor, config, {fetchImpl=fetc
   requireThat(sha256(base)===config.compose_sha256,'NODE_COMPOSE_CHANGED');
   await directory(ROOT);
   const target=join(ROOT,descriptor.sha256), compose=businessOverlayCompose(base,target,descriptor.files);
-  // Keep the original Compose directory so relative seccomp/profile paths retain their meaning.
-  const composeFile=join(dirname(config.compose_file),`compose.business-${descriptor.sha256}.yaml`);
+  const composeFile=join(dirname(config.compose_file),`compose.business-${descriptor.sha256}-${config.compose_sha256}.yaml`);
   let installed=false;
   try {await lstat(target);installed=true;}catch(e){if(e.code!=='ENOENT')throw e;}
   if(!installed){
