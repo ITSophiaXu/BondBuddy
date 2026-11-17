@@ -20,6 +20,9 @@ export const continuationToolDefinitions = [
 ];
 
 export function parseContinuationStatus(text:string):Record<string,unknown> {
+  // The Python CLI adds one line ending. It is transport framing, not part of
+  // the bounded JSON body; remove only that single LF or CRLF.
+  text=text.endsWith('\r\n')?text.slice(0,-2):text.endsWith('\n')?text.slice(0,-1):text;
   if(Buffer.byteLength(text)>CONTINUATION_MAX_BYTES)throw Error('CONTINUATION_LIMIT');
   const value=JSON.parse(text);
   if(!value||Array.isArray(value)||value.version!=='file-authoring-continuation-v1')throw Error('CONTINUATION_INVALID');
@@ -68,7 +71,7 @@ export async function readAuthoringContinuation(root:string, progress?:Record<st
     const cancel=()=>finish(Error('CONTINUATION_CANCELLED'));
     const timer=setTimeout(()=>finish(Error('CONTINUATION_TIMEOUT')),10000);
     child.stdout.setEncoding('utf8');
-    child.stdout.on('data',(chunk:string)=>{size+=Buffer.byteLength(chunk);if(size>CONTINUATION_MAX_BYTES)finish(Error('CONTINUATION_LIMIT'));else output+=chunk});
+    child.stdout.on('data',(chunk:string)=>{size+=Buffer.byteLength(chunk);if(size>CONTINUATION_MAX_BYTES+2)finish(Error('CONTINUATION_LIMIT'));else output+=chunk});
     child.stderr.resume(); // Never echo raw paths, customer text or exception payloads.
     child.on('error',()=>finish(Error('CONTINUATION_UNAVAILABLE')));
     child.on('close',code=>{

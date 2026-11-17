@@ -17,6 +17,60 @@ test('continuation context is bounded JSON data and cannot insert a delimiter or
  assert.throws(()=>parseContinuationStatus('{"version":"other"}'));
 });
 
+test('one Python line ending fits outside the JSON limit but overlarge bodies remain rejected',()=>{
+ const value={version:'file-authoring-continuation-v1',status:'current',padding:''};
+ const fill=CONTINUATION_MAX_BYTES-Buffer.byteLength(JSON.stringify(value));
+ const body=JSON.stringify({...value,padding:'x'.repeat(fill)});
+ assert.equal(Buffer.byteLength(body),CONTINUATION_MAX_BYTES);
+ for(const ending of ['','\n','\r\n'])assert.equal(parseContinuationStatus(body+ending).status,'current');
+ for(const ending of ['','\n','\r\n'])assert.throws(()=>parseContinuationStatus(JSON.stringify({...value,padding:'x'.repeat(fill+1)})+ending),/CONTINUATION_LIMIT/);
+ // Do not turn arbitrary whitespace or repeated framing into extra body space.
+ for(const ending of ['\r',' \n','\n\n','\r\n\r\n'])assert.throws(()=>parseContinuationStatus(body+ending),/CONTINUATION_LIMIT/);
+});
+
+test('real Python checkpoint and status preserve an exact-limit body with eight bound PDF pages',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'bb-continuation-boundary-'));
+ const digest=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
+ try {
+  for(const name of ['scratch','output','materials'])await mkdir(join(root,name));
+  const source=Buffer.from('SYNTHETIC_PDF_CHECKPOINT_BOUNDARY');
+  await writeFile(join(root,'materials/m0.pdf'),source);
+  const sourceHash=digest(source),input={version:'codex-file-input-v1',input_hash:'a'.repeat(64),baseline_sha256:'b'.repeat(64),
+   format_tools:{version:'controlled-docx-v1'},materials:[{path:'materials/m0.pdf',sha256:sourceHash}]};
+  await writeFile(join(root,'input.json'),JSON.stringify(input));
+  await writeFile(join(root,'output/operations.json'),JSON.stringify({version:'word-operations-v1',input_hash:input.input_hash,baseline_sha256:input.baseline_sha256,operations:[]}));
+  const identity={version:'pdf-pages-v2',source_sha256:sourceHash,mode:'native',engine:{pdfplumber:'synthetic-boundary',x_tolerance:2,y_tolerance:3}};
+  const cacheDirectory=join(root,'scratch/pdf-pages',sourceHash,digest(JSON.stringify(identity)));
+  await mkdir(cacheDirectory,{recursive:true});
+  const reading_cursors=[];
+  for(let page=1;page<=8;page++) {
+   const data={page,mode:'native',coordinate_system:'pdf_points_top_left',width:595,height:842,image_count:0,warnings:[],records:[
+    {record_id:`p${page}-l1`,page,bbox:[0,0,1,1],text:'synthetic first record',uncertainty:[]},
+    {record_id:`p${page}-l2`,page,bbox:[0,1,1,2],text:'synthetic second record',uncertainty:[]},
+   ]};
+   await writeFile(join(cacheDirectory,`page-${String(page).padStart(4,'0')}.json`),JSON.stringify({identity,sha256:digest(JSON.stringify(data)),data}));
+   reading_cursors.push({path:'materials/m0.pdf',sha256:sourceHash,unit:'records',page,view:{mode:'native'},offset:0,next_offset:1,complete:false});
+  }
+  const progress={phase:'read_materials',next_action:'x',reading_cursors};
+  const first=await readAuthoringContinuation(root,progress);
+  assert.equal((first.progress as any).reading_cursors.length,8);
+  const nextLength=1+CONTINUATION_MAX_BYTES-Buffer.byteLength(JSON.stringify(first));
+  assert.ok(nextLength>0&&nextLength<=1024,'the normalized fixture can reach the limit with a valid next_action');
+  const saved=await readAuthoringContinuation(root,{...progress,next_action:'x'.repeat(nextLength)});
+  assert.equal(Buffer.byteLength(JSON.stringify(saved)),CONTINUATION_MAX_BYTES);
+  assert.equal(saved.status,'current');
+  assert.equal((saved.progress as any).reading_cursors.length,8);
+  assert.equal((saved.progress as any).next_action.length,nextLength);
+  const before=await readFile(join(root,'scratch/continuation.json'));
+  const read=await readAuthoringContinuation(root);
+  assert.deepEqual(read,saved);
+  const brief=await authoringContinuationBrief(root);
+  assert.equal(Buffer.byteLength(brief),CONTINUATION_MAX_BYTES);
+  assert.equal(JSON.parse(brief).status,'current','SessionStart must receive the exact-limit state rather than unavailable');
+  assert.deepEqual(await readFile(join(root,'scratch/continuation.json')),before);
+ } finally {await rm(root,{recursive:true,force:true})}
+});
+
 test('fixed tool checkpoints real saved operations and resumes its next action without reading the whole log',async()=>{
  const root=await mkdtemp(join(tmpdir(),'bb-continuation-tools-'));
  try {
