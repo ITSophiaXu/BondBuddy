@@ -17,6 +17,7 @@
 - contracts、domain、rule-pack-registry、rule-applicability-context、API、worker、web 构建及 web 生产打包通过。
 - npm run check:contracts 通过（接口样例、生命周期、OCR 与发行人绑定检查）。
 - API: required-audit.pg.test + required-source.pg.test + unified-authoring.test，最终相关 10 项通过、0 跳过。新增 PG 用例验证实际上传/确认、输入锁定、补齐后的报价/提交、旧快照拒绝与执行重放，并查询数据库确认无新增任务、报价、冻结。
+- 追加兼容回归：billing.pg.test、source-format.pg.test、prospectus-source-lock.pg.test 最终 10 项通过、0 跳过；覆盖并发执行、余额不足、结算/退回、价格变化及原稿/格式/续改版本锁定。旧夹具已补齐审计报告，材料数量同步更新，短期积分过期计时改为上传准备后开始。
 - Web: api.test + project-execution-upload.test，38 项通过、0 跳过。
 - Edge: required-audit.spec + required-reference.spec，6 项通过，覆盖缺失、仅报表/附注、补齐、移除后重新阻止、续改、既有原稿校验及 1440/390 像素无横向溢出。
 - 桌面及手机全页截图已检查，新增必填提示和上传区域无裁切或重叠。沿用当前页面结构与样式；原型 project-workspace.js 同步相同上传规则。
