@@ -1,5 +1,5 @@
 """Add or restore only the independent authenticated official-site listener."""
-import fcntl,hashlib,json,os,pathlib,subprocess,sys
+import fcntl,hashlib,json,os,pathlib,subprocess,sys,time
 ROOT=pathlib.Path('/var/lib/bondbuddy/integrity1477-20261117');STATE=pathlib.Path('/var/lib/bondbuddy/migration-908/state-main');BASE=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/proxy');UNIT='bondbuddy-integrity-proxy-mtls.service'
 EXPECTED={'server.conf':'c609440cef66bfecce3a6e617947d0fc4100b8f741085e2c975ed9bfd3e0f210','squid.conf':'26ed2f8047b1c62f37f832fa229da2fecbd7432bfa1720a8919e852ae759206f'}
 def need(ok,code):
@@ -8,8 +8,16 @@ def sha(b):return hashlib.sha256(b).hexdigest()
 def run(a):
  p=subprocess.run(a,capture_output=True,timeout=20);need(p.returncode==0,'command_failed');return p.stdout
 
+def ready():
+ # Type=simple reports active before stunnel has bound its socket.
+ end=time.monotonic()+5
+ while True:
+  if b'10.2.0.5:15435' in run(['ss','-Hln','sport = :15435']):
+   need(run(['systemctl','is-active',UNIT]).strip()==b'active','new_listener_inactive');return
+  need(time.monotonic()<end,'listener_absent');time.sleep(0.1)
+
 def main():
- need(os.geteuid()==0,'root');action=json.load(sys.stdin)['action'];need(action in ['install','rollback'],'action');fds=[]
+ need(os.geteuid()==0,'root');action=json.load(sys.stdin)['action'];need(action in ['install','reconcile','rollback'],'action');fds=[]
  try:
   for n in ['config.lock','deploy.lock']:
    fd=os.open(STATE/n,os.O_RDWR|os.O_NOFOLLOW);fds.append(fd);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -28,7 +36,12 @@ def main():
    for p,s in mapping:
     raw=s.read_bytes();fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'wb') as f:f.write(raw);f.flush();os.fsync(f.fileno())
-   run(['systemctl','daemon-reload']);run(['systemctl','enable','--now',UNIT]);need(run(['systemctl','is-active',UNIT]).strip()==b'active','new_listener_inactive');need(b'10.2.0.5:15435' in run(['ss','-Hln','sport = :15435']),'listener_absent');value['phase']='installed';record.write_text(json.dumps(value)+'\n');print(json.dumps({'status':'PASS',**value,'official_query_performed':False}))
+   run(['systemctl','daemon-reload']);run(['systemctl','enable','--now',UNIT]);ready();value['phase']='installed';record.write_text(json.dumps(value)+'\n');print(json.dumps({'status':'PASS',**value,'official_query_performed':False}))
+  elif action=='reconcile':
+   value=json.loads(record.read_bytes());need(value['phase'] in ['installed','installing'],'owned_egress_record')
+   for p,s in mapping:need(p.is_file() and not p.is_symlink() and sha(p.read_bytes())==value['files'][str(p)]==sha(s.read_bytes()),'reconcile_cas')
+   # Read the original attempt's effects; never repeat enable/start or installation.
+   ready();value['phase']='installed';value['reconciled']=True;record.write_text(json.dumps(value)+'\n');print(json.dumps({'status':'PASS','action':action,**value,'official_query_performed':False,'service_start_repeated':False}))
   else:
    value=json.loads(record.read_bytes());need(value['phase'] in ['installed','installing'],'owned_egress_record')
    for p,s in mapping:need(not p.exists() or sha(p.read_bytes())==value['files'][str(p)]==sha(s.read_bytes()),'rollback_cas')
