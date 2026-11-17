@@ -310,7 +310,7 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
       'mcp_servers.bb_images.required=true',
     ]) args.push('-c',setting);
     if(o.fileCompletion)args.push(...fileCompletionArgs());
-    if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
+    if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-copilot-file-authoring-model-catalog.json"');
   }
   if (o.imageFile) {
     if(resolve(o.imageFile)!==resolve(o.cwd,'..','input.png')||!o.ephemeral||o.fileAuthoring||o.materialDataFile||o.reviewDataFile||c.web_search==='live')throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');

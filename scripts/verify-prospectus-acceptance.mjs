@@ -30,6 +30,7 @@ const TOOL_FILES=Object.freeze([
   'apps/worker/src/codex-adapter.ts','apps/worker/src/file-authoring-stage.ts','apps/worker/src/file-authoring-quality.ts',
   'apps/worker/src/file-authoring-repair.ts','apps/worker/src/file-authoring-repair.test.ts',
   'apps/worker/src/unified-input.ts','apps/worker/src/file-authoring-format.ts','deploy/m1/codex-file-authoring-model-catalog.json',
+  'deploy/m1/codex-copilot-file-authoring-model-catalog.json',
   'python/bondbuddy_file_authoring/task.md','python/bondbuddy_file_authoring/fixed-edit.md',
   'python/bondbuddy_file_authoring/fixed_edit.py','python/bondbuddy_file_authoring/preflight.py','python/bondbuddy_file_authoring/check.py',
   'python/bondbuddy_file_authoring/reverse_audit.py','python/tests/test_reverse_audit_fixed.py',

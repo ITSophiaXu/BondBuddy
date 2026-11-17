@@ -420,7 +420,7 @@ for (const credential of ['env', 'command'] as const) {
       const catalog = credential === 'env' ? 'codex-deepseek-model-catalog.json'
         : mode === 'materials' ? 'codex-authoring-model-catalog.json'
         : mode === 'image' ? 'codex-image-model-catalog.json'
-        : mode === 'file' ? 'codex-file-authoring-model-catalog.json' : 'codex-model-catalog.json';
+        : mode === 'file' ? 'codex-copilot-file-authoring-model-catalog.json' : 'codex-model-catalog.json';
       assert.equal(catalogs.at(-1), `model_catalog_json="/opt/bondbuddy/${catalog}"`);
       if (credential === 'env') assert.equal(catalogs.length, 1, 'all DeepSeek modes retain the same fallback capabilities');
     });
