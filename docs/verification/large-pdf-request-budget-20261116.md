@@ -1,6 +1,6 @@
 # 大 PDF 请求预算与恢复验证（2026-11-16，Refs #994 / #1324）
 
-本 PR 整合按页读取/OCR 缓存、受控图片、实际 HTTP 请求预算及 #1302 的自动恢复核心。隔离 Qx 在 aee8962 准确镜像上复验到 a6，未出现 413，但 64k 下仍压缩并重复准备；a6 诊断停止后，root 已官方显式回退到 a5 正式 saved 快照，新镜像上的同 run a7 已于 05:07:09.999Z 开始。**operations 仍 2 项、没有真实双 Word，64k 单独未解决续跑循环，不能判业务 PASS 或关闭 #994。** 新续跑策略提交 5039d6ef 已推送，开发 overlay 与准确新镜像均独立通过 57/57，真实续跑效果待验证；尚未生产部署。
+当前准确候选为 b9627e59：文件首次及恢复工作窗口改为128k，2 MiB请求、图片、工具输出及原任务截止时间保护保持。开发定向与准确官方镜像均57/57通过；这只证明工程机制。真实5039的a7/a8仍重复准备、无新增实质operations；a8已自然保存161文件并进入用户暂停，无强制模型终止或官方回退。当前尚无双Word，财务0/36、视觉NOT_RUN，不能判业务PASS或关闭#994；新128k同run a9已在途、真实效果待验证。下方保留各阶段历史证据，以本段及文末最新记录为准。
 
 ## 根因证据及边界
 
@@ -201,3 +201,17 @@ API、contracts 和 worker 的错误分类、捕获标记、快照协议及队�
 既有只读收据 ROOT/`corrected3-a7-native-progress-20261117T051026224873Z.json`（SHA256 `f116565e52d13a80233024d1e3f9cb1e941635bb1b3d32b1440aac4b66f3ec6f`）确认 a7 实际 native PID67 与 holder 对应。实际 argv 的 auto-compact 为 64,000、工具输出为 2,048；runtime developer instructions 为 1,337 UTF-8 B、custom compact prompt 为 1,340 UTF-8 B，二者均逐字匹配 5039 镜像中的 compiled 常量。新策略已加载到真实运行进程，仍不证明续跑已正确完成。
 
 运行中采样看到 a5 清单中的 158 个文件全在，其中 157 个仍匹配 a5 SHA；唯一变化是工作记录由 12,691 增至 15,666 B，另新增 `scratch/inspect-start-new2.json`（8,262 B）。operations 仍为 940 B / 原 2 项，SHA256 `18806fd546d6ea41febf5d9ba47f80732ccdfc28095b29f72023e3569a22c8c1` 不变，没有 Word 输出。**这是运行中的非原子观察，不是恢复瞬间 158/158 的原子完整核验、a7 saved 快照或终态证明；也未证明新增正文编辑、循环消除或业务交付。** 原输入、预留、deadline 及财务 0/36、视觉 NOT_RUN 边界保持。
+
+## 128k候选与a8自然暂停（2026-11-17T05:32Z）
+
+5039实际加载了新runtime策略，但a7/a8仍未新增实质编辑。a7完整88请求均HTTP200、最大532,949 B，4次压缩形态后历史重置；可核对续跑块反复从工作记录、input与哈希检查起步。不同日志流无精确join，不声称压缩后第一命令或真实模型因果A/B。a7 saved160文件/19,372,912 B，operations仍940 B/原2项；analysis v2 SHA256 `e300beeadae33aa2cdd03beaf8cd6b471d8b79e20bf16e4de95e2776d7512ad1`。
+
+a8于05:26:47.923Z记录正常image_context_budget轮换，正式saved161文件/19,380,174 B；root此前通过正常页面请求暂停，后续已为paused/user_paused、无lease/holders。备用停止guard仅返回NO_SIGNAL，未向模型发信号，无官方resolve或回退；root05:29停止并保留空闲650d旧worker。a8完整raw2,151,276 B/未截断，SHA256 `d8bcf5649b5581e1ecb36ac02e563912ab656b8a20640c01cead89cd445450ad`；读取收据SHA256 `ecabcc878c015b33d298d04c939bd0b68569a212afc254c3b0e56ee6315c213f`。operations仍940 B/原2项；vs a7只见worklog增大和一个内容与旧inspect相同的新检查文件。有限检查活动不等于正文推进。
+
+新提交 `b9627e595c4594cebdd91144c72bb8119980bc73` / tree `46e8e6999be80fd8544d76e3c7b6e29e323628af`仅改三文件：首次/恢复文件阈值128,000及对应测试，保留其余策略。固定CLI的scripted synthetic用量验证70k准备不压缩、129k触发custom handoff并继续真实读写；旧64k有效负例检出提前压缩。开发overlay57/57，receipt SHA256 `b2a787925e55967817323e44509273b7eb0347b4de9db85480fe0d294bb87149`；不是实际分词、供应商128k承诺或Word结果。
+
+准确LF归档SHA256 `79ce9905a5998ced690eaa9f0aa3c4d508b5eab5bb547812adbe11b6742999a9`，官方image `sha256:9c3225d380909d1fd2c472a37aba314e443f735718d2a707702f65a049811ce7`，build receipt SHA256 `b32294ceeeb6a339e22ee610b8fbf99e45a661f1f36f0ec2eae73415a00ad2b1`。准确镜像于05:31:51.332240Z独立protocol4/adapter53，共57/57 PASS、0fail/cancel/skip/todo、无编译overlay；receipt SHA256 `6f25763f84e4bf17913623388c4500a09c1c492b995421685e8976531155d5e7`。network none/UID1000/只读/capdrop/NNP/seccomp，无真实凭据或供应商调用，WSL无AppArmor。
+
+128k是受控缓解候选，真实效果尚待验证；现有实际接受的最大input约71k，不能由本地1M目录或字节外推推定供应商上限。仍只允许原run `1792b8a7-3c84-479a-a24f-f3b54c051998`、原input/34,570预留、累计报价69,140及绝对deadline `2026-11-17T07:42:45.393Z`。当前全部八次durable usage保持unknown；网关测量不替代账单。无新业务run/报价、余额修改、双Word交付、部署或发布凭据。
+
+root已于05:34:23通过自然a8只读恢复guard（161份Blob逐一核验，receipt SHA256 `1bf6af5feb956c1368083eef996a67cbf5c52b9ca9be87b486eb8ddd59f72026`）。准确128k worker `578e82ac315776d75e56f3edc1e6160aab92e660455a5c2661bff608c2bcb0a0` 于05:35:27.552426232Z启动，config `qx-isolated-b9627e59-context128k-v5`；启动检查确认仍paused/user_paused、历史attempt8且无新intent，原输入/账务/历史hash保持。root随后正常UI继续，a9 `call-bc39cf4f-16ec-454a-8e78-d536c2bfd503` 于05:36:07.051Z创建；05:36:19为running/provider_call、无artifact。watch receipt SHA256 `e781c86de6b89bc9390548ec82d72eb34184190a1a37c777c8bf7036dc17e9e7`。目前只是同任务在途，不能推断128k真实效果、Word交付、财务或视觉通过。
