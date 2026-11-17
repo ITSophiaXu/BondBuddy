@@ -138,3 +138,7 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 发布只替换一个私有 JSON 快照，内含有效配置、报价及观测证据。消费者校验源配置哈希和报价哈希；不分别改写两个文件。模板或配置漂移、时间回拨、套餐到期/不足、API 错误、发布中断及超时均关闭新增准入；原任务、结果持久化、未知调用恢复和正向排空继续。超时工作不能迟到发布，也不能在未决查询结束前重复请求。同一分钟内重复费用检查仅复用刚发布且已覆盖整机余量的快照。
 
 控制角色仅需 `lighthouse:DescribeInstances` 与 `lighthouse:DescribeInstancesTrafficPackages`。前者官方 CAM 支持的实例查询范围为地域内 `instance/*`；后者绑定约定实例资源。客户端额外固定账户、地域和准确实例，不能把 API 支持的地域级权限说成 IAM 的单实例隔离。新私网代理仅增加 `lighthouse.tencentcloudapi.com` 的 CONNECT/443 出口，保留原代理与其它服务。
+
+## 底稿执行角色权限
+
+底稿创建子任务的间接 SQL 依赖、四角色授权与现存/未来节点预检更新，见[底稿执行角色权限 #1551](workpaper-runtime-permissions-1551.md)。
