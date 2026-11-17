@@ -9,6 +9,14 @@ import { SESSION_START_COMMAND, SESSION_START_TIMEOUT } from './file-authoring-s
 
 export const COMPLETION_COMMAND = '/usr/local/bin/node /app/apps/worker/dist/file-authoring-completion.js';
 export function fileCompletionArgs(): string[] {
+  return trustedFileHookArgs([
+    { event: 'Stop', command: COMPLETION_COMMAND, timeout: 10 },
+    { event: 'SessionStart', command: SESSION_START_COMMAND, timeout: SESSION_START_TIMEOUT },
+  ]);
+}
+
+/** Fixed application-owned handlers only; never populate this from model input. */
+export function trustedFileHookArgs(handlers: { event: 'Stop' | 'SessionStart'; command: string; timeout: number }[]): string[] {
   // Codex normalizes each event handler independently before hashing sorted JSON.
   // Both application-owned handlers must be trusted; never bypass hook trust.
   const trusted=(event:string,command:string,timeout:number)=>{
@@ -18,8 +26,9 @@ export function fileCompletionArgs(): string[] {
     return JSON.stringify(source)+'={trusted_hash='+JSON.stringify(hash)+'}';
   };
   const handler=(command:string,timeout:number)=>'{hooks=[{type="command",command='+JSON.stringify(command)+',timeout='+timeout+'}]}';
-  return ['--enable','hooks','-c','hooks={Stop=['+handler(COMPLETION_COMMAND,10)+'],SessionStart=['+handler(SESSION_START_COMMAND,SESSION_START_TIMEOUT)+'],state={'
-    +trusted('stop',COMPLETION_COMMAND,10)+','+trusted('session_start',SESSION_START_COMMAND,SESSION_START_TIMEOUT)+'}}'];
+  return ['--enable','hooks','-c','hooks={'
+    +handlers.map(h=>h.event+'=['+handler(h.command,h.timeout)+']').join(',')+',state={'
+    +handlers.map(h=>trusted(h.event==='Stop'?'stop':'session_start',h.command,h.timeout)).join(',')+'}}'];
 }
 
 async function available(root: string, name: string, max: number) {

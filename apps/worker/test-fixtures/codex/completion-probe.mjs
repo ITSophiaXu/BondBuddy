@@ -6,17 +6,23 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileCompletionArgs } from '/app/apps/worker/dist/file-authoring-completion.js';
+import { buildCodexArgs, loadCodexAdapterConfig } from '/app/apps/worker/dist/codex-adapter.js';
+import { makeWorkerDocxFixture } from '/app/apps/worker/dist/docx-test-fixture.js';
 
-for (const scenario of ['corrected', 'still_missing', 'already_ready']) {
+for (const mode of ['authoring', 'review']) for (const scenario of ['corrected', 'still_missing', 'already_ready', ...(mode==='review'?['word_ready','progress_only']:[])]) {
   const root = await mkdtemp('/tmp/bb-completion-probe-');
   for (const name of ['output','scratch','home']) await mkdir(join(root,name));
-  await writeFile(join(root,'input.json'),JSON.stringify({version:'codex-file-input-v1',format_tools:{version:'controlled-docx-v1'}}));
-  if(scenario==='already_ready')await writeFile(join(root,'output/operations.json'),'synthetic availability fixture');
+  await writeFile(join(root,'input.json'),JSON.stringify(mode==='review'?{version:'review-file-input-v1'}:{version:'codex-file-input-v1',format_tools:{version:'controlled-docx-v1'}}));
+  const output=mode==='review'?'output/report.md':'output/operations.json';
+  const report='Synthetic review: compared source revenue 120 to audit revenue 120, consistent. Coverage limited to the supplied synthetic table.';
+  if(scenario==='already_ready')await writeFile(join(root,output),report);
+  if(scenario==='word_ready')await writeFile(join(root,'output/report.docx'),makeWorkerDocxFixture({externalLink:false,text:report}));
+  if(scenario==='progress_only')await writeFile(join(root,output),'BB_REVIEW_PROGRESS:prepare_report:completed');
   let calls=0,feedback=false;
   const server=createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;
-    calls++;feedback ||= raw.includes('BB_AUTHORING_OUTPUT_INCOMPLETE');
-    if(scenario==='corrected' && calls===2)await writeFile(join(root,'output/operations.json'),'synthetic availability fixture');
+    calls++;feedback ||= raw.includes(mode==='review'?'BB_REVIEW_OUTPUT_INCOMPLETE':'BB_AUTHORING_OUTPUT_INCOMPLETE');
+    if(scenario==='corrected' && calls===2)await writeFile(join(root,output),report);
     const message={type:'message',id:`msg_${calls}`,role:'assistant',status:'completed',content:[{type:'output_text',text:'Synthetic final response.',annotations:[]}]};
     const response={id:`resp_${calls}`,object:'response',status:'completed',model:'gpt-6-sol',output:[message],usage:{input_tokens:10,output_tokens:5,total_tokens:15,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}};
     res.writeHead(200,{'Content-Type':'text/event-stream'});
@@ -26,7 +32,9 @@ for (const scenario of ['corrected', 'still_missing', 'already_ready']) {
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const port=server.address().port;
-  const args=['exec','--json','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral','--sandbox','read-only','--cd',root,
+  const args=mode==='review' ? [...buildCodexArgs({...loadCodexAdapterConfig({}),model_provider:'fixture',model_id:'gpt-6-sol',base_url:`http://127.0.0.1:${port}`,wire_api:'responses',credential:{kind:'env',name:'BB_FIXTURE_KEY'}},
+    {cwd:root,schemaFile:null,ephemeral:true,resumeThreadId:null,fileAuthoring:true,reviewCompletion:true}).slice(0,-1),
+    '-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"','-'] : ['exec','--json','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral','--sandbox','read-only','--cd',root,
     '-c','model="gpt-6-sol"','-c','model_provider="fixture"','-c','model_providers.fixture.name="fixture"',
     '-c',`model_providers.fixture.base_url="http://127.0.0.1:${port}"`,'-c','model_providers.fixture.wire_api="responses"',
     '-c','model_providers.fixture.env_key="BB_FIXTURE_KEY"','-c','web_search="disabled"',
@@ -40,11 +48,12 @@ for (const scenario of ['corrected', 'still_missing', 'already_ready']) {
   server.close();
   try{
     assert.equal(exit,0,stderr+'\n'+stdout);
-    assert.equal(calls,scenario==='already_ready'?1:2,stderr+'\n'+stdout);
-    assert.equal(feedback,scenario!=='already_ready');
+    const ready=['already_ready','word_ready'].includes(scenario);
+    assert.equal(calls,ready?1:2,stderr+'\n'+stdout);
+    assert.equal(feedback,!ready);
     const events=stdout.split('\n').filter(x=>x.startsWith('{')).map(JSON.parse);
     const completed=events.filter(e=>e.type==='turn.completed');
-    console.log(JSON.stringify({scenario,calls,feedback,completed,hook_events:events.filter(e=>e.type.startsWith('hook.'))}));
+    console.log(JSON.stringify({mode,scenario,calls,feedback,completed,hook_events:events.filter(e=>e.type.startsWith('hook.'))}));
     assert.equal(completed.at(-1).usage.input_tokens,10*calls,'CLI reports cumulative usage across Stop continuation');
     assert.equal(completed.at(-1).usage.output_tokens,5*calls);
   }finally{await rm(root,{recursive:true,force:true});}

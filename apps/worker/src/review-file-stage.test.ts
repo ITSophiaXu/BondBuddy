@@ -33,6 +33,8 @@ test('CLI Word is delivered without a structured report, JSON response, or secon
     let calls = 0;
     const stage = reviewFileStage({ load: async () => f.input, config: loadCodexAdapterConfig({}), model: options => ({ name: options.name, run: async () => {
       calls++; assert.ok(options.fileWorkspace); assert.equal(options.reviewTools, undefined);
+      assert.equal(options.fileWorkspace.reviewCompletionCheck, true);
+      assert.equal(options.fileWorkspace.completionCheck, undefined);
       await options.fileWorkspace.prepare(f.directory);
       assert.equal((await readFile(join(f.directory, 'materials/m0.txt'))).toString(), f.source.toString());
       const received = JSON.parse(await readFile(join(f.directory, 'input.json'), 'utf8'));

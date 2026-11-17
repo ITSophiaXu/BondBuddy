@@ -15,6 +15,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { filePermissionArgs, verifyFilePermissions } from './codex-file-permissions.js';
 import { fileCompletionArgs } from './file-authoring-completion.js';
+import { reviewFileCompletionArgs } from './review-file-completion.js';
 import { FILE_AUTHORING_HOST_RENDER_HANDOFF } from './file-authoring-instructions.js';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import { createMaterialToolTrace, isMaterialModelEnvelope, validateMaterialToolTrace, type MaterialToolTrace, type MaterialModelEnvelope } from './material-tool-trace.js';
@@ -322,13 +323,14 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recov
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; imageFile?: string }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; reviewCompletion?: boolean; contextRotation?:boolean; imageFile?: string }): string[] {
   if(o.fileCompletion && !o.fileAuthoring)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  if(o.reviewCompletion && (!o.fileAuthoring || o.fileCompletion || o.fileRecovery || o.contextRotation))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring||c.protected_runtime_files?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
-    ...codexConfigOverrides(c,o.fileAuthoring,o.fileRecovery,o.fileCompletion), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
+    ...codexConfigOverrides(c,o.fileAuthoring,o.fileRecovery,o.fileCompletion), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec'].includes(f)) && !((o.fileCompletion || o.reviewCompletion) && f==='hooks')).flatMap(f => ['--disable', f])];
   if(c.protected_runtime_files&&!o.fileAuthoring)args.push(...filePermissionArgs(o.cwd,true));
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -357,6 +359,7 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
       ] : []),
     ]) args.push('-c',setting);
     if(o.fileCompletion)args.push(...fileCompletionArgs());
+    if(o.reviewCompletion)args.push(...reviewFileCompletionArgs());
     if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-copilot-file-authoring-model-catalog.json"');
   }
   if (o.imageFile) {
@@ -481,7 +484,7 @@ function withLoopbackNoProxy(env: Record<string, string>) {
 // bounded stdout/stderr evidence; it is never logged to the process output.
 // Measure/enforce use a per-process loopback gateway (#994). Only enforce blocks
 // requests; its startup failure must never fall back to an unguarded provider route.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; reviewCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   return withPerformanceSpan('model.exec', { adapter: 'codex_exec', model_id: c.model_id, model_provider: c.model_provider }, async span => {
   if(o.deadlineAt!==undefined&&!isFileAuthoringDeadline(o.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
@@ -760,7 +763,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -970,7 +973,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, reviewCompletion:input.fileWorkspace?.reviewCompletionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if (raw.stop === 'cancelled') reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
@@ -1042,7 +1045,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
         if (input.signal?.aborted || executionSignal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.reviewCompletionCheck ? 'codex-review-file-2' : input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await withPerformanceSpan('model.runtime.persist', {}, () => journal.recordRuntime(intent, runtime));
         await withPerformanceSpan('model.observation.persist', {}, () => journal.recordObservation(obs, { retryable }));

@@ -216,7 +216,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
 
 进度消息仅用于中途通知，不是最终成果：切换实际复核工作时，在 commentary 中独立发送 BB_REVIEW_PROGRESS:类别:状态，随后继续工作，不要在进度消息后结束本轮。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。进度消息只报告实际动作，不附带思考过程、正文或路径。完整报告写入文件后才发送 final，简述成果及限制。`,
       schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-report-v3':'review-file-progress-v3',
-      fileWorkspace: { prepare, collect } }).run(ctx);
+      fileWorkspace: { prepare, collect, reviewCompletionCheck: true } }).run(ctx);
   } };
 }
 
