@@ -2,7 +2,7 @@
 import copy,hashlib,importlib.util,json,os,pathlib,subprocess,sys
 ROOT=pathlib.Path('/var/lib/bondbuddy/integrity1477-20261117');PRIVATE=ROOT/'private'
 SUPPORT=ROOT/'renderer.py'
-SUPPORT_SHA='00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67'
+SUPPORT_SHA='59818258171123633d3c4d5a7cc8037e4ec2082a997bf18e7bfefd7a54849a4c'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def sha(b):return hashlib.sha256(b).hexdigest()
