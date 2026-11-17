@@ -13,7 +13,7 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
   const pool = new Pool({ connectionString: connection });
   let active = 'synthetic-m3-owner';
   const origin = 'http://bondbuddy.test';
-  const app = createServer({ pool, principal: async () => ({ userId: active, csrfVerified: true }), allowedOrigin: origin });
+  const app = createServer({ historicalBillingFixture:true, enablePaidReview:false, pool, principal: async () => ({ userId: active, csrfVerified: true }), allowedOrigin: origin });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const ok = (response: { statusCode: number; body: string }) => assert.ok(response.statusCode >= 200 && response.statusCode < 300, response.body);
   try {

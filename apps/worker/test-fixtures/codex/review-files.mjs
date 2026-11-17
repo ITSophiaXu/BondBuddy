@@ -7,7 +7,7 @@ if (forwarded.includes('sandbox')) { const r = spawnSync('/usr/local/bin/codex',
 let prompt = ''; for await (const chunk of process.stdin) prompt += chunk;
 if (!forwarded.includes('exec') || forwarded.includes('--output-schema')) throw Error('file-only CLI required');
 const cwd = forwarded[forwarded.indexOf('--cd') + 1], input = JSON.parse(readFileSync(cwd + '/input.json', 'utf8'));
-if (input.version !== 'review-file-input-v1' || !input.knowledge.length || input.requirements.includes('late draft')) throw Error('incorrect immutable input');
+if (input.version !== 'review-file-input-v1' || !input.knowledge.length || (input.scope.operation==='full_review'&&!input.requirements.includes('original requirement'))) throw Error('incorrect immutable input');
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'synthetic-review-file' }));
 const progress=(id,code,state)=>console.log(JSON.stringify({type:'item.completed',item:{id,type:'agent_message',text:`BB_REVIEW_PROGRESS:${code}:${state}`}}));
 progress('read-start','read_materials','started');

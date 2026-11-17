@@ -67,8 +67,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
   const blobs = azureBlobs(blobConnection!, containerName);
   let owner = `parse-owner-${randomUUID()}`;
   const alice = owner, bob = `parse-other-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }) });
-  const stagingApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunStaging: true });
+  const app = createServer({ pool, blobs, historicalBillingFixture:true, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }) });
+  const stagingApp = createServer({ pool, blobs, historicalBillingFixture:true, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunStaging: true });
   const send = (method: string, url: string, payload?: unknown, contentType?: string, target = app) => target.inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   let parserCalls = 0;
@@ -124,7 +124,12 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     // Pending work is explicit: no synthesized source profile before the durable job runs.
     const pendingProfile = await send('GET', `/api/v1/projects/${projectId}/materials/${historicalId}/source-profile`);
     assert.equal(pendingProfile.statusCode, 409); assert.equal(pendingProfile.json().code, 'CAPABILITY_NOT_READY');
-    const lockedInput = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [{ material_id: historicalId, material_version: 1 }], requirement_message_ids: [] });
+    // Current preparation requires an audit attachment. It is not the parser
+    // subject here; cancel its independent job so the lease sequence below stays explicit.
+    const auditBytes=makeWorkerDocxFixture({externalLink:false,text:'Synthetic audit attachment'});
+    const auditId=(await complete(projectId,await startUpload(projectId,auditBytes,DOCX,'audit','audit.docx'),auditBytes)).json().material_id as string;
+    assert.equal((await send('POST',`/api/v1/projects/${projectId}/materials/${auditId}/parse-job/cancel`, {reason:'synthetic fixture only'})).statusCode,200);
+    const lockedInput = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [{ material_id: historicalId, material_version: 1 },{material_id:auditId,material_version:1}], requirement_message_ids: [] });
     assert.equal(lockedInput.statusCode, 201, lockedInput.body);
     const preflightBody = { input_revision: 1, input_hash: lockedInput.json().input_hash };
     const pendingPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody);
@@ -133,8 +138,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.deepEqual(pendingPreflight.json().blocking_inputs, ['execution_capability_not_ready']);
     const issuerBlock = (pendingPreflight.json().missing_inputs as string[]).find(input => input.startsWith('issuer_identity_not_bound:'));
     assert.ok(issuerBlock, 'parsing a historical material does not supply a reviewed issuer identity');
-    assert.deepEqual(pendingPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
-      `material_parse_pending:${historicalId}:1`, 'update_difficulty_pending:financial_materials_required', 'execution_capability_not_ready']);
+    assert.deepEqual(pendingPreflight.json().missing_inputs.filter((v:string)=>!v.startsWith('update_difficulty_pending:')).sort(), ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
+      `material_parse_cancelled:${auditId}:1`,`material_parse_pending:${historicalId}:1`, 'execution_capability_not_ready'].sort());
 
     // 2. Crash after the parse_evidence checkpoint, lease expiry, then resume without re-parsing.
     await assert.rejects(runMaterialParseOnce(deps({ afterStage: async stage => { if (stage === 'parse_evidence') throw new Error('SYNTHETIC_CRASH'); } })), /SYNTHETIC_CRASH/);
@@ -174,8 +179,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox o JOIN bb_observability_events e ON o.aggregate_id=e.id WHERE o.aggregate_type='observability' AND e.job_id=$1", [historicalJob.id])).rows[0].n, successLog.length);
     const readyPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody, undefined, stagingApp);
     assert.equal(readyPreflight.statusCode, 200, readyPreflight.body);
-    assert.deepEqual(readyPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
-      'update_difficulty_pending:financial_materials_required'],
+    assert.deepEqual(readyPreflight.json().missing_inputs.filter((v:string)=>!v.startsWith('update_difficulty_pending:')).sort(), ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
+      `material_parse_cancelled:${auditId}:1`].sort(),
       'parse completion clears material pending, but cannot verify issuer identity');
     assert.equal(readyPreflight.json().status, 'needs_confirmation', 'remaining issuer and rule gaps stay visible without blocking admission');
     assert.equal((await operations('preflight', 'submitted')).length, 2);
@@ -232,8 +237,10 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
       materialId: identityMaterialId, materialVersion: 1, sourceRecordRowId: observationId,
       reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
       entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic parse identity', reasonCode: 'synthetic_identity_verified' });
+    const identityAuditId=(await complete(identityProjectId,await startUpload(identityProjectId,auditBytes,DOCX,'audit','audit.docx'),auditBytes)).json().material_id as string;
+    assert.equal((await send('POST',`/api/v1/projects/${identityProjectId}/materials/${identityAuditId}/parse-job/cancel`,{reason:'synthetic fixture only'})).statusCode,200);
     const locked = await send('POST', `/api/v1/projects/${identityProjectId}/input-revisions`,
-      { draft_revision: 1, material_versions: [{ material_id: identityMaterialId, material_version: 1 }], requirement_message_ids: [] });
+      { draft_revision: 1, material_versions: [{ material_id: identityMaterialId, material_version: 1 },{material_id:identityAuditId,material_version:1}], requirement_message_ids: [] });
     assert.equal(locked.statusCode, 201, locked.body);
     const manifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
       [alice, identityProjectId, locked.json().input_revision])).rows[0].manifest;

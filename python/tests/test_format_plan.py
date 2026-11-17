@@ -281,6 +281,19 @@ class FormatPlanTests(unittest.TestCase):
             self.assertIsNotNone(p.find(q('pPr') + '/' + q('keepNext')))
         self.assertFalse(any(p.find(q('pPr') + '/' + q('keepNext')) is not None for row in rows[1:] for p in row.iter(q('p'))))
 
+    def test_captionless_financial_headers_with_units_and_composite_periods(self):
+        doc = self.fixture(caption=False)
+        for cell, text in zip(doc.tables[0].rows[0].cells, ['项目（万元）', '2025年9月末/1—9月', '2024年末/年度']):
+            cell.text = text
+        doc.save(self.source); self.bind()
+        out, plan = self.generate([self.fill()])
+        self.assertEqual(plan['tables'][0]['header_rows'], 1)
+        root = xml(package(out / 'clean.docx')['word/document.xml'])
+        rows = root.find('.//' + q('tbl')).findall(q('tr'))
+        self.assertIsNotNone(rows[0].find(q('trPr') + '/' + q('tblHeader')))
+        self.assertFalse(any(p.find(q('pPr') + '/' + q('keepNext')) is not None for row in rows[1:] for p in row.iter(q('p'))))
+        self.assertIsNone(root.find(q('body')).find(q('p')).find(q('pPr') + '/' + q('keepNext')))
+
     def test_consecutive_data_header_flags_cleared_only_after_proven_boundary(self):
         doc = self.fixture()
         for row in doc.tables[0].rows:

@@ -89,7 +89,7 @@ function leaseOf(job: any, token: string): MaterialParseLease {
 export async function claimMaterialParse(pool: Pool, leaseSeconds = 30): Promise<MaterialParseLease | null> {
   for (let scanned = 0; scanned < 20; scanned++) {
     const outcome = await transaction(pool, async client => {
-      const q = await client.query(`SELECT * FROM bb_jobs WHERE job_type='parse' AND (state='queued' OR (state='running' AND lease_until<now()))
+      const q = await client.query(`SELECT * FROM bb_jobs WHERE job_type='parse' AND (state='queued' AND COALESCE((checkpoint->'capacity_wait'->>'retry_at')::timestamptz,'-infinity'::timestamptz)<=now() OR (state='running' AND lease_until<now()))
         ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`);
       const job = q.rows[0];
       if (!job) return { done: true as const, lease: null };
@@ -118,6 +118,22 @@ async function lockedLease(client: PoolClient, lease: MaterialParseLease) {
   if (!job || job.lease_token !== lease.token || job.state !== 'running' || new Date(job.lease_until).getTime() <= Date.now())
     throw new Problem(409, 'ALREADY_TERMINAL', 'Lease is no longer active');
   return job;
+}
+
+/** A resource wait is durable and releases the worker lease without spending a failure attempt.
+ * Backoff is database-clock based; another worker can resume after this process exits. */
+export async function deferMaterialParseForCapacity(pool: Pool, lease: MaterialParseLease, delayMs = 2000) {
+  if (!Number.isSafeInteger(delayMs) || delayMs < 1 || delayMs > 60000) throw Error('INVALID_PARSE_CAPACITY_BACKOFF');
+  return transaction(pool, async client => {
+    const job = await lockedLease(client, lease);
+    const updated = (await client.query(`UPDATE bb_jobs SET state='queued',lease_token=NULL,lease_until=NULL,error_code=NULL,
+      attempts=GREATEST(attempts-1,0),checkpoint=jsonb_set(COALESCE(checkpoint,'{}'::jsonb),'{capacity_wait}',
+        jsonb_build_object('reason','staging_capacity','retry_at',clock_timestamp()+($2::integer * interval '1 millisecond'))),
+      updated_at=now() WHERE id=$1 RETURNING *`,[job.id,delayMs])).rows[0];
+    await journal(client,updated,'material_parse.retry_scheduled','queued',job.stage,
+      {reason:'staging_capacity_wait',retry_at:updated.checkpoint.capacity_wait.retry_at});
+    return 'waiting_capacity' as const;
+  });
 }
 
 export async function renewMaterialParse(pool: Pool, lease: MaterialParseLease, leaseSeconds = 30) {
