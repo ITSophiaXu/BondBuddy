@@ -1,6 +1,6 @@
 # Managed execution database prerequisites (#1484)
 
-Status: the fix and production release are merged. On 2026-11-17 the database, API, controller, future templates and existing node were verified to contain the fix; actual authoring/review identities passed preflight and all 74 runtime hashes matched. The active task and current-epoch idle drain/stop-charging still require final observation. See [deployment evidence](../../../docs/acceptance/managed-db1484-partial-deployment-2026-11-17.md). Runtime verification does not establish user acceptance.
+Status: the fix and production release are merged. On 2026-11-17 the database, API, controller, future templates and existing node were verified to contain the fix; actual authoring/review identities passed preflight and all 74 runtime hashes matched. The same epoch completed normal idle drain and cloud-confirmed STOP_CHARGING at 11:20:51 Beijing time. The observed task paused with the separate MODEL_TIMEOUT; it did not deliver a Word artifact. See [deployment evidence](../../../docs/acceptance/managed-db1484-partial-deployment-2026-11-17.md). Runtime verification does not establish user acceptance.
 
 ## Cause and scope
 

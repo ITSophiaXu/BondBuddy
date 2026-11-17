@@ -1,6 +1,6 @@
 # 新节点数据库权限修复：分组件部署与运行核验（2026-11-17）
 
-范围：Refs #1484。用户明确授权本批服务器部署。稳定发布 PR #1496、#1497；最终稳定提交 `a0f1a4779d2b17b75973ad76d01536885f5f3cb4`。执行包和主站准备源来自其祖先 `6edb893266ef745b330e936edf242ad50697ab3c`，补充提交只修正缺失的0182前置及192项台账门禁。09:02局部发布记录保留；最新11:10核验见文末，现存节点已安装且实际身份预检通过，当前任务及正常停机验收仍在进行。
+范围：Refs #1484。用户明确授权本批服务器部署。稳定发布 PR #1496、#1497；最终稳定提交 `a0f1a4779d2b17b75973ad76d01536885f5f3cb4`。执行包和主站准备源来自其祖先 `6edb893266ef745b330e936edf242ad50697ab3c`，补充提交只修正缺失的0182前置及192项台账门禁。09:02和11:10历史快照保留；最新11:21收尾见文末，本权限修复已部署，实际身份和节点正常排空/停机通过；当前任务因独立MODEL_TIMEOUT暂停，未交付Word。
 
 ## 09:02 已生效与待完成（历史快照）
 
@@ -54,3 +54,15 @@
 - 真实生产run `d8c63eec-b599-4140-b125-c2f3886a75c1` 已进入 `provider_call`，最新进度11:09:55；job租约持续续期，两服务READY且心跳新鲜，1个租约和1个模型holder。尚无artifact，模型调用状态仍pending_reconcile / usage unknown，不能称为成功交付。未重投历史生产客户任务。
 
 机器可读核验：[managed-db1484-runtime-2026-11-17.safe.json](managed-db1484-runtime-2026-11-17.safe.json)。保留此前真实杞县成功重放及沧州独立HTTP413的边界。最终统一验收剩余：当前实际任务结果入库、成果/结算和容量释放，以及本epoch在正常空闲后自然排空、STOP_CHARGING；不打断在途任务来制造空闲，也不拿旧epoch停机证据替代。本轮保持 `release:待发布`，待以上约定核验收尾再切换，组件已生效与最终验收分别记录。
+
+## 11:21 权限发布与节点生命周期核验收尾
+
+本节替代此前“节点生命周期待观察”的当前状态。11:20:51，正常控制器确认本epoch已停止，云端回执为STOPPED / StopInstances SUCCESS / STOP_CHARGING。stop操作 `99b44ac6-2854-487d-94c6-f24ea35bcda4`、RequestId `6f696b0b-934c-4460-a531-c9775a6f1681`，云取证SHA256 `09c14bb1789af448be468425e7d3e1b9f4e7520bbb5b41f236d193413dab4ad1`。节点revision=56，租约、模型holder和待处理云操作全部为0。
+
+编制与复核会话分别于11:19:06和11:19:00按正常路径finished；两者native_processes=0、unpersisted_results=0。11:19:48排空证明 `db93b4b6bbe6cb95865977f796a3b0836fe0960ae3cf66305dd1d7fca3dde228` 包含positive_session_receipts=2、active_leases=0、active_model_calls=0、native_processes=0、unpersisted_results=0、accounted_unknown_calls=1。未知用量被如实记账，不冒充已结算或confirmed_not_sent。没有手动停机、强杀、重复安装或重投客户任务。
+
+权限补丁的数据库、主站API、控制端、未来模板和现存节点全部已生效；原先被权限拒绝的运行路径已进入真实模型调用，实际身份预检和正常排空/停机通过。#1484更新为 `release:已部署`，部署证据PR为#1517；这只代表本权限修复的发布核验，不代表所有业务任务成功或用户已验收。
+
+本次实际任务另有明确失败边界：run `d8c63eec-b599-4140-b125-c2f3886a75c1` 在11:13:05进入paused/provider_reconcile；运行记录 `call-ad5162a7-26d9-4ede-b054-faa9025e2243` 为codex-file-authoring-2 / deepseek、duration_ms=5400019、SIGTERM、MODEL_TIMEOUT、208次工具尝试，observation为pending_reconcile / timeout / usage unknown，provider_result_refs=0且无正式Word。这是90分钟模型执行超时，不能算交付成功，亦不能归为本次数据库42501回归。该症状补充到既有#1341，未在本次权限发布中改变模型时限、恢复策略或账务；是否存在可用恢复快照需该问题继续核对，不凭本次取证推断。
+
+最终统一验收待办：模型超时及恢复问题的修复与真实成果、质量/页面、用户验收。既有真实杞县成功重放证据继续保留，不把当前超时任务或正常停机说成成功交付。文档验证仅JSON解析、字段/状态核对及git diff --check；#1517的GitHub Actions仍因账户付款/消费额度限制未启动，非CI通过。

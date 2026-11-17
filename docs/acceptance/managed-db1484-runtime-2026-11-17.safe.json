@@ -6,7 +6,7 @@
     1497
   ],
   "develop_backport_pr": 1498,
-  "status": "components_installed_runtime_verified_lifecycle_pending",
+  "status": "deployed_permissions_and_node_lifecycle_verified",
   "main": {
     "at": "2026-11-17T03:09:57.002489+00:00",
     "pending_release": false,
@@ -360,7 +360,381 @@
     "historic_production_runs_resubmitted": false,
     "production_restart_by_this_verification": false,
     "all_customer_tasks_succeeded": false,
-    "current_epoch_stop_charging_observed": false,
-    "github_hosted_ci_passed": false
+    "current_epoch_stop_charging_observed": true,
+    "github_hosted_ci_passed": false,
+    "current_production_run_succeeded": false,
+    "user_acceptance_passed": false
+  },
+  "lifecycle_final": {
+    "at": "2026-11-17T03:21:24.164854+00:00",
+    "pending_release": false,
+    "components": {
+      "api": {
+        "id": "966ccc62b3d460dcaf64634d0e9fee72e4b3f520cd36174380a967906b962c62",
+        "image": "sha256:e995a4928f4ec16048ac6b5c5cc136bf9582baf758bc71361cb08e20f4a9eb85",
+        "running": true,
+        "health": "healthy",
+        "started_at": "2026-11-17T02:02:04.300700988Z"
+      },
+      "web": {
+        "id": "cee2314aa456189bf6f30af33d2cbd7c78f07de41b58fc378634b2acff0f96fe",
+        "image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be",
+        "running": true,
+        "health": "healthy",
+        "started_at": "2026-11-17T02:24:01.982383319Z"
+      },
+      "ops": {
+        "id": "3883937a37f8d9d1f6001e2dc9da4e51e53894c570b8a05f714b321d19fea57e",
+        "image": "sha256:22cc3fc268cad7bd2f77ae7f7e85680a939f2d06a2424c53a8aa11a5d0017a1d",
+        "running": true,
+        "health": null,
+        "started_at": "2026-11-17T01:36:34.403007851Z"
+      },
+      "postgres": {
+        "id": "4d58b1af9c3bb0f2fc4fae50be6ce1eaf04dd4d323cdada64cfee6b38a4e786e",
+        "image": "sha256:43f9275df91e012c3da3d86bea5d7bb5e67a473296cc906c5f9e80b8176b1a37",
+        "running": true,
+        "health": "healthy",
+        "started_at": "2026-11-07T01:37:51.453004196Z"
+      }
+    },
+    "api_module_sha256": "d1ca53c387b13cf048d9b1a55f4082f2981550b51a08888a5d54e8de2566f26f",
+    "api_module_matches": true,
+    "pricing_valid_until": "2026-11-17T16:00:00.000Z",
+    "caps": {
+      "compute_cap_cny_per_hour": 1.6,
+      "idle_seconds": 300,
+      "max_owned": 2,
+      "min_running": 0,
+      "noncompute_cap_cny_per_hour": 2.4,
+      "period_cap_cny": 96,
+      "total_cap_cny_per_hour": 4
+    },
+    "control": {
+      "pool_sha256": "7e5d1666717882618abd8ad447314c979eac9e53ef15359236bc5862b668eb0b",
+      "business_pin": "183e5240e6cefc09314943fc270b009fd547e497437af111a99fd77235e17dd0",
+      "authority_business_pin": "183e5240e6cefc09314943fc270b009fd547e497437af111a99fd77235e17dd0",
+      "files": [
+        {
+          "file": "bootstrap.mjs",
+          "ops_sha256": "35c14e710c5bfb79338cbef564ddc6e9fb82dd49300768922fa2b09c9f59914b",
+          "authority_sha256": "35c14e710c5bfb79338cbef564ddc6e9fb82dd49300768922fa2b09c9f59914b"
+        },
+        {
+          "file": "business-overlay.mjs",
+          "ops_sha256": "db4c77793f576d9e7203673da7121d163aaeef74cb6cec35373d389a1684f43e",
+          "authority_sha256": "db4c77793f576d9e7203673da7121d163aaeef74cb6cec35373d389a1684f43e"
+        }
+      ],
+      "templates": [
+        {
+          "path": "/var/lib/bondbuddy/db1484-20261117/private/service-template-1.private.json",
+          "sha256": "350adadff70c3094af087410f48ade2269a3d1d7014d9e93769afb211053fa8b",
+          "business_pin": "183e5240e6cefc09314943fc270b009fd547e497437af111a99fd77235e17dd0",
+          "files": 74
+        },
+        {
+          "path": "/var/lib/bondbuddy/db1484-20261117/private/service-template-2.private.json",
+          "sha256": "ac2bb3fc205d7e19dce4ba030e7d6f54a3d70932a271f11acddcd0d9e271fe77",
+          "business_pin": "183e5240e6cefc09314943fc270b009fd547e497437af111a99fd77235e17dd0",
+          "files": 74
+        }
+      ]
+    },
+    "http": [
+      {
+        "path": "/",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/healthz",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/api/v1/me",
+        "status": 401,
+        "expected": 401
+      }
+    ],
+    "database": {
+      "ledger": 192,
+      "nodes": [
+        {
+          "id": "2cb3c75d-65e8-4115-8a6b-0db9fe30c885",
+          "state": "stopped",
+          "revision": 56
+        }
+      ],
+      "leases": 0,
+      "holders": 0,
+      "pending_ops": 0
+    },
+    "http_passed": true,
+    "all_healthy": true,
+    "runtime": {
+      "node": {
+        "id": "2cb3c75d-65e8-4115-8a6b-0db9fe30c885",
+        "epoch": "477c5592-8a3d-4169-9f0e-6a3d1be22cc8",
+        "state": "stopped",
+        "revision": 56,
+        "idle_since": null,
+        "last_heartbeat_at": "2026-11-17T03:19:06.888569+00:00",
+        "drain_operation_id": "99b44ac6-2854-487d-94c6-f24ea35bcda4",
+        "stop_operation_id": "99b44ac6-2854-487d-94c6-f24ea35bcda4",
+        "drain_proof": {
+          "version": "execution-drain-v1",
+          "identity": {
+            "epoch": "477c5592-8a3d-4169-9f0e-6a3d1be22cc8",
+            "region": "ap-beijing",
+            "account_id": "100006372392",
+            "instance_id": "ins-p4i0pcub"
+          },
+          "observed_at": "2026-11-17T03:19:48.811Z",
+          "operation_id": "99b44ac6-2854-487d-94c6-f24ea35bcda4",
+          "proof_sha256": "db93b4b6bbe6cb95865977f796a3b0836fe0960ae3cf66305dd1d7fca3dde228",
+          "active_leases": 0,
+          "node_revision": 54,
+          "native_processes": 0,
+          "active_model_calls": 0,
+          "unpersisted_results": 0,
+          "accounted_unknown_calls": 1,
+          "positive_session_receipts": 2
+        }
+      },
+      "run": {
+        "id": "d8c63eec-b599-4140-b125-c2f3886a75c1",
+        "state": "paused",
+        "stage": "provider_reconcile",
+        "artifact_id": null,
+        "created_at": "2026-11-17T00:48:58.317122+00:00",
+        "updated_at": "2026-11-17T03:13:05.929895+00:00"
+      },
+      "job": {
+        "id": "160e5697-d167-4b35-bc73-d8b775f0055f",
+        "state": "paused",
+        "job_type": "update",
+        "stage": "provider_reconcile",
+        "lease_until": null,
+        "updated_at": "2026-11-17T03:13:05.929895+00:00"
+      },
+      "attempts": [
+        {
+          "status": "pending_reconcile",
+          "usage_status": "unknown",
+          "created_at": "2026-11-17T01:42:35.45999+00:00",
+          "updated_at": "2026-11-17T03:13:05.929895+00:00"
+        }
+      ],
+      "events": [
+        {
+          "seq": 435,
+          "type": "run.progress",
+          "state": "paused",
+          "stage": "provider_reconcile",
+          "error_code": null,
+          "reason": "provider_result_pending",
+          "occurred_at": "2026-11-17T03:13:05.929895+00:00"
+        },
+        {
+          "seq": 434,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:12:08.813653+00:00"
+        },
+        {
+          "seq": 433,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:12:08.80126+00:00"
+        },
+        {
+          "seq": 432,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:11:37.937822+00:00"
+        },
+        {
+          "seq": 431,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:11:36.21435+00:00"
+        },
+        {
+          "seq": 430,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:11:00.48797+00:00"
+        },
+        {
+          "seq": 429,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:11:00.478776+00:00"
+        },
+        {
+          "seq": 428,
+          "type": "run.progress",
+          "state": "running",
+          "stage": "provider_call",
+          "error_code": null,
+          "reason": "authoring_activity",
+          "occurred_at": "2026-11-17T03:10:29.33663+00:00"
+        }
+      ],
+      "sessions": [
+        {
+          "node_id": "2cb3c75d-65e8-4115-8a6b-0db9fe30c885",
+          "epoch": "477c5592-8a3d-4169-9f0e-6a3d1be22cc8",
+          "service_id": "authoring",
+          "state": "finished",
+          "ready": false,
+          "native_processes": 0,
+          "unpersisted_results": 0,
+          "heartbeat_at": "2026-11-17T03:19:06.888123+00:00",
+          "finished_at": "2026-11-17T03:19:06.888123+00:00"
+        },
+        {
+          "node_id": "2cb3c75d-65e8-4115-8a6b-0db9fe30c885",
+          "epoch": "477c5592-8a3d-4169-9f0e-6a3d1be22cc8",
+          "service_id": "review",
+          "state": "finished",
+          "ready": false,
+          "native_processes": 0,
+          "unpersisted_results": 0,
+          "heartbeat_at": "2026-11-17T03:19:00.273943+00:00",
+          "finished_at": "2026-11-17T03:19:00.273943+00:00"
+        }
+      ],
+      "cloud_operations": [
+        {
+          "operation_id": "99b44ac6-2854-487d-94c6-f24ea35bcda4",
+          "action": "stop",
+          "state": "completed",
+          "provider_request_id": "6f696b0b-934c-4460-a531-c9775a6f1681",
+          "proof_sha256": "db93b4b6bbe6cb95865977f796a3b0836fe0960ae3cf66305dd1d7fca3dde228",
+          "created_at": "2026-11-17T03:19:48.815485+00:00",
+          "completed_at": "2026-11-17T03:20:51.536968+00:00",
+          "cloud_observation": {
+            "observed_at": "2026-11-17T03:20:51.531Z",
+            "evidence_ref": "/var/lib/bondbuddy/elastic-pg-mtls/publication-candidate-1412-formal-20261115/global8-candidate/ops/vault/observations/09c14bb1789af448be468425e7d3e1b9f4e7520bbb5b41f236d193413dab4ad1.json",
+            "instance_state": "STOPPED",
+            "evidence_sha256": "09c14bb1789af448be468425e7d3e1b9f4e7520bbb5b41f236d193413dab4ad1",
+            "latest_operation": "StopInstances",
+            "stop_charging_mode": "STOP_CHARGING",
+            "latest_operation_state": "SUCCESS",
+            "latest_operation_request_id": "6f696b0b-934c-4460-a531-c9775a6f1681"
+          }
+        },
+        {
+          "operation_id": "ccdd548d-97cc-4167-981f-6440b34ee898",
+          "action": "start",
+          "state": "completed",
+          "provider_request_id": "9151616f-cb47-4ffd-b965-d02f9661f950",
+          "proof_sha256": null,
+          "created_at": "2026-11-17T01:37:14.6294+00:00",
+          "completed_at": "2026-11-17T01:38:10.159309+00:00",
+          "cloud_observation": {
+            "observed_at": "2026-11-17T01:38:10.139Z",
+            "evidence_ref": "/var/lib/bondbuddy/elastic-pg-mtls/publication-candidate-1412-formal-20261115/global8-candidate/ops/vault/observations/a93bfae129069eff677d5fbd208c43e3354142ead5f7539af64342333b3dc303.json",
+            "instance_state": "RUNNING",
+            "evidence_sha256": "a93bfae129069eff677d5fbd208c43e3354142ead5f7539af64342333b3dc303",
+            "latest_operation": "StartInstances",
+            "stop_charging_mode": "NOT_APPLICABLE",
+            "latest_operation_state": "SUCCESS",
+            "latest_operation_request_id": "9151616f-cb47-4ffd-b965-d02f9661f950"
+          }
+        },
+        {
+          "operation_id": "6ee81fbb-03e8-4eca-87c7-a1ba1f1f0e5f",
+          "action": "stop",
+          "state": "completed",
+          "provider_request_id": "c31e082b-8bcb-4c63-a199-59751f7932e9",
+          "proof_sha256": "6741938f91545af7bf3d8cdbabb2856f013bc77587dd94e54d6aee9f0b557858",
+          "created_at": "2026-11-16T15:52:41.689645+00:00",
+          "completed_at": "2026-11-16T15:53:46.201302+00:00",
+          "cloud_observation": {
+            "observed_at": "2026-11-16T15:53:46.196Z",
+            "evidence_ref": "/var/lib/bondbuddy/elastic-pg-mtls/publication-candidate-1412-formal-20261115/global8-candidate/ops/vault/observations/2b8394b5f94dbc2de7cf41413323e7e6a5481b5d79de6c68e0eba14246d88ae2.json",
+            "instance_state": "STOPPED",
+            "evidence_sha256": "2b8394b5f94dbc2de7cf41413323e7e6a5481b5d79de6c68e0eba14246d88ae2",
+            "latest_operation": "StopInstances",
+            "stop_charging_mode": "STOP_CHARGING",
+            "latest_operation_state": "SUCCESS",
+            "latest_operation_request_id": "c31e082b-8bcb-4c63-a199-59751f7932e9"
+          }
+        },
+        {
+          "operation_id": "ec142516-2738-4a0e-a939-2dcc5aa87800",
+          "action": "start",
+          "state": "completed",
+          "provider_request_id": "867f33c1-d261-41e5-ac0e-8c7040a0b812",
+          "proof_sha256": null,
+          "created_at": "2026-11-16T15:42:19.333046+00:00",
+          "completed_at": "2026-11-16T15:43:19.51763+00:00",
+          "cloud_observation": {
+            "observed_at": "2026-11-16T15:43:19.511Z",
+            "evidence_ref": "/var/lib/bondbuddy/elastic-pg-mtls/publication-candidate-1412-formal-20261115/global8-candidate/ops/vault/observations/33e3f2942390f14288656ba7f4083a508b9136ce3d68c7f13a0da7a2cee53378.json",
+            "instance_state": "RUNNING",
+            "evidence_sha256": "33e3f2942390f14288656ba7f4083a508b9136ce3d68c7f13a0da7a2cee53378",
+            "latest_operation": "StartInstances",
+            "stop_charging_mode": "NOT_APPLICABLE",
+            "latest_operation_state": "SUCCESS",
+            "latest_operation_request_id": "867f33c1-d261-41e5-ac0e-8c7040a0b812"
+          }
+        }
+      ]
+    }
+  },
+  "independent_model_timeout": {
+    "observation": [
+      {
+        "id": "f0312b94-f250-4fa7-a779-ed810d95fdcc",
+        "attempt_id": "call-ad5162a7-26d9-4ede-b054-faa9025e2243",
+        "outcome": "pending_reconcile",
+        "finish_reason": "timeout",
+        "usage_status": "unknown",
+        "error_code": "MODEL_TIMEOUT",
+        "result_id": null,
+        "observed_at": "2026-11-17T03:13:05.929895+00:00"
+      }
+    ],
+    "runtime": [
+      {
+        "attempt_id": "call-ad5162a7-26d9-4ede-b054-faa9025e2243",
+        "adapter_version": "codex-file-authoring-2",
+        "model_provider": "deepseek",
+        "model_config_version": "codex-deepseek-flash-1m-c23-isolated",
+        "started_at": "2026-11-17T01:42:35.578+00:00",
+        "duration_ms": 5400019,
+        "exit_code": null,
+        "exit_signal": "SIGTERM",
+        "finish_reason": "timeout",
+        "error_code": "MODEL_TIMEOUT",
+        "tool_attempts": 208
+      }
+    ],
+    "provider_results": 0,
+    "related_issue": 1341,
+    "snapshot_availability_verified": false
   }
 }
