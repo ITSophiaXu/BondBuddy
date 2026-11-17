@@ -6,7 +6,7 @@ import { finished, pipeline } from 'node:stream/promises';
 import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
-import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, AUDIT_REPORT_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -40,6 +40,7 @@ export class Problem extends Error {
   trialLimit?: TrialLimitKind;
   prospectusSelectionRequired?: boolean;
   sourceProspectusRequired?: boolean;
+  auditReportRequired?: boolean;
   prospectusDocxOnly?: boolean;
   uploadBytesPending?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
@@ -62,7 +63,7 @@ export function publicProblem(error: Problem, correlationId: string) {
           ? [PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]
           : error.code === 'MATERIAL_FORMAT_UNSUPPORTED' && error.prospectusDocxOnly
             ? [PROSPECTUS_DOCX_ONLY_FIELD_ERROR]
-            : error.code === 'INPUT_REQUIRED' ? error.sourceProspectusRequired ? [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR] : error.inputIssues ?? [] : [],
+            : error.code === 'INPUT_REQUIRED' ? error.sourceProspectusRequired ? [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR] : error.auditReportRequired ? [AUDIT_REPORT_REQUIRED_FIELD_ERROR] : error.inputIssues ?? [] : [],
     correlation_id: correlationId,
   };
 }
