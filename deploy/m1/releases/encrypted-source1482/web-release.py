@@ -19,11 +19,14 @@ def check_config(old,current,overlay):
  need(current['Image']==old['Image'],'image_drift');a=copy.deepcopy(old['Config']);b=copy.deepcopy(current['Config'])
  for x in [a,b]:
   x.pop('Hostname',None);x.pop('Image',None);x['Env']=sorted(x.get('Env',[]));x['Labels']={k:v for k,v in x.get('Labels',{}).items() if not k.startswith(('com.docker.compose.','com.bondbuddy.encrypted1482.'))}
- need(a==b,'process_configuration_drift');a=copy.deepcopy(old['HostConfig']);b=copy.deepcopy(current['HostConfig']);binds={s.split(':')[1]:s for s in a['Binds']}
- for v in overlay:binds[v['target']]=v['source']+':'+v['target']+':ro'
- a['Binds']=list(binds.values())
+ need(a==b,'process_configuration_drift');a=copy.deepcopy(old['HostConfig']);b=copy.deepcopy(current['HostConfig'])
+ need(a.get('Binds') is None and b.get('Binds') is None,'unexpected_short_web_bind')
+ mounts={m['Target']:m for m in a.get('Mounts',[])}
+ for v in overlay:mounts[v['target']]={'Type':'bind','Source':v['source'],'Target':v['target'],'ReadOnly':True,'BindOptions':{}}
+ a['Mounts']=list(mounts.values())
  for x in [a,b]:
   if x.get('OomKillDisable') is None:x['OomKillDisable']=False
+  x['Mounts']=sorted(x.get('Mounts',[]),key=lambda m:m['Target'])
   for k in ['Binds','SecurityOpt','CapDrop','CapAdd']:
    if isinstance(x.get(k),list):x[k]=sorted(x[k])
  need(a==b,'host_configuration_drift')
