@@ -10,12 +10,16 @@ def run(a,b=None,timeout=90):
  p=subprocess.run(a,input=b,capture_output=True,timeout=timeout);need(p.returncode==0,'probe_command_failed');return p.stdout
 
 def write(path,data):
- if path.exists():need(path.read_bytes()==data,'existing_probe_artifact_drift');return
+ if path.exists():need(path.read_bytes()==data,'existing_probe_artifact_drift:'+path.name);return
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'wb') as out:out.write(data);out.flush();os.fsync(out.fileno())
 def save(name,value):write(PRIVATE/name,(json.dumps(value,sort_keys=True,indent=2)+'\n').encode())
 def main():
  need(os.geteuid()==0,'root_required');plan=json.loads((PRIVATE/'plan.safe.json').read_bytes());c=json.loads(run(['docker','inspect','bb-main-ops-1']))[0];need(c['Id']==plan['ops_id'] and c['Image']==plan['ops_image'],'ops_drift')
+ staged=json.loads((PRIVATE/'ops.before.inspect.private.json').read_bytes())
+ need(c['Id']==staged['Id'] and c['Image']==staged['Image'] and c['Config']==staged['Config'] and c['HostConfig']==staged['HostConfig'] and c['State']['Running'] and c['State']['StartedAt']==staged['State']['StartedAt'],'staged_configuration_drift')
+ # Preserve the immutable preimage; health-check timestamps are live observations.
+ c=staged
  need(sha(SUPPORT.read_bytes())==SUPPORT_SHA,'support_hash');spec=importlib.util.spec_from_file_location('timing1420_prior_adapter',SUPPORT);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
  classes=[v for v in vars(module).values() if isinstance(v,type) and hasattr(v,'render')];need(len(classes)==1,'support_class')
  class Renderer:
