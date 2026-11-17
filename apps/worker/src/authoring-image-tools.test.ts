@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm, symlink, link, truncate } from 'node:fs/
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { callAuthoringImageTool, authoringImageToolDefinitions, createAuthoringImageBudget,
+import { callAuthoringImageTool, authoringImageToolDefinitions, authoringImageToolDefinitionsFor, createAuthoringImageBudget,
   AUTHORING_IMAGE_HISTORY_MAX_BYTES, AUTHORING_IMAGE_MAX_BYTES } from './authoring-image-tools.js';
 import { AUTHORING_IMAGE_BUDGET_SIGNAL } from './authoring-image-tools.js';
 
@@ -91,4 +91,26 @@ test('image budget accepts its exact boundary, latches excess and rendering fail
   await assert.rejects(callAuthoringImageTool(root,'view_image',{path:'scratch/a.png'},async()=>{throw Error('IMAGE_DECODE_FAILED');},fresh),/IMAGE_DECODE_FAILED/);
   assert.equal(fresh.remaining(),AUTHORING_IMAGE_HISTORY_MAX_BYTES);
   assert.equal(fresh.exhausted(),false);
+}));
+
+test('nonrecoverable file routes can read four bounded images without the low rotation threshold or a continuation promise',()=>fixture(async root=>{
+  await writeFile(join(root,'scratch','a.png'),'synthetic source');
+  const budget=createAuthoringImageBudget(false),data=Buffer.alloc(AUTHORING_IMAGE_MAX_BYTES,7).toString('base64');
+  let emitted=0;
+  for(let n=0;n<4;n++){
+    const result=await callAuthoringImageTool(root,'view_image',{path:'scratch/a.png',crop:[n,0,10,10]},
+      async()=>({...fakePreview,data,byte_size:AUTHORING_IMAGE_MAX_BYTES}),budget);
+    assert.equal(result.content.filter(item=>item.type==='image').length,1);
+    const metadata=JSON.parse((result.content[0] as {text:string}).text);
+    assert.equal(metadata.byte_size,AUTHORING_IMAGE_MAX_BYTES);
+    assert.equal(metadata.image_history_remaining_bytes,null,'no fake cumulative budget is exposed');
+    assert.equal((result.content[0] as {text:string}).text.includes(AUTHORING_IMAGE_BUDGET_SIGNAL),false);
+    emitted+=Buffer.byteLength(`data:image/jpeg;base64,${data}`);
+  }
+  assert.ok(emitted>AUTHORING_IMAGE_HISTORY_MAX_BYTES);
+  assert.equal(budget.exhausted(),false);
+  assert.equal(budget.remaining(),null);
+  assert.match(authoringImageToolDefinitionsFor(false)[0].description,/does not support automatic context rotation/);
+  assert.doesNotMatch(authoringImageToolDefinitionsFor(false)[0].description,/exhaustion asks the host/);
+  assert.match(authoringImageToolDefinitionsFor(true)[0].description,/exhaustion asks the host/);
 }));

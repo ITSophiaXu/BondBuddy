@@ -6,7 +6,7 @@ import { createServer } from '@bondbuddy/api';
 import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
 import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/billing.js';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
-import { uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
+import { uploadSyntheticAudit, uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
 import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns,resolveOperatorReconciliation } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,providerResultObjectKey,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
@@ -84,8 +84,8 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
   async function prepareFixture(options:Options={}){
     const p=await send('POST','/api/v1/projects',{name:'Synthetic payload recovery',kind:'update',issuer_name:'合成企业',market:'sse',offering:'private',
       update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}});assert.equal(p.statusCode,201,p.body);
-    const project=p.json().project_id,materials=await uploadSyntheticReference(app,project);
-    const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,materials);assert.equal(input.statusCode,201,input.body);
+    const project=p.json().project_id,audit=await uploadSyntheticAudit(app,project),materials=await uploadSyntheticReference(app,project);
+    const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,{...materials,material_versions:[...materials.material_versions,audit]});assert.equal(input.statusCode,201,input.body);
     let quote:string|undefined;
     if(options.paid){const q=await paidApp.inject({method:'POST',url:`/api/v1/projects/${project}/credit-quote`,headers:{origin:'http://bondbuddy.test'},
       payload:{input_revision:1,input_hash:input.json().input_hash}});assert.equal(q.statusCode,200,q.body);quote=q.json().quote.quote_id;}

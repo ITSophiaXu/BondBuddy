@@ -77,10 +77,12 @@ for (const { executable, compact, label } of [
 }, async t => {
   await mkdir(join(homedir(), '.cache'), { recursive: true });
   const root = await mkdtemp(join(homedir(), '.cache', 'bb-copilot-file-protocol-'));
-  const cwd = join(root, 'cwd'), home = join(root, 'home'), marker = join(root, 'auth-called');
-  await mkdir(join(cwd, 'scratch'), { recursive: true }); await mkdir(join(cwd, 'output')); await mkdir(home);
+  const cwd = join(root, 'cwd'), home = join(root, 'home'), codexHome = join(root, 'codex-home'), marker = join(root, 'auth-called');
+  // Match production's sibling HOME/TMPDIR and CODEX_HOME directories. Codex
+  // refuses helper aliases when CODEX_HOME is itself inside the temp directory.
+  await mkdir(join(cwd, 'scratch'), { recursive: true }); await mkdir(join(cwd, 'output')); await mkdir(home); await mkdir(codexHome);
   t.after(() => rm(root, { recursive: true, force: true }));
-  const version = await promisify(execFile)(binary!, ['--version'], { env: { ...process.env, HOME: home, CODEX_HOME: home, TMPDIR: home } });
+  const version = await promisify(execFile)(binary!, ['--version'], { env: { ...process.env, HOME: home, CODEX_HOME: codexHome, TMPDIR: home } });
   assert.equal(version.stdout.trim(), 'codex-cli 0.169.0', 'the wire regression must use the release-pinned CLI');
   assert.deepEqual(await readFile(packagedCatalog), await readFile(catalogUrl), 'the image must ship the exact source catalog');
   const cliRoot = join(cwd, 'codex-test-runtime'), cli = join(cliRoot, 'bin', 'codex');
@@ -103,6 +105,7 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
   const requests: { authenticated: boolean; bytes: number; compact: boolean; continuation: boolean; pinned: boolean;
     materials: boolean; knowledge: boolean; image: boolean; handoff: boolean; worklog: boolean; written: boolean }[] = [];
   const violations: string[] = [];
+  const shellOutputs:{call:string;text:string}[]=[];
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk as Buffer);
     const raw = Buffer.concat(chunks), body = JSON.parse(raw.toString()), declared = tools(body.tools);
@@ -110,6 +113,10 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
     const shell = declared.find(tool => tool.name === 'exec_command' && tool.type === 'function');
     const image = declared.find(tool => tool.type === 'function' && tool.name.endsWith('view_image') && (tool.namespace === 'mcp__bb_images' || tool.name.includes('bb_images')));
     const inputs: any[] = Array.isArray(body.input) ? body.input : [];
+    for(const input of inputs)if(input.type==='function_call_output'&&/^call_(materials|knowledge|worklog|write)$/.test(input.call_id??'')){
+      const text=outputText(input.output).replaceAll(token,'[synthetic token]').slice(-1200);
+      if(!shellOutputs.some(item=>item.call===input.call_id&&item.text===text))shellOutputs.push({call:input.call_id,text});
+    }
     const readSucceeded = (call: string, marker: string) => {
       const output = outputText(inputs.find(item => item.type === 'function_call_output' && item.call_id === call)?.output);
       return output.includes(marker) && /Process exited with code 0/.test(output);
@@ -170,12 +177,15 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
     BB_CODEX_REASONING_EFFORT: 'max', BB_CODEX_CONFIG_VERSION: 'synthetic-copilot-file-v1', BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: '2097152' });
   const result = await runCodexProcess({ ...config, command: [process.execPath, wrapper], base_url: 'http://127.0.0.1:' + (server.address() as AddressInfo).port,
     work_root: root, timeout_ms: 45000, kill_grace_ms: 500, exec_log_max_bytes: 8 * 1024 * 1024 }, {
-    prompt: pinnedPrompt, cwd, home, codexHome: home, schemaFile: null,
+    prompt: pinnedPrompt, cwd, home, codexHome, schemaFile: null,
     ephemeral: true, resumeThreadId: null, fileAuthoring: true, fileRecovery: true, fileCompletion: true, captureExecLog: true, gatewayLog: () => {},
   });
   const log = result.exec_log?.bytes.toString() ?? '';
   assert.ok(!/Model metadata for.*gpt-6-sol.*not found/.test(log), 'the selected catalog must resolve the actual model');
   assert.ok(!log.includes(token), 'command auth must stay out of captured logs');
+  if(violations.length)t.diagnostic(JSON.stringify({label,requests,shellOutputs,tools:result.file_diagnostics?.tools.map(tool=>({
+    status:tool.status,exit_code:tool.exit_code,output:typeof tool.output==='string'?tool.output.replaceAll(token,'[synthetic token]').slice(-1200):null})),
+    stderr:log.split('[stderr]')[1]?.split('[bondbuddy-model-gateway]')[0]?.replaceAll(token,'[synthetic token]').slice(-2000)}));
   assert.deepEqual(violations, []);
   assert.ok(requests.every(request => request.bytes <= 2 * 1024 * 1024));
   if (executable) {

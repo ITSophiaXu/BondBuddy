@@ -308,7 +308,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recov
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; imageFile?: string }): string[] {
   if(o.fileCompletion && !o.fileAuthoring)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -325,7 +325,7 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
     args.push('--disable','view_image');
     for (const setting of [
       `mcp_servers.bb_images.command=${JSON.stringify(process.execPath)}`,
-      `mcp_servers.bb_images.args=${JSON.stringify([fileURLToPath(new URL('./authoring-image-tools.js',import.meta.url)),o.cwd])}`,
+      `mcp_servers.bb_images.args=${JSON.stringify([fileURLToPath(new URL('./authoring-image-tools.js',import.meta.url)),o.cwd,o.contextRotation?'--rotate-context':'--request-budget-only'])}`,
       `mcp_servers.bb_images.env={BONDBUDDY_WORD_PYTHON=${JSON.stringify(process.env.BONDBUDDY_WORD_PYTHON ?? '/opt/venv/bin/python')}}`,
       'mcp_servers.bb_images.enabled_tools=["view_image"]',
       'mcp_servers.bb_images.tools.view_image.approval_mode="writes"',
@@ -596,9 +596,9 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
           if (o.fileAuthoring && ev.type === 'item.completed' && type === 'mcp_tool_call' && item?.server === 'bb_images' && item?.tool === 'view_image') {
             const result = item.result as { content?: { type?: string; text?: string }[] } | null;
             if (Array.isArray(result?.content) && result.content.some(part => part.type === 'text' && part.text?.startsWith(AUTHORING_IMAGE_BUDGET_SIGNAL + '.'))) {
-              if(o.contextRotation)stop('context_rotation', false);
-              else{payloadTooLarge=true;stopRejectedPayload?.();}
-              return;
+              // Only the route with durable snapshot/recovery support can act
+              // on this control signal. It is never a supplier rejection.
+              if(o.contextRotation){stop('context_rotation', false);return;}
             }
           }
           if (ev.type === 'item.completed' && type === 'agent_message' && typeof item?.text === 'string') {

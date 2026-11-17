@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { runCodexProcess, runContainedModelCall, classifyCodexResult, loadCodexAdapterConfig,
+import { runCodexProcess, runContainedModelCall, classifyCodexResult, loadCodexAdapterConfig, buildCodexArgs,
   assertCodexConfig, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { AUTHORING_IMAGE_BUDGET_SIGNAL, AUTHORING_IMAGE_MAX_BYTES, createAuthoringImageBudget } from './authoring-image-tools.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
@@ -26,6 +26,7 @@ if (process.argv.includes('sandbox')) {
   let prompt=''; for await (const chunk of process.stdin) prompt+=chunk;
   const steps=JSON.parse(prompt);
   writeFileSync('synthetic-pid',String(process.pid));
+  writeFileSync('synthetic-args.json',JSON.stringify(process.argv.slice(2)));
   for(const step of steps) {
     if(step.path)writeFileSync(step.path,step.text);
     const chunks=step.chunks?.map(value=>Buffer.from(value,'base64')) ??
@@ -320,11 +321,44 @@ test('only a host-enabled recoverable authoring context treats the image control
   const s=await setup();
   try{
     const event={type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{isError:false,content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Saved work.'}]}}};
-    const ordinary=await s.run([{event,hang:true}]);
-    assert.equal(classify(ordinary).error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
-    assert.equal(classify(ordinary).outcome,'failed','unrelated file routes must not acquire an unsupported pending rotation');
+    const ordinary=await s.run([{event},{event:message('done')},{event:complete}]);
+    assert.equal(classify(ordinary).error_code,null);
+    assert.equal(classify(ordinary).outcome,'completed','an unsupported rotation signal is not a supplier 413');
     const recoverable=await s.run([{event,hang:true}],{contextRotation:true});
     assert.equal(classify(recoverable).error_code,'MODEL_CONTEXT_ROTATION_REQUIRED');
     assert.equal(classify(recoverable).outcome,'pending_reconcile');
+  }finally{await s.cleanup();}
+});
+
+test('only recoverable update calls enable low image-context rotation; review and M4 can finish four bounded images',async()=>{
+  const s=await setup({file_output_limits:{event_bytes:256*1024,final_message_bytes:1024}});
+  try{
+    const data=Buffer.alloc(AUTHORING_IMAGE_MAX_BYTES,7).toString('base64');
+    const imageEvent=(index:number)=>({type:'item.completed',item:{id:'image-'+index,type:'mcp_tool_call',server:'bb_images',tool:'view_image',
+      result:{content:[{type:'image',mimeType:'image/jpeg',data}]}}});
+    for(const logical of ['review-file-v1','m4-document-v1','m4-qa-v1']){
+      const journal=new MemoryCodexJournal(),input=s.input([
+        ...Array.from({length:4},(_,n)=>({event:imageEvent(n)})),
+        {path:'output/partial.txt',text:'four images read'},
+        {event:message('done')},{event:complete}]);
+      input.logical_call_id=logical;
+      let args:string[]=[];
+      input.fileWorkspace!.collect=async cwd=>{
+        args=JSON.parse(await readFile(join(cwd,'synthetic-args.json'),'utf8'));
+        return {text:await readFile(join(cwd,'output/partial.txt'),'utf8')};
+      };
+      const result=await runContainedModelCall(input,journal,s.config);
+      assert.equal(result.status,'completed',logical);
+      assert.deepEqual(result.value,{text:'four images read'});
+      assert.equal(journal.intents.length,1);
+      assert.equal(journal.observations[0].observation.error_code,null);
+      const setting=args.find(arg=>arg.startsWith('mcp_servers.bb_images.args='));assert.ok(setting);
+      const imageArgs=JSON.parse(setting.slice(setting.indexOf('=')+1));
+      assert.equal(imageArgs.at(-1),'--request-budget-only',logical);
+      assert.equal(args.includes('model_providers.deepseek.base_url="https://api.deepseek.com"'),true,'unrelated routes keep their configured gateway policy');
+    }
+    const args=buildCodexArgs(s.config,{cwd:s.root,schemaFile:null,ephemeral:true,resumeThreadId:null,fileAuthoring:true,contextRotation:true});
+    const setting=args.find(arg=>arg.startsWith('mcp_servers.bb_images.args='));assert.ok(setting);
+    assert.equal(JSON.parse(setting.slice(setting.indexOf('=')+1)).at(-1),'--rotate-context');
   }finally{await s.cleanup();}
 });

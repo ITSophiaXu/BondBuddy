@@ -6,6 +6,9 @@
 
 当前候选的固定 CLI 请求字节、本地 74 MB 扫描件按页读取及恢复测试，见[本轮验证记录](../verification/large-pdf-request-budget-20261116.md)。
 
+
+本手册中的强制保护与自动续跑指更新募集书的 `file-authoring-v1` 和 `file-authoring-size-repair-*` 路径。复核及 M4 文件路线仍使用单图 128 KiB 的受控 JPEG，但不使用只有快照续跑路线才能处理的 512 KiB 累计轮换额度，不把本地图片额度信号记为供应商 413；其 HTTP 网关模式仍由既有配置控制。
+
 ## 模式与配置
 
 下表描述全局模式对其他调用路径的影响。文件编制始终开启 `enforce`，`off` 或 `measure` 不会关闭该路径的预算保护；显式预算会替代其 2 MiB 默认值。

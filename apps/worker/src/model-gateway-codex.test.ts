@@ -241,6 +241,14 @@ test('real Codex: bounded MCP JPEG stays bounded in the following HTTP request',
   });
   assert.equal(result.turn_completed, true, result.exec_log?.bytes.toString().slice(-3000));
   assert.equal(upstream.received.length, 2);
+  for (const { body } of upstream.received) {
+    const tools = body.tools as { type?: string; name?: string; tools?: { name?: string }[] }[];
+    assert.ok(Array.isArray(tools), 'inspect the actual tool catalog sent by the fixed CLI');
+    assert.equal(tools.some(tool => tool.name === 'view_image'
+      || tool.type === 'namespace' && tool.name !== 'mcp__bb_images'
+        && tool.tools?.some(child => child.name === 'view_image')), false,
+    'native view_image is absent from both flat tools and non-MCP namespaces');
+  }
   const [, first, second] = gatewaySection(result.exec_log!.bytes.toString());
   assert.equal(first.request.image_count, 0);
   assert.equal(second.request.image_count, 1, 'a successful real MCP call contributes one image');
