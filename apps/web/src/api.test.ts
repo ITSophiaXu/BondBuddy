@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
 import { UPLOAD_BYTES_PENDING_FIELD_ERROR } from '@bondbuddy/contracts';
-import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, AUDIT_REPORT_REQUIRED_FIELD_ERROR, AUDIT_REPORT_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
 
 test('pending bytes requires its exact field/code and 422 envelope, without any inspection failure', () => {
   assert.equal(parseApiError(422, { code: 'MATERIAL_UNREADABLE', field_errors: [UPLOAD_BYTES_PENDING_FIELD_ERROR] }).details.uploadBytesPending, true);
@@ -308,4 +308,11 @@ test('encryption failures tell the user to upload an unencrypted copy', () => {
     assert.match(uploadErrorMessage(error), /synthetic-encrypted/);
   }
   assert.match(friendlyError(parseApiError(422, { code: 'MATERIAL_ENCRYPTED' })), /未加密.*重新上传/);
+});
+
+
+test('missing audit report shows the actionable public requirement', () => {
+  const error = parseApiError(422, {code:'INPUT_REQUIRED', message:'untrusted prose', field_errors:[AUDIT_REPORT_REQUIRED_FIELD_ERROR]});
+  assert.equal(friendlyError(error),AUDIT_REPORT_REQUIRED_MESSAGE);
+  assert.equal(parseApiError(422,{code:'INPUT_REQUIRED',field_errors:[{...AUDIT_REPORT_REQUIRED_FIELD_ERROR,field:'other'}]}).details.auditReportRequired,false);
 });

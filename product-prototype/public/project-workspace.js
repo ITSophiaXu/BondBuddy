@@ -82,7 +82,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const groups=[];
     if(kind==='review')groups.push({role:primary,title:kind==='review'?'待复核募集书':'本发行人历史募集书',hint:'必需 · 1 份 DOCX；用于原文定位和 Word '+(kind==='review'?'批注':'修订'),accept:'.docx',single:true,roles:[primary]});
     if(kind==='update')groups.push({role:'historical',title:'历史／参考募集书（必填）',hint:'可上传同企业、母公司、子公司或相似业务企业的募集书；请先上传原稿并填写原稿信息。',accept:'.docx',roles:['historical','userReference']});
-    groups.push({role:'audit',title:'审计报告 / 财务报表及附注',hint:'必需 · 可上传一份完整审计报告，也可分开上传报表和附注；同一文件无需重复上传。',roles:FINANCIAL_ROLES});
+    groups.push({role:'audit',title:'审计报告 / 财务报表及附注',hint:'审计报告（可含报表及附注）必填；必须上传并保存后才能更新募集书，同一文件无需重复上传。',roles:FINANCIAL_ROLES});
     if(kind==='update')groups.push({role:'fundUse',title:'募投项目与权证材料',hint:'按项目提供：可研报告、备案许可、土地或建设许可证、基金备案许可、子公司股权投资相关材料等。',roles:['fundUse','feasibility','resolutions']});
     const assigned=new Set(groups.flatMap(g=>g.roles));groups.push({role:'other',title:kind==='review'?'其他核对依据':'其他项目材料',hint:kind==='review'?'选填 · 可补充适用法规、工商资料、授信或其他核对依据。':'选填 · 可补充发行方案、授信、经营及其他资料。',roles:[...new Set(files.filter(f=>!assigned.has(f.role)).map(f=>f.role)),'other']});
     return (kind==='review'?reviewOverview():'')+'<section class="form-section material-sections"><h2>提供项目材料</h2><p>在对应分区添加文件，选中后立即上传。每份材料都会显示上传状态。</p>'+groups.map(g=>'<section class="material-group"><div class="material-group-heading"><h3>'+g.title+'</h3><span>'+files.filter(f=>g.roles.includes(f.role)).length+' 份</span></div><p>'+g.hint+'</p>'+(kind==='update'&&g.role==='historical'?sourceFormatNotice(kind):'')+'<label class="dropzone compact-dropzone" data-upload-role="'+g.role+'">'+icon('upload')+'<strong>点击或拖入'+g.title+'</strong><span>'+((g.accept||'.docx,.pdf,.xlsx,.csv,.txt').replaceAll('.','').toUpperCase().replaceAll(',',' / '))+'</span><input type="file" data-project-upload-role="'+g.role+'" accept="'+(g.accept||'.docx,.pdf,.xlsx,.csv,.txt')+'" '+(g.single?'':'multiple')+' aria-label="上传'+g.title+'"></label>'+(kind==='update'&&g.role==='audit'?financialGuidance(d):'')+'<div class="file-list">'+files.filter(f=>g.roles.includes(f.role)).map(f=>fileRow(kind,f)).join('')+'</div></section>').join('')+'<p class="authoring-help">最多60份、合计80 MB。上传材料免费；扫描件或无法解析的文件需替换后再执行。</p></section>';
@@ -146,7 +146,8 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const files=selected(kind);data.set('retainedFiles',JSON.stringify(files.filter(f=>f.stored).map(f=>f.key)));for(const f of files)if(!f.stored)data.append(f.role,f.file);
     if(sourceInformationMissing(kind))throw new Error('请补齐每份已上传原稿的企业关系、市场、品种和最新报告期后继续。');
     if(files.some(f=>['uploading','error'].includes(f.uploadStatus)))throw new Error('请等待上传完成，并重试未成功的文件。');
-    if(!files.some(f=>FINANCIAL_ROLES.includes(f.role)))throw new Error('请先上传审计报告，或财务报表及附注。');
+    if(kind==='update'&&!files.some(f=>f.role==='audit'))throw new Error('请先上传并保存审计报告（可含报表及附注），再开始更新募集书。');
+    if(kind!=='update'&&!files.some(f=>FINANCIAL_ROLES.includes(f.role)))throw new Error('请先上传审计报告，或财务报表及附注。');
     let job;
     try{({job}=await upload(`/api/projects/${d.projectId}/execute`,data,{onProgress:progress=>{if(state.route===kind)buttonProgress(progress);}}));}
     catch(error){

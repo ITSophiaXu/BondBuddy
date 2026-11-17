@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { MARKET_OFFERINGS, emptyUpdateDetails, UpdateDetailsSchema, updateDetailsErrors, type Market, type Offering, type ProjectMessageSetPin, type SourceProspectus } from '@bondbuddy/contracts';
-import { assertAuthoringSourceInformation, assertAuthoringSourceRequired, lockUnifiedAuthoring } from './unified-authoring.js';
+import { assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertAuthoringAuditRequired, lockUnifiedAuthoring } from './unified-authoring.js';
 import { digest, publicProblem, Problem } from './data.js';
-import { SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
+import { SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, AUDIT_REPORT_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
 import { lockReviewFileDelivery } from './review-file-knowledge.js';
 const messages={version:0,content_sha256:'0'.repeat(64),members:[],message_ids:[]} as ProjectMessageSetPin;
 test('new authoring requires a source, while verified previous results remain usable', () => {
@@ -91,4 +91,18 @@ test('source-name-free declarations pass the same API gate used by input locking
   assert.doesNotThrow(() => assertAuthoringSourceInformation([material], [declared]));
   assert.throws(() => assertAuthoringSourceInformation([material], [{...declared,relation:null}]), /企业关系/);
   assert.throws(() => assertAuthoringSourceInformation([{...material,material_version:2}], [declared]), /INPUT_REQUIRED|补齐/);
+});
+
+
+test('only an audit report satisfies authoring audit requirement', () => {
+  const pin = {material_id:'synthetic-audit', material_version:1, sha256:'a'.repeat(64), role:'audit'};
+  for (const roles of [[], ['historical'], ['reference','financial','interimFinancial','notes']]) {
+    assert.throws(() => assertAuthoringAuditRequired(roles.map(role => ({...pin,role}))), error => {
+      assert.ok(error instanceof Problem);
+      assert.equal(error.status,422);
+      assert.deepEqual(publicProblem(error,'synthetic-audit-required').field_errors,[AUDIT_REPORT_REQUIRED_FIELD_ERROR]);
+      return true;
+    });
+  }
+  assert.doesNotThrow(() => assertAuthoringAuditRequired([pin]));
 });
