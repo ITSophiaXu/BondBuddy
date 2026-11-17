@@ -1,8 +1,8 @@
-# 新节点数据库权限修复：分组件部署记录（2026-11-17）
+# 新节点数据库权限修复：分组件部署与运行核验（2026-11-17）
 
-范围：Refs #1484。用户明确授权本批服务器部署。稳定发布 PR #1496、#1497；最终稳定提交 `a0f1a4779d2b17b75973ad76d01536885f5f3cb4`。执行包和主站准备源来自其祖先 `6edb893266ef745b330e936edf242ad50697ab3c`，补充提交只修正缺失的0182前置及192项台账门禁。不得将本记录理解为完整执行节点验收通过。
+范围：Refs #1484。用户明确授权本批服务器部署。稳定发布 PR #1496、#1497；最终稳定提交 `a0f1a4779d2b17b75973ad76d01536885f5f3cb4`。执行包和主站准备源来自其祖先 `6edb893266ef745b330e936edf242ad50697ab3c`，补充提交只修正缺失的0182前置及192项台账门禁。09:02和11:10历史快照保留；最新11:21收尾见文末，本权限修复已部署，实际身份和节点正常排空/停机通过；当前任务因独立MODEL_TIMEOUT暂停，未交付Word。
 
-## 已生效与待完成
+## 09:02 已生效与待完成（历史快照）
 
 | 组件 | 实际结果 |
 | --- | --- |
@@ -24,7 +24,7 @@
 - 共享组件台账：`/var/lib/bondbuddy/migration-908/state-main/current-components.json`。数据库、控制端、API/Web分别留证，不改整角色current以冒充整栈同版。
 - 初次数据库事务因缺0182活动表完整回滚；随后仅补该新增空表/索引的前置，与0190及ACL一起提交，没有执行全量迁移。
 
-## 执行节点剩余条件
+## 09:02 执行节点剩余条件（已由后续安装推进）
 
 正常Start的费用门禁仍拒绝过期计价：`cloud_quote_refresh.pricing_valid_until=2026-11-16T16:00:00.000Z`。已有维护子账号的官方询价请求也被腾讯IAM拒绝；不是本次数据库权限缺口。需要既有运维身份读取当前官方价格并更新受保护计价凭据，保留每小时4元、自然日48元、min_running=0/max_owned=2及原成本边界。没有延长旧凭据时间、直接调用云Start或扩大应用身份权限。
 
@@ -36,6 +36,33 @@
 
 准确生产authoring/review OCI断网隔离各13项，共26/26通过；新旧包闭包和bootstrap已有定向证据。回带develop后新包/实际Python解码5/5、旧包/暖启动2/2通过。旧包测试增加BB_TEST_PYTHON环境路径支持；Windows未提供python3命令导致的首次环境失败保留，修正解释器路径后通过。
 
-原真实重放：杞县成功交付双Word并通过质量检查；沧州因独立模型HTTP413失败。未把模拟或隔离镜像检查当成现存执行节点完整运行验收。GitHub hosted CI因账户计费限制未启动，不能称为CI通过。完整修复的发布标签仍为release:待发布；最终统一验收待办为上述现存节点安装、READY与正常停机核验。
+原真实重放：杞县成功交付双Word并通过质量检查；沧州因独立模型HTTP413失败。未把模拟或隔离镜像检查当成现存执行节点完整运行验收。GitHub hosted CI因账户计费限制未启动，不能称为CI通过。完整修复的发布标签仍为release:待发布；此处为09:02快照；现存节点安装与READY已由文末新证据补齐，当前任务及正常停机核验仍待完成。
 
 回带分支集成检查：按仓库各包构建脚本依次执行六个包的TypeScript、Web类型检查与Vite构建，全部通过；契约72/72通过。执行器在打印Unicode测试摘要时中断，测试本身成功；随后单独完成样例和数据生命周期检查。未将本地npm启动器缺失或打印编码问题当成产品测试失败。
+
+## 11:10 实际安装与运行核验补充
+
+本节更新09:02的局部发布状态。等待计价权限期间，发布接续已完成正常Start和现存节点安装。本轮先读实际云操作、安装回执与进程，没有重复派发安装、启动或重建。主站、控制端、未来两槽模板、现存节点均已实际采用本修复；当前生产任务仍在运行，完整任务终态及本epoch空闲排空/STOP_CHARGING尚未观察，不能标为最终发布验收完成。
+
+- 维护子账号的官方询价权限已实测成功。API `CBS InquiryPriceCreateDisks` 对应CAM动作是 `cvm:InquiryStoragePrice`；另一动作是 `cvm:DescribeZoneInstanceConfigInfos`。原错误动作名不适用。询价原始脱敏证据SHA256为 `f0d1fbd5bd46178b4370fc7bc89f70e298b66930869d3647dca790b199ed258b`，三个RequestId依次为 `6c8cb222-b9ed-4eb6-874c-97aaf8625a26`、`340ece47-d581-466e-9a89-48cb29a49e21`、`a60f98c5-1d9b-41ea-80cf-299839e59b3a`。当前已生效计价有效期 `2026-11-17T16:00:00.000Z`，本轮没有覆盖该计价文件。
+- 节点 `ins-p4i0pcub` 的正常持久化Start操作 `ccdd548d-97cc-4167-981f-6440b34ee898` 于09:38:10完成，provider RequestId `9151616f-cb47-4ffd-b965-d02f9661f950`。当前epoch `477c5592-8a3d-4169-9f0e-6a3d1be22cc8`。
+- 节点保护回执 `/var/lib/bondbuddy/managed-db1484-install/installed.safe.json` 记录09:39:26安装完成，安装前业务消费者0，原不相关配置保留。新pin `183e5240…dd0`、helper `db4c7779…43e`，与发布工件一致。编制/复核分别于09:39:37和09:39:40运行。
+- 11:03 TAT只读审计 `inv-gb9qe2gkaf` / `invt-gb9qe2gkag`：SUCCESS、ExitCode=0、Dropped=0；请求SHA256 `b63b05cc3898a8093fd65757b98c327f254c4032180bc72bcd6c9c3f66b4b7fe`。实际运行文件编制46/46、复核28/28，共74/74哈希匹配。
+- 两个容器使用各自实际DATABASE_URL身份执行 `assertManagedDatabasePrivileges`，结果均PASS；两角色均superuser=false、审计UPDATE/DELETE/TRUNCATE=false。两服务非OOM、8/8槽保持；各自本次启动以来末5000条日志中的权限错误匹配数均0。这是限定日志窗口检查，不代表所有业务路径均已验收。
+- 11:10主站核验：API当前实际模块仍为 `d1ca53c3…26f`，API/Web/PG健康、ops运行，公网首页200、healthz200、匿名me401，ledger=192，无pending-release及待处理云操作。PG容器未重启。API/Web/ops已被其他组件发布接续，当前ID见下述机器可读回执；不能用09:02的旧ID再次激活或覆盖共享台账。
+- 实际ops pool和authority均指向本修复pin；当前pool SHA256 `7e5d1666717882618abd8ad447314c979eac9e53ef15359236bc5862b668eb0b`。控制端两份helper/bootstrap与运行容器一致；未来两槽模板SHA256分别为 `350adadff70c3094af087410f48ade2269a3d1d7014d9e93769afb211053fa8b`、`ac2bb3fc205d7e19dce4ba030e7d6f54a3d70932a271f11acddcd0d9e271fe77`，各自包含74文件。
+- 真实生产run `d8c63eec-b599-4140-b125-c2f3886a75c1` 已进入 `provider_call`，最新进度11:09:55；job租约持续续期，两服务READY且心跳新鲜，1个租约和1个模型holder。尚无artifact，模型调用状态仍pending_reconcile / usage unknown，不能称为成功交付。未重投历史生产客户任务。
+
+机器可读核验：[managed-db1484-runtime-2026-11-17.safe.json](managed-db1484-runtime-2026-11-17.safe.json)。保留此前真实杞县成功重放及沧州独立HTTP413的边界。最终统一验收剩余：当前实际任务结果入库、成果/结算和容量释放，以及本epoch在正常空闲后自然排空、STOP_CHARGING；不打断在途任务来制造空闲，也不拿旧epoch停机证据替代。本轮保持 `release:待发布`，待以上约定核验收尾再切换，组件已生效与最终验收分别记录。
+
+## 11:21 权限发布与节点生命周期核验收尾
+
+本节替代此前“节点生命周期待观察”的当前状态。11:20:51，正常控制器确认本epoch已停止，云端回执为STOPPED / StopInstances SUCCESS / STOP_CHARGING。stop操作 `99b44ac6-2854-487d-94c6-f24ea35bcda4`、RequestId `6f696b0b-934c-4460-a531-c9775a6f1681`，云取证SHA256 `09c14bb1789af448be468425e7d3e1b9f4e7520bbb5b41f236d193413dab4ad1`。节点revision=56，租约、模型holder和待处理云操作全部为0。
+
+编制与复核会话分别于11:19:06和11:19:00按正常路径finished；两者native_processes=0、unpersisted_results=0。11:19:48排空证明 `db93b4b6bbe6cb95865977f796a3b0836fe0960ae3cf66305dd1d7fca3dde228` 包含positive_session_receipts=2、active_leases=0、active_model_calls=0、native_processes=0、unpersisted_results=0、accounted_unknown_calls=1。未知用量被如实记账，不冒充已结算或confirmed_not_sent。没有手动停机、强杀、重复安装或重投客户任务。
+
+权限补丁的数据库、主站API、控制端、未来模板和现存节点全部已生效；原先被权限拒绝的运行路径已进入真实模型调用，实际身份预检和正常排空/停机通过。#1484更新为 `release:已部署`，部署证据PR为#1517；这只代表本权限修复的发布核验，不代表所有业务任务成功或用户已验收。
+
+本次实际任务另有明确失败边界：run `d8c63eec-b599-4140-b125-c2f3886a75c1` 在11:13:05进入paused/provider_reconcile；运行记录 `call-ad5162a7-26d9-4ede-b054-faa9025e2243` 为codex-file-authoring-2 / deepseek、duration_ms=5400019、SIGTERM、MODEL_TIMEOUT、208次工具尝试，observation为pending_reconcile / timeout / usage unknown，provider_result_refs=0且无正式Word。这是90分钟模型执行超时，不能算交付成功，亦不能归为本次数据库42501回归。该症状补充到既有#1341，未在本次权限发布中改变模型时限、恢复策略或账务；是否存在可用恢复快照需该问题继续核对，不凭本次取证推断。
+
+最终统一验收待办：模型超时及恢复问题的修复与真实成果、质量/页面、用户验收。既有真实杞县成功重放证据继续保留，不把当前超时任务或正常停机说成成功交付。文档验证仅JSON解析、字段/状态核对及git diff --check；#1517的GitHub Actions仍因账户付款/消费额度限制未启动，非CI通过。
