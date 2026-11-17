@@ -10,9 +10,6 @@ export const INTEGRITY_VERIFIED_ENDPOINTS: Readonly<Record<string, readonly stri
   "pbc": [
     "https://www.pbc.gov.cn/"
   ],
-  "csrc-portal": [
-    "https://www.csrc.gov.cn/"
-  ],
   "sse": [
     "https://www.sse.com.cn/"
   ],
