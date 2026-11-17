@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-17T08:34:43.227Z",
+  "release_commit": "60baecdfdaab3027fbb15a2cc12a933e04a5a2a2",
+  "passed": true,
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "f0b3ae8035f975fa4c7a4a2dd1876b81e6e464c56033e038fcd8f004f31403ea",
+      "matches": true
+    },
+    {
+      "path": "assets/main-D-doT12l.js",
+      "status": 200,
+      "sha256": "deb46aa48695d714268a5a52e691d0a2a5a4592785b700050a093242a7832428",
+      "matches": true
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "status": 200,
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "matches": true
+    },
+    {
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "status": 200,
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "matches": true
+    },
+    {
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "status": 200,
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "matches": true
+    },
+    {
+      "path": "assets/api-BzM-KiTM.js",
+      "status": 200,
+      "sha256": "60cdacd9b916159c29705e242a0d3e1e6afde62d70c884a24fa220bdfed6d011",
+      "matches": true
+    },
+    {
+      "path": "assets/main-BQuY8FPo.css",
+      "status": 200,
+      "sha256": "2e7ef262a43a680117dbc1fef9fd51cfb8e1a5f359e27e13c1c97278227fb933",
+      "matches": true
+    },
+    {
+      "path": "/healthz",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "path": "/api/v1/me",
+      "status": 401,
+      "matches": true
+    }
+  ],
+  "authenticatedBusinessWrites": 0,
+  "modelCalls": 0,
+  "transport": "Playwright request; prior urllib check stopped after prolonged read"
+}
