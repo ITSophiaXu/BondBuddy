@@ -1,0 +1,27 @@
+[Unit]
+Description=Authenticated official website egress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Environment=LD_LIBRARY_PATH=/var/lib/bondbuddy/elastic-pg-mtls/runtime/lib/x86_64-linux-gnu:/var/lib/bondbuddy/elastic-pg-mtls/runtime/usr/lib/x86_64-linux-gnu
+ExecStart=/var/lib/bondbuddy/elastic-pg-mtls/runtime/usr/bin/stunnel4 /var/lib/bondbuddy/elastic-pg-mtls/proxy/integrity-server.conf
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+IPAddressDeny=any
+IPAddressAllow=10.73.7.0/24 10.2.0.5/32 127.0.0.0/8
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=64M
+CPUQuota=25%
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
