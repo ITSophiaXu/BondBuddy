@@ -27,7 +27,7 @@
   "compose_sha256": null,
   "execution_network": "REQUIRED_PRIVATE_NETWORK",
   "execution_network_subnet": "172.28.61.0/24",
-  "seccomp_file": "/opt/bondbuddy/deploy/m1/security/codex-seccomp.json",
+  "seccomp_file": "/opt/bondbuddy/deploy/m1/security/integrity-browser-seccomp.json",
   "seccomp_sha256": null,
   "apparmor_file": "/etc/apparmor.d/bondbuddy-codex-v1",
   "apparmor_sha256": null,

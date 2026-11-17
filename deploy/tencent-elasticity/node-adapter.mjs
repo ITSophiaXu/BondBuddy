@@ -23,8 +23,6 @@ async function metadataValue(path) {
 export async function verifyInstalledExecutionImage(image, runDocker=docker) {
   const localId=typeof image==='string'&&/^sha256:[a-f0-9]{64}$/.test(image);
   requireThat(localId || (typeof image==='string'&&/^[-A-Za-z0-9._/:]+@sha256:[a-f0-9]{64}$/.test(image)), 'NODE_IMAGE_DIGEST_REQUIRED');
-  // Image capture can preserve a local content ID without a registry digest.
-  // Both modes inspect existing content only; neither resolves tags or pulls.
   if(localId){
     const inspected=await runDocker(['image','inspect','--format','{{.Id}}',image]);
     requireThat(inspected===image,'NODE_IMAGE_NOT_INSTALLED');
@@ -52,8 +50,6 @@ export function selectExecutionNodeConfig(config, publicManifest) {
       ['role_name','role_id','secret_name'].every(k=>new Set(slots.map(s=>s[k])).size===2), 'NODE_SLOT_TEMPLATE_INVALID');
     requireThat(hasBinding, 'NODE_SLOT_BINDING_REQUIRED');
   }else{
-    // Direct single-config adapters remain compatible. A supplied binding must
-    // still exactly match that one configured role; it never falls back to it.
     slots=[{role_name:config.role_name,role_id:config.role_id,secret_name:config.secret_name}];
     requireThat(validBinding(slots[0]), 'NODE_SLOT_TEMPLATE_INVALID');
   }
@@ -78,7 +74,6 @@ let currentService=null, composeArgs=null;
 const failureContainers=async()=>{
   const known=new Map(launched);
   if(composeArgs && currentService){
-    // Observe before the existing cleanup; this never starts/stops a container.
     const id=await rawDocker([...composeArgs,'ps','-a','-q',currentService],{timeout:2000});
     if(/^[a-f0-9]{12,64}$/.test(id))known.set(id,{id,service_id:currentService});
     else if(id!=='')return null;
@@ -134,8 +129,6 @@ const runtime = {
     const pg=config.private_pg;
     requireThat(pg?.config_file?.startsWith('/etc/bondbuddy/') && sha256(await readFile(pg.config_file))===pg.config_sha256 &&
       pg.unit_name==='bondbuddy-execution-pg.service' && /^[A-Za-z0-9.-]+$/.test(pg.sni) && /^\d+$/.test(pg.system_identifier),'NODE_PRIVATE_PG_REQUIRED');
-    // The reviewed stunnel client config binds endpoint/SNI/CA/mTLS identity;
-    // a route or CCN attachment on its own is never a readiness receipt.
     const transportText=await readFile(pg.config_file,'utf8');
     requireThat(transportText===renderPrivateTransportConfig(config),'NODE_PRIVATE_PG_CONFIG_DRIFT');
     requireThat(process.getuid()===0 && pg.credential_directory==='/etc/bondbuddy/transport' &&
@@ -160,7 +153,6 @@ const runtime = {
     const active=await unitState();
     requireThat(['active','inactive','failed'].includes(active),'NODE_PRIVATE_PG_UNIT_UNKNOWN');
     if(active==='active'){
-      // Never replace credentials or restart a transport which may serve holders.
       requireThat(enrollment.transport_credentials &&
         sha256(await readFile(pg.ca_file))===sha256(enrollment.transport_credentials.ca_pem) &&
         sha256(await readFile(pg.cert_file))===sha256(enrollment.transport_credentials.cert_pem) &&
@@ -180,8 +172,6 @@ const runtime = {
   async startService(service, envelopePath) {
     currentService=service.service_id;
     diagnostics?.stage('service_env',service.service_id);
-    // Compose overrides all scheduling/identity options. Arbitrary user shell
-    // configuration and personal authentication variables are forbidden.
     const environment = enrollment.service_environments?.[service.service_id];
     requireThat(environment && Object.entries(environment).every(([k, v]) => /^[A-Z][A-Z0-9_]*$/.test(k) &&
       !/^(?:GIT|GH_|GITHUB|PASEO|SSH_|HOME$|CODEX_HOME$|PATH$|LD_|NODE_OPTIONS$|BB_EXECUTION_)/.test(k) &&
@@ -222,8 +212,6 @@ const runtime = {
     composeArgs=args;
     diagnostics?.stage('compose_up',service.service_id);
     try{await runDocker([...args,'up','--no-deps','--pull','never','-d',service.service_id]);}finally{
-      // Even if the client lost the up response, discover the exact service ID
-      // before returning. Failed/partial boot cannot leave an untracked claimant.
       diagnostics?.stage('compose_discover',service.service_id);
       const observed=await runDocker([...args,'ps','-a','-q',service.service_id]);
       if(/^[a-f0-9]{12,64}$/.test(observed))launched.set(observed,{id:observed,service_id:service.service_id});
@@ -236,8 +224,6 @@ const runtime = {
   async verifyAllReady(contexts) {
     diagnostics?.stage('ready_verification');
     requireThat(contexts.length === config.services.length && enrollment.identity, 'NODE_SERVICES_INCOMPLETE');
-    // No supplier probe. The runtime's own preflight and PG expected-session
-    // registration must prove every service ready under the exact epoch.
     const i = enrollment.identity;
     const sql = `SELECT n.state,n.epoch,n.source_sha256,n.image_sha256,n.launch_manifest_sha256,(pg_control_system()).system_identifier::text AS system_identifier,NOT EXISTS(SELECT 1 FROM jsonb_array_elements(n.expected_services) e WHERE NOT EXISTS(SELECT 1 FROM bb_execution_node_sessions s WHERE s.node_id=n.id AND s.epoch=n.epoch AND s.service_id=e->>'service_id' AND s.state='active' AND s.ready AND s.heartbeat_at>clock_timestamp()-interval '30 seconds')) AS expected_sessions_ready FROM bb_execution_nodes n WHERE n.account_id=$1 AND n.region=$2 AND n.instance_id=$3`;
     const program = `const {Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:10000});try{const r=(await p.query(${JSON.stringify(sql)},${JSON.stringify([i.account_id,i.region,i.instance_id])})).rows[0];console.log(JSON.stringify(r));}finally{await p.end()}`;
@@ -259,8 +245,6 @@ const runtime = {
       const running=await runDocker(['inspect','--format','{{.State.Running}}',c.id]);
       if(running==='true')await runDocker(['kill','--signal=SIGTERM',c.id]);
     }
-    // No docker stop deadline, hard kill, TTL reclamation or fallback restart.
-    // Managed runtime handles graceful drain and keeps lease heartbeats.
   }
 };
 
