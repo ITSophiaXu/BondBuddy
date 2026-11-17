@@ -29,6 +29,34 @@ class ReviewCorrectionTests(unittest.TestCase):
         with ZipFile(self.path/'clean.docx') as z:
             root=xml(z.read('word/document.xml'));self.assertFalse(list(root.iter(q('ins'))));self.assertFalse(list(root.iter(q('commentReference'))));self.assertNotIn('word/comments.xml',z.namelist())
         self.assertEqual(before,self.source.read_bytes())
+    def test_rounded_sum_keeps_body_and_explains_in_comment_not_prospectus(self):
+        d=Document();d.add_paragraph('期间费用为11.14万元。');d.add_paragraph('总资产为12亿元。');d.save(self.source)
+        before=self.source.read_bytes()
+        report=issue('期间费用', '期间费用为11.14万元。', '期间费用为11.16万元。').replace(
+            '合成财务报表，2026年，资产行', '分项1.13万元、2.24万元、3.34万元、4.45万元，合计11.16万元')
+        report+=issue('资产', '总资产为12亿元。', '总资产为13亿元。')
+        state=build(self.source,self.request(report),self.path)
+        self.assertEqual([i['applied'] for i in state['issues']], [False, True])
+        self.assertTrue(state['issues'][0]['uncertain'])
+        self.assertIn('累计舍入',state['issues'][0]['limitation'])
+        self.assertEqual(self.text('clean.docx'),'期间费用为11.14万元。\n总资产为13亿元。')
+        with ZipFile(self.path/'revision.docx') as z:
+            self.assertIn('累计舍入',z.read('word/comments.xml').decode())
+            self.assertNotIn('累计舍入',z.read('word/document.xml').decode())
+        self.assertEqual(before,self.source.read_bytes())
+        # A saved legacy snapshot must not re-enable the same bad suggestion.
+        state['issues'][0]['uncertain']=False
+        request=self.request('');request.update(editor=state,decisions=[
+            dict(id=i['id'],decision='suggested',manual_text='') for i in state['issues']])
+        repeated=build(self.source,request,self.path)
+        self.assertFalse(repeated['issues'][0]['applied'])
+        self.assertIn('期间费用为11.14万元',self.text('clean.docx'))
+        # An explicit human replacement remains the user's decision.
+        request['decisions'][0].update(decision='manual',manual_text='期间费用经人工确认为11.16万元。')
+        manual=build(self.source,request,self.path)
+        self.assertTrue(manual['issues'][0]['applied'])
+        self.assertIn('经人工确认为11.16万元',self.text('clean.docx'))
+
     def test_manual_export_can_retain_and_edit_without_model(self):
         s=build(self.source,self.request(issue('资产','总资产为12亿元。','总资产为12.6亿元。')),self.path)
         r=self.request('');r.update(editor=s,decisions=[dict(id='R001',decision='original',manual_text='')]);build(self.source,r,self.path);self.assertIn('总资产为12亿元。',self.text('clean.docx'))

@@ -8,6 +8,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from .word_patch import Patcher, xml, serialized, paragraph_text, q, add_layout_comments
 from .correction_findings import category_label, findings
+from .correction_rounding import rounded_sum_limitation
 from bondbuddy_word_delivery.writer import normalize_old_revisions
 
 
@@ -75,6 +76,12 @@ def build(source, request, output):
     for issue in issues:
         issue.update(decisions.get(issue['id'], {}))
         issue.update(applied=False, limitation='', paragraph_id=None)
+        # Re-evaluate saved editors as well as new reports. Only an explicit
+        # user's manual replacement may override this automated suggestion guard.
+        if issue['decision'] == 'suggested':
+            limitation = rounded_sum_limitation(issue['original'], issue['replacement'], issue['evidence'])
+            if limitation:
+                issue.update(uncertain=True, limitation=limitation)
         matches = [p for p in paragraphs if issue['original'] and p['text'].count(issue['original']) == 1]
         if len(matches) == 1 and sum(p['text'].count(issue['original']) for p in paragraphs) == 1:
             issue['paragraph_id'] = matches[0]['id']
