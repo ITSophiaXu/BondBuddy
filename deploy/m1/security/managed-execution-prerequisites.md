@@ -1,6 +1,6 @@
 # Managed execution database prerequisites (#1484)
 
-Status: development fix; no production migration, restart or customer retry was performed. Code completion and local synthetic tests do not establish deployment or user acceptance.
+Status: the fix and production release are merged. On 2026-11-17 the database, API, controller, future templates and existing node were verified to contain the fix; actual authoring/review identities passed preflight and all 74 runtime hashes matched. The active task and current-epoch idle drain/stop-charging still require final observation. See [deployment evidence](../../../docs/acceptance/managed-db1484-partial-deployment-2026-11-17.md). Runtime verification does not establish user acceptance.
 
 ## Cause and scope
 
