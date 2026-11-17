@@ -18,6 +18,7 @@ from lxml import etree as ET
 from bondbuddy_file_authoring.check import package, resolve_revisions
 from bondbuddy_file_authoring.fixed_edit import Editor, empty_log, finalize, load_input, write_json
 from bondbuddy_file_authoring.format_diff import audit, canonical
+from bondbuddy_file_authoring.format_plan import restore_absent_property_shells
 from bondbuddy_file_authoring.template_manifest import build_manifest, node_text, sha
 from bondbuddy_file_authoring.word_patch import Patcher, paragraph_text, q, serialized, xml
 
@@ -119,6 +120,8 @@ class FixedEditTests(unittest.TestCase):
         self.assertTrue(root.findall('.//' + q('trPr') + '/' + q('ins')))
         self.assertTrue(root.findall('.//' + q('pPr') + '/' + q('rPr') + '/' + q('ins')))
         rejected = resolve_revisions(copy.deepcopy(root), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
         self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
         clean_doc = Document(output / 'clean.docx')
         self.assertIn('新增完整段落', [p.text for p in clean_doc.paragraphs])
@@ -160,8 +163,13 @@ class FixedEditTests(unittest.TestCase):
             self.assertEqual(run.find(q('rPr') + '/' + q('sz')).get(q('val')), size)
             self.assertEqual(parts['word/styles.xml'], original['word/styles.xml'])
             if variant == 'tracked':
-                self.assertEqual(canonical(resolve_revisions(copy.deepcopy(root), False)),
-                                 canonical(xml(original['word/document.xml'])))
+                rejected = resolve_revisions(copy.deepcopy(root), False)
+                # Captionless financial headers now receive reversible row properties.
+                # Restore only absent shells bound by the trusted source-derived plan;
+                # the strict comparator must still preserve pre-existing empty groups.
+                plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+                restore_absent_property_shells(rejected, plan, 'word/document.xml')
+                self.assertEqual(canonical(rejected), canonical(xml(original['word/document.xml'])))
 
     def test_fill_empty_cell_inherits_paragraph_mark_font_in_both_word_views(self):
         self.empty_numeric_cell()
@@ -245,6 +253,8 @@ class FixedEditTests(unittest.TestCase):
                          [['项目', '2026年6月末', '2025年度', '2024年度'], ['净资产', '130\n合成注释', '120', '100'], ['负债', '65', '60', '50']])
         tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
         rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
         self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
         self.assertFalse(tracked.findall('.//' + q('ins') + '//' + q('ins')))
         self.assertEqual(len(tracked.findall('.//' + q('tblGridChange'))), 1)
@@ -550,7 +560,10 @@ class FixedEditTests(unittest.TestCase):
         self.assertEqual(sum(paragraph_text(p).endswith('本轮更新。') for p in clean.iter(q('p'))), 600)
         # Rejecting the new revisions restores every original paragraph and run
         # property; unrelated template parts remain byte-identical.
-        self.assertEqual(canonical(resolve_revisions(copy.deepcopy(tracked), False)), canonical(root))
+        rejected = resolve_revisions(copy.deepcopy(tracked), False)
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(root))
         for name, original in parts.items():
             if name != 'word/document.xml':
                 self.assertEqual(tracked_parts[name], original, name)
