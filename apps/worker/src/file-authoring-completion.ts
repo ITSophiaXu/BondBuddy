@@ -32,11 +32,13 @@ export async function completionFeedback(root: string, continued: boolean): Prom
   const input = JSON.parse(await readFile(join(root, 'input.json'), 'utf8'));
   if (input.version !== 'codex-file-input-v1') return {};
   const controlled = input.format_tools?.version === 'controlled-docx-v1';
+  const scoped = controlled && await available(root, 'chapter-repair.json', 4 * 1024 * 1024);
   const missing = [];
-  for (const name of controlled ? ['operations.json'] : ['tracked.docx', 'clean.docx']) {
+  for (const name of scoped ? ['repair-answers.json'] : controlled ? ['operations.json'] : ['tracked.docx', 'clean.docx']) {
     if (!await available(root, `output/${name}`, (controlled ? 32 : 100) * 1024 * 1024)) missing.push(name);
   }
   if (!missing.length) return {};
+  if(scoped)return {decision:'block',reason:'BB_AUTHORING_OUTPUT_INCOMPLETE：请按 chapter-repair.md 保存 output/repair-answers.json，逐个 issue_id 提供有材料依据的正文后结束。已有 operations.json 不是本轮答案，不能改写日志或选择段落坐标。无法完成时如实说明。'};
   return { decision: 'block', reason: `BB_AUTHORING_OUTPUT_INCOMPLETE：必需交付文件 ${missing.join('、')} 尚未实际保存。本次执行尚未完成，请在当前工作目录继续已有工作，排查工具错误并保存实际成果。${controlled ? '阅读 fixed-edit.md，使用固定编辑工具分批 apply 将有依据的修改写入 output/operations.json；不要以任意 Word 文件替代操作日志，不得用空日志或 no_changes 跳过应完成的更新。' : '实际写出 output/tracked.docx 和 output/clean.docx；不得以旧原稿或空模板冒充更新结果。'}保留 scratch/工作记录.md，准确记录仍无法完成的事项。不能完成时如实说明，不要声称交付成功。` };
 }
 

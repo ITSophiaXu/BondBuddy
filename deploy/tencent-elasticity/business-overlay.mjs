@@ -19,7 +19,15 @@ const PERFORMANCE_VERSION = 'shared-business-eight-performance-v1';
 const RECOVERY_PERFORMANCE_VERSION = 'shared-business-eight-performance-recovery-v1';
 const PERMISSIONS_VERSION = 'shared-business-eight-permissions-v1';
 const ENCRYPTED_VERSION = 'shared-business-eight-permissions-encrypted-v1';
-const isPerformanceVersion = version => [PERFORMANCE_VERSION, RECOVERY_PERFORMANCE_VERSION, PERMISSIONS_VERSION, ENCRYPTED_VERSION].includes(version);
+export const CHAPTER_REPAIR_VERSION = 'shared-business-eight-chapter-repair-v1';
+// Host/editor/checker closure, installed for both roles.
+export const chapterRepairFiles = Object.freeze([
+  ...['file-authoring-stage','file-authoring-repair','file-authoring-scoped-repair','file-authoring-completion','file-authoring-format','file-authoring-quality'].map(n=>`apps/worker/dist/${n}.js`),
+  ...['__init__','check','document_size','fixed_edit','format_diff','format_plan','period_definitions','preflight','quality','repair_scope','source_outline','template_manifest','word_patch'].map(n=>`python/bondbuddy_file_authoring/${n}.py`),
+  ...['task.md','fixed-edit.md','chapter-repair.md'].map(n=>`python/bondbuddy_file_authoring/${n}`),
+  'python/bondbuddy_word_delivery/__init__.py','python/bondbuddy_word_delivery/writer.py'
+].sort());
+const isPerformanceVersion = version => [PERFORMANCE_VERSION, RECOVERY_PERFORMANCE_VERSION, PERMISSIONS_VERSION, ENCRYPTED_VERSION, CHAPTER_REPAIR_VERSION].includes(version);
 const performancePaths = Object.freeze({"authoring":["apps/api/dist/batch-admission.js","apps/api/dist/data.js","apps/api/dist/execution-capacity.js","apps/api/dist/log-ops.js","apps/api/dist/m4-workspace.js","apps/api/dist/observability.js","apps/api/dist/performance-dispatch.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/project-file-consistency.js","apps/api/dist/project-file-workspace.js","apps/api/dist/provider-results.js","apps/api/dist/queue.js","apps/api/dist/workpapers.js","apps/api/package.json","apps/worker/dist/bounded-items.js","apps/worker/dist/codex-adapter.js","apps/worker/dist/deferred-qa-journal.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/integrity-browser-boundary.js","apps/worker/dist/integrity-browser.js","apps/worker/dist/m4-document-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/project-qa-stage.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","apps/worker/dist/workpaper-progressive-groups.js","apps/worker/dist/workpaper-shared-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"],"review":["apps/api/dist/batch-admission.js","apps/api/dist/execution-capacity.js","apps/api/dist/performance-store.js","apps/api/dist/performance-trace.js","apps/api/dist/queue.js","apps/api/package.json","apps/worker/dist/codex-adapter.js","apps/worker/dist/file-authoring-repair.js","apps/worker/dist/file-authoring-stage.js","apps/worker/dist/historical-model-stage.js","apps/worker/dist/m4-file-workspace.js","apps/worker/dist/model-call-budget.js","apps/worker/dist/model-performance.js","apps/worker/dist/performance-io.js","apps/worker/dist/project-file-tools.js","apps/worker/dist/run-pipeline.js","apps/worker/dist/runtime.js","apps/worker/dist/unified-model-stage.js","packages/contracts/dist/execution-capacity.js","packages/contracts/dist/index.js","packages/contracts/dist/performance.js","packages/contracts/dist/workpaper-entry.js","packages/contracts/dist/workpaper-progressive.js"]});
 const performanceSql = Object.freeze({"db/migrations/0180_batch_four_way.sql":{"bytes":10196,"sha256":"9529796afd9564dafb8f1a9fff5b792444b66b934838870430471f0d787b2caf"},"db/migrations/0186_shared_batch_capacity.sql":{"bytes":967,"sha256":"841e463b7f0b470be96b5e24ac3181445f95635068fcc6d437f3c9f50fb2539f"},"db/migrations/0188_execution_node_eight_capacity.sql":{"bytes":1605,"sha256":"c921711132ead5585a9976d6fb1343cec746b2fef55a60a2262f61be78f836a6"}});
 
@@ -28,10 +36,17 @@ const recoveryPerformanceSql = Object.freeze({...performanceSql,"db/migrations/0
 const permissionsPaths = Object.fromEntries(Object.entries(recoveryPerformancePaths).map(([role,paths])=>[role,[...paths,'apps/api/dist/evidence-gate.js','apps/worker/dist/managed-database-preflight.js'].sort()]));
 const permissionsSql = Object.freeze({...recoveryPerformanceSql,'db/migrations/0190_managed_evidence_gate_lock.sql':{"bytes": 940, "sha256": "91977d6f5a83896738469def69ebc2a4e0757851a7e9fee21c75eb2ad07bbb3d"}});
 const encryptedPaths = Object.fromEntries(Object.entries(permissionsPaths).map(([role,paths])=>[role,[...paths,'apps/worker/dist/file-authoring-format.js','python/bondbuddy_file_authoring/fixed_edit.py'].sort()]));
-const performanceProfile = version => version===ENCRYPTED_VERSION ? {paths:encryptedPaths,sql:permissionsSql,count:78} : version===PERMISSIONS_VERSION ? {paths:permissionsPaths,sql:permissionsSql,count:74} : version===RECOVERY_PERFORMANCE_VERSION ? {paths:recoveryPerformancePaths,sql:recoveryPerformanceSql,count:70} : {paths:performancePaths,sql:performanceSql,count:63};
+const chapterPaths=Object.fromEntries(Object.entries(encryptedPaths).map(([role,paths])=>[role,[...new Set([...paths,...chapterRepairFiles])].sort()]));
+const chapterCount=Object.values(chapterPaths).reduce((sum,paths)=>sum+paths.length,0);
+const performanceProfile = version => version===CHAPTER_REPAIR_VERSION ? {paths:chapterPaths,sql:permissionsSql,count:chapterCount} : version===ENCRYPTED_VERSION ? {paths:encryptedPaths,sql:permissionsSql,count:78} : version===PERMISSIONS_VERSION ? {paths:permissionsPaths,sql:permissionsSql,count:74} : version===RECOVERY_PERFORMANCE_VERSION ? {paths:recoveryPerformancePaths,sql:recoveryPerformanceSql,count:70} : {paths:performancePaths,sql:performanceSql,count:63};
+
+export function businessOverlayProfile(version){
+  requireThat(isPerformanceVersion(version),'BUSINESS_OVERLAY_SCOPE');
+  return structuredClone(performanceProfile(version));
+}
 
 function performanceKey(f) { return `${f.service_id}/${f.path}`; }
-function validPerformanceFiles(files, version = files?.length===78 ? ENCRYPTED_VERSION : files?.length===74 ? PERMISSIONS_VERSION : files?.length===70 ? RECOVERY_PERFORMANCE_VERSION : PERFORMANCE_VERSION) {
+function validPerformanceFiles(files, version = files?.length===chapterCount ? CHAPTER_REPAIR_VERSION : files?.length===78 ? ENCRYPTED_VERSION : files?.length===74 ? PERMISSIONS_VERSION : files?.length===70 ? RECOVERY_PERFORMANCE_VERSION : PERFORMANCE_VERSION) {
   const {paths,count}=performanceProfile(version);
   return Array.isArray(files) && files.length === count && new Set(files.map(performanceKey)).size === count &&
     files.every(f=>f && Object.keys(f).length === 4 && Object.keys(f).every(k=>['service_id','path','sha256','bytes'].includes(k)) &&

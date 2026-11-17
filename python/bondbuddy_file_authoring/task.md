@@ -131,7 +131,7 @@ identity_occurrences 也含历史签字和事件，结合时点、原稿 existin
 
 该命令读取本次锁定底稿及当前完整累计日志，在 scratch 独占临时区重放双稿，复用宿主同一质量检查器；不会改动正式输出、原件、input.json 或 operations。报告绑定 input、底稿及当前 operations hash，只是本次模型执行的机械诊断，不是宿主接收、财务事实、法规、视觉、人工或发布批准。不能自写 passed 报告、修改阈值或检查输入来代替执行。
 
-命令退出失败时读取报告的 issues、diagnostics.chapter_content 和 diagnostics.outline；章节诊断提供标题、原文与当前有效段落的零基位置、稳定 node_id 及相关操作。通过 inspect 读取具体节点的完整当前文字；需要对照底稿时另作不带 operations 的 baseline inspect，不把底稿预览当作本轮成果。诊断内容可能截断，按报告标记和 node_id 读取完整上下文。工具不可用或日志／哈希／路径错误不得记为通过，保留具体问题。
+命令退出失败时读取报告的 issues、diagnostics.chapter_content 和 diagnostics.outline。若 next_action=handoff_to_worker，只保留当前完整 operations 和准确交付说明，结束本轮，由宿主独立复查后限定范围补齐正文，不再自行改节点或循环预检。其他问题通过报告稳定 node_id 与 inspect 读取具体节点的完整当前文字。xml_paragraph_index 仅供 XML 诊断，包含表格段落，绝不能作为 Document.paragraphs 下标或自行换算成节点 ID；标题诊断的 paragraph 也不是编辑地址。需要对照底稿时另作不带 operations 的 baseline inspect，不把底稿预览当作本轮成果。诊断内容可能截断，按报告标记和 node_id 读取完整上下文。工具不可用或日志／哈希／路径错误不得记为通过，保留具体问题。
 
 核对失败项对应的结构、清空位置或格式问题，并按目标主体、品种和事实依据修复。标题措辞和正文可以正常改写或精简，不需要恢复旧文字来提高保留率；历史数值及解释只有仍属于本次披露范围且有依据时才沿用并明确期间。缺本期材料时在具体位置按品种规则挂注或保留缺项。任何修改 operations 后重新运行来源反向回查及此质量预检。通过仍需宿主在执行结束后从持久日志和锁定底稿独立重建、检查，模型报告不替代该决定。
 

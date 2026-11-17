@@ -120,7 +120,7 @@ review_queue 将尚未修改且带有关期间和数值的正文突出为待核�
 
 operations 必须是当前已保存的完整日志，报告路径只允许 scratch 下的 JSON 普通文件。工具在独占临时区重放临时双稿，直接调用宿主同一 `quality.verify`，不修改锁定输入、材料、日志或 output 正式文件。报告绑定 input／底稿／operations hash，标为 model_preflight_diagnostic_only；host_acceptance、delivery_registered 和 release_authorized 均为 false。自写报告不会被用作检查输入或宿主批准。
 
-失败退出码为1，stdout 给报告路径和问题摘要，stderr 标为 WORD_PREFLIGHT_REJECTED。读取报告 quality_report 和 diagnostics：失败章节含标题、原文／当前有效段落零基位置、稳定 inspect node_id 和 operation_ids；标题变更含 recognition。正文诊断有界，text_truncated／truncated 为 true 时使用 inspect --node 读取完整当前文，不带 operations 的 inspect 只作底稿对照。缺日志、哈希冲突、不安全路径或检查不可用不能通过。
+失败退出码为1，stdout 给报告路径和问题摘要，stderr 标为 WORD_PREFLIGHT_REJECTED。若 next_action=handoff_to_worker，保留当前完整日志和准确交付说明后结束本轮；宿主会独立复查并限定范围补齐正文，不再自行改节点或循环预检。其余问题读取 quality_report 和 diagnostics 的稳定 inspect node_id、operation_ids 和 recognition。xml_paragraph_index 包含表格段落，仅供 XML 诊断，不能作为 Document.paragraphs 下标、编辑地址或自行转换成 node_id；标题诊断的 paragraph 同样不是编辑地址。正文诊断有界，text_truncated／truncated 为 true 时使用 inspect --node 读取完整当前文，不带 operations 的 inspect 只作底稿对照。缺日志、哈希冲突、不安全路径或检查不可用不能通过。
 
 模板检查保留章节编号、层级、顺序及字体、段落和表格格式，允许按目标主体、品种和事实依据更新标题文案、替换或精简正文。全文／分节相似度和逐章字数比例仅作诊断；整篇长稿另有篇幅下限；不要为提高保留率补回旧主体事实或旧市场条款。整节正文或整表被清空、章节缺失及格式破坏仍会失败。按 task.md 核对事实适用性及期间，缺本期材料局部挂注或按品种规则缺项。更新日志后重跑来源回查与预检，再结束执行。预检通过只适用于报告绑定的日志，不能声称财务／视觉／人工验收通过；宿主仍在执行结束后独立重建并检查。
 

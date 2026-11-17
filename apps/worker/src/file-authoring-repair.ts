@@ -10,12 +10,19 @@ import type { StageContext, StageOutcome } from './run-pipeline.js';
 
 export const MAX_SIZE_REPAIRS = 2;
 export type QualityReportRef = {key:string;sha256:string;byte_size:number};
-export type SizeRepair = {round:number;previous:FileAuthoringResult;report:WordQualityReport;reportRef:QualityReportRef};
+export type SizeRepair = {round:number;previous:FileAuthoringResult;report:WordQualityReport;reportRef:QualityReportRef;mode?:'chapter_body'};
 const repairable = new Set(['WORD_DOCUMENT_SIZE_REDUCED', 'WORD_SOURCE_CONTENT_REDUCED',
   'WORD_SOURCE_CHAPTER_CONTENT_LOST', 'WORD_SOURCE_TABLE_CONTENT_LOST', 'WORD_SOURCE_OUTLINE_CHANGED',
   'WORD_SOURCE_FORMAT_CHANGED']);
 const codes = (report:WordQualityReport) => report.issues.map(issue=>
   typeof issue==='object' && issue!==null && 'code' in issue ? String(issue.code) : String(issue));
+
+function repairMode(report:WordQualityReport,previous:FileAuthoringResult):'chapter_body'|'size'|null {
+  const findings=codes(report);
+  if(findings.length && findings.every(code=>code==='WORD_SOURCE_CHAPTER_CONTENT_LOST')
+    && previous.summary.format_execution==='controlled-docx-v1')return 'chapter_body';
+  return findings.includes('WORD_DOCUMENT_SIZE_REDUCED') && findings.every(code=>repairable.has(code))?'size':null;
+}
 
 export async function readAuthoringFile(ctx:StageContext,ref:QualityReportRef,max=FORMAT_JSON_MAX):Promise<Buffer>{
   const prefix=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/`;
@@ -35,10 +42,21 @@ export async function deliverWithSizeRepair(ctx:StageContext,options:{
   pause?:typeof pauseAtCheckpoint;
 }):Promise<StageOutcome>{
   const original=ctx.values.get('model_generation');
+  let scopedPrevious:FileAuthoringResult|undefined;
   try{
     for(let round=0;round<=MAX_SIZE_REPAIRS;round++){
       ctx.signal.throwIfAborted();
       const previous=ctx.values.get('model_generation') as FileAuthoringResult;
+      // One scoped candidate only. Persist both sides of any rejection, including
+      // invalid answers, so resume cannot turn a regression into a fresh budget.
+      const rejectionStage=`word_chapter_repair_rejected_${round}`;
+      const rejected=ctx.checkpoint?.[rejectionStage];
+      if(rejected){
+        if(!scopedPrevious || rejected.version!=='word-chapter-rejection-v1' || rejected.input_hash!==ctx.run.input_hash.trim()
+          || !isDeepStrictEqual(rejected.candidate,JSON.parse(JSON.stringify(previous)))
+          || !isDeepStrictEqual(rejected.retained,JSON.parse(JSON.stringify(scopedPrevious))))throw Error('INPUT_REVISION_CONFLICT');
+        return {kind:'pause',stage:'capability_not_ready',reason:'word_chapter_repair_rejected'};
+      }
       const stage=`word_size_review_${round}`;
       const saved=ctx.checkpoint?.[stage];
       let report:WordQualityReport, reportRef:QualityReportRef;
@@ -49,13 +67,24 @@ export async function deliverWithSizeRepair(ctx:StageContext,options:{
         report=await withPerformanceSpan('authoring.repair.report_replay',{repair_round:round,cache_hit:true},async()=>parseWordQualityReport((await readAuthoringFile(ctx,reportRef)).toString('utf8'),true));
       }else{
         const outcome=await withModelStagePerformance('authoring.delivery.attempt',{repair_round:round},()=>options.attempt(ctx,round));
+        if(scopedPrevious && outcome.kind==='fail'){
+          const gate=outcome.checkpoint?.quality_gate as {report:QualityReportRef}|undefined;
+          if(gate && codes(parseWordQualityReport((await readAuthoringFile(ctx,gate.report)).toString('utf8'),true)).includes('WORD_PAGE_COUNT_UNAVAILABLE'))
+            throw Error('WORD_PAGE_COUNT_UNAVAILABLE');
+          const record={version:'word-chapter-rejection-v1',input_hash:ctx.run.input_hash.trim(),
+            retained:JSON.parse(JSON.stringify(scopedPrevious)),candidate:JSON.parse(JSON.stringify(previous)),
+            rejection:{code:outcome.code,checkpoint:outcome.checkpoint??null}};
+          await (options.checkpoint??checkpointStage)(ctx.pool,ctx.lease,rejectionStage,record,false);
+          ctx.checkpoint[rejectionStage]=record;
+          return {kind:'pause',stage:'capability_not_ready',reason:'word_chapter_repair_rejected'};
+        }
         if(outcome.kind!=='fail' || outcome.code!=='WORD_QUALITY_REJECTED' || !outcome.checkpoint?.quality_gate)return outcome;
         reportRef=(outcome.checkpoint.quality_gate as {report:QualityReportRef}).report;
         report=parseWordQualityReport((await readAuthoringFile(ctx,reportRef)).toString('utf8'),true);
         const findings=codes(report);
         // A renderer outage must retry the checker, not buy another model turn.
         if(findings.includes('WORD_PAGE_COUNT_UNAVAILABLE'))throw Error('WORD_PAGE_COUNT_UNAVAILABLE');
-        if(!findings.includes('WORD_DOCUMENT_SIZE_REDUCED') || !findings.every(code=>repairable.has(code)))return outcome;
+        if(!repairMode(report,previous))return outcome;
         if(ctx.lease?.checkpoint.word_pair_delivery_recovery)return outcome;
         const record={version:'word-size-repair-v1',input_hash:ctx.run.input_hash.trim(),
           candidate:JSON.parse(JSON.stringify(previous)),report:reportRef};
@@ -63,14 +92,15 @@ export async function deliverWithSizeRepair(ctx:StageContext,options:{
         ctx.checkpoint[stage]=record;
       }
       // Revalidate the persisted authorization before replaying or sending a turn.
-      const findings=codes(report);
-      if(!findings.includes('WORD_DOCUMENT_SIZE_REDUCED') || !findings.every(code=>repairable.has(code)))throw Error('WORD_QUALITY_REPORT_INVALID');
+      const mode=repairMode(report,previous);
+      if(!mode)throw Error('WORD_QUALITY_REPORT_INVALID');
       if(ctx.lease.checkpoint.word_pair_delivery_recovery || round===MAX_SIZE_REPAIRS)
         return {kind:'pause',stage:'capability_not_ready',reason:'word_size_repair_exhausted'};
       ctx.signal.throwIfAborted();
       if(await (options.pause??pauseAtCheckpoint)(ctx.pool,ctx.lease))return {kind:'stopped'};
-      const result=await withModelStagePerformance('authoring.repair',{repair_round:round+1},()=>options.repair(ctx,{round:round+1,previous,report,reportRef}));
+      const result=await withModelStagePerformance('authoring.repair',{repair_round:round+1},()=>options.repair(ctx,{round:round+1,previous,report,reportRef,...(mode==='chapter_body'?{mode}:{})}));
       if(result.kind!=='done')return result;
+      if(mode==='chapter_body')scopedPrevious=previous;
       ctx.values.set('model_generation',result.value);
       if(await (options.pause??pauseAtCheckpoint)(ctx.pool,ctx.lease))return {kind:'stopped'};
     }

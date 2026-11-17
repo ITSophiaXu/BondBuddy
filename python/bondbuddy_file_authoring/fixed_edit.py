@@ -649,7 +649,7 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight'])
+    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight', 'repair-scope', 'repair-answers'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--operations')
     parser.add_argument('--operation-file')
@@ -661,9 +661,18 @@ def main():
     parser.add_argument('--limit', type=int, default=30)
     parser.add_argument('--reason')
     parser.add_argument('--report')
+    parser.add_argument('--scope')
+    parser.add_argument('--answers')
+    parser.add_argument('--candidate')
     args = parser.parse_args()
     try:
-        if args.command == 'prepare':
+        if args.command in ('repair-scope', 'repair-answers'):
+            if not args.operations or not args.scope or (args.command == 'repair-answers' and (not args.answers or not args.candidate)):
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            from .repair_scope import command
+            result = command(args.input, args.operations, args.scope,
+                             args.answers if args.command == 'repair-answers' else None, args.candidate)
+        elif args.command == 'prepare':
             data, source, raw = load_input(args.input)
             if not args.manifest:
                 error('WORD_EDIT_MANIFEST_REQUIRED')

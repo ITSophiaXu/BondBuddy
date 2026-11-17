@@ -34,6 +34,46 @@ function fixture(){
 }
 const delivered:StageOutcome={kind:'deliver',bytes:Buffer.from('synthetic checked revision'),cleanBytes:Buffer.from('synthetic checked clean')};
 
+test('empty bodies without a size failure enter a scoped repair and require full host checking',async()=>{
+  const f=fixture();f.initial.summary.format_execution='controlled-docx-v1';
+  let mode:unknown,checks=0;
+  const result=await deliverWithSizeRepair(f.ctx,{...f.options,
+    repair:async(ctx,request)=>{mode=request.mode;return f.repair(ctx,request);},
+    attempt:async(_ctx,round)=>{checks++;return round?delivered:f.rejected(['WORD_SOURCE_CHAPTER_CONTENT_LOST']);}});
+  assert.equal(result.kind,'deliver');assert.equal(mode,'chapter_body');assert.equal(checks,2);
+});
+
+test('a scoped rejection retains both candidates, pauses once and replays without another paid call',async()=>{
+  for(const codes of [['WORD_SOURCE_CHAPTER_CONTENT_LOST'],['WORD_SOURCE_OUTLINE_CHANGED'],[]]){
+    const f=fixture();f.initial.summary.format_execution='controlled-docx-v1';let checks=0;
+    const run=()=>deliverWithSizeRepair(f.ctx,{...f.options,attempt:async(_ctx,round)=>{
+      checks++;return round?(codes.length?f.rejected(codes):{kind:'fail',code:'WORD_QUALITY_REJECTED'}):f.rejected(['WORD_SOURCE_CHAPTER_CONTENT_LOST']);
+    }});
+    const expected={kind:'pause',stage:'capability_not_ready',reason:'word_chapter_repair_rejected'};
+    assert.deepEqual(await run(),expected);assert.equal(f.sends(),1);
+    assert.deepEqual(f.ctx.checkpoint.word_chapter_repair_rejected_1!.retained,f.initial);
+    assert.equal((f.ctx.checkpoint.word_chapter_repair_rejected_1!.candidate as FileAuthoringResult).summary.round,1);
+    f.restart();assert.deepEqual(await run(),expected);assert.equal(f.sends(),1);assert.equal(checks,2);
+    assert.equal(f.ctx.values.get('model_generation'),f.initial);
+  }
+});
+
+test('chapter repair never claims a renderer outage is a content rejection',async()=>{
+  const f=fixture();f.initial.summary.format_execution='controlled-docx-v1';
+  await assert.rejects(deliverWithSizeRepair(f.ctx,{...f.options,attempt:async(_ctx,round)=>f.rejected([
+    round?'WORD_PAGE_COUNT_UNAVAILABLE':'WORD_SOURCE_CHAPTER_CONTENT_LOST'])}),/WORD_PAGE_COUNT_UNAVAILABLE/);
+  assert.equal(f.ctx.checkpoint.word_chapter_repair_rejected_1,undefined);
+});
+
+test('legacy direct Word output and mixed structural errors cannot authorize scoped repair',async()=>{
+  for(const controlled of [false,true]){
+    const f=fixture();if(controlled)f.initial.summary.format_execution='controlled-docx-v1';
+    const failure=f.rejected(controlled?['WORD_SOURCE_CHAPTER_CONTENT_LOST','WORD_SOURCE_OUTLINE_CHANGED']:['WORD_SOURCE_CHAPTER_CONTENT_LOST']);
+    assert.deepEqual(await deliverWithSizeRepair(f.ctx,{...f.options,attempt:async()=>failure}),failure);
+    assert.equal(f.sends(),0);
+  }
+});
+
 test('size rejection repairs the same run and requires a fresh host pass before delivery',async()=>{
   const f=fixture(),checked:number[]=[];
   const result=await deliverWithSizeRepair(f.ctx,{...f.options,attempt:async(ctx,round)=>{
