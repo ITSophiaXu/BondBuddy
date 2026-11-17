@@ -27,7 +27,7 @@ def inspect(name):return json.loads(run(['docker','inspect',name]))[0]
 def db_guard():
  q="SELECT json_build_object('ledger',(SELECT count(*) FROM bb_schema_migrations),'leases',(SELECT count(*) FROM bb_jobs WHERE execution_node_id IS NOT NULL AND lease_token IS NOT NULL)+(SELECT count(*) FROM bb_review_messages WHERE execution_node_id IS NOT NULL AND lease_token IS NOT NULL),'holders',(SELECT count(*) FROM bb_model_capacity_holders),'not_stopped',(SELECT count(*) FROM bb_execution_nodes WHERE state<>'stopped'),'pending_ops',(SELECT count(*) FROM bb_execution_cloud_operations WHERE state NOT IN ('completed','cancelled','rejected')));"
  d=json.loads(run(['docker','exec','-i','bb-main-postgres-1','psql','-X','-qAt','-U','bondbuddy','-d','bondbuddy','-v','ON_ERROR_STOP=1'],('BEGIN READ ONLY;'+q+'ROLLBACK;').encode()))
- need(d=={'ledger':191,'leases':0,'holders':0,'not_stopped':0,'pending_ops':0},'database_drain_guard');return d
+ need(d=={'ledger':192,'leases':0,'holders':0,'not_stopped':0,'pending_ops':0},'database_drain_guard');return d
 
 def pool_hash(c,target):return sha((pathlib.Path('/proc')/str(c['State']['Pid'])/'root'/target.lstrip('/')).read_bytes())
 def check_config(old,current,overlay):
