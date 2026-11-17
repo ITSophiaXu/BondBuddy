@@ -21,13 +21,15 @@ def main():
   before=json.loads(sql("""BEGIN READ ONLY;SELECT json_build_object('ledger',(SELECT count(*) FROM bb_schema_migrations),'function',to_regprocedure('public.bb_lock_evidence_gate(boolean)')::text,'roles',(SELECT json_agg(rolname ORDER BY rolname) FROM pg_roles WHERE rolname LIKE 'bb1361_formal_n%_%_v1'),'leases',(SELECT count(*) FROM bb_jobs WHERE execution_node_id IS NOT NULL AND lease_token IS NOT NULL)+(SELECT count(*) FROM bb_review_messages WHERE execution_node_id IS NOT NULL AND lease_token IS NOT NULL),'holders',(SELECT count(*) FROM bb_model_capacity_holders),'not_stopped',(SELECT count(*) FROM bb_execution_nodes WHERE state<>'stopped'),'pending_ops',(SELECT count(*) FROM bb_execution_cloud_operations WHERE state NOT IN ('completed','cancelled','rejected')));ROLLBACK;"""))
   need(before['roles']==sorted(ROLES) and before['ledger']==190 and before['function'] is None,'migration_preimage')
   need(all(before[k]==0 for k in ['leases','holders','not_stopped','pending_ops']),'drain_guard')
-  migration=payload['migration'];delta=payload['delta'];preflight=payload['preflight_sql']
+  migration=payload['migration'];prerequisite=payload['prerequisite'];delta=payload['delta'];preflight=payload['preflight_sql']
+  need(sql("SELECT to_regclass('public.bb_run_model_activity') IS NULL")== 't','0182_preimage')
+  need(hashlib.sha256(prerequisite.encode()).hexdigest()==payload['prerequisite_sha256'],'0182_hash')
   need(hashlib.sha256(migration.encode()).hexdigest()==payload['migration_sha256'],'migration_hash')
   need('CREATE FUNCTION public.bb_lock_evidence_gate' in migration and 'REVOKE ALL' in migration,'migration_scope')
   if payload['action']=='validate':print(json.dumps({'status':'PASS','action':'validate','database':before}));return
   backup=json.loads(sql("""BEGIN READ ONLY;SELECT json_build_object('relations',(SELECT json_agg(json_build_object('name',relname,'owner',pg_get_userbyid(relowner),'acl',relacl)) FROM pg_class WHERE relname IN ('bb_model_capacity_order','bb_credit_reservations','bb_project_file_check_attempts','bb_run_model_activity','bb_evidence_gate_events')),'columns',(SELECT json_agg(json_build_object('table',c.relname,'column',a.attname,'acl',a.attacl)) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid WHERE c.relname IN ('bb_credit_reservations','bb_run_model_activity') AND a.attnum>0));ROLLBACK;"""))
-  save('database-before.json',{'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'guard':before,'acl':backup,'source':payload['source']})
-  statements=["BEGIN;SET LOCAL lock_timeout='2s';SET LOCAL statement_timeout='15s';",migration,"INSERT INTO bb_schema_migrations(filename) VALUES ('0190_managed_evidence_gate_lock.sql');"]
+  save('database-before-attempt2.json',{'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'guard':before,'acl':backup,'source':payload['source']})
+  statements=["BEGIN;SET LOCAL lock_timeout='2s';SET LOCAL statement_timeout='15s';",prerequisite,"INSERT INTO bb_schema_migrations(filename) VALUES ('0182_model_wait_billing.sql');",migration,"INSERT INTO bb_schema_migrations(filename) VALUES ('0190_managed_evidence_gate_lock.sql');"]
   delta=delta[delta.index('BEGIN;')+6:delta.rindex('COMMIT;')]
   for role in ROLES:statements.append(delta.replace(':"runtime_role"','"'+role+'"'))
   statements.append("COMMIT;")
@@ -39,7 +41,7 @@ def main():
    row=json.loads(rows[0]);need(row['role']==role and not row['superuser'] and not row['audit_mutation'],'role_scope');tests.append(row)
   fn=json.loads(sql("SELECT json_build_object('owner',pg_get_userbyid(proowner),'security_definer',prosecdef,'config',proconfig,'public_execute',EXISTS(SELECT 1 FROM aclexplode(proacl) a WHERE a.grantee=0 AND privilege_type='EXECUTE')) FROM pg_proc WHERE oid='public.bb_lock_evidence_gate(boolean)'::regprocedure;"))
   need(fn['owner']=='bondbuddy' and fn['security_definer'] and fn['config']==['search_path=pg_catalog'] and not fn['public_execute'],'function_scope')
-  receipt={'status':'PASS','migration':'0190_managed_evidence_gate_lock.sql','source':payload['source'],'roles':tests,'function':fn,'ledger':int(sql('SELECT count(*) FROM bb_schema_migrations')),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'customer_runs_retried':False}
+  receipt={'status':'PASS','migrations':['0182_model_wait_billing.sql','0190_managed_evidence_gate_lock.sql'],'source':payload['source'],'roles':tests,'function':fn,'ledger':int(sql('SELECT count(*) FROM bb_schema_migrations')),'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'customer_runs_retried':False}
   save('database-after.safe.json',receipt);print(json.dumps(receipt))
  finally:
   for fd in reversed(fds):os.close(fd)
