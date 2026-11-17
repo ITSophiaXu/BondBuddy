@@ -30,22 +30,26 @@ export function probeSocket({host,port,request=null,timeoutMs=4000,maxHeaderByte
   });
 }
 
-export async function inspectIntegrityEgress({probe=probeSocket,now=()=>new Date().toISOString()}={}) {
-  const paths=[['database_transport',15432],['model_transport',15434],['integrity_transport',15435]];
+export async function inspectIntegrityEgress({scope='container',probe=probeSocket,now=()=>new Date().toISOString()}={}) {
+  if(!['host','container'].includes(scope))throw Error('INVALID_NETWORK_SCOPE');
+  // The business container intentionally has no direct route to the main host.
+  // Only the node host can test those TCP listeners; containers use the bridge proxy.
+  const paths=scope==='host'?[['database_transport',15432],['model_transport',15434],['integrity_transport',15435]]:[];
   const transport=await Promise.all(paths.map(async([name,port])=>({name,host:'10.2.0.5',port,
     ...await probe({host:'10.2.0.5',port})})));
-  const proxy={host:'172.28.61.1',port:15435,target:'www.sse.com.cn:443',
+  const proxy=scope==='container'?{host:'172.28.61.1',port:15435,target:'www.sse.com.cn:443',
     ...await probe({host:'172.28.61.1',port:15435,
-      request:'CONNECT www.sse.com.cn:443 HTTP/1.1\r\nHost: www.sse.com.cn:443\r\n\r\n'})};
-  const reachable=transport.find(p=>p.name==='integrity_transport').status==='connected';
-  return {version:'integrity-egress-diagnostic-v1',observed_at:now(),transport,proxy,
-    transport_ready:reachable&&proxy.status==='tunnel_established',official_query_performed:false,
-    fault_boundary:!reachable?'node_to_main_transport':proxy.status!=='tunnel_established'?'mtls_or_official_proxy':'not_observed',
-    // TCP cannot identify whether a security group, NACL, firewall or listener caused failure.
+      request:'CONNECT www.sse.com.cn:443 HTTP/1.1\r\nHost: www.sse.com.cn:443\r\n\r\n'})}:null;
+  const ready=scope==='host'?transport.find(p=>p.name==='integrity_transport').status==='connected':proxy.status==='tunnel_established';
+  return {version:'integrity-egress-diagnostic-v2',network_scope:scope,observed_at:now(),transport,proxy,
+    transport_ready:ready,official_query_performed:false,
+    fault_boundary:ready?'not_observed':scope==='host'?'node_to_main_transport':'container_to_official_proxy',
+    // Neither TCP nor CONNECT identifies the specific rejecting network rule.
     specific_network_rule_verified:false};
 }
 
 if(process.argv.includes('--run')) {
-  const result=await inspectIntegrityEgress();console.log(JSON.stringify(result));
+  const scope=process.argv.find(arg=>arg.startsWith('--scope='))?.slice(8)??'container';
+  const result=await inspectIntegrityEgress({scope});console.log(JSON.stringify(result));
   if(!result.transport_ready)process.exitCode=1;
 }

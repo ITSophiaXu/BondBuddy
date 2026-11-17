@@ -2,44 +2,60 @@
 
 ## 当前证据（2026-11-17）
 
-执行节点 `ins-p4i0pcub`（私网 `10.73.7.17`，安全组 `sg-43pbfq0p`）
-多次连接主站 `10.2.0.5:15435` 超时；同期 15432（PG）、15434（模型代理）可用。
-主站 15435 监听和 127.0.0.1:3129 官网代理存在，本机 SSE CONNECT 为 200。
-主站 UFW 未启用、INPUT 为 ACCEPT，现有自定义链仅有 SSH 拒绝规则；
-官网 mTLS unit 的 IPAddressAllow 包含 `10.73.7.0/24`。
-这些证据将故障边界定位在节点到主站专用通道，尚未确定具体云端拦截规则。
+执行节点 `ins-p4i0pcub`（私网 `10.73.7.17`）只绑定安全组
+`sg-43pbfq0p`。控制台出站列表原来只允许到 `10.2.0.5/32` 的
+22、3128、15432、15434，缺少 15435。用户截图确认在北京时间
+22:50:38 增加了到 `10.2.0.5/32 TCP:15435` 的允许规则。
 
-只读 DescribeInstances 确认该节点当前为 STOPPED；未为诊断启动节点。
-维护 API 身份读取安全组和 Lighthouse 防火墙均被 IAM 拒绝。用户已批准改用
-已登录控制台只读查看，但浏览器自动化持续返回 Windows GetCursorPos 拒绝访问，
-包括用户确认解锁后。不能由这些限制推定云安全组已经定位或修复。
+规则添加后的真实只读验证仍未通过：
+
+- 22:55:24 宿主机 TCP：15432/15434 分别 2/0 ms 连接，15435 4004 ms 超时。
+- 22:59:56—22:59:59 节点 eth0 连续发出到 15435 的 SYN；主站同期抓包
+  未收到这些包。15434 的同一组源端口/序列号在两端均可对应，正常收到 SYN-ACK。
+- authoring 容器 `c4c10e20b572` 经 `172.28.61.1:15435` CONNECT 仍超时。
+  容器直连主站三个端口的 ENETUNREACH 是既定 internal 网络隔离，不能当作
+  三条宿主机通道均故障；v2 探针因此明确分开 host/container 两个作用域。
+- 主站 15435 在 `10.2.0.5` 正常监听，mTLS service active/running，
+  IPAddressAllow 包含 `10.73.7.0/24`。已读取主站 IPv4 filter/raw，
+  INPUT ACCEPT，自定义拒绝仅匹配其他来源的 SSH；没有发现对该流量的拒绝。
+
+节点本轮只读读回 RUNNING、TAT Online；没有为排查启停节点。现有证据定位
+剩余阻断在节点 eth0 至主站 eth0 的云网络路径，尚未确定第二处具体规则。
+不能仅凭用户添加规则或节点 READY 宣称官网恢复。云规则读取的 API 身份仍
+权限不足，控制台读取间歇失败；按实际截图/读回继续核对，不扩大应用权限。
 
 ## 缺失的验证与本次工具
 
 既有浏览器 smoke 使用 `network=none`，只能证明页面创建、渲染、截图；
 既有 PG preflight 只能证明数据库通道。两者都不覆盖新增的 15435。
-`integrity-egress-probe.mjs` 补齐独立通道验证：分别探测三条 TCP 通道，
-再经容器实际官网代理发出 SSE 的 CONNECT。每次连接有 4 秒绝对上限，
-最多读取 8 KiB 响应头；无自动重试，不读取凭据、不创建业务任务、不输出响应正文。
+`integrity-egress-probe.mjs` v2 将网络作用域分开。每次连接有 4 秒绝对上限，
+最多读取 8 KiB 响应头；无重试、不读取凭据、不创建业务任务、不输出响应正文。
 
-由维护者在实际 authoring 容器身份/网络中执行，脚本可从 stdin 传入而无需
-修改运行容器文件（先核实际 container ID，不用历史名称代替当前实例）：
+在节点宿主机执行三条 TCP 通道对照（可从 stdin 传入，无需安装或修改运行文件）：
 
 ```sh
-docker exec -i <authoring-container-id> node --input-type=module - --run \
+node --input-type=module - --run --scope=host < deploy/tencent-elasticity/integrity-egress-probe.mjs
+```
+
+在实际 authoring 容器内验证桥接代理 CONNECT（先核当前 container ID）：
+
+```sh
+docker exec -i <authoring-container-id> node --input-type=module - --run --scope=container \
   < deploy/tencent-elasticity/integrity-egress-probe.mjs
 ```
 
-输出 `transport_ready=false` 或退出码非零时，官网通道验证失败，不能签发诚信
-功能已恢复的凭据；不因此停止其他已经在途的业务。TCP 不通仅标记
-`node_to_main_transport`，TCP 通而代理未返回 200 标记 `mtls_or_official_proxy`。
+默认作用域为 `container`。容器故意没有主站私网直连路由，不能在容器内跑 host
+模式后把 ENETUNREACH 当作云端端口拒绝，也不能为探针增加直连网络。
+`network_scope` 明确输出来源；host 的 `transport_ready` 只判断 15435 TCP，
+container 的该值只判断代理 CONNECT。两处分别通过后仍需官网业务验收。
+host 失败标记 `node_to_main_transport`；container 失败只标记
+`container_to_official_proxy`，不凭 CONNECT 失败猜测 mTLS/云规则根因。
 始终保留 `specific_network_rule_verified=false` 和 `official_query_performed=false`。
-CONNECT 200 不是实际官网查询成功。
 
 ## 完成修复仍需的步骤
 
 1. 使用具备既有权限的运维控制台/API，读取实际安全组出入站规则、子网 ACL、
-   私网互联路由与主站对应规则，记录顺序、作用方向和原始证据。先确认哪层
+   私网互联路由与主站对应规则，记录顺序、作用方向和原始证据。用户已补出站规则；继续确认哪层
    拒绝 `10.73.7.0/24 → 10.2.0.5 TCP/15435`，不能直接全端口放行，
    也不能凭历史配置文件断定云端现状。
 2. 为实际缺口准备准确单条规则差异与回滚前像，经统一发布执行。保留 mTLS、
