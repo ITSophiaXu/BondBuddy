@@ -1,6 +1,6 @@
 # Copilot 文件编制认证与目录验证（2026-11-17，Refs #1508 / #1509 / #994 / #1324）
 
-当前准确候选为 b9627e59：文件首次及恢复工作窗口改为128k，2 MiB请求、图片、工具输出及原任务截止时间保护保持。开发定向与准确官方镜像均57/57通过；这只证明工程机制。真实5039的a7/a8仍重复准备、无新增实质operations；a8已自然保存161文件并进入用户暂停，无强制模型终止或官方回退。当前尚无双Word，财务0/36、视觉NOT_RUN，不能判业务PASS或关闭#994；新128k同run a9已在途、真实效果待验证。下方保留各阶段历史证据，以本段及文末最新记录为准。
+真实隔离四材料→双Word验收为FAIL：原任务于2026-11-17T07:42:45.393Z达到固定deadline，a11记录MODEL_TIMEOUT，最终业务状态failed/DATA_UNAVAILABLE，无artifact或可下载双Word。128k候选a9–a11的终态网关summary共1,108请求均HTTP200、无413/本地拒绝/上游错误；请求保护有真实证据，完整业务交付仍未通过。最终正式保存1,055文件/45,036,550 B和2,111项操作。34,570积分预留已全部释放，余额51,015/frozen0；供应商用量仍unknown。准确镜像57/57定向测试通过，PR保持Draft，未合并或部署。下方保留各阶段历史，终态以本段及文末为准。
 
 ## 原始失败与直接根因（#1509）
 
@@ -183,3 +183,47 @@ a8于05:26:47.923Z记录正常image_context_budget轮换，正式saved161文件/
 128k是受控缓解候选，真实效果尚待验证；现有实际接受的最大input约71k，不能由本地1M目录或字节外推推定供应商上限。仍只允许原run `1792b8a7-3c84-479a-a24f-f3b54c051998`、原input/34,570预留、累计报价69,140及绝对deadline `2026-11-17T07:42:45.393Z`。当前全部八次durable usage保持unknown；网关测量不替代账单。无新业务run/报价、余额修改、双Word交付、部署或发布凭据。
 
 root已于05:34:23通过自然a8只读恢复guard（161份Blob逐一核验，receipt SHA256 `1bf6af5feb956c1368083eef996a67cbf5c52b9ca9be87b486eb8ddd59f72026`）。准确128k worker `578e82ac315776d75e56f3edc1e6160aab92e660455a5c2661bff608c2bcb0a0` 于05:35:27.552426232Z启动，config `qx-isolated-b9627e59-context128k-v5`；启动检查确认仍paused/user_paused、历史attempt8且无新intent，原输入/账务/历史hash保持。root随后正常UI继续，a9 `call-bc39cf4f-16ec-454a-8e78-d536c2bfd503` 于05:36:07.051Z创建；05:36:19为running/provider_call、无artifact。watch receipt SHA256 `e781c86de6b89bc9390548ec82d72eb34184190a1a37c777c8bf7036dc17e9e7`。目前只是同任务在途，不能推断128k真实效果、Word交付、财务或视觉通过。
+
+## 128k真实续跑进展（截至2026-11-17T06:45Z，仍在途）
+
+a9/a10均自然以image_context_budget轮换，未进行人工signal、官方回退或新业务提交。a9正式保存206文件/20,029,198 B、320项操作；a10正式保存720文件/28,622,683 B、1,195项操作，操作日志SHA256为66d0acde02c95964d8ab60f6a70da55ede98ce02a37521b97e3a8914a6607089。a11初始720文件全在、719字节哈希一致（仅工作记录变化），操作日志与a10准确匹配；实际进程128000及runtime/compact策略均匹配准确候选。
+
+| 已结束attempt | 请求/HTTP200 | completed/client_closed | 最大请求 | 413/本地拒绝/上游错误 |
+| --- | ---: | ---: | ---: | --- |
+| a9 | 199/199 | 42/157 | 1,822,901 B | 均0 |
+| a10 | 266/266 | 64/202 | 1,510,991 B | 均0 |
+
+两份summary均零记录丢弃。HTTP200不能写成全部流completed；gateway用量仅是传输观察，历史durable unknown及结算依据保持。a10完整raw为2,938,604 B、未截断，SHA256为3d5155b36d75f43f07532d9fd472e17f5bf34c8350f4753cb6e1094f53fc5c68。
+
+a11于06:27:41.282Z创建；06:45:39窄脱敏观察实际保存1,456项操作/531,017 B，SHA256为01d110db570133b5c98ebf5914ccb63733ed6a028389cd498ec74e6291fbcf10。其中1,279项replace_cell_text、8项insert_row、71项add_comment、7项insert_paragraph、91项replace_text。720基线文件无缺、718哈希保持；这是运行中非原子采样，操作数量不证明内容正确、全文完成或快照正式saved。对应私有回执SHA256为24c88b8c231c016c841dcd2d6744d628d7709ba44b70068676c3c54a2b5265ab。
+
+仍为原第二run1792b8a7、原revision2/input、34,570预留、累计报价69,140及绝对deadline2026-11-17T07:42:45.393Z。06:43 root watcher确认running/provider_call、无artifact、余额available16,445/frozen34,570、业务run仅2个；回执SHA256为3c5cba06c10945f1150afe5217a9c950ae1f5949d752e543ee101cbe4b522cd2。未新增报价、充值、改线上账务或延长期限。
+
+当前PR head c7c6a606只含b962之后的文档变更。8项远端CI逐一匹配该head，steps=[]，均因GitHub付款/支出限制未启动；不是代码测试FAIL或CI PASS。脱敏汇总SHA256为1fbfe7f23218040df5e83fc0cce2165a4e07262218f3cc858ed1febcfa3f5692。API/contracts/web从b193至b962的源码diff为空；隔离API仍为b193镜像，仅worker采用b962，不能称全栈新镜像。
+
+暂无同run可下载双Word。财务成果0/36、视觉NOT_RUN，全文/期间/缺口/修订一致性和最终费用仍待独立验收；Qx不是RQ正式发布金样、原PPN或74MB全文验收。没有合并、生产部署或正式发布凭据。
+
+## 真实隔离验收终态（2026-11-17T07:43Z，FAIL）
+
+同一第二业务run1792b8a7-3c84-479a-a24f-f3b54c051998在原绝对deadline2026-11-17T07:42:45.393Z后自然结束。a11从06:27:41.318Z运行4,504,110 ms，runtime recorded_at为07:43:01.997Z，finish_reason=timeout、error_code=MODEL_TIMEOUT、exit_signal=SIGTERM。没有人工signal、第三业务run、新报价或延长期限。最终run/job为failed，业务错误DATA_UNAVAILABLE；界面显示“本轮未完成”，没有Word下载入口。底层已知超时但界面仍称原因未确认，是另一项错误归因问题，未由本PR修复。
+
+| a11终态网关summary | 结果 |
+| --- | --- |
+| 请求/HTTP200 | 643/643 |
+| completed/client_closed | 153/490 |
+| 最大请求 | 1,715,802 B |
+| 413/本地预算拒绝/上游错误 | 均0 |
+| summary报告retained/dropped | 643/0 |
+| 带usage响应 | 642 |
+
+该表来自终态summary，不等于独立逐请求明细对账。后续只读结构化闭合校验确认日志 hash/字节数一致且未截断，但只解析出 399 条请求记录，与 summary 的 643 不一致，明细序列不完整；因此不能声称独立核对了全部 643 次请求。原始私有exec为5,789,744 B、未截断，SHA256为cfb4d89e8dc7a0ba5960f8d818a3e3dbb290d9a961082dba0d083d39cc6af1da；不向Git提交原文。HTTP200和gateway用量不能替代交付结果、历史durable unknown或供应商账单。a9–a11共1,108请求均HTTP200、completed259/client_closed849，三份summary均未记录413，但整项真实任务仍失败。
+
+a11正式saved完整工作快照1,055文件/45,036,550 B，操作日志2,111项/919,406 B，SHA256为b54ea8d3c8f05d4e84e8c9dbb705202042ee61bb0114f21a6dcf7cc72da735e4。保存的操作不等于已发布成果；artifact/result均为空。07:43:20终态只读回执SHA256为5f783f4549bc006fc5647419b793bc14772e88835f82befd61bf2dfa91e3e446，原revision2/input保持。
+
+界面确认34,570积分预留全部释放；只读余额available51,015/frozen0，累计业务提交仍2个、报价69,140。积分释放不代表真实模型调用没有供应商成本：全部历史durable usage仍unknown，网关遥测未被写成账单或零用量。未充值、增加合成余额或修改线上testlei账务。
+
+末尾模型预检曾反馈部分小标题改写过长导致标题识别失败，并保存了后续修正。后续窄范围结构化解析的最新可靠候选为 failed、仅含 1 项 WORD_PAGE_COUNT_UNAVAILABLE；但最后一次预检仍为 NOT_PARSED，不能确定最后标题检查已通过，也不能仅按模型进度声明成功。固定沙箱的渲染问题已有 #1339 / PR #1340 独立合成复现，不把其作为本轮全部耗时或超时的唯一原因。已知超时原因被泛化的页面问题另见 #1534。实际双Word下载、36项财务成果、全文/期间/缺口/修订一致性和逐页视觉检查均未执行：财务0/36、视觉NOT_RUN。本轮判FAIL_NOT_DELIVERED，不能把未交付的文件验收写成通过或以私下生成Word替代真实交付。
+
+128k候选从05:36:07开始，距原deadline约2小时7分钟；此前诊断及旧候选已消耗原时间窗口。这说明本轮不能证明该候选可在完整新窗口完成任务，也不能证明增加时间一定成功。后续须先核清生成侧预检/纠错问题，再在另行授权的业务预算内用固定候选完成真实双Word验收；不得回写旧deadline、跨run伪装恢复或盲目另开任务。Qx仍不替代RQ正式发布金样、原PPN或74MB全文验收。PR保持Draft，相关Issue保持Open。
+
+终态后的预检渲染交接整合与本次合成回归见[渲染交接整合记录](large-pdf-host-render-integration-20261117.md)；旧真实任务仍失败，新补修尚未完成真实四材料→双 Word 验收。

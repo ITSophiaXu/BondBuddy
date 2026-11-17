@@ -451,6 +451,14 @@ test('file authoring and recovery retain the same 128k compaction headroom with 
   }
   assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, /do not prove complete reading/);
   assert.match(FILE_AUTHORING_COMPACT_PROMPT, /Never invent hashes, offsets, financial verification or completed coverage/);
+  for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
+    for (const required of ['snapshot_current=true', 'status=failed', 'WORD_PAGE_COUNT_UNAVAILABLE',
+      'host_handoff.action=defer_page_rendering_to_host', 'operations_sha256', 'authoring_completion=not_verified',
+      '退出码 1', '独立重建双稿', '70%', '不得据此跳过原任务剩余材料阅读', '日志已变或有其他质量失败'])
+      assert.ok(text.includes(required), `pinned prompts and compaction must retain the handoff limit: ${required}`);
+  }
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /failed issue codes.*unfinished authoring work/);
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /stale hash or mixed failures never permits/);
 });
 
 test('DeepSeek catalog preserves the official 0.166 fallback prompt and capabilities with a 1M ceiling', async () => {
