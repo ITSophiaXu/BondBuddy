@@ -1,0 +1,7 @@
+{
+  "request_sha256": "2ff782c4a390e6a97dfb9a67bfe7ada6352e842d5725a8d40a3fee470df5fdfa",
+  "script_sha256": "83393a5f0ba8959108395ea5030374231be0071612e9ea81f73ca6753c94d4c2",
+  "target": "ins-p4i0pcub",
+  "bytes": 17646,
+  "precondition": "normal cloud Start completed; consumers stopped; bootstrap inactive or failed"
+}

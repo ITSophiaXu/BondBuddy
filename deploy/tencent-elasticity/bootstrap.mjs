@@ -21,6 +21,18 @@ function businessBootstrap(config) {
 
 /** Keep the same public Python installer and file bytes inside one bounded
  * Brotli stream. /usr/bin/node is already required by the image bootstrap unit. */
+export function encodeBootstrap85(bytes) {
+  const alphabet='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_\x60{|}~';
+  let output='';
+  for(let offset=0;offset<bytes.length;offset+=4) {
+    const count=Math.min(4,bytes.length-offset);
+    let value=0;for(let i=0;i<4;i++)value=value*256+(i<count?bytes[offset+i]:0);
+    let block='';for(let i=0;i<5;i++){block=alphabet[value%85]+block;value=Math.floor(value/85);}
+    output+=block.slice(0,count+1);
+  }
+  return output;
+}
+
 function compactBusinessBootstrap(script) {
   if(!script)return '';
   const prefix="python3 - <<'BB_BUSINESS_CODE'\n", suffix='BB_BUSINESS_CODE\n';
@@ -31,9 +43,9 @@ function compactBusinessBootstrap(script) {
   const payload=gunzipSync(Buffer.from(match[1],'base64'),{maxOutputLength:131072}).toString('utf8');
   const decoded=program.replace(line,()=>`p=json.loads(${JSON.stringify(payload)})`);
   requireThat(Buffer.byteLength(decoded)<=131072,'BUSINESS_BOOTSTRAP_ENCODING');
-  const encoded=brotliCompressSync(decoded,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:11}}).toString('base64');
+  const encoded=encodeBootstrap85(brotliCompressSync(decoded,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:11}}));
   const decoder='import {brotliDecompressSync} from "node:zlib";const chunks=[];for await(const b of process.stdin)chunks.push(b);process.stdout.write(brotliDecompressSync(Buffer.concat(chunks),{maxOutputLength:131072}));';
-  return `${prefix}import base64,subprocess\nexec(compile(subprocess.run(['/usr/bin/node','--input-type=module','-e',${JSON.stringify(decoder)}],input=base64.b64decode('${encoded}'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30).stdout,'bondbuddy-public-business-bootstrap','exec'))\n${suffix}`;
+  return `${prefix}import base64,subprocess\nexec(compile(subprocess.run(['/usr/bin/node','--input-type=module','-e',${JSON.stringify(decoder)}],input=base64.b85decode('${encoded}'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30).stdout,'bondbuddy-public-business-bootstrap','exec'))\n${suffix}`;
 }
 
 /** Public cloud-init only. All credentials are issued later to a role-bound node. */

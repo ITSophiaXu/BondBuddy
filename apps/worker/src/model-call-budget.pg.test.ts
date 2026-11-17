@@ -14,7 +14,8 @@ const until = async (check:()=>Promise<boolean>) => {
 };
 test('model budget accepts only a bounded strict integer',()=>{
   assert.equal(modelCallConcurrency({}),4);
-  for (const value of ['0','5','-1','4.0','4; echo injected','']) assert.throws(()=>modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}));
+  for (const value of ['5','8']) assert.equal(modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}),Number(value));
+  for (const value of ['0','9','-1','4.0','4; echo injected','']) assert.throws(()=>modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}));
 });
 test('cross-container pools share four durable slots; waiting cancels without holding a job connection',{skip:!connection,timeout:20000},async()=>{
   const pool = new Pool({connectionString:connection,max:1});
