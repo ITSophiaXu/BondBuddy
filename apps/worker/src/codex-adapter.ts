@@ -282,7 +282,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recov
   const kv: string[] = [
     `model=${q(c.model_id)}`, `model_provider=${q(c.model_provider)}`,
     // Recovery still has the same trusted bootstrap and required material reads.
-    'model_context_window=1000000', `model_auto_compact_token_limit=${files ? 64000 : 900000}`,
+    'model_context_window=1000000', `model_auto_compact_token_limit=${files ? 128000 : 900000}`,
     ...(files ? [`tool_output_token_limit=${recovery ? 2048 : 4096}`,
       `developer_instructions=${q(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`, `compact_prompt=${q(FILE_AUTHORING_COMPACT_PROMPT)}`] : []),
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,

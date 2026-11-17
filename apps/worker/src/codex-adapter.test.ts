@@ -407,7 +407,7 @@ for (const credential of ['env', 'command'] as const) {
       assert.ok(args.includes('--ignore-user-config'));
       const overrides = args.filter((_, index) => args[index - 1] === '-c');
       assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
-      const compaction = mode === 'file' ? 64000 : 900000;
+      const compaction = mode === 'file' ? 128000 : 900000;
       assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), [`model_auto_compact_token_limit=${compaction}`]);
       for (const setting of ['model_context_window=1000000', `model_auto_compact_token_limit=${compaction}`]) {
         const index = args.indexOf(setting);
@@ -427,7 +427,7 @@ for (const credential of ['env', 'command'] as const) {
   }
 }
 
-test('file authoring and recovery retain the same compaction headroom with bounded tools', () => {
+test('file authoring and recovery retain the same 128k compaction headroom with bounded tools', () => {
   const config = loadCodexAdapterConfig({});
   for (const recovery of [false, true]) {
     const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
@@ -436,7 +436,7 @@ test('file authoring and recovery retain the same compaction headroom with bound
     assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
     assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
     assert.ok(args.includes('mcp_servers.bb_images.required=true'));
-    assert.ok(args.includes('model_auto_compact_token_limit=64000'));
+    assert.ok(args.includes('model_auto_compact_token_limit=128000'));
     assert.ok(args.includes(`tool_output_token_limit=${recovery ? 2048 : 4096}`));
     assert.ok(args.includes(`developer_instructions=${JSON.stringify(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`), 'runtime continuation applies even when the original prompt is already pinned');
     assert.ok(args.includes(`compact_prompt=${JSON.stringify(FILE_AUTHORING_COMPACT_PROMPT)}`));

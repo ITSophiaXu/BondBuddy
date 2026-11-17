@@ -68,8 +68,8 @@ test('Copilot file catalog matches the model and preserves direct bounded image 
 });
 
 for (const { executable, compact, label } of [
-  { executable: true, compact: false, label: 'recovery preserves required reads and image round trips' },
-  { executable: true, compact: true, label: 'recovery continues saved work after compaction' },
+  { executable: true, compact: false, label: 'recovery preserves 70k preparation reads and image round trips without compaction' },
+  { executable: true, compact: true, label: 'recovery continues saved work after 129k compaction' },
   { executable: false, compact: false, label: 'file auth failure preserves unknown usage' },
 ]) test(`real Codex 0.169: Copilot ${label}`, {
   skip: !binary ? 'set BB_TEST_CODEX_BIN to the pinned Linux CLI' : process.platform !== 'linux' ? 'Linux file sandbox required' : false,
@@ -153,8 +153,8 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
         : compact && count === 5 ? shellCall('call_write', '/usr/bin/printf SYNTHETIC_CONTINUED_AFTER_COMPACTION | /usr/bin/tee output/continuation.txt')
         : { type: 'message', id: 'msg_done', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'done', annotations: [] }] };
     }
-    // Synthetic provider usage exercises the real CLI threshold; this is not a tokenizer measurement.
-    const inputTokens = isCompact ? 100 : compact && count === 2 ? 65000 : 33000;
+    // Scripted usage tests CLI thresholds, not real tokenization, provider limits or model performance.
+    const inputTokens = isCompact ? 100 : compact && count === 2 ? 129000 : 70000;
     const response = { id: 'resp_synthetic_' + requests.length, object: 'response', status: 'completed', model: 'gpt-6-sol', output: [item],
       usage: { input_tokens: inputTokens, output_tokens: 5, total_tokens: inputTokens + 5, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
     res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -182,6 +182,9 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
     assert.equal(result.turn_completed, true, log.slice(-3000));
     assert.equal(requests.length, compact ? 7 : 4);
     assert.equal(requests.filter(request => request.compact).length, compact ? 1 : 0);
+    assert.deepEqual(requests.map(request => request.compact), compact
+      ? [false, false, true, false, false, false, false] : [false, false, false, false],
+    '70k preparation stays contiguous; only the 129k response triggers the custom handoff');
     assert.ok(requests.every(request => request.authenticated));
     assert.ok(requests.every(request => request.continuation && request.pinned), 'runtime policy and original pinned task survive compaction');
     assert.equal(requests[1].materials, true); assert.equal(requests[2].knowledge, true); assert.equal(requests[compact ? 5 : 3].image, true);
