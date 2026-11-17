@@ -148,7 +148,7 @@ def numeric_donor(source_p, source_ids, allow_ascii_projection=False):
 
 def header_label(text):
     # Units may be attached to a label; do not strip arbitrary business qualifiers.
-    return re.sub(r'[（(](?:单位[:：]?)?(?:人民币)?(?:亿|万)?元[）)]$', '', compact(text))
+    return re.sub(r'[（(](?:(?:单位|金额)[:：]?)?(?:人民币)?(?:亿|万)?元[）)]$', '', compact(text))
 
 
 def header_period(text):
@@ -169,6 +169,22 @@ def header_count(table):
     data=row_cells(rows[count])
     if len(data)!=len(cells) or label(rows[count]) in LABELS or not any(numeric(paragraph_text(p)) for c in data[1:] if (p:=cell_paragraph(c)) is not None): return None
     return count
+
+def short_numeric_row(row):
+    """Keep a bounded financial label and its amounts on the same page.
+
+    Do not bind adjacent rows or change long narrative/complex table cells.
+    Placeholder cells remain unknown, never interpreted as zero.
+    """
+    cells = row_cells(row)
+    paragraphs = [cell_paragraph(cell) for cell in cells]
+    if len(cells) < 2 or any(p is None for p in paragraphs): return False
+    if any(p.find('.//' + q('br')) is not None for p in paragraphs): return False
+    texts = [compact(paragraph_text(p)) for p in paragraphs]
+    if not texts[0] or len(texts[0]) > 64 or any(len(text) > 64 for text in texts[1:]): return False
+    return any(numeric(text) for text in texts[1:]) and all(
+        numeric(text) or text in {'', '—', '-', '未提供', '未披露', '不适用', '待核对'} for text in texts[1:])
+
 
 def build_plan(editor):
     source_roots={name:xml(data) for name,data in editor.parts.items() if name in editor.roots}
@@ -231,7 +247,7 @@ def build_plan(editor):
                         if p in inverse: change(inverse[p],'pPr','keepNext')
                 else:
                     if ri<marked_prefix: change(key,'trPr','tblHeader',False)
-                    if ri==count: change(key,'trPr','cantSplit')
+                    if ri==count or short_numeric_row(row): change(key,'trPr','cantSplit')
     properties=[]
     for entry in changes.values():
         after=entry.pop('after')
