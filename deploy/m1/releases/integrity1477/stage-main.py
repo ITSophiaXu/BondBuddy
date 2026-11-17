@@ -40,7 +40,7 @@ def main():
   changes.append({'name':name,'path':str(host),'before_sha256':sha(before) if before is not None else None,'after_sha256':m['sha256'],'mode':stat.S_IMODE(s.st_mode) if s else 0o644,'uid':s.st_uid if s else 0,'gid':s.st_gid if s else 0})
  mounts=[{'type':'bind','source':str(ROOT/'public'/x['name']),'target':'/app/'+x['name'],'read_only':True} for x in changes]
  # Reuse the already reviewed renderer; no original service is stopped or started.
- support=base64.b64decode(v['renderer'],validate=True);need(sha(support)=='00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67','renderer_hash');supportpath=ROOT/'renderer.py';write(supportpath,support,0o644)
+ support=base64.b64decode(v['renderer'],validate=True);need(sha(support)=='59818258171123633d3c4d5a7cc8037e4ec2082a997bf18e7bfefd7a54849a4c','renderer_hash');supportpath=ROOT/'renderer.py';write(supportpath,support,0o644)
  spec=importlib.util.spec_from_file_location('release_renderer',supportpath);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);classes=[x for x in vars(m).values() if isinstance(x,type) and hasattr(x,'render')];need(len(classes)==1,'renderer_class')
  class Renderer:
   root=P
