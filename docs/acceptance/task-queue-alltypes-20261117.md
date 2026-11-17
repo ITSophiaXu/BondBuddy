@@ -1,0 +1,76 @@
+# PR #1550 全任务类型模型验收
+
+结论：**本轮不能按“所有任务类型均成功交付”验收通过。** 提交准入修复通过已有定向回归，多种真实任务成功交付；项目问答失败、差异复核无法创建，另发现解析容量等待及财务表跨页缺陷。共享执行调度 V2 仍为设计，没有实现或通过验收。
+
+固定受测候选：`24ed803ca973aa935587dbc31f22d2222b1b87b9`，运行时代码提交 `1ed2a38b4b56b1fe88453a6000613a9b784d9004`；日期 2026-11-17（北京时间）。本文件及 JSON 是验收记录，不改变受测运行时。PR：https://github.com/ITSophiaXu/BondBuddy/pull/1550 。
+
+开发和自测完成；本轮自动化业务验收存在失败项；没有提供统一本地浏览器用户验收版，用户尚未验收；代码完成，尚未部署，待统一发布。原有 158 项合成回归与本轮真实模型验收分开计数。
+
+## 环境和真实运行边界
+
+- 独立本地 Linux 容器、PostgreSQL 16、Azurite，主轮数据库 `queue_alltypes_20261117_r3`，诚信补测使用独立 r4 库；未连接生产数据库，未操作生产任务、账务或服务。
+- 固定候选源码和编译产物替换已有依赖镜像中的 API、worker、Python、知识和迁移。真实 Fastify 路由（app.inject）、worker、不可变输入、对象存储、报价和账本；使用注入的测试 principal，**不证明网页登录、页面交互或生产受限角色权限**。
+- 用户明确授权已登记的东营募集书、审计报告、财务报表及问询材料用于 GitHub Copilot Enterprise（api.enterprise.githubcopilot.com，gpt-6-sol）本次验收。全面复核、复核后修订和问询准备使用这些原件；问询回答在调用模型前失败。其余编制、模板、底稿目录和一致性样例明确为 synthetic，不冒充客户原件或行业金样。
+- 模型真实调用，未用固定回复冒充模型输出。主轮 23 次调用与诚信补测 1 次调用均 completed / measured。测试余额为 synthetic，调用真实模型；本地账本结算不表示实际向客户收款。
+- 旧个人、全站活动任务变量均设为 1，准入没有因此拒绝独立任务。执行仍受现有节点及共享许可保护；本地模型窗口为 4，**不能据此宣称任务内部固定窗口已取消**。
+- 初轮环境问题和失败记录保留。修正本地 execution host identity、材料夹具及浏览器 seccomp 后固定候选运行；未修改产品代码或删除失败 run。最终有效状态以下表及附属 JSON 为准，不汇总早期试跑为成功。
+
+## 逐类型结果
+
+| 任务类型 | 实际提交及结果 | 验收边界 |
+| --- | --- | --- |
+| 一期更新 | succeeded；另以仅至 9 月的材料补测 succeeded，quote=interim | 原初样例含更晚年报，另加严格材料窗口样例；14 节保留，最新期表格正确 |
+| 年度更新 | succeeded，quote=annual | 双 Word 可下载，合成财务数据匹配 |
+| 两年补更 | succeeded，quote=two_years | 双 Word 可下载，期间和金额匹配 |
+| 三年补更 | succeeded，quote=three_years | 14 节及三年数据保留；跨页表头存在 #1554，不能记为版式全通过 |
+| 模板市场迁移 | succeeded，quote=migration | 已按上交所→深交所目标更新，合成材料范围 |
+| 新项目编制 | succeeded，quote=new_authoring | 新主体与参考主体区分；仍上传必填参考募集书 |
+| 独立全面复核 | succeeded，quote=full_review | 已交付报告、批注修订稿、清洁稿；扫描附注与外部现行规则核验未完全覆盖，报告明确披露限制；不认定专业全面验收通过 |
+| 差异复核 | 报价 200，提交最终 404 NOT_FOUND；未创建 run | 全面复核没有结构化报告/问题 ID，无法形成有效选择；#1556。未伪造问题或直接造表绕过 |
+| 复核后原文修订 | 独立入口 succeeded，quote=review_revision | 仅落实实际报告第一项有证据的风险提示更新；双 Word 各 241 页，6 处插入、5 处删除，接受修订等于清洁稿；不表示其余问题已修完 |
+| 关联文件生成 | 12/12 文种的批次子任务 succeeded | init、underwriter、legal、recommendation、private_summary、application、annual、semiannual、issuer、financial、credit、proceeds；使用合成参考稿和对应模板 |
+| 说明性底稿 | 2/2 子任务 succeeded，ZIP 可下载 | 1 份财务情况文件，1 份缺少原件/履职记录说明，分别入“可生成文件”“不适用说明”；没有伪造核查履职 |
+| 诚信核查 | 主轮浏览器运行配置失败；修正本地配置后独立补测 succeeded | 人民银行、破产重整网两处真实查询，2 张证据截图，5 页报告；仅覆盖这两个站点，返回结果不等于已认定不利记录，无结果不等于无风险 |
+| 项目问答 | 准备稿识别 7 题成功；付费回答 failed / DATA_UNAVAILABLE | #1552：调用方并发 8、公共函数最大 4，在模型调用前报错。准备稿不能代替回答成果 |
+| 一致性检查 | succeeded | 对实际导入的合成目标文件生成检查结果 |
+| 一致性问题维护 | 根据该检查提交后 succeeded | 对选定问题回写并交付新文件；不表示执行了全面复核 |
+
+主轮共 28 个 run（含准备任务和批次子任务）：26 succeeded、2 failed。诚信补测另有 1 个 succeeded。最终计 **29 个 run，27 成功、2 失败**；差异复核在提交层失败，不计入 run 数。不能把 27/29 当作全部业务类型通过率，也不把补测成功覆盖主轮失败。
+
+逐类型 run/batch ID、文种、计费状态及文件哈希见 [机器可读验收记录](task-queue-alltypes-20261117.json)。
+
+## 文件和计费检查
+
+- 主轮 51 份可下载 Word（包含留存的历史产物版本）加诚信补测 1 份：52/52 授权下载及 SHA-256 匹配，ZIP/OOXML 可解析；不是 52 个独立任务。
+- 全部 52 份文件实际转换和渲染，共 1,132 页。对更新稿关键财务表、复核报告、修订落点和诚信证据页做目视检查；**没有将抽检写成 1,132 页逐页人工业务审查**。三年稿第 2–3 页表头缺失已单列缺陷。没有修改测试成果掩盖问题。
+- 对 checkpoint 明确引用的 10 对修订稿/清洁稿进行对应校验，10/10 接受修订后与清洁稿一致，清洁稿无修订标记。同一 run 留存的两版 M4 文件不是同一对修订/清洁稿，不作误配比较。
+- 六种编制请求同键重放均返回原 run，每项只有 1 个 run、1 份预留。主轮及诚信补测 `auditCredits.consistent=true`，无余额批次、预留、支付、退款漂移；无遗留冻结任务。
+- 两个失败任务 charged_points=0、预留释放。因材料不足形成说明的底稿子任务预留也释放，不能将“成功生成说明”误记为收费的实质底稿。
+- 差异复核没有生成 run 或预留。报价成功不等于任务受理，更不等于成果交付。
+
+## 未解决缺陷与交付阻碍
+
+| Issue | 复现结论 | 与本 PR 的关系 |
+| --- | --- | --- |
+| [#1552](https://github.com/ITSophiaXu/BondBuddy/issues/1552) | 项目问答固定并发 8 与 helper 最大 4 冲突，回答全部失败 | 已有缺陷；V2 设计已指出，但 PR 未实现修复 |
+| [#1553](https://github.com/ITSophiaXu/BondBuddy/issues/1553) | 临时解析容量不足消耗 3 次业务重试，空间释放前已把有效文件标失败 | 独立真实解析复现；资源等待不能通过限制提交量解决 |
+| [#1554](https://github.com/ITSophiaXu/BondBuddy/issues/1554) | 无独立表题的财务表增列跨页后不重复表头 | 生成成果缺陷；当前服务端质量检查仍返回 passed |
+| [#1556](https://github.com/ITSophiaXu/BondBuddy/issues/1556) | 文件型全面复核未生成旧差异接口要求的结构化报告，报价后执行 404 | 新旧复核流程未贯通；独立原文修订成功不能替代差异复核 |
+
+主轮另有 11 个材料解析 job 在 claimed 阶段三次后 DATA_UNAVAILABLE。独立复现完整证明 #1553 的机制；主轮泛化日志不足以逐项证明这 11 个都同因，未作此推断。直接读取原件的编制/复核成功也不能证明后台解析成功。
+
+GitHub 六项 CI 均在启动前因账户付款/支出限制失败，未执行测试步骤；已核对平台 annotation。不能记为 CI 通过或代码测试失败；未修改账户预算。PR 保持未合并，本轮未进行部署。
+
+## 证据与复验
+
+本地证据根 `work/task-queue-alltypes/`，受测候选及模型配置摘要 `runtime-receipt.json`。实际主轮与 r4 数据库名称以对应 compose 和 state 为准，初始 receipt 数据库名不作为最终库名。
+
+- 主轮：`evidence-round3/state.json`、`snapshot.json`、`document-validation.json`、`pair-validation.json`、`render-validation.json`、`differential-probe.json`、`workpaper-package-validation.json`。
+- 诚信与资源复现：`evidence-integrity-r4/state.json`、`snapshot.json`、`query-records.json`、`parse-capacity-repro.json`、`render-validation.json`。
+- 真实执行脚本：`driver.mjs`、`integrity-r4-driver.mjs`，均在脚本入口校验独立测试库；上传通过真实 API、哈希对照授权清单。
+- 在本次本地环境复查终态：`docker compose -f work/task-queue-alltypes/compose.json run --rm --no-deps driver node /app/alltypes-driver.mjs inspect`。`differential_probe` 记录真实入口失败，`replay` 验证六类幂等；不要重复 `prepare` 创建另一轮材料。
+- 文件验证：bundled Python 执行 `verify-documents.py`、`verify-pairs.py`、`verify-package.py`；Linux 固定候选中的 `convert-documents.py` 配合 `render_docx.py` 转换，bundled Python `rasterize-documents.py` 渲染。
+
+原始模型输出、客户内容、凭据挂载、生成 Word、截图及本地 compose 不提交业务仓库。本次只提交去内容的验收记录和哈希索引。数据与容器卷保留便于复验；验收 worker 收尾后停止，其他 chat 的服务不受影响。
+
+复验必须先修复上述对应缺陷并固定新候选；重点重跑问答 1/4/7/8 题、真实全面→差异复核、解析容量等待恢复及跨页财务表。共享调度 V2 的多账号/任务公平性、空闲借用、取消恢复等仍需独立实施和验收。用户浏览器验收及统一发布继续按既有分工进行。
