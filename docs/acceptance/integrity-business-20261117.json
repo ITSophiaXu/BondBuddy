@@ -1,0 +1,251 @@
+{
+  "version": "integrity-business-retest-v1",
+  "candidate": "53c9b9868b0f7bcbbd779a0665ae7bbdd05983d2",
+  "run_id": "bf8ae03b-2d31-4ac6-80bc-fca41e64192d",
+  "submitted_at": "2026-11-17T00:18:36.089Z",
+  "state": "succeeded",
+  "network": "Local Docker public egress; not production Beijing",
+  "model": {
+    "provider": "copilot_enterprise",
+    "model": "gpt-6-sol",
+    "reasoning": "max"
+  },
+  "production_access": false,
+  "planned_pairs": 10,
+  "successful_pairs": 9,
+  "paused_site": "industry",
+  "reason": "result_load_timeout after two attempts",
+  "charged_points": 2765,
+  "reserved_points": 0,
+  "artifact_sha256": "7df3dc873810f1230a17635af8e70c2fb65b96152ab56457c9b7741421e2a9aa",
+  "captures": 16,
+  "records": [
+    {
+      "site_id": "bankruptcy",
+      "status": "no_public_results",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 26145
+      },
+      "captures": [
+        {
+          "id": "a039bf8c-14f9-41f9-9fba-bdb91bf709c4",
+          "url": "https://pccz.court.gov.cn/pcajxxw/searchKey/qzss?ssfs=1",
+          "captured_at": "2026-11-17T00:19:08.068Z",
+          "screenshot_sha256": "c20b364a0ec5c0b33658f8865d0bbefee43c01020b780ab6e179915a9c450daf"
+        }
+      ]
+    },
+    {
+      "site_id": "pbc",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "detail": "OPTIONAL_PBC_WIDGET_STYLESHEET_HTTP_404",
+        "attempts": 1,
+        "elapsed_ms": 29622
+      },
+      "captures": [
+        {
+          "id": "ac8fad39-ce37-4b81-a276-61c0b0dbcc23",
+          "url": "https://wzdig.pbc.gov.cn/search/pcRender?sr=score+desc&pageId=c177a85bd02b4114bebebd210809f691&ext=&pNo=1&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:19:43.275Z",
+          "screenshot_sha256": "3a3b5de5f6cd774939142a5498e9a1329015abc8fa1779bd0d31e9b243d195d5"
+        }
+      ]
+    },
+    {
+      "site_id": "csrc-portal",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 116484
+      },
+      "captures": [
+        {
+          "id": "6c2aa5af-8216-4198-82cb-200a0ef97ede",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "captured_at": "2026-11-17T00:20:24.5Z",
+          "screenshot_sha256": "1bf328fab378bdca5d28ac410a517c62a1ae2228ca09ff8449a40907433de21f"
+        }
+      ]
+    },
+    {
+      "site_id": "sse",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 43370
+      },
+      "captures": [
+        {
+          "id": "278e14bc-6493-498e-b929-e02f680f1d34",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:22:44.553Z",
+          "screenshot_sha256": "917273f21104838368cf44959bfbfd672974e83c596cc1444cf5f18892022778"
+        },
+        {
+          "id": "f199d187-4f81-43e7-8185-e539f389136d",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:22:51.712Z",
+          "screenshot_sha256": "0a1df6d78ebf19a39517b1d5172a044c344841623380fa76e5082a6b96e92a9e"
+        },
+        {
+          "id": "b3fe84cd-4555-440d-b5ac-4aa76259bce1",
+          "url": "https://www.sse.com.cn/home/search/index.shtml?webswd=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:22:58.526Z",
+          "screenshot_sha256": "33dd5591bf2a702886f10f44cd4c7bc69dbb819c5b234a778543e7987eaa9534"
+        }
+      ]
+    },
+    {
+      "site_id": "bse",
+      "status": "no_public_results",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 27455
+      },
+      "captures": [
+        {
+          "id": "32d34782-267c-4823-bb51-d4b361a458cc",
+          "url": "https://www.bse.cn/select/index/searchInfo.do",
+          "captured_at": "2026-11-17T00:24:34.991Z",
+          "screenshot_sha256": "036f288045beeec5558d5e99a2d1f3692775d905eb16e1470fa95e5946dc6ff4"
+        }
+      ]
+    },
+    {
+      "site_id": "neeq",
+      "status": "no_public_results",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "no_results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 28412
+      },
+      "captures": [
+        {
+          "id": "b7e6b128-11bf-4df0-b286-599a509be777",
+          "url": "https://www.neeq.com.cn/index/searchInfo.do",
+          "captured_at": "2026-11-17T00:25:08.001Z",
+          "screenshot_sha256": "22c4539e46e05f88c665d2ea945c5198ab879eb33618867abc12284749b1f5e6"
+        }
+      ]
+    },
+    {
+      "site_id": "nafmii-discipline",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 25918
+      },
+      "captures": [
+        {
+          "id": "7015ae6d-6113-4d3a-bda7-d9542e562ee3",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "captured_at": "2026-11-17T00:25:28.716Z",
+          "screenshot_sha256": "4122ed387a63a559e4a091d2036f36b1e56d6cc2abd493df279cedfdff1b6e62"
+        },
+        {
+          "id": "6619b4f0-0521-4491-85b2-af7613f95af2",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "captured_at": "2026-11-17T00:25:33.829Z",
+          "screenshot_sha256": "29ee75fe6dd61c04a55ae1249ec886af96c14a7839d34a3ffad9fafc6a27f545"
+        },
+        {
+          "id": "9019e204-7a44-46da-8ad3-50e619c53f5a",
+          "url": "https://www.nafmii.org.cn/search/?searchWord=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8%20%E8%87%AA%E5%BE%8B%E5%A4%84%E5%88%86",
+          "captured_at": "2026-11-17T00:25:38.317Z",
+          "screenshot_sha256": "ede6c932cf1e9acad54f9a003d257bb4a62600a2dbb66789cd4d10ff2c011996"
+        }
+      ]
+    },
+    {
+      "site_id": "industry",
+      "status": "query_failed",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "result_load_timeout",
+        "phase": "results",
+        "attempts": 2,
+        "elapsed_ms": 200443
+      },
+      "captures": [
+        {
+          "id": "34b40f31-66be-47e5-9b7b-0332d70980d8",
+          "url": "https://www.miit.gov.cn/search/index.html?websiteid=110000000000000&pg=&p=&tpl=&category=&jsflIndexSeleted=&q=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:29:11.858Z",
+          "screenshot_sha256": "07beadcaf94bf3e7e4178599dd18266f8a78d647fef704352e24fe66a9e09ac4"
+        }
+      ]
+    },
+    {
+      "site_id": "mohrss",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 35822
+      },
+      "captures": [
+        {
+          "id": "01bdddb5-fc2e-4524-8511-6dcf2f01e15f",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:29:35.634Z",
+          "screenshot_sha256": "890baa87ec0c1e76be286a4fe662507014bbd0039da7d4dc8726be9e05d21dc9"
+        },
+        {
+          "id": "b158b1b1-7740-4039-8968-fa6e4c7a43fa",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:29:43.727Z",
+          "screenshot_sha256": "cf3bf24933139d3ad5a46ca068f8643d5415c26a36b3b5c5308bf245b42db2a8"
+        },
+        {
+          "id": "cdace017-c143-40bf-b0ce-5ccb4ca134d8",
+          "url": "https://www.mohrss.gov.cn/hsearch/?searchword=%E4%B8%9C%E8%90%A5%E5%B8%82%E5%9F%8E%E5%B8%82%E5%BB%BA%E8%AE%BE%E5%8F%91%E5%B1%95%E9%9B%86%E5%9B%A2%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8",
+          "captured_at": "2026-11-17T00:29:52.666Z",
+          "screenshot_sha256": "41402827c70489623c68e6b7da52183d298e917ae65ed40a3a5e6a003cfbf719"
+        }
+      ]
+    },
+    {
+      "site_id": "local-csrc",
+      "status": "public_matches",
+      "search_performed": true,
+      "diagnostic": {
+        "code": "results",
+        "phase": "results",
+        "attempts": 1,
+        "elapsed_ms": 106796
+      },
+      "captures": [
+        {
+          "id": "50c8bee9-5244-4a65-b74e-9ee9d0f54bce",
+          "url": "https://www.csrc.gov.cn/guestweb4/s",
+          "captured_at": "2026-11-17T00:30:24.288Z",
+          "screenshot_sha256": "b1ee1fb92ab04c6c37af4a2502375a57bbbf5eed7e52b0a6f2adb766604b4cfc"
+        }
+      ]
+    }
+  ]
+}

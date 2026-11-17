@@ -1,7 +1,8 @@
 /** Verified public endpoints for NEW checks only. Historical metadata is preserved.
- * Evidence: docs/acceptance/integrity-site-sweep-20261116.json.
+ * Evidence: docs/acceptance/integrity-site-sweep-20261116.json;
+ * latest retest: docs/acceptance/integrity-business-20261117.md.
  * A reachable homepage or an unconfirmed query is insufficient for this allowlist. */
-export const INTEGRITY_AVAILABILITY_CHECKED_AT = '2026-11-16';
+export const INTEGRITY_AVAILABILITY_CHECKED_AT = '2026-11-17';
 export const INTEGRITY_VERIFIED_ENDPOINTS: Readonly<Record<string, readonly string[]>> = {
   "bankruptcy": [
     "https://pccz.court.gov.cn/"
@@ -23,9 +24,6 @@ export const INTEGRITY_VERIFIED_ENDPOINTS: Readonly<Record<string, readonly stri
   ],
   "nafmii-discipline": [
     "https://www.nafmii.org.cn/"
-  ],
-  "industry": [
-    "https://www.miit.gov.cn/"
   ],
   "mohrss": [
     "https://www.mohrss.gov.cn/"
