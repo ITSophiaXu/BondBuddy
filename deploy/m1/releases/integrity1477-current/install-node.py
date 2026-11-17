@@ -3,7 +3,7 @@ The earlier arm step prevents old consumers registering in the new epoch first.
 """
 import base64,datetime,fcntl,gzip,hashlib,json,os,pathlib,stat,subprocess,sys,urllib.request
 ROOT=pathlib.Path('/var/lib/bondbuddy/integrity1477-current-install');TARGET='ins-p4i0pcub'
-PROGRAM_SHA='bb59278a47da8310a2c430d5bb4be40b58c5e3d14385bc519ecae73a7a17c789'
+PROGRAM_SHA='eec49771f53efb1bd1333572a2191eba1bd29143fe3ebf88d76d5ac41be36048'
 OLD={'node-adapter.mjs':'ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248','business-overlay.mjs':'87c4b69a0c9f0ba3e5a016bf17fd9661a35afff6643ce39949952857e0741ca5','private-egress.mjs':'84397844bf60c424be352321d2ca87c7977cc9370d01e81fd669d45884f91563'}
 def need(ok,code):
  if not ok:raise RuntimeError(code)
