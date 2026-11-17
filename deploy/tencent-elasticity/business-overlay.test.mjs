@@ -33,7 +33,7 @@ test('pinned business archive and public cold bootstrap preserve exact boundarie
   assert.ok(Buffer.byteLength(script)<=16384,`userdata ${Buffer.byteLength(script)}`);
   assert.ok(!script.includes('private-test-capability')&&!script.includes('.blob.core.windows.net'));
   const python=script.split("python3 - <<'BB_BUSINESS_CODE'\n")[1].split('\nBB_BUSINESS_CODE')[0];
-  const parsed=spawnSync('python3',['-c','import ast,sys;ast.parse(sys.stdin.read())'],{input:python,encoding:'utf8'});
+  const parsed=spawnSync(process.env.BB_TEST_PYTHON||'python3',['-c','import ast,sys;ast.parse(sys.stdin.read())'],{input:python,encoding:'utf8'});
   assert.equal(parsed.status,0,parsed.stderr);
   console.log(JSON.stringify({runtime_files:files.size,user_data_bytes:Buffer.byteLength(script),private_capability_in_userdata:false}));
 });
