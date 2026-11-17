@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {Pool} from 'pg';
 import {WORKPAPER_PRICE,workpaperChapters,workpaperProgressiveSelection,billingWireRoute,encodeBillingDto,emptyFileGenerationPreparation,type WorkpaperBatch} from '@bondbuddy/contracts';
@@ -9,11 +10,18 @@ import {grantCredits} from './billing.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {headerlessCatalogueXlsx} from './workpaper-catalogue-fixture.js';
 import {isolatedTestDatabase} from './test-database.js';
-import {advanceWorkpaperBatch,pauseSharedWorkpaperBatch} from './workpapers.js';
+import {advanceWorkpaperBatch as advanceWorkpaperBatchOnce,pauseSharedWorkpaperBatch} from './workpapers.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {claim,promoteWordArtifact,finish} from './queue.js';
 import {registerM4Artifacts} from './m4-workspace.js';
 
+import {flushPerformanceTraces} from './performance-trace.js';
+
+// Await committed asynchronous telemetry between scheduler ticks. Its FK locks
+// may legitimately cause a NOWAIT admission poll to miss a queued sibling.
+async function advanceWorkpaperBatch(pool:Pool){
+ const result=await advanceWorkpaperBatchOnce(pool);await flushPerformanceTraces(pool,5000);return result;
+}
 const configured=!!process.env.BB_TEST_DATABASE_URL;
 async function fixture(key:string,chapters=9,automatic=false,credits=3000000,legacy=false){
  const pool=new Pool({connectionString:await isolatedTestDatabase(undefined,'progressive-'+key)}),user=randomUUID();let actor:string=user;
@@ -62,14 +70,14 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000,leg
   await c.query("UPDATE bb_jobs SET state='failed',stage='failed',error_code=$2,lease_token=NULL,lease_until=NULL WHERE run_id=$1",[run,code]);
   await c.query("UPDATE bb_runs SET state='failed',stage='failed' WHERE id=$1",[run]);
  });
- const succeed=async(run:string)=>{
+ const succeed=async(run:string,runtimePool=pool)=>{
   // SKIP LOCKED can temporarily miss a queued run while the independent telemetry
   // writer commits its FK check. Poll like the worker, without extending this test's timeout.
   const claimDeadline=performance.now()+5000;
-  let lease=await claim(pool,60,{runKinds:['generation']});
+  let lease=await claim(runtimePool,60,{runKinds:['generation']});
   while(!lease&&performance.now()<claimDeadline){
    await new Promise(resolve=>setTimeout(resolve,25));
-   lease=await claim(pool,60,{runKinds:['generation']});
+   lease=await claim(runtimePool,60,{runKinds:['generation']});
   }
   if(!lease){
    const queued=(await pool.query(`SELECT r.id,r.state run_state,r.stage run_stage,j.id job_id,j.state job_state,
@@ -79,18 +87,18 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000,leg
   }
   assert.equal(lease.runId,run);assert.equal(lease.attempts,1,'empty polls must not consume a job attempt');
   const documentBytes=makeSyntheticDocxFixture({text:'合成恢复回归底稿：发行人总资产100万元。'}),noteBytes=makeSyntheticDocxFixture({text:'合成恢复回归编制说明。'});
-  const document=await promoteWordArtifact(pool,lease,documentBytes,blobs,'generated_pair_v1'),note=await promoteWordArtifact(pool,lease,noteBytes,blobs,'generated_pair_v1');
+  const document=await promoteWordArtifact(runtimePool,lease,documentBytes,blobs,'generated_pair_v1'),note=await promoteWordArtifact(runtimePool,lease,noteBytes,blobs,'generated_pair_v1');
   assert.equal(document.status,'available');assert.equal(note.status,'available');
   if(document.status!=='available'||note.status!=='available')throw Error('Synthetic recovery Word fixture unavailable');
-  await transaction(pool,c=>registerM4Artifacts(c,user,run,[{kind:'document',artifact_id:document.artifactId,artifact_version:document.artifactVersion,filename:'document.docx',byte_size:documentBytes.length},
+  await transaction(runtimePool,c=>registerM4Artifacts(c,user,run,[{kind:'document',artifact_id:document.artifactId,artifact_version:document.artifactVersion,filename:'document.docx',byte_size:documentBytes.length},
    {kind:'preparation_note',artifact_id:note.artifactId,artifact_version:note.artifactVersion,filename:'note.docx',byte_size:noteBytes.length}]));
-  assert.equal((await finish(pool,lease,'succeeded',{artifactId:document.artifactId,artifactVersion:document.artifactVersion,blobs})).state,'succeeded');
+  assert.equal((await finish(runtimePool,lease,'succeeded',{artifactId:document.artifactId,artifactVersion:document.artifactVersion,blobs})).state,'succeeded');
  };
- const close=async()=>{await app.close();await pool.end();};
+ const close=async()=>{await app.close();await flushPerformanceTraces(pool,5000);await pool.end();};
  return {pool,user,project,path,base,cat,request,start,read,action,fail,succeed,send,ok,close,setActor:(id:string)=>{actor=id;}};
 }
 
-test('progressive API: immutable chapter order, four admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
+test('progressive API: immutable chapter order, eight admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
  const f=await fixture('trial');
  try{
   const plan=workpaperProgressiveSelection(f.cat.entries,f.request.item_ids,f.request.progressive.chapter_order);
@@ -98,8 +106,8 @@ test('progressive API: immutable chapter order, four admitted items, confirmatio
   let batch=await f.start();assert.equal(batch.progressive?.phase,'trial');assert.deepEqual(batch.items.map(i=>i.entry.id),plan.ordered_item_ids);
   assert.equal(batch.progressive?.trial_item_ids.length,8);assert.equal((await f.start()).batch_id,batch.batch_id);
   await assert.rejects(f.pool.query("UPDATE bb_workpaper_batches SET progressive_plan=jsonb_set(progressive_plan,'{max_parallel}','3') WHERE id=$1",[batch.batch_id]),{code:'23514'});
-  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);assert.equal(await advanceWorkpaperBatch(f.pool),false);
-  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
+  for(let i=0;i<8;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);assert.equal(await advanceWorkpaperBatch(f.pool),false);
+  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,8);
   const inserted=(await f.pool.query('SELECT i.manifest,t.project_id FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.id=i.batch_id JOIN bb_m4_topics t ON t.id=b.topic_id WHERE i.batch_id=$1 AND i.item_id=$2',[batch.batch_id,plan.trial_item_ids[2]])).rows[0];
   // Direct database admission cannot bypass the bounded scheduler, even with an
   // otherwise authentic frozen third-item input and the same canonical project.
@@ -321,16 +329,92 @@ test('progressive automatic billing admits only affordable files, retains full s
 });
 
 
-test('historical frozen two-way input uses shared four-way capacity without changing its input or confirmation fence',{skip:!configured,timeout:60000},async()=>{
+test('historical frozen two-way input uses shared eight-way capacity without changing its input or confirmation fence',{skip:!configured,timeout:60000},async()=>{
  const f=await fixture('legacy-two',9,false,3000000,true);
  try{
   let batch=await f.start();assert.equal(batch.progressive?.max_parallel,2);
   assert.equal((await f.pool.query('SELECT max_parallel FROM bb_workpaper_batches WHERE id=$1',[batch.batch_id])).rows[0].max_parallel,null);
-  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);
+  for(let i=0;i<8;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);
   assert.equal(await advanceWorkpaperBatch(f.pool),false);
-  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
+  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,8);
   assert.equal(batch.progressive?.max_parallel,2);
   assert.equal(batch.progressive?.phase,'trial');
   await f.action(batch,{action:'pause'});assert.equal(await advanceWorkpaperBatch(f.pool),false);
  }finally{await f.close();}
+});
+
+
+test('restricted workpaper consumer creates child runs through the real mutex, delivers and resumes without duplicate billing',
+ {skip:!configured,timeout:180000},async()=>{
+  const f=await fixture('restricted-role',2),role='synthetic_workpaper_'+randomUUID().replaceAll('-','');
+  const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
+  await f.pool.query(`CREATE ROLE ${quote(role)} LOGIN`);
+  const acl=JSON.parse(await readFile(new URL('../../worker/src/fixtures/managed-runtime-acl.json',import.meta.url),'utf8'));
+  for(const table of acl.tables){
+    for(const privilege of table.privileges)await f.pool.query(`GRANT ${privilege} ON public.${quote(table.name)} TO ${quote(role)}`);
+    for(const [privilege,columns] of Object.entries(table.columns) as [string,string[]][])
+      await f.pool.query(`GRANT ${privilege}(${columns.map(quote).join(',')}) ON public.${quote(table.name)} TO ${quote(role)}`);
+  }
+  const grants=await readFile(new URL('../../../deploy/m1/security/managed-execution-prerequisites.sql',import.meta.url),'utf8');
+  const apply=()=>f.pool.query(grants.replaceAll(':"runtime_role"',quote(role)));
+  await apply();
+  // Isolate the first production failure; the other new grants are checked separately.
+  await f.pool.query(`REVOKE SELECT ON public.bb_workpaper_paid_check_items FROM ${quote(role)}`);
+  const url=new URL(f.pool.options.connectionString!);url.username=role;url.password='';
+  const worker=new Pool({connectionString:url.toString()});
+  try{
+    let batch=await f.start();
+    await assert.rejects(worker.query('SELECT 1 FROM public.bb_workpaper_paid_check_items'),{code:'42501'});
+    assert.equal(await advanceWorkpaperBatch(worker),true);
+    batch=await f.read(batch.batch_id);
+    assert.equal(batch.state,'paused');assert.ok(batch.items.every(i=>i.run_id===null));
+    assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_workpaper_attempts WHERE batch_id=$1',[batch.batch_id])).rows[0].n,0);
+    await apply();await apply();
+    batch=await f.action(batch,{action:'resume'});
+    assert.equal(batch.progressive?.trial_item_ids.length,2,'one trial file per chapter');
+    const deadline=performance.now()+60000;
+    while((await f.read(batch.batch_id)).items.filter(i=>i.run_id).length<2){
+      // Competing consumers must not create duplicate siblings or reservations.
+      await Promise.all([advanceWorkpaperBatch(worker),advanceWorkpaperBatch(worker)]);
+      const current=await f.read(batch.batch_id);
+      assert.notEqual(current.state,'paused',current.error??'unexpected pause');
+      assert.ok(current.items.filter(i=>i.run_id).length===2||performance.now()<deadline,JSON.stringify({message:'two trial child runs must become admitted',state:current.state,runs:current.items.map(i=>i.run_id)}));
+    }
+    batch=await f.read(batch.batch_id);
+    const runs=(await f.pool.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 ORDER BY created_at,id',[f.user])).rows.map(r=>r.id as string);
+    assert.equal(new Set(runs).size,2);assert.equal(batch.items.filter(i=>i.run_id&&runs.includes(i.run_id)).length,2);
+    assert.equal(await advanceWorkpaperBatch(worker),false,'only the two selected trial files are in flight');
+    assert.equal((await f.start()).batch_id,batch.batch_id,'retrying submission preserves the frozen batch');
+    assert.equal((await f.send('POST',f.base+'/batches',{...f.request,request_id:randomUUID()})).statusCode,409,'another batch cannot enter the active source scope');
+    f.setActor(randomUUID());assert.equal((await f.send('GET',f.base+`/batches/${batch.batch_id}`)).statusCode,404);f.setActor(f.user);
+    const target=(await f.pool.query('SELECT project_id FROM bb_runs WHERE id=$1',[runs[0]])).rows[0].project_id;
+    await assert.rejects(transaction(worker,async c=>{
+      const id=randomUUID(),hash='b'.repeat(64);
+      await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,999,$2,1,$3,'{}','[]','[]')",[target,f.user,hash]);
+      await c.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,999,$4,$1,'generation',$4,'queued')",[id,f.user,target,hash]);
+    }),{code:'23514'},'the canonical mutex still rejects an unrelated run');
+    for(const run of runs)await f.succeed(run,worker);
+    await advanceWorkpaperBatch(worker);
+    batch=await f.read(batch.batch_id);assert.equal(batch.state,'paused');assert.equal(batch.progressive?.phase,'awaiting_confirmation');
+    assert.equal(batch.items.filter(i=>i.run_id===null).length,2,'remaining files require the normal trial confirmation');
+    batch=await f.action(batch,{action:'continue_remaining',request_id:randomUUID()});
+    for(let i=0;i<2;i++)assert.equal(await advanceWorkpaperBatch(worker),true);
+    const remaining=(await f.pool.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND NOT(id=ANY($2::text[])) ORDER BY created_at,id',[f.user,runs])).rows.map(r=>r.id as string);
+    assert.equal(remaining.length,2);runs.push(...remaining);
+    for(const run of remaining)await f.succeed(run,worker);
+    await advanceWorkpaperBatch(worker);
+    batch=await f.read(batch.batch_id);assert.equal(batch.state,'complete');
+    assert.ok(batch.items.every(i=>i.state==='succeeded'&&i.attempt===1));
+    const download=await f.send('GET',f.base+`/batches/${batch.batch_id}/download`);
+    assert.equal(download.statusCode,200);assert.equal(download.headers['content-type'],'application/zip');
+    assert.ok(download.rawPayload.length>100);
+    f.setActor(randomUUID());assert.equal((await f.send('GET',f.base+`/batches/${batch.batch_id}/download`)).statusCode,404);f.setActor(f.user);
+    const billing=(await f.pool.query(`SELECT count(*)::int n,count(DISTINCT r.run_id)::int runs,
+      bool_and(r.state='settled') AS settled FROM bb_credit_reservations r WHERE r.run_id=ANY($1::text[])`,[runs])).rows[0];
+    assert.deepEqual(billing,{n:4,runs:4,settled:true});
+    assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_workpaper_attempts WHERE batch_id=$1',[batch.batch_id])).rows[0].n,4);
+    assert.equal((await f.pool.query("SELECT has_table_privilege($1,'public.bb_workpaper_paid_check_items','INSERT,UPDATE,DELETE,TRUNCATE') AS mutation",[role])).rows[0].mutation,false);
+  }finally{
+    await flushPerformanceTraces(worker,5000);await worker.end();await f.pool.query(`DROP OWNED BY ${quote(role)}`);await f.pool.query(`DROP ROLE ${quote(role)}`);await f.close();
+  }
 });
