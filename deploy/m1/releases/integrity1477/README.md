@@ -1,0 +1,30 @@
+# Integrity browser deployment repair
+
+This emergency release restores the existing sandboxed browser contract on elastic authoring: the dedicated seccomp profile, init reaping, and a separate authenticated route to the existing official-site-only proxy. It preserves Chromium sandbox, network isolation, all limits, business/model settings, both OCI images, the current 74-file business pin, and existing diagnostics. Review is unchanged. Generated Compose names include the base configuration hash so a retained business package cannot conceal updated deployment settings.
+
+The original failed integrity run had no model attempt, no effective query or screenshot, and its reservation was released with no debit. Preserve those records. Existing failed observations are not proof of no official records; acceptance must use an explicitly associated new run with the original authorized input.
+
+The observed deployment gaps are established; historical transient PID exhaustion is not established. A later resource receipt counted 233 zombies, but its low current/peak counts cannot exclude an earlier transient. Existing browser probes used different resource limits and must not be presented as production proof.
+
+## Fixed release steps
+
+`package.mjs <private-output-directory>` emits public-code-only stage input, exact installer payload and two TAT RunCommand requests with hashes. `files.json` fixes the original production preimages and candidate bytes. All scripts reject drift, conflicting attempts and unknown outcomes; reconcile the original receipt before resubmitting anything.
+
+1. `stage-main.py` takes `stage-input.json` on stdin. It stages files without activating them, checks actual pool/template pins and limits, renders rollback/candidate Ops configurations using the existing reviewed renderer, and checks both real slot UserData lengths. `probe-main.py` creates, inspects and removes an unstarted copy to prove only the seven approved code/config mounts differ. Neither step starts or stops existing services or tasks.
+2. `egress-main.py` with `{"action":"install"}` adds only an independent mTLS listener to the existing official-only proxy. Exact current proxy hashes and certificate hostname/expiry are checked. The original model proxy, PostgreSQL, API, Web and existing streams are not restarted. The listener does not prove a website query occurred.
+3. Protect all active and unresolved calls. Only after exact current task/epoch/lease checks and any parallel task release, use `arm-next-boot-request.json`. This disables only the next automatic bootstrap, retaining the current process/container. Save its original boot identifier and enablement state. Until installation completes, an unexpected reboot needs explicit recovery of this unit.
+4. Use the existing native drain and positive session receipts to stop the node. Never synthesize proof, replace an old session's process identity, rewrite an epoch, or directly invoke cloud Start/Stop. `activate-main.py` requires all nodes stopped, no active leases/holders or pending cloud operations, original configuration hashes, the create-only receipt, and shared configuration/deployment/control locks. It activates only the seven code/config mounts and the controller's matching public modules. It preserves pool/authority configuration, service templates, retained creation bindings, API, Web, PostgreSQL and business bytes.
+5. A normal persisted Start establishes a new epoch. The armed unit keeps old consumers from registering first. Only then execute `install-node-request.json`; it requires a different boot identifier, no consumers, an idle bootstrap, and exact old files. It executes the same pinned public installer used for future nodes, saves protected preimages, and requests bootstrap for that same completed Start. Check actual two-service READY, image IDs, init/PID1, seccomp hash, proxy presence and base/derived Compose hashes before admitting the associated integrity run.
+6. Complete one affected real integrity run: effective official queries, truthful partial/failure statuses, screenshots, Word, owner linkage, normal authorized download with matching size/hash, terminal state and accounting. Deployment/config checks alone are not delivery.
+
+## Recovery
+
+`activate-main.py` with `{"action":"rollback"}` requires the same drained/stopped conditions and restores only its backed-up public modules and exact prior Ops configuration. `egress-main.py` with `{"action":"rollback"}` removes only the owned new listener after an exact hash comparison. Both leave audit, migrations, historical calls and billing intact. No automatic retry or rollback follows an unknown command result.
+
+The node installer retains all old configuration/module bytes and modes in its protected receipt directory. Before bootstrap has registered new consumers, an explicit recovery can restore those exact files, enable the original bootstrap unit and resume the same completed native Start. Once consumers have registered, drain and stop before restoring files; restart requires a fresh native epoch. Do not rerun bootstrap in an already registered epoch. A partial install remains a reconciliation task; it is not permission to overwrite preimages.
+
+## Verification scope
+
+Deployment contract checks: 3/3. Existing Base85/74-file package checks: 5/5, including both actual slot templates at 16,329 bytes. Node adapter checks with the exact current production contract overlay: 2/2. The exact public installer ran twice successfully in a disposable, network-none filesystem, checking candidate files, updated configuration hashes and unchanged business pin. No cloud, website or model calls occurred in these checks.
+
+The plain stable-source adapter check cannot import the pre-existing missing stop-authorization export tracked by #1504; it was not repaired here. All five remote checks for the initial PR revision failed before starting because of GitHub account payment/spending limits, not test execution. Those checks are not reported as passing. Actual activation and business acceptance receipts must be recorded separately.
