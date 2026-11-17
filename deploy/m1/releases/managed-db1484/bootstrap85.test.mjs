@@ -23,7 +23,9 @@ test('cold installer decodes to exact public files and valid Python; warm pins r
   const p=spawnSync(python,['-c','import base64,sys;sys.stdout.buffer.write(base64.b85decode(sys.stdin.buffer.read()))'],{input:match[1]});assert.equal(p.status,0);
   const program=brotliDecompressSync(p.stdout).toString();
   const compiled=spawnSync(python,['-c',"import sys;compile(sys.stdin.read(),'public-installer','exec')"],{input:program});assert.equal(compiled.status,0);
-  const payload=JSON.parse(JSON.parse(program.match(/^p=json.loads\(("(?:\\.|[^"\\])*")\)$/m)[1]));
+  const parsed=spawnSync(python,['-c',"import ast,json,sys;p=ast.parse(sys.stdin.read());a=next(n for n in p.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='p' for t in n.targets));print(json.dumps(json.loads(ast.literal_eval(a.value.args[0]))))"],{input:program,encoding:'utf8'});
+  assert.equal(parsed.status,0,parsed.stderr);
+  const payload=JSON.parse(parsed.stdout);
   for(const name of ['node-adapter.mjs','business-overlay.mjs'])assert.equal(payload.files[name].content,read('../../../tencent-elasticity/'+name).toString());
   assert.equal(payload.compose.content,read('../../../tencent-elasticity/compose.yaml').toString());
   assert.ok(Buffer.byteLength(code)<=16384);
