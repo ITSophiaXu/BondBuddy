@@ -1,0 +1,125 @@
+diff --git a/apps/web/src/api.ts b/apps/web/src/api.ts
+index ce1b45d1..800e062c 100644
+--- a/apps/web/src/api.ts
++++ b/apps/web/src/api.ts
+@@ -11,13 +11,13 @@ import type { Static } from '@sinclair/typebox';
+ import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
+ import type { FactDecisionRequest } from '@bondbuddy/contracts';
+ import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
+-import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
++import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, isAuditReportRequiredFieldError, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+ 
+ export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
+ const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
+ export class ApiError extends Error {
+   constructor(public status: number, public code: string, public readonly details: {
+-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
++    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; auditReportRequired?: boolean; prospectusDocxOnly?: boolean;
+   } = {}) { super(code); }
+ }
+ 
+@@ -52,7 +52,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
+       ? { prospectusDocxOnly: true } : {}),
+     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
+       ? { prospectusSelectionRequired: true } : {}),
+-    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), materialInputIssues: fields.flatMap(field => {
++    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), auditReportRequired: fields.some(isAuditReportRequiredFieldError), materialInputIssues: fields.flatMap(field => {
+       if (!isRecord(field)) return [];
+       const issue = m4InputIssue(field.code, field.field);
+       return issue ? [issue] : [];
+@@ -96,7 +96,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
+     case 'BILLING_PROTOCOL_REPLAY_ONLY': return `页面版本已更新，请刷新页面后重新开始。已保存的材料和要求保留；本次任务未开始。${reference}`;
+     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
+     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
+-    case 'INPUT_REQUIRED': return error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
++    case 'INPUT_REQUIRED': return error.details.auditReportRequired ? AUDIT_REPORT_REQUIRED_MESSAGE : error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
+       ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
+       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
+     case 'MATERIAL_ENCRYPTED': return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;
+diff --git a/apps/web/src/main.ts b/apps/web/src/main.ts
+index 182c64f3..e0d469b0 100644
+--- a/apps/web/src/main.ts
++++ b/apps/web/src/main.ts
+@@ -51,7 +51,7 @@ import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USER
+ import { referenceSnapshotResolver } from './reference';
+ import { MaterialProcessing, materialProcessingKey } from './material-processing';
+ import './material-processing.css';
+-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
++import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
+ import './style.css';
+ import './update-form.css';
+ import './authoring-onboarding.css';
+@@ -785,7 +785,7 @@ function roleGuidance(role: UploadRole) {
+   if (guidance) return `选填 · ${guidance.hint}`;
+   if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。仅支持 Word（.docx）。';
+   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
+-  if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
++  if (role === 'audit') return '必须上传并保存审计报告后才能更新募集书；报表及附注已包含在报告中时无需重复上传';
+   if (role === 'financial') return '按所需年度提供；已包含在审计报告中时无需另传';
+   if (role === 'interimFinancial') return '需要更新最近一期数据时提供对应报表';
+   if (role === 'notes') return '报表附注已包含在审计报告中时无需另传';
+@@ -925,7 +925,7 @@ function renderMaterialPartitions(projectId: string) {
+       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
+     const saved = roleMaterials.map(material => `<li class="material-file-row bb-upload-file persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
+     const picker = canAdd ? `<label class="button secondary material-picker bb-upload-picker bb-upload-picker--standard" for="upload-${esc(role.code)}">${uploadPickerContent()}<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
+-    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
++    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}${role.code === 'audit' ? '（必填）' : ''}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
+   }).join('')}</ul></section>`;
+   }).join('');
+   return groups;
+@@ -937,7 +937,8 @@ function projectMaterialReadiness(projectId: string) {
+   const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : prospectusPanel?.sourceSelectionMessage ? prospectusPanel.sourceSelectionMessage : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
+     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
+     : recovery?.state !== 'ready' ? '正在读取已保存材料…'
+-    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : '';
++    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE
++    : !hasAuthoringAudit(confirmedMaterials(projectId)) ? AUDIT_REPORT_REQUIRED_MESSAGE : '';
+   return {ready: !message, message};
+ }
+ 
+diff --git a/apps/web/src/project-execution.ts b/apps/web/src/project-execution.ts
+index ee3d7912..beea08b3 100644
+--- a/apps/web/src/project-execution.ts
++++ b/apps/web/src/project-execution.ts
+@@ -7,7 +7,7 @@ import {UserFacingError} from './user-facing-error.js';
+ import { ArtifactPage } from './artifact-page';
+ import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
+ import { prototypeIcon as icon } from './prototype-design';
+-import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
++import { reportingWindow, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
+ import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
+ import type { Draft } from './draft';
+ import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
+@@ -330,7 +330,7 @@ export class ProjectExecution {
+     if (this.preflight?.status === 'blocked' && this.selected) return { reason: '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。' };
+     const materialBlock = this.materialBlock();
+     if (materialBlock) return { reason: materialBlock };
+-    if (!this.eligibleMaterials().length) return { reason: '请先添加本次需要的项目材料。' };
++    if (!hasAuthoringAudit(this.eligibleMaterials())) return { reason: AUDIT_REPORT_REQUIRED_MESSAGE };
+     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return { reason: '项目信息尚未保存，请返回上一步处理。' };
+     if (!this.draft.fields.market || !this.draft.fields.offering) return { reason: '请在上一步选择发行市场和发行方式。' };
+     if (this.run && !this.nextRequested) return { reason: '需要再次修改时，请点击上方“继续修改”。' };
+diff --git a/packages/contracts/src/update-project.ts b/packages/contracts/src/update-project.ts
+index db16c73b..17e0adab 100644
+--- a/packages/contracts/src/update-project.ts
++++ b/packages/contracts/src/update-project.ts
+@@ -78,6 +78,19 @@ export function isSourceProspectusRequiredFieldError(value: unknown): boolean {
+   const field = value as Record<string, unknown>;
+   return field.field === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.field && field.code === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.code;
+ }
++/** Only a saved audit-role material satisfies the authoring audit requirement. */
++export function hasAuthoringAudit(materials: readonly Pick<SourceMaterialPin, 'role'>[]): boolean {
++  return materials.some(material => material.role === 'audit');
++}
++export const AUDIT_REPORT_REQUIRED_MESSAGE = '请先上传并保存审计报告（可含报表及附注），再开始更新募集书。';
++export const AUDIT_REPORT_REQUIRED_FIELD_ERROR = {
++  field: 'materials.audit', code: 'AUDIT_REPORT_REQUIRED', message: AUDIT_REPORT_REQUIRED_MESSAGE,
++} as const;
++export function isAuditReportRequiredFieldError(value: unknown): boolean {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
++  const field = value as Record<string, unknown>;
++  return field.field === AUDIT_REPORT_REQUIRED_FIELD_ERROR.field && field.code === AUDIT_REPORT_REQUIRED_FIELD_ERROR.code;
++}
+ export const FormatTemplatePinSchema = Type.Object({
+   material_id: Type.String({ minLength: 1, maxLength: 128 }),
+   material_version: Type.Integer({ minimum: 1 }),
