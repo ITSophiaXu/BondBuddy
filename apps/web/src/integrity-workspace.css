@@ -30,7 +30,7 @@
 
 /* Compact scope selector: category + four checkbox columns, in screenshot order. */
 .integrity-sites-panel{padding:16px 20px;container-type:inline-size;container-name:integrity-scope}
-.integrity-sites-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.integrity-sites-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .integrity-sites-header h2{display:flex;align-items:center;gap:6px;margin:0;font-size:14px;line-height:22px}
 .integrity-sites-header h2::before{content:"";width:3px;height:14px;margin-right:3px;border-radius:2px;background:var(--primary,#078b80)}
 .integrity-sites-header h2 small{font-size:12px;font-weight:400}
@@ -51,6 +51,10 @@
 .integrity-site a:hover{color:var(--primary,#078b80)}
 .integrity-site :focus-visible,.integrity-group-label :focus-visible{outline:2px solid var(--primary,#078b80);outline-offset:2px}
 .integrity-site-local{font-size:11px;color:var(--text-muted,#69727c);white-space:nowrap}
+.integrity-site:has(.integrity-site-unavailable){flex-wrap:wrap}
+.integrity-site-unavailable{order:3;flex-basis:100%;margin-left:18px;font-size:10px;line-height:16px;color:var(--text-muted,#69727c)}
+.integrity-site:has(input:disabled) label{color:var(--text-muted,#69727c);cursor:default}
+.integrity-sites-header>div>span{font-size:12px;color:var(--text-muted,#69727c)}
 .integrity-regional-choice{border-top:1px solid var(--border,#e5e7eb);margin-top:9px;padding-top:6px}
 .integrity-sites-help,.integrity-legacy-sites{margin-top:8px;font-size:12px;color:var(--text-muted,#69727c)}
 .integrity-sites-help summary,.integrity-legacy-sites summary{cursor:pointer;width:fit-content}

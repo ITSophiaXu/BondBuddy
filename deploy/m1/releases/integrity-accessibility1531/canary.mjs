@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {validateIntegrityDraft} from '/app/apps/api/dist/integrity.js';
+import {createServer} from '/app/apps/api/dist/server.js';
+import {INTEGRITY_SITES,integritySelectableSitesForSubjects,isIntegritySiteAvailableForSubjects} from '/app/packages/contracts/dist/index.js';
+import {INTEGRITY_VERIFIED_ENDPOINTS} from '/app/packages/contracts/dist/integrity-site-availability.js';
+import {REGION_PORTALS} from '/app/packages/contracts/dist/integrity-regions.js';
+import {assertAuthoringAuditRequired} from '/app/apps/api/dist/unified-authoring.js';
+import {publicProblem} from '/app/apps/api/dist/data.js';
+assert.equal(typeof createServer,'function');
+const subject={id:'deployment-check',kind:'company',name:'合成山东企业',identifier:'',role:'',province:'山东省',city:'东营市'};
+const ids=integritySelectableSitesForSubjects([subject]).map(s=>s.id);assert.equal(ids.length,34);assert.ok(ids.includes('local-csrc'));assert.ok(!ids.includes('local-tax'));
+assert.equal(INTEGRITY_SITES.filter(s=>!s.legacy).length,54);assert.equal(Object.values(INTEGRITY_VERIFIED_ENDPOINTS).reduce((n,a)=>n+a.length,0),79);
+validateIntegrityDraft({subjects:[subject],site_ids:ids,notes:''},true);
+for(const id of ['local-tax','credit-china','nmpa'])assert.throws(()=>validateIntegrityDraft({subjects:[subject],site_ids:[id],notes:''},true),e=>e.status===422);
+for(const id of ['industry','csrc-portal','customs'])assert.ok(ids.includes(id));
+const provinces={青岛:'山东',宁波:'浙江',深圳:'广东',厦门:'福建',大连:'辽宁'},cities={山东:'济南',浙江:'杭州',广东:'广州',福建:'福州',辽宁:'沈阳'};let regionalCsrc=0,regionalTax=0;
+for(const r of REGION_PORTALS){const s={...subject,province:provinces[r.name]??r.name,city:provinces[r.name]?r.name:cities[r.name]??''};const c=isIntegritySiteAvailableForSubjects('local-csrc',[s]),t=isIntegritySiteAvailableForSubjects('local-tax',[s]);assert.equal(c,INTEGRITY_VERIFIED_ENDPOINTS['local-csrc'].includes(r.csrc));assert.equal(t,INTEGRITY_VERIFIED_ENDPOINTS['local-tax'].includes(r.tax));regionalCsrc+=Number(c);regionalTax+=Number(t);}
+assert.equal(regionalCsrc,36);assert.equal(regionalTax,9);
+let err;try{assertAuthoringAuditRequired([{role:'financial'},{role:'notes'}]);}catch(e){err=e;}assert.equal(err?.status,422);assert.equal(publicProblem(err,'synthetic1531').field_errors[0].code,'AUDIT_REPORT_REQUIRED');assert.doesNotThrow(()=>assertAuthoringAuditRequired([{role:'audit'}]));
+console.log(JSON.stringify({status:'PASS',catalogue:54,national:33,shandong:ids,regionalCsrc,regionalTax,enabledEndpoints:79,pausedEndpoints:50,auditRequiredPreserved:true,productionDatabaseWrites:0,modelCalls:0,scope:'actual API modules with synthetic input; no business transaction'}));
