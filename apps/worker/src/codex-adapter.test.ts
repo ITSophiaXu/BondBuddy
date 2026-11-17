@@ -436,6 +436,10 @@ test('file authoring and recovery retain the same 128k compaction headroom with 
     assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
     assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
     assert.ok(args.includes('mcp_servers.bb_images.required=true'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.enabled_tools=["status","checkpoint"]'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.tools.status.approval_mode="writes"'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.tools.checkpoint.approval_mode="approve"'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.required=true'));
     assert.ok(args.includes('model_auto_compact_token_limit=128000'));
     assert.ok(args.includes(`tool_output_token_limit=${recovery ? 2048 : 4096}`));
     assert.ok(args.includes(`developer_instructions=${JSON.stringify(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`), 'runtime continuation applies even when the original prompt is already pinned');
@@ -450,6 +454,8 @@ test('file authoring and recovery retain the same 128k compaction headroom with 
     assert.match(text, /hashes/);
   }
   assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, /do not prove complete reading/);
+  for(const policy of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS,FILE_AUTHORING_COMPACT_PROMPT]) assert.match(policy,/bb_continuation\.status/);
+  assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS,/bb_continuation\.checkpoint/);
   assert.match(FILE_AUTHORING_COMPACT_PROMPT, /Never invent hashes, offsets, financial verification or completed coverage/);
   for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
     for (const required of ['snapshot_current=true', 'status=failed', 'WORD_PAGE_COUNT_UNAVAILABLE',

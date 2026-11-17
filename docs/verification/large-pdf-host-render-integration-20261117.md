@@ -4,7 +4,7 @@ Refs #994、#1324、#1339；Fix PR #1483。本文记录终态后的代码补修�
 
 ## 问题与改动
 
-真实隔离 run `1792b8a7-3c84-479a-a24f-f3b54c051998` 已按原 deadline 自然超时，未交付双 Word。终态窄范围解析的最后可靠预检候选只含 `WORD_PAGE_COUNT_UNAVAILABLE`，但最后一次预检仍为 `NOT_PARSED`，不能确认最终标题检查是否通过。已有 #1339 / PR #1340 独立合成证据证明原文件沙箱内 LibreOffice 无法真实渲染；这不是本轮全部耗时或超时的唯一已证原因。
+真实隔离 run `1792b8a7-3c84-479a-a24f-f3b54c051998` 已按原 deadline 自然超时，未交付双 Word。终态首次窄范围解析曾把最后一次预检记为 `NOT_PARSED`；后续完整原始日志重读已在 `item_633` 确认当前 2,111 操作快照的 failed 预检仅含 `WORD_PAGE_COUNT_UNAVAILABLE`，未带 `host_handoff`。这是分页失败证据，不证明所有业务处理已完成；完整根因和接续补修见[续跑与分页交接](large-pdf-continuation-20261117.md)。已有 #1339 / PR #1340 独立合成证据证明原文件沙箱内 LibreOffice 无法真实渲染；这不是本轮全部耗时或超时的唯一已证原因。
 
 选择性整合 PR #1340 的 `2168b643389694a4fd1b4528d06c7bbfa5d61966`：预检重新核对当前输入、底稿和操作日志，仅在快照有效、顶层与质量报告均 failed、报告版本一致、非空 issues 完全相同且全部为 `WORD_PAGE_COUNT_UNAVAILABLE` 时，给出绑定当前 `operations_sha256` 的 `host_handoff`。简短 stdout 继续 failed、退出码 1；完整失败报告保留，`authoring_completion=not_verified` 不证明业务完成。
 
