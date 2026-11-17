@@ -28,3 +28,24 @@ The node installer retains all old configuration/module bytes and modes in its p
 Deployment contract checks: 3/3. Existing Base85/74-file package checks: 5/5, including both actual slot templates at 16,329 bytes. Node adapter checks with the exact current production contract overlay: 2/2. The exact public installer ran twice successfully in a disposable, network-none filesystem, checking candidate files, updated configuration hashes and unchanged business pin. No cloud, website or model calls occurred in these checks.
 
 The plain stable-source adapter check cannot import the pre-existing missing stop-authorization export tracked by #1504; it was not repaired here. All five remote checks for the initial PR revision failed before starting because of GitHub account payment/spending limits, not test execution. Those checks are not reported as passing. Actual activation and business acceptance receipts must be recorded separately.
+
+## Browser runtime regression
+
+On a Linux host with the reviewed AppArmor profile and the retained worker image,
+run `python3 deploy/tencent-elasticity/integrity-browser-smoke.py --image sha256:<installed-image-id>`.
+The probe renders the actual elastic Compose file and uses its authoring init,
+non-root user, read-only rootfs, dropped capabilities, seccomp, AppArmor, 6 GiB
+memory, 2 CPUs, 512 PID limit and 512 MiB temporary directory. It creates a new
+network-none container with no service environment, enrollment or host mounts,
+then performs three real desktop/browser/page/render/screenshot/close cycles.
+It checks the actual container exit status and removes the diagnostic container.
+Run the probe before accepting browser readiness; a worker heartbeat alone does
+not exercise Chromium's renderer namespace.
+
+This detects the `newPage()` crash reproduced with the generic seccomp profile.
+It does not query websites, invoke a model, connect to a database, prove private
+egress, or replace a new associated integrity run through authorized download and
+settlement. The original 74-file release package is a fixed historical preimage:
+after another release changes the business pin/helper, prepare and verify a new
+compatible release package. Do not replay its old installer or replace the new
+business files with the old pin.
