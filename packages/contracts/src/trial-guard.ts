@@ -38,14 +38,16 @@ const utc = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?
 const day = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Trial accounting day in the configured trial time zone.' });
 const safeCode = Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' });
 const count = Type.Integer({ minimum: 0 });
+const retiredRunLimit = Type.Integer({ minimum: 0, deprecated: true,
+  description: 'Retired run submission limit. Current servers return 0 (unlimited submission); execution/model concurrency remains separately bounded. Old positive values are ignored.' });
 const retiredDailyLimit = Type.Integer({ minimum: 0, deprecated: true,
   description: 'Retired daily limit. Current servers return 0 (unlimited); old positive values are ignored.' });
 const tokens = obj({ input_tokens: count, output_tokens: count, cached_input_tokens: count, reasoning_tokens: count });
 
 const TrialLimitsSchema = obj({
   enabled: Type.Boolean(), day_time_zone: Type.String({ pattern: '^[A-Za-z_]+(?:/[A-Za-z_+-]+)*$' }),
-  active_runs_per_user: count, runs_per_user_per_day: retiredDailyLimit, upload_bytes_per_user_per_day: retiredDailyLimit, model_tokens_per_user_per_day: retiredDailyLimit,
-  unknown_usage_tokens_per_attempt: count, global_active_runs: count,
+  active_runs_per_user: retiredRunLimit, runs_per_user_per_day: retiredDailyLimit, upload_bytes_per_user_per_day: retiredDailyLimit, model_tokens_per_user_per_day: retiredDailyLimit,
+  unknown_usage_tokens_per_attempt: count, global_active_runs: retiredRunLimit,
   projects_per_user_per_day: retiredDailyLimit, projects_per_source_per_hour: count, uploads_per_user_per_hour: count, uploads_per_source_per_hour: count,
   kill_switch_config: Type.Boolean()
 });

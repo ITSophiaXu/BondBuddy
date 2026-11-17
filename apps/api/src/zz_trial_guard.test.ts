@@ -1,13 +1,14 @@
+import {uploadSyntheticReference,uploadSyntheticAudit} from './test-authoring-source.js';
 import type {TSchema} from '@sinclair/typebox';
-import {billingDtoSchema,Int64Schema} from '@bondbuddy/contracts';
+import {billingDtoSchema,Int64Schema,emptyUpdateDetails} from '@bondbuddy/contracts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
-import { azureBlobs, uid } from './data.js';
-import { observeUsage } from './observability.js';
+import { azureBlobs, uid, canonical, digest, transaction } from './data.js';
+import { observeUsage, recordLogicalJob } from './observability.js';
 import { recordPotentialCall, type Lease } from './queue.js';
 import { resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { grantOperator } from './log-ops.js';
@@ -35,10 +36,10 @@ async function openGate(pool: Pool) {
 
 function harness(pool: Pool, trial: TrialConfig, options: { blobs?: boolean } = {}) {
   let current = '';
-  const app = createServer({ pool, blobs: options.blobs === false ? undefined : azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true, trial });
+  const app = createServer({ pool, historicalBillingFixture:true, enablePaidAuthoring:false, blobs: options.blobs === false ? undefined : azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true, trial });
   const as = (userId: string, remoteAddress = '198.51.100.7') => (method: string, url: string, payload?: unknown) => { current = userId; return app.inject({ method: method as never, url, remoteAddress, headers: { origin: ORIGIN }, payload: payload as never }); };
   async function project(owner: string, remoteAddress?: string) {
-    const created = await as(owner, remoteAddress)('POST', '/api/v1/projects', { name: 'synthetic trial', kind: 'update', issuer_name: null, market: null, offering: null });
+    const created = await as(owner, remoteAddress)('POST', '/api/v1/projects', { name: 'synthetic trial', kind: 'update', issuer_name: 'Synthetic issuer', market: 'sse', offering: 'private', update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'} });
     return created;
   }
   async function submit(owner: string, projectId: string, inputHash: string, executionId = `exec-${uid()}`) {
@@ -46,7 +47,10 @@ function harness(pool: Pool, trial: TrialConfig, options: { blobs?: boolean } = 
   }
   async function ready(owner: string) {
     const p = (await project(owner)).json().project_id as string;
-    const input = (await as(owner)('POST', `/api/v1/projects/${p}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] })).json();
+    current=owner;
+    const reference=await uploadSyntheticReference(app,p), audit=await uploadSyntheticAudit(app,p);
+    const response=await as(owner)('POST', `/api/v1/projects/${p}/input-revisions`, {...reference,material_versions:[...reference.material_versions,audit]});
+    assert.equal(response.statusCode,201,response.body);const input=response.json();
     return { projectId: p, inputHash: input.input_hash as string };
   }
   async function leaseFor(owner: string, runId: string): Promise<Lease> {
@@ -68,7 +72,7 @@ test('config: guard is off outside production unless enabled, and bad values fai
   assert.equal(trialConfigFromEnv({ NODE_ENV: 'production' }).enabled, true);
   assert.equal(trialConfigFromEnv({ NODE_ENV: 'production', BB_TRIAL_GUARD: 'off' }).enabled, false);
   assert.equal(trialConfigFromEnv({ BB_TRIAL_KILL_SWITCH: '1' }).kill_switch_config, true);
-  assert.throws(() => trialConfigFromEnv({ BB_TRIAL_ACTIVE_RUNS_PER_USER: '-1' }));
+  assert.throws(() => trialConfigFromEnv({ BB_TRIAL_UPLOADS_PER_USER_PER_HOUR: '-1' }));
   assert.throws(() => trialConfigFromEnv({ BB_TRIAL_GUARD: 'maybe' }));
   assert.throws(() => trialConfigFromEnv({ BB_TRIAL_DAY_TIME_ZONE: 'Not/AZone' }));
 });
@@ -81,8 +85,15 @@ test('daily limits stay retired even when legacy production environment values r
     for (const key of ['runs_per_user_per_day', 'model_tokens_per_user_per_day', 'projects_per_user_per_day', 'upload_bytes_per_user_per_day'] as const)
       assert.equal(config[key], 0, `${key} must report unlimited`);
     assert.equal(config.enabled, true);
-    assert.equal(config.active_runs_per_user, 2);
+    assert.equal(config.active_runs_per_user, 0);
   }
+});
+
+test('old run-count configuration cannot restore submission caps',()=>{
+ for(const value of ['0','1','4','-1','obsolete']){
+  const config=trialConfigFromEnv({BB_TRIAL_GUARD:'on',BB_TRIAL_ACTIVE_RUNS_PER_USER:value,BB_TRIAL_GLOBAL_ACTIVE_RUNS:value});
+  assert.equal(config.active_runs_per_user,0);assert.equal(config.global_active_runs,0);assert.equal(config.enabled,true);
+ }
 });
 
 test('health and readiness probes', { skip }, async () => {
@@ -126,48 +137,25 @@ test('health and readiness probes', { skip }, async () => {
   } finally { await pool.end(); }
 });
 
-test('run admission retains concurrency and idempotency but ignores daily counts', { skip }, async () => {
+test('run admission queues beyond obsolete personal and global counts, preserving replay', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
+  const h=harness(pool,base({active_runs_per_user:1,global_active_runs:1,runs_per_user_per_day:1}));
   try {
-    await openGate(pool);
-    const h = harness(pool, base({ active_runs_per_user: 1, runs_per_user_per_day: 2 }));
-    const owner = await user(pool, 'trial-runs');
-    const { projectId, inputHash } = await h.ready(owner);
-    const first = await h.submit(owner, projectId, inputHash, 'exec-trial-first');
-    assert.equal(first.statusCode, 202, first.body);
-    const second = await h.submit(owner, projectId, inputHash);
-    assert.equal(second.statusCode, 429);
-    assert.equal(second.json().code, 'TRIAL_QUOTA_EXCEEDED');
-    assert.match(second.json().message, /active_runs_per_user/);
-    // Replaying the same execution_request_id returns the same run, even at the limit.
-    const replay = await h.submit(owner, projectId, inputHash, 'exec-trial-first');
-    assert.equal(replay.statusCode, 202);
-    assert.equal(replay.json().run_id, first.json().run_id);
-    assert.deepEqual(await rejected(pool, owner, 'execute'), ['TRIAL_QUOTA_EXCEEDED']);
-    assert.equal(await alertFor(pool, 'active_runs_per_user', owner), 1);
-    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [first.json().run_id]);
-    assert.equal((await h.submit(owner, projectId, inputHash)).statusCode, 202);
-    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE owner_user_id=$1", [owner]);
-    const daily = await h.submit(owner, projectId, inputHash);
-    assert.equal(daily.statusCode, 202, daily.body);
-    assert.equal(await alertFor(pool, 'runs_per_user_per_day', owner), 0);
-    // A global cap is shared by every account and cannot be bypassed by an allow override.
-    const active = (await pool.query("SELECT count(*)::int n FROM bb_runs WHERE state IN ('preparing','queued','running','validating','delivering')")).rows[0].n;
-    const g = harness(pool, base({ global_active_runs: active + 1 }));
-    const a = await user(pool, 'trial-global-a'), b = await user(pool, 'trial-global-b');
-    const pa = await g.ready(a), pb = await g.ready(b);
-    assert.equal((await g.submit(a, pa.projectId, pa.inputHash)).statusCode, 202);
-    const operatorUser = await user(pool, 'trial-op');
-    await grantOperator(pool, { userId: operatorUser, role: 'log_operator', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
-    assert.equal((await g.as(operatorUser)('POST', '/api/v1/admin/trial/overrides', { user_id: b, effect: 'allow', reason_code: 'company_pilot' })).statusCode, 201);
-    const blocked = await g.submit(b, pb.projectId, pb.inputHash);
-    assert.equal(blocked.statusCode, 429);
-    assert.match(blocked.json().message, /global_active_runs/);
-    assert.equal(await alertFor(pool, 'global_active_runs', 'global'), 1);
-  } finally { await pool.end(); }
+    await openGate(pool);const owner=await user(pool,'queued-runs');
+    const target=await h.ready(owner);
+    const responses=await Promise.all(Array.from({length:12},(_,i)=>h.submit(owner,target.projectId,target.inputHash,'queued-'+i)));
+    responses.forEach(r=>assert.equal(r.statusCode,202,r.body));
+    assert.equal(new Set(responses.map(r=>r.json().run_id)).size,12);
+    assert.equal((await h.submit(owner,target.projectId,target.inputHash,'queued-0')).json().run_id,responses[0].json().run_id);
+    const other=await user(pool,'queued-other'),next=await h.ready(other);
+    assert.equal((await h.submit(other,next.projectId,next.inputHash)).statusCode,202);
+    assert.deepEqual(await rejected(pool,owner,'execute'),[]);
+    assert.equal(await alertFor(pool,'active_runs_per_user',owner),0);
+    assert.equal(await alertFor(pool,'global_active_runs','global'),0);
+  } finally {await h.app.close();await pool.end();}
 });
 
-test('a quota-rejected start can retry the same request after capacity returns without changing its input', { skip }, async () => {
+test('a quota-rejected start can retry the same request after quota retirement without changing its input', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const h = harness(pool, base({ active_runs_per_user: 1, runs_per_user_per_day: 100 }));
   try {
@@ -177,18 +165,15 @@ test('a quota-rejected start can retry the same request after capacity returns w
     const first = await h.submit(owner, occupied.projectId, occupied.inputHash, 'occupied-request');
     assert.equal(first.statusCode, 202, first.body);
     const retry = () => h.submit(owner, target.projectId, target.inputHash, 'same-retry-request');
-    const rejected = await retry();
-    assert.equal(rejected.statusCode, 429, rejected.body);
-    assert.equal(rejected.json().code, 'TRIAL_QUOTA_EXCEEDED');
-    assert.deepEqual(rejected.json().field_errors, [{field:'trial_limit',code:'active_runs_per_user',message:'Current processing limit reached'}]);
-    const audit = (await pool.query("SELECT id,request_hash,error_code FROM bb_jobs WHERE project_id=$1 AND subtype='execute_rejected'", [target.projectId])).rows;
-    assert.equal(audit.length, 1);
-    assert.equal((await retry()).statusCode, 429, 'the current capacity limit is still enforced');
+    // Persist the immutable legacy rejection through the real audit writer.
+    const body={project_id:target.projectId,input_revision:1,input_hash:target.inputHash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'};
+    await transaction(pool,c=>recordLogicalJob(c,{owner,projectId:target.projectId,requestId:uid(),traceId:uid(),kind:'execute',jobType:'update',status:'rejected',errorCode:'TRIAL_QUOTA_EXCEEDED',inputRevision:1,inputHash:target.inputHash,stage:'submission_rejected',executionRequestId:'same-retry-request',requestHash:digest(canonical(body)),httpStatus:429}));
+    const audit=(await pool.query("SELECT id,request_hash,error_code FROM bb_jobs WHERE project_id=$1 AND subtype='execute_rejected'",[target.projectId])).rows;
+    assert.equal(audit.length,1);
     const changed = await h.as(owner)('POST', '/api/v1/runs/execute', { execution_request_id:'same-retry-request', project_id:target.projectId,
       input_revision:1,input_hash:target.inputHash,task_kind:'update',input_manifest_ref:'changed-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace' });
     assert.equal(changed.statusCode, 409);
     assert.equal(changed.json().code, 'IDEMPOTENCY_CONFLICT', 'a rejected key cannot be rebound to another request');
-    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [first.json().run_id]);
     const suspended = harness(pool, base({ kill_switch_config:true }));
     try {
       const blocked = await suspended.submit(owner, target.projectId, target.inputHash, 'same-retry-request');
@@ -268,7 +253,7 @@ test('daily token usage never blocks submit or model calls and remains fully acc
   } finally { configureTrialGuard(null); await pool.end(); }
 });
 
-test('unlimited daily usage retains concurrent task admission controls', { skip }, async () => {
+test('unlimited submissions retain emergency and account admission controls', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ active_runs_per_user: 1, runs_per_user_per_day: 10, model_tokens_per_user_per_day: 0 });
   configureTrialGuard(config);
@@ -284,9 +269,8 @@ test('unlimited daily usage retains concurrent task admission controls', { skip 
     await observeUsage(pool, { owner, attemptId: first, source: 'provider', sourceEventId: `usage-${uid()}`, status: 'measured', inputTokens: 2_000_001, outputTokens: 1 });
     await recordPotentialCall(pool, lease, 'synthetic-unlimited-second', 1);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 2);
-    const blockedByOtherLimit = await h.submit(owner, projectId, inputHash);
-    assert.equal(blockedByOtherLimit.statusCode, 429);
-    assert.match(blockedByOtherLimit.json().message, /active_runs_per_user/);
+    const queued = await h.submit(owner, projectId, inputHash);
+    assert.equal(queued.statusCode, 202, queued.body);
   } finally { configureTrialGuard(null); await pool.end(); }
 });
 
@@ -470,7 +454,7 @@ test('abuse limits: per-account and per-source, shared source not blanket-banned
   } finally { await pool.end(); }
 });
 
-test('trial health pass raises stale heartbeat, backlog, error-rate and global-quota alerts', { skip }, async () => {
+test('trial health reports operational failures without retired quota alerts', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   try {
     await openGate(pool);
@@ -487,7 +471,7 @@ test('trial health pass raises stale heartbeat, backlog, error-rate and global-q
     await pool.query("UPDATE bb_jobs SET state='failed',updated_at=now() WHERE run_id=$1", [failed]);
     const active = (await pool.query("SELECT count(*)::int n FROM bb_runs WHERE state IN ('preparing','queued','running','validating','delivering')")).rows[0].n;
     const fired = await checkTrialHealth(pool, base({ global_active_runs: active }), { heartbeatMaxAgeSeconds: 90, queueBacklogMaxAgeSeconds: 600, errorWindowSeconds: 900, errorRateThreshold: 0.000001, errorMinSample: 1 });
-    assert.deepEqual(fired, ['worker_heartbeat_stale', 'queue_backlog_stale', 'error_rate_spike', 'trial_quota_exhausted']);
+    assert.deepEqual(fired, ['worker_heartbeat_stale', 'queue_backlog_stale', 'error_rate_spike']);
     // Deduplicated per window: a second pass appends nothing new.
     const before = (await pool.query('SELECT count(*)::int n FROM bb_ops_alerts')).rows[0].n;
     await checkTrialHealth(pool, base({ global_active_runs: active }), { heartbeatMaxAgeSeconds: 90, queueBacklogMaxAgeSeconds: 600, errorWindowSeconds: 900, errorRateThreshold: 0.000001, errorMinSample: 1 });
@@ -497,7 +481,7 @@ test('trial health pass raises stale heartbeat, backlog, error-rate and global-q
     const alerts = await h.as(reader)('GET', '/api/v1/admin/alerts');
     assert.equal(alerts.statusCode, 200, alerts.body);
     const kinds = new Set(alerts.json().items.map((a: any) => a.kind));
-    for (const kind of ['worker_heartbeat_stale', 'queue_backlog_stale', 'error_rate_spike', 'trial_quota_exhausted']) assert.ok(kinds.has(kind), kind);
+    for (const kind of ['worker_heartbeat_stale', 'queue_backlog_stale', 'error_rate_spike']) assert.ok(kinds.has(kind), kind);
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE owner_user_id=$1", [owner]);
     await pool.query("UPDATE bb_jobs SET state='cancelled' WHERE owner_user_id=$1", [owner]);
     await recordWorkerHeartbeat(pool, { workerId, startedAt: new Date(), kinds: ['run'], concurrency: 1, stopped: true });

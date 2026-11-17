@@ -98,9 +98,9 @@ out({type:'item.completed',item:{id:'reply',type:'agent_message',text:reply}});
 out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})});
 `);
   const measured={input_tokens:83,cached_input_tokens:41,output_tokens:17,reasoning_output_tokens:3};
-  async function fixture(ctx:TestContext,withReport=false) {
-    const owner=randomUUID(),project=randomUUID(),marker=join(root,`${project}.sent`),{blobs,values}=memoryBlobs();
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`assistant_${owner.replaceAll('-','').slice(0,16)}`]);
+  async function fixture(ctx:TestContext,withReport=false,existingOwner?:string) {
+    const owner=existingOwner??randomUUID(),project=randomUUID(),marker=join(root,`${project}.sent`),{blobs,values}=memoryBlobs();
+    if(!existingOwner)await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`assistant_${owner.replaceAll('-','').slice(0,16)}`]);
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering) VALUES($1,$2,'Synthetic assistant','review','合成发行人','sse','private')",[project,owner]);
     ctx.after(()=>pool.query('UPDATE bb_projects SET archived_at=now() WHERE id=$1',[project]).then(()=>{}));
     const source=withReport?report(project):null;
@@ -423,6 +423,15 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       assert.deepEqual((await f.row(pair[1]!.id)).context_snapshot.prior_message_ids,[], 'send-time history is never retroactively extended');
     });
 
+    await t.test('assistant slots favor the account without an owned lease before older bulk conversations',async ctx=>{
+      const a=await fixture(ctx),a2=await fixture(ctx,false,a.owner),b=await fixture(ctx);
+      const first=await a.queue({createdAt:'2026-11-14T01:00:00Z'});
+      const bulk=await a2.queue({createdAt:'2026-11-14T01:00:01Z'});
+      const fresh=await b.queue({createdAt:'2026-11-14T01:00:02Z'});
+      assert.equal((await claimReviewAssistant(pool))?.id,first.id);
+      assert.equal((await claimReviewAssistant(pool))?.id,fresh.id,'a fresh account gets the next available slot');
+      assert.equal((await claimReviewAssistant(pool))?.id,bulk.id,'remaining work still progresses');
+    });
     await t.test('foreign report, history, source material and altered report hash fail before model send',async ctx=>{
       const f=await fixture(ctx),foreign=await fixture(ctx,true),old=await foreign.queue({status:'completed'});
       const scenarios=[

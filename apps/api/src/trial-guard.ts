@@ -6,7 +6,9 @@ import type { OperatorRole, TrialLimitKind, TrialLimits, TrialOverrideEffect } f
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { gateState, raiseAlert } from './evidence-gate.js';
 
-// Admission controls for concurrency, short-window abuse and operator suspension.
+// Submission admission controls short-window abuse and operator suspension.
+// Run-count limits were retired on 2026-11-17: accepted work queues; the shared
+// execution/model capacity gates, not the number of submitted runs, bound work.
 // Daily usage limits were retired on 2026-10-30. Usage accounting and credit billing
 // remain separate; overrides and the kill switch are append-only rows (0025).
 
@@ -14,7 +16,8 @@ export type TrialConfig = TrialLimits;
 type Db = Pool | PoolClient;
 
 // Keep the admin DTO compatible, but never let old deployment env or injected config
-// re-enable daily limits. Zero means unlimited for these retired fields only.
+// re-enable daily limits. Zero means no submission limit for these retired fields; execution remains bounded.
+const RETIRED_RUN_LIMITS = { active_runs_per_user: 0, global_active_runs: 0 } as const;
 const RETIRED_DAILY_LIMITS = {
   runs_per_user_per_day: 0,
   upload_bytes_per_user_per_day: 0,
@@ -39,10 +42,9 @@ export function trialConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TrialC
   return {
     enabled: flag ? flag === 'on' : env.NODE_ENV === 'production',
     day_time_zone: zone,
-    active_runs_per_user: intEnv(env, 'BB_TRIAL_ACTIVE_RUNS_PER_USER', 2),
+    ...RETIRED_RUN_LIMITS,
     ...RETIRED_DAILY_LIMITS,
     unknown_usage_tokens_per_attempt: intEnv(env, 'BB_TRIAL_UNKNOWN_USAGE_TOKENS_PER_ATTEMPT', 200_000),
-    global_active_runs: intEnv(env, 'BB_TRIAL_GLOBAL_ACTIVE_RUNS', 4),
     projects_per_source_per_hour: intEnv(env, 'BB_TRIAL_PROJECTS_PER_SOURCE_PER_HOUR', 120),
     uploads_per_user_per_hour: intEnv(env, 'BB_TRIAL_UPLOADS_PER_USER_PER_HOUR', 120),
     uploads_per_source_per_hour: intEnv(env, 'BB_TRIAL_UPLOADS_PER_SOURCE_PER_HOUR', 1200),
@@ -137,17 +139,8 @@ export async function admitUploadCreate(client: PoolClient, config: TrialConfig,
 /** Called inside the execute transaction, after idempotent replay, so a replay never hits a quota. */
 export async function admitRunSubmit(client: PoolClient, config: TrialConfig, userId: string, source: string | null) {
   if ((await killSwitchState(client, config)).engaged) throw new TrialLimitProblem(503, 'MODEL_CALLS_SUSPENDED', 'kill_switch');
-  const effect = await accountOverride(client, userId);
-  if (config.enabled) {
-    // One global lock serialises admission so concurrent submits cannot overshoot the cap.
-    await lockKey(client, 'trial:global_runs');
-    const global = (await client.query(`SELECT count(*)::int n FROM bb_runs WHERE state IN ${ACTIVE_RUN_STATES}`)).rows[0].n;
-    if (global >= config.global_active_runs) throw exceeded('global_active_runs');
-    if (effect !== 'allow') {
-      const active = (await client.query(`SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state IN ${ACTIVE_RUN_STATES}`, [userId])).rows[0].n;
-      if (active >= config.active_runs_per_user) throw exceeded('active_runs_per_user');
-    }
-  }
+  await accountOverride(client, userId);
+  // Legacy env values and injected config cannot restore a retired run cap.
   await admit(client, userId, 'run_submit', source);
 }
 
@@ -244,13 +237,6 @@ export async function checkTrialHealth(pool: Pool, config: TrialConfig, t: Trial
     await raiseAlert(pool, { kind: 'error_rate_spike', severity: 'critical', scope: 'jobs', bucketSeconds: t.errorWindowSeconds, detail: { failed: window.failed, finished: window.finished, window_seconds: t.errorWindowSeconds } });
     fired.push('error_rate_spike');
   }
-  if (config.enabled) {
-    const active = (await pool.query(`SELECT count(*)::int n FROM bb_runs WHERE state IN ${ACTIVE_RUN_STATES}`)).rows[0].n;
-    if (active >= config.global_active_runs) {
-      await raiseAlert(pool, { kind: 'trial_quota_exhausted', severity: 'warning', scope: 'global_active_runs:global', detail: { limit_kind: 'global_active_runs', scope: 'global', active_runs: active } });
-      fired.push('trial_quota_exhausted');
-    }
-  }
   return fired;
 }
 
@@ -274,7 +260,7 @@ export async function trialStatus(pool: Pool, config: TrialConfig, actorId: stri
     await audit(client, actorId, 'log_reader', 'trial_status', {});
     const workers = (await client.query('SELECT worker_id,last_seen_at,kinds,concurrency,EXTRACT(EPOCH FROM now()-last_seen_at)::int age FROM bb_worker_heartbeats WHERE stopped_at IS NULL ORDER BY last_seen_at DESC LIMIT 50')).rows;
     const oldest = (await client.query("SELECT EXTRACT(EPOCH FROM now()-min(updated_at))::int age FROM bb_jobs WHERE state='queued'")).rows[0].age;
-    return { limits: { ...config, ...RETIRED_DAILY_LIMITS }, kill_switch: await killSwitchState(client, config),
+    return { limits: { ...config, ...RETIRED_DAILY_LIMITS, ...RETIRED_RUN_LIMITS }, kill_switch: await killSwitchState(client, config),
       global_active_runs: (await client.query(`SELECT count(*)::int n FROM bb_runs WHERE state IN ${ACTIVE_RUN_STATES}`)).rows[0].n,
       workers: workers.map(w => ({ worker_id: w.worker_id, last_seen_at: iso(w.last_seen_at)!, age_seconds: Math.max(0, Number(w.age)), kinds: w.kinds, concurrency: w.concurrency })),
       oldest_queued_age_seconds: oldest === null ? null : Math.max(0, Number(oldest)) };

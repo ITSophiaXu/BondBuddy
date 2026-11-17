@@ -66,6 +66,20 @@ export async function executionClaimGate(client:PoolClient,pool:Pool){
  if(c){const n=await node(client,c.identity,true);await client.query("SELECT set_config('bb.execution_node_id',$1,true),set_config('bb.execution_node_epoch',$2,true),set_config('bb.execution_session_id',$3,true)",[n.id,c.identity.epoch,c.session_id]);}
  if(c||policy.managed_nodes)await client.query('SELECT bb_execution_claim_context()');
 }
+/** All claimers rank accounts against the same committed lease inventory. This
+ * short transaction lock does not span model execution or impose a run quota.
+ * Call after executionClaimGate (node first), before locking a candidate row. */
+export async function lockTaskQueueScheduling(client:PoolClient){
+ await client.query("SELECT pg_advisory_xact_lock(hashtextextended('bb:task-queue-scheduling',0))");
+}
+/** Owned expired leases still count until positive recovery releases them. */
+export function accountExecutionLoadSql(owner:'r.owner_user_id'|'m.owner_user_id'){
+ return `((SELECT count(*) FROM bb_jobs busy WHERE busy.owner_user_id=${owner}
+   AND busy.job_type IN ('update','generation','review','qa') AND busy.lease_token IS NOT NULL)
+  +(SELECT count(*) FROM bb_review_messages busy_message WHERE busy_message.owner_user_id=${owner}
+   AND busy_message.lease_token IS NOT NULL))`;
+}
+
 export async function executionNodeState(pool:Pool){const c=contexts.get(pool);return c?(await node(pool,c.identity)).state:null;}
 
 /** Local completion is distinct from expiry. The owning consumer first closes

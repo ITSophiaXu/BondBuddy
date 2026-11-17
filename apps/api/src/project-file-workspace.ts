@@ -86,9 +86,9 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
     const ids=[...new Set([m.execution_scope_project_id,m.input.source_material!.source_project_id])];
     const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[owner,ids])).rows;
     if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目已归档或来源不可用，请恢复后继续。');
-    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type);
     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
     if(!t)throw missing();
+    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type,t.project_id);
     const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);
     if(item.pricing_mode===OUTCOME_MODE&&(quote.quote.quote_status!=='ready'||quote.quote.scope_quote_id!==item.scope_quote_id||quote.quote.points!==item.points))
       throw conflict('QUOTE_CHANGED','已确认的文件范围或费用不一致，请核对原范围报价。');

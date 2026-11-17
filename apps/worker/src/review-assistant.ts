@@ -1,4 +1,4 @@
-import {executionClaimGate} from '@bondbuddy/api/execution-capacity';
+import {executionClaimGate,lockTaskQueueScheduling,accountExecutionLoadSql} from '@bondbuddy/api/execution-capacity';
 import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
@@ -117,6 +117,7 @@ export async function claimReviewAssistant(pool:Pool,leaseSeconds=120):Promise<R
   await modelCallBudgetFor(pool).reconcileOwnExitedProcesses?.();
   return transaction(pool,async client=>{
     await executionClaimGate(client,pool);
+    await lockTaskQueueScheduling(client);
     const row=(await client.query(`SELECT m.* FROM bb_review_messages m JOIN bb_projects p ON p.id=m.project_id AND p.owner_user_id=m.owner_user_id
       WHERE m.role='user' AND p.archived_at IS NULL AND p.deleted_at IS NULL AND (m.reply_status='queued' OR (m.reply_status='running' AND m.lease_until<now()))
       AND NOT (m.execution_node_id IS NOT NULL AND m.lease_token IS NOT NULL)
@@ -124,7 +125,7 @@ export async function claimReviewAssistant(pool:Pool,leaseSeconds=120):Promise<R
         AND earlier.role='user' AND earlier.reply_status IN ('queued','running')
         AND (earlier.created_at,earlier.id)<(m.created_at,m.id))
       AND NOT EXISTS (SELECT 1 FROM bb_model_capacity_holders h WHERE h.scope='assistant:'||m.project_id)
-      ORDER BY m.created_at,m.id FOR UPDATE OF p,m SKIP LOCKED LIMIT 1`)).rows[0];
+      ORDER BY ${accountExecutionLoadSql('m.owner_user_id')},m.created_at,m.id FOR UPDATE OF p,m SKIP LOCKED LIMIT 1`)).rows[0];
     if (!row) return null;
     const token=uid();
     await client.query(`UPDATE bb_review_messages SET reply_status='running',lease_token=$2,

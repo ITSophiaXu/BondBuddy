@@ -121,7 +121,7 @@ export async function readWorkpapers(db:Db,owner:string,id:string):Promise<Billi
 }
 
 const independentWorkpaperFailures=new Set(['MODEL_OUTPUT_SCHEMA_INVALID','VALIDATION_FAILED','WORD_QUALITY_REJECTED','WORD_DELIVERY_UNAVAILABLE']);
-/** Locks the canonical project and admits only a second, different immutable item.
+/** Validates the source and admits distinct immutable items within the target batch window.
  * The database trigger repeats this check at insertion and every state transition. */
 async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m:M4DocumentManifest){
   const scope=m.execution_scope_project_id;
@@ -132,10 +132,10 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
   if(!frozen)throw conflict('INPUT_REVISION_CONFLICT','底稿输入已变化。');
   const active=(await c.query(`SELECT r.id,bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
-    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
-    AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
+    WHERE r.owner_user_id=$1 AND r.project_id=(SELECT project_id FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2) AND r.task_kind<>'qa'
+    AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,b.topic_id,terminal])).rows;
   if(active.length>=SHARED_BATCH_CAPACITY||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
-    throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
+    throw conflict('PROJECT_RUN_ACTIVE','当前目标已有业务任务执行中，请等待当前文件完成。');
 }
 
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */

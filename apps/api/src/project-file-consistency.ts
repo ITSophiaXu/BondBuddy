@@ -144,7 +144,7 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
     await c.query('SAVEPOINT begin_file_patch');
     try{
       const p=await project(c,b.owner_user_id,b.project_id,true);
-      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id);
+      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id,p.id);
       await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
