@@ -232,3 +232,31 @@ SIGTERM/SIGINT 停止新领取，持续续租并等待现有读取/提交结束�
 功能回归覆盖独立入口不领取 run/parse、16MiB 精确边界、wrong-lane 零领取、主站 SIGTERM 仍等待确认完成、受控大件 full-read gate 下 small 完成、共享暂存、202→200/同一材料重放及 owner/fence/完整性。放置调整复用未变代码的有效回归，只补新增组合验证：100MiB 最大文件加 16MiB 小件槽共 116MiB，不超过 128MiB spool；启动磁盘至少 144MiB；在实际 512MiB/0.5CPU 容器核并行预约、无 OOM、完整性、幂等与释放。生成文本流的预算验证不代表扫描 PDF 的最坏内存。隔离本地 PG 只证明功能与预算，生产延迟须以正式 HTTPS 的自有文件直传、确认、刷新唯一性及实际确认日志验收；不为调整位置重传历史大件或操作客户已完成记录。
 
 分开记录 PUT、created→queued、queued→首个 read、read/inspection/commit 与最终 HTTP 200。created→queued 混合客户端、PUT 和请求时间，不能称为 PUT 实测；queued→首个 read 也包含领取与准备查询。PG `now()` 是事务起点，确认行 `updated_at` 可能早于 commit 结束，不能据此缩短总耗时。历史网络路径、时间段和 reader 落盘方式不同，不直接计算全链路提速倍数。位置优化只减少确认读取及排队，不承诺国内大件直传速度；当前 DNS/连接事实与历史 ESA 429/TCP 长尾分别记录。机械回归不代表准确版本真实模型金样、独立业务复核或生产性能已通过，新源码不继承旧热修例外。
+
+## 弹性节点的诚信浏览器
+
+弹性节点的 authoring 服务同样使用 `init:true` 和既有
+`integrity-browser-seccomp.json`；保留 Chromium sandbox、cap-drop、
+no-new-privileges 和 AppArmor。PID 上限仍为 512，不以进程残留为由直接提高额度。
+网站循环串行，每站会创建自己的桌面和浏览器；排查资源问题须区分活跃线程与僵尸，
+结合 cgroup 的 peak/events 和 rlimit，不能把批次数等同于浏览器并发数。
+
+诚信浏览器显式使用 `http://172.28.61.1:15435`。该端口由节点既有 mTLS
+transport 的独立 section 转发到主站 `10.2.0.5:15435`，主站独立监听转交
+`127.0.0.1:3129` 的既有官网代理。沿用既有 CA、客户端身份与经过验证的服务端
+证书/SNI，不复制认证，也不改通用模型代理 15434 或其白名单。
+`private-integrity-server.conf` 和对应 service 是独立主站组件；部署前先核对
+3129 实现/策略版本、mTLS 证书用途和网络规则，不能用端口监听代替官网成功。
+
+现存节点切换前保存准确容器、模板、模块、配置及 hash 前像。活动模型未终结或
+调用结果未知时不重建 authoring；新增主站专用监听不重启原模型代理。节点 transport
+配置更新应使用已验证的 stunnel 无损 reload 并保留原流，或在排空后启动。
+服务切换须沿用既有进程身份和节点 epoch 的登记规则；当前版本若要求正常排空、
+Stop/Start 与重新登记，则完成该原生流程，不能直接重建后复用旧进程身份。
+同步两槽启动模板的专用 profile、transport 与 hash，
+不更新业务包、业务模型、上下文或其他组件。回滚恢复本次保存的原字节和 hash，
+只回退受影响组件，不删除既有任务、batch、调用或账务记录。
+
+失败 observation/batch 仍是原 run 的审计记录，不删除或改成成功。获授权复验使用
+关联的新 run，先核原模型尝试/未决用量并防重复扣费；成功验收必须包括真实官网
+查询、截图、Word、成果归属及正常授权下载和文件 size/hash。
