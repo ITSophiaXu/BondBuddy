@@ -3,9 +3,9 @@
 // One loopback listener per Codex process. Codex sends its Responses API requests here
 // (base_url=http://127.0.0.1:<port>) and every request is forwarded unchanged to the
 // configured provider, through the same allow-list egress proxy the child would use.
-// The gateway records sizes, counts, status codes, safe identifiers and usage only. It
-// never holds or records credentials, prompts, tool output, model text or image bytes,
-// and it does not modify, retry, compress or block a request.
+// The gateway records sizes, counts, status codes, safe identifiers and usage only.
+// Content is inspected transiently in memory, never persisted. Allowed Responses
+// requests within the resource limit are forwarded without modification or retries.
 import { createServer, request as httpRequest, Agent as HttpAgent, type IncomingHttpHeaders, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import { Agent as HttpsAgent, request as httpsRequest, type AgentOptions as HttpsAgentOptions, type RequestOptions as HttpsRequestOptions } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
@@ -396,6 +396,19 @@ function safePath(url: string | undefined): string {
   return /^\/[A-Za-z0-9._\/-]{0,128}$/.test(path) ? path : '/other';
 }
 
+/** Validate the raw request target before WHATWG URL can normalize an authority or
+ * path traversal. A final origin/path check also pins the configured provider base. */
+function modelRequestTarget(raw: string | undefined, upstream: URL, prefix: string): URL | null {
+  if (!raw || /[\\#\u0000-\u0020\u007f]/.test(raw)) return null;
+  const path = raw.split('?')[0];
+  if (path !== '/responses' && path !== '/responses/compact') return null;
+  try {
+    const target = new URL(prefix + raw, upstream.origin);
+    return target.origin === upstream.origin && target.pathname === prefix + path
+      && !target.username && !target.password && !target.hash ? target : null;
+  } catch { return null; }
+}
+
 // ---------------------------------------------------------------- gateway
 
 export type ModelGatewayOptions = {
@@ -487,7 +500,8 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       keep(record);
     };
     if (!['GET', 'POST'].includes(req.method ?? '')) { req.resume(); reject(res, 405, 'METHOD_NOT_ALLOWED'); finalize('gateway_rejected', 'METHOD_NOT_ALLOWED'); return; }
-    if (!req.url || !req.url.startsWith('/') || req.url.startsWith('//')) { req.resume(); reject(res, 400, 'PATH_INVALID'); finalize('gateway_rejected', 'PATH_INVALID'); return; }
+    const target = modelRequestTarget(req.url, upstream, prefix);
+    if (!target) { req.resume(); reject(res, 400, 'PATH_INVALID'); finalize('gateway_rejected', 'PATH_INVALID'); return; }
 
     const chunks: Buffer[] = [];
     let received = 0, tooLarge = false;
@@ -501,7 +515,6 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       if (tooLarge) { chunks.length = 0; reject(res, 413, 'GATEWAY_REQUEST_LIMIT'); finalize('gateway_rejected', 'GATEWAY_REQUEST_LIMIT'); return; }
       const body = Buffer.concat(chunks);
       chunks.length = 0;
-      const target = new URL(prefix + req.url, upstream.origin);
       const upstreamReq = send(target, { method: req.method, headers: forwardRequestHeaders(req.headers, upstream.host, body.length), agent });
       upstreamRequests.add(upstreamReq);
       upstreamReq.once('close', () => upstreamRequests.delete(upstreamReq));

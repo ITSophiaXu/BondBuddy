@@ -15,7 +15,8 @@ BB_MODEL_GATEWAY_MODE=measure
 ## 工作方式
 
 - 每次 Codex 调用单独启动一个只监听 `127.0.0.1` 随机端口的网关，Codex 的 `base_url` 指向它；调用结束后网关随之关闭。
-- 网关把请求原样转发到原来配置的供应商地址，经过与 Codex 相同的出口代理（`HTTPS_PROXY` / `NO_PROXY`）。不修改、不压缩、不重试、不拦截请求；供应商返回的流式内容逐字节交回 Codex。
+- 网关仅允许 `/responses` 和 `/responses/compact`，固定转发到配置的供应商 origin 和 base path，保留合法查询参数。含反斜杠、路径穿越、绝对地址或其他路径的请求在转发前返回 `PATH_INVALID`，不会把鉴权头带到其他地址。
+- 合法且未超过下述资源上限的请求体保持原字节，经过与 Codex 相同的出口代理（`HTTPS_PROXY` / `NO_PROXY`）转发。不压缩或重试；供应商返回的流式内容逐字节交回 Codex。
 - 鉴权头由 Codex 自己发送，网关只转发，不读取、不保存。
 - 网关启动失败时，本次调用自动改为直连供应商，并在 worker 日志写一条 `event: start_failed`。测量功能不会让任务失败。
 
@@ -40,7 +41,7 @@ exec-log ATTEMPT_ID --tail 400
 
 | 字段 | 含义 |
 | --- | --- |
-| `request_bytes` | 本次请求体字节数，等于供应商收到的大小 |
+| `request_bytes` | 网关从 Codex 接收的请求体字节数；本地拒绝或连接失败不代表供应商收到这些字节 |
 | `request.items` | 按类型（如 `message:user`、`function_call_output`）统计的条数和字节 |
 | `request.largest_item` | 本次请求中最大的一条输入及其字节数 |
 | `request.image_count` / `image_data_url_bytes` | 请求中内联图片数量，以及它们在请求体中占用的字节 |
@@ -48,7 +49,7 @@ exec-log ATTEMPT_ID --tail 400
 | `response.status` / `upstream_request_id` | 供应商状态码和返回的请求编号，可用于向供应商查询 |
 | `response.usage` | 流式响应结束时供应商报告的 token 用量 |
 | `max_request_bytes` / `max_request_seq` | 本次调用中最大的请求及其序号 |
-| `first_413_seq` / `first_413_request_bytes` | 第一次出现 413 的请求序号和大小 |
+| `first_413_seq` / `first_413_request_bytes` | 第一次收到上游 413 的请求序号和大小；不包含本地拒绝 |
 
 ## 内容边界
 
@@ -57,8 +58,10 @@ exec-log ATTEMPT_ID --tail 400
 ## 已知限制
 
 - 网关到供应商使用 HTTP/1.1；直连时 Codex 可能使用 HTTP/2。请求体不变，每次请求多一次本机转发，代理隧道会被复用。
+- 现有单请求资源上限为 **256 MiB**。超过上限时网关本地返回 413 / `GATEWAY_REQUEST_LIMIT`，记录为 `outcome=gateway_rejected`、`response=null`，没有转发给供应商。该保护不是测得的供应商上限，也不计入 `first_413_*`。
+- 请求会在内存中缓存并解析，峰值可能高于原请求体大小；`request.items` 是重新序列化后的分项大小，不能用其总和替代原始 `request_bytes`。压缩请求的原始大小和解码后的 `request.json_bytes` 也须分别看。
 - 供应商响应如果被压缩，只记录状态码和字节数，不解析用量。
-- 这是诊断功能，不压缩图片、不设预算，也不能代替发布验收。
+- 这是诊断功能，不压缩图片；除上述资源保护外，不实现业务请求预算，也不能代替发布验收。
 
 ## 背景
 
