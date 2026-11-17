@@ -40,7 +40,6 @@ export const INTEGRITY_VERIFIED_ENDPOINTS: Readonly<Record<string, readonly stri
     "https://www.csrc.gov.cn/anhui/index.shtml",
     "https://www.csrc.gov.cn/fujian/index.shtml",
     "https://www.csrc.gov.cn/jiangxi/index.shtml",
-    "https://www.csrc.gov.cn/shandong/index.shtml",
     "https://www.csrc.gov.cn/henan/index.shtml",
     "https://www.csrc.gov.cn/hubei/index.shtml",
     "https://www.csrc.gov.cn/hunan/index.shtml",
