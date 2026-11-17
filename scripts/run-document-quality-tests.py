@@ -7,7 +7,7 @@ import sys
 import unittest
 import multiprocessing
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 MODULES = (
     'test_pdf_pages', 'test_bounded_image',
@@ -18,6 +18,17 @@ MODULES = (
 
 COUNTERS = ('tests', 'passed', 'failures', 'errors', 'skipped', 'expected_failures',
             'unexpected_successes', 'authorized_render_reports', 'rendered_documents')
+
+
+def scheduled_modules():
+    # Start full-manuscript work first, so rendering is not left until the other
+    # workers are idle. Coverage and result ordering still use the fixed list.
+    heavy = ('test_fixed_edit_authorized', 'test_authorized_authoring_quality',
+             'test_fixed_edit', 'test_document_quality', 'test_file_authoring')
+    scheduled = (*heavy, *(module for module in MODULES if module not in heavy))
+    if len(scheduled) != len(MODULES) or set(scheduled) != set(MODULES):
+        raise ValueError('Document execution schedule changed required coverage')
+    return scheduled
 
 
 def run_suite(suite):
@@ -77,11 +88,15 @@ def main():
     # Keep the gate's existing 600-second group deadline. Independent suites run
     # in at most three processes; no tests, renderer requirements or assertions
     # are removed. A failed/crashed worker cannot yield a passing summary.
+    completed = {}
     with ProcessPoolExecutor(max_workers=3, mp_context=multiprocessing.get_context('spawn')) as executor:
-        records = list(executor.map(run_module, MODULES))
-    for record in records:
-        print(f"Document module: {record['module']} ({record['seconds']}s)")
-        print(record['output'], end='')
+        pending = [executor.submit(run_module, module) for module in scheduled_modules()]
+        for future in as_completed(pending):
+            record = future.result()
+            completed[record['module']] = record
+            print(f"Document module: {record['module']} ({record['seconds']}s)")
+            print(record['output'], end='', flush=True)
+    records = [completed[module] for module in MODULES]
     summary, complete = summarize(records)
     print('DOCUMENT_QUALITY_RESULT=' + json.dumps(summary, sort_keys=True))
     return 0 if complete else 1

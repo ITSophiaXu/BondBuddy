@@ -102,3 +102,11 @@ r5 证据在 `work/task-queue-alltypes/evidence-round5/`；新整合候选与新
 文档组串行累积耗时登记 [#1563](https://github.com/ITSophiaXu/BondBuddy/issues/1563)。固定清单改用最多三个独立 Python 进程，保留全部旧模块及原 600 秒总预算，新增舍入/复核和 runner 失败反例。每模块测试数、空套件、失败、错误、skip、预期失败、模块覆盖及实际三份渲染报告仍必须完整通过；不接受调用者缩减清单。runner 合成反例 6/6 已通过，完整 Linux 清单复跑结果另存本地证据及 PR，未在此预先声明通过。
 
 当前仍未合并或部署，用户未验收。固定任丘金样所需同主体审计原件及最终 commit/tree 的独立人工复核记录仍缺；托管 CI 的付款/额度阻断尚未解决。旧 SHA、合成验收和机械通过均不能替代发布凭据。最新执行及结果保存在 ignored 的 `work/task-queue-alltypes/`，不提交客户原件或模型日志。
+
+文档组首轮并行仍在 600 秒超时，日志保留为 `document-parallel-1563-r1.log`。重任务先启动后，同一 600 秒限制内完整通过 **251/251，0 fail/error/skip**，包含全部旧模块、舍入/复核回归和 7 项 runner 反例。实际授权原稿/修订稿/清洁稿各渲染 340 页；模块耗时和完整输出见 `document-parallel-1563-r2.log`。执行顺序变化不减少覆盖，所有模块在独立进程中运行；完整固定机械门禁仍须按最终提交复跑。
+
+r7 差异复核后来在 3,397,087ms 被 `MODEL_TOOL_ATTEMPT_BLOCKED` 中止，并非超时；r8 新候选全面复核在 132,995ms 复现相同接线问题，均未完成交付。持久日志显示编制专用 `bb_continuation.checkpoint` 返回 `CONTINUATION_INPUT_INVALID`，随后模型尝试无权使用的资源发现工具并被允许清单拦截。登记 [#1564](https://github.com/ITSophiaXu/BondBuddy/issues/1564)：所有 `fileWorkspace` 原来都会注入编制续跑协议，但复核、问答及配套文件具有不同输入契约。
+
+适配器现仅为声明编制完成检查契约的流程提供编制 checkpoint、SessionStart 和原压缩指令；一般文件任务改用遵守自身输入/输出契约的有界本地交接说明，仍保留 128K 压缩、图片工具、沙箱和未知工具拒绝。一般本地交接不冒充持久主机恢复。实际工具事件也按同一能力检查，不能仅改提示而继续无条件开放 checkpoint。原失败调用、未知用量、暂停状态和成果均保留；没有放开任意资源工具，也没有自动重投结果不明调用。后续新候选需要独立真实复核复验。
+
+#1564 首次 Linux 构建通过，四组定向测试 74 项中 70 通过，4 项原生执行在 `AUTHORING_FILE_SANDBOX_UNAVAILABLE` 失败：该机械容器使用 root/default seccomp，未采用实际 worker 的 node 用户、drop-all 与已提交 user-namespace seccomp。准备按既有生产隔离配置复验，不跳过安全预检、不增加容器能力或放开沙箱。原日志 `continuation-1564-linux.log` 保留；新增正反工具能力用例也须运行。

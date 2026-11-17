@@ -13,6 +13,7 @@ import { createReviewActionObserver } from './review-action-progress.js';
 import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, FILE_AUTHORING_COMPACT_PROMPT, FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
+import { FILE_WORKSPACE_CONTINUATION_INSTRUCTIONS, FILE_WORKSPACE_COMPACT_PROMPT } from './codex-adapter.js';
 import { PerformanceTraceRuntime, type PerformanceSpanRecord } from '@bondbuddy/api/performance-trace';
 
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
@@ -427,11 +428,27 @@ for (const credential of ['env', 'command'] as const) {
   }
 }
 
+test('review and other file workspaces retain their contract without authoring-only checkpoint tools', () => {
+  const config = loadCodexAdapterConfig({});
+  const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
+    resumeThreadId: null, fileAuthoring: true });
+  assert.ok(args.includes('model_auto_compact_token_limit=128000'));
+  assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
+  assert.ok(args.includes('web_search="disabled"'));
+  assert.ok(args.includes(`developer_instructions=${JSON.stringify(FILE_WORKSPACE_CONTINUATION_INSTRUCTIONS)}`));
+  assert.ok(args.includes(`compact_prompt=${JSON.stringify(FILE_WORKSPACE_COMPACT_PROMPT)}`));
+  assert.ok(!args.some(arg => /bb_continuation|SessionStart|operations_sha256|host_handoff/.test(arg)));
+  for (const policy of [FILE_WORKSPACE_CONTINUATION_INSTRUCTIONS, FILE_WORKSPACE_COMPACT_PROMPT]) {
+    assert.match(policy, /input\/output contract/);
+    assert.match(policy, /untrusted/);
+  }
+});
+
 test('file authoring and recovery retain the same 128k compaction headroom with bounded tools', () => {
   const config = loadCodexAdapterConfig({});
   for (const recovery of [false, true]) {
     const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
-      resumeThreadId: null, fileAuthoring: true, fileRecovery: recovery });
+      resumeThreadId: null, fileAuthoring: true, fileRecovery: recovery, fileCompletion: true });
     assert.ok(args.some((value, index) => value === 'view_image' && args[index - 1] === '--disable'));
     assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
     assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));

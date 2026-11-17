@@ -12,6 +12,13 @@ SPEC.loader.exec_module(runner)
 
 
 class DocumentTestRunnerTests(unittest.TestCase):
+    def test_schedule_preserves_each_required_module_once(self):
+        self.assertCountEqual(runner.scheduled_modules(), runner.MODULES)
+        self.assertEqual(len(set(runner.scheduled_modules())), len(runner.MODULES))
+        with patch.object(runner, 'MODULES', tuple(m for m in runner.MODULES if m != 'test_fixed_edit')):
+            with self.assertRaises(ValueError):
+                runner.scheduled_modules()
+
     def run_case(self, method):
         case = type('SyntheticCase', (unittest.TestCase,), {'test_synthetic': method})
         return runner.run_suite(unittest.defaultTestLoader.loadTestsFromTestCase(case))
