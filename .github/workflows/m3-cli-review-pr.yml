@@ -149,8 +149,8 @@ jobs:
             --entrypoint node bondbuddy-m3-cli-native:ci \
             --test --test-concurrency=1 --test-reporter=tap apps/worker/dist/codex-copilot-file-protocol.test.js \
             | tee "$RUNNER_TEMP/copilot-file-protocol.tap"
-          grep -Eq '^# tests 3$' "$RUNNER_TEMP/copilot-file-protocol.tap"
-          grep -Eq '^# pass 3$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# tests 4$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# pass 4$' "$RUNNER_TEMP/copilot-file-protocol.tap"
           grep -Eq '^# fail 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"

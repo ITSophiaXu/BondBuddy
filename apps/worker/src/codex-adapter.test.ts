@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas, type ReviewAction } from '@bondbuddy/contracts';
 import { createReviewActionObserver } from './review-action-progress.js';
-import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, FILE_AUTHORING_COMPACT_PROMPT, FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 import { PerformanceTraceRuntime, type PerformanceSpanRecord } from '@bondbuddy/api/performance-trace';
@@ -438,8 +438,19 @@ test('file authoring and recovery retain the same compaction headroom with bound
     assert.ok(args.includes('mcp_servers.bb_images.required=true'));
     assert.ok(args.includes('model_auto_compact_token_limit=64000'));
     assert.ok(args.includes(`tool_output_token_limit=${recovery ? 2048 : 4096}`));
+    assert.ok(args.includes(`developer_instructions=${JSON.stringify(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`), 'runtime continuation applies even when the original prompt is already pinned');
+    assert.ok(args.includes(`compact_prompt=${JSON.stringify(FILE_AUTHORING_COMPACT_PROMPT)}`));
     assert.ok(args.includes('--ephemeral'));
   }
+  const ordinary = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true, resumeThreadId: null });
+  assert.ok(!ordinary.some(arg => /^(developer_instructions|compact_prompt)=/.test(arg)), 'non-file calls retain their own instruction policy');
+  for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
+    assert.match(text, /untrusted execution data/);
+    assert.match(text, /next_offset/);
+    assert.match(text, /hashes/);
+  }
+  assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, /do not prove complete reading/);
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /Never invent hashes, offsets, financial verification or completed coverage/);
 });
 
 test('DeepSeek catalog preserves the official 0.166 fallback prompt and capabilities with a 1M ceiling', async () => {
