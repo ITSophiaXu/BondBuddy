@@ -1071,6 +1071,30 @@ test('manual task refresh invalidates a late paused poll without replaying task 
   expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
 });
 
+for(const reason of ['word_chapter_repair_rejected','word_chapter_repair_unavailable'])test(`scoped chapter pause ${reason} preserves one task across reload`,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runReason=reason;
+  await setup(page,state);await page.locator('#execute-input').click();
+  for(const reload of [false,true]){
+    if(reload)await page.reload();
+    await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+    await expect(page.locator('#execution-progress')).toContainText('无需重新上传材料');
+    await expect(page.locator('#execution-progress')).toContainText(reason==='word_chapter_repair_rejected'?'补写前的草稿、候选稿':'无法可靠定位补写位置');
+    await expect(page.locator('#prepare-next-version')).toHaveCount(0);
+    expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
+  }
+  const output=process.env.BB_CHAPTER_REPAIR_UX_DIR;
+  if(output){
+    await mkdir(output,{recursive:true});await page.setViewportSize({width:1440,height:960});
+    await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,reason+'-1440.png')});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+    const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});
+    await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+    await prototype.evaluate(()=>{(window as any).render('paused');});
+    await prototype.screenshot({path:join(output,'prototype-paused-1440.png')});await prototype.close();
+  }
+});
+
 test('exhausted size repairs show a retained paused task and reload never submits again', async ({page})=>{
   const state=fixture();state.checkStatus='ready';state.runReason='word_size_repair_exhausted';
   await setup(page,state);await page.locator('#execute-input').click();

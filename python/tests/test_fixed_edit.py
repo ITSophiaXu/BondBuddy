@@ -761,8 +761,8 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.log['operations'] = [self.operation('')]
         self.save()
         finding = self.check()['diagnostics']['chapter_content'][0]
-        self.assertEqual(finding['source']['paragraphs'][1]['paragraph_index'], 3)
-        self.assertEqual(finding['current']['paragraphs'][1]['paragraph_index'], 3)
+        self.assertEqual(finding['source']['paragraphs'][1]['xml_paragraph_index'], 3)
+        self.assertEqual(finding['current']['paragraphs'][1]['xml_paragraph_index'], 3)
         self.assertEqual(finding['source']['paragraphs'][1]['node_id'], self.node['node_id'])
         self.assertEqual(finding['current']['paragraphs'][1]['node_id'], self.node['node_id'])
 

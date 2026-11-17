@@ -71,7 +71,7 @@ def chapter_locations(parts, root, node_ids):
             seen[title] += 1
             key = (title, seen[title])
             result[key] = []
-        result[key].append({'paragraph_index': index, 'node_id': node_ids.get(paragraph), 'text': text,
+        result[key].append({'xml_paragraph_index': index, 'node_id': node_ids.get(paragraph), 'text': text,
                             'container_node_ids': [node_ids[a] for a in paragraph.iterancestors() if a in node_ids]})
     if {key: '\n'.join(p['text'] for p in entries) for key, entries in result.items()} != quality.chapters(parts, root):
         raise ValueError('WORD_PREFLIGHT_LOCATIONS_UNAVAILABLE')
@@ -134,7 +134,7 @@ def diagnostics(source_path, editor, clean_parts, report, operations):
                         item['operation_ids'] = [op['id'] for op in operations if op.get('node_id') == item['node_id']][:200]
     return {'chapter_content': chapters, 'chapter_diagnostics_truncated': any(
             len(i.get('chapters', [])) > 25 for i in report['issues']), 'outline': structural,
-            'location_scope': 'zero_based_effective_paragraph_indices_and_stable_inspect_node_ids'}
+            'location_scope': 'xml_paragraph_index_is_diagnostic_only_not_python_docx_index_use_stable_node_id'}
 
 
 def preflight(input_path, operations_path, report_path):
@@ -213,6 +213,11 @@ def preflight(input_path, operations_path, report_path):
                 original is not None and regular_bytes(original, 100 * 1024 * 1024) != pdf_raw):
             raise ValueError('WORD_PREFLIGHT_INPUT_CHANGED')
         result['snapshot_current'] = True
+        if result['issues'] and all(i.get('code') == 'WORD_SOURCE_CHAPTER_CONTENT_LOST' for i in result['issues']):
+            result['next_action'] = 'handoff_to_worker'
+            result['repair_instruction'] = ('保留当前 output/operations.json 并结束本轮。宿主将独立复查并提供 issue_id，'
+                                          '由限定范围修复补齐正文。不要将 XML 序号转成 Document.paragraphs 下标，'
+                                          '不要继续猜测节点、改标题或重复预检。')
     except Exception as exc:
         if str(exc) == 'WORD_PREFLIGHT_REPORT_INPUT_ALIAS':
             raise

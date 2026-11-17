@@ -41,7 +41,7 @@ export function encodeBootstrap85(bytes) {
   return output;
 }
 
-function compactBusinessBootstrap(script) {
+function compactBusinessBootstrap(script, publicJson) {
   if(!script)return '';
   const prefix="python3 - <<'BB_BUSINESS_CODE'\n", suffix='BB_BUSINESS_CODE\n';
   requireThat(script.startsWith(prefix)&&script.endsWith(suffix),'BUSINESS_BOOTSTRAP_ENCODING');
@@ -50,11 +50,15 @@ function compactBusinessBootstrap(script) {
   const match=program.match(line);requireThat(match,'BUSINESS_BOOTSTRAP_ENCODING');
   const payload=gunzipSync(Buffer.from(match[1],'base64'),{maxOutputLength:131072}).toString('utf8');
   requireThat(!payload.includes("'''"),'BUSINESS_BOOTSTRAP_ENCODING');
-  const decoded=program.replace(line,()=>`p=json.loads(r'''${payload}''')`);
+  // Compress the public identity together with the loader instead of spending
+  // the constrained UserData budget on the same JSON outside the stream.
+  // It is still written before helper installation/enrollment, with umask 077.
+  const decoded=`with open('/etc/bondbuddy/elastic-public.json','w',encoding='utf-8') as f:f.write(${JSON.stringify(publicJson)})\n`+
+    program.replace(line,()=>`p=json.loads(r'''${payload}''')`);
   requireThat(Buffer.byteLength(decoded)<=131072,'BUSINESS_BOOTSTRAP_ENCODING');
   const encoded=encodeBootstrap85(brotliCompressSync(decoded,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:11}}));
-  const decoder='import {brotliDecompressSync} from "node:zlib";const chunks=[];for await(const b of process.stdin)chunks.push(b);process.stdout.write(brotliDecompressSync(Buffer.concat(chunks),{maxOutputLength:131072}));';
-  return `${prefix}import base64,subprocess\nexec(compile(subprocess.run(['/usr/bin/node','--input-type=module','-e',${JSON.stringify(decoder)}],input=base64.b85decode('${encoded}'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30).stdout,'bondbuddy-public-business-bootstrap','exec'))\n${suffix}`;
+  const decoder="process.stdout.write(require('node:zlib').brotliDecompressSync(require('node:fs').readFileSync(0),{maxOutputLength:131072}))";
+  return `${prefix}import base64,subprocess\nexec(compile(subprocess.run(['/usr/bin/node','-e',${JSON.stringify(decoder)}],input=base64.b85decode('${encoded}'),capture_output=True,check=True,timeout=30).stdout,'bb-bootstrap','exec'))\n${suffix}`;
 }
 
 /** Public cloud-init only. All credentials are issued later to a role-bound node. */
@@ -74,7 +78,8 @@ export function bootstrapUserData(config, request, slot=0) {
   requireThat(!/[\r\n']/.test(publicJson), 'PUBLIC_MANIFEST_ENCODING');
   // The reviewed image must already contain Docker, Node and this oneshot unit.
   // No personal SSH key, provider token, PG password or enrollment token here.
-  return `#!/bin/sh\nset -eu\numask 077\ninstall -d -m 700 /etc/bondbuddy\nprintf '%s' '${publicJson}' > /etc/bondbuddy/elastic-public.json\n${compactBusinessBootstrap(businessBootstrap(config))}systemctl start bondbuddy-execution-bootstrap.service\n`;
+  const business=businessBootstrap(config);
+  return `#!/bin/sh\nset -eu\numask 077\ninstall -d -m 700 /etc/bondbuddy\n${business?compactBusinessBootstrap(business,publicJson):`printf '%s' '${publicJson}' > /etc/bondbuddy/elastic-public.json\n`}systemctl start bondbuddy-execution-bootstrap.service\n`;
 }
 
 /** Reproduce an existing instance's exact public creation bytes after a code update.

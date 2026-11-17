@@ -6,6 +6,19 @@ import { tmpdir } from 'node:os';
 import { completionFeedback } from './file-authoring-completion.js';
 import { buildCodexArgs, loadCodexAdapterConfig } from './codex-adapter.js';
 
+test('scoped completion requires answers even when the previous operation log exists',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'bb-chapter-completion-'));
+  try{
+    await mkdir(join(root,'output'));
+    await writeFile(join(root,'input.json'),JSON.stringify({version:'codex-file-input-v1',format_tools:{version:'controlled-docx-v1'}}));
+    await writeFile(join(root,'chapter-repair.json'),'scope availability only');
+    await writeFile(join(root,'output/operations.json'),'previous operations');
+    assert.match(String((await completionFeedback(root,false)).reason),/repair-answers.json/);
+    await writeFile(join(root,'output/repair-answers.json'),'answers availability only');
+    assert.deepEqual(await completionFeedback(root,false),{});
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('only opted-in prospectus authoring enables the fixed trusted hook', () => {
   const c=loadCodexAdapterConfig({}),o={cwd:'/tmp/job',schemaFile:null,ephemeral:true,resumeThreadId:null};
   for(const args of [buildCodexArgs(c,o),buildCodexArgs(c,{...o,fileAuthoring:true})]){

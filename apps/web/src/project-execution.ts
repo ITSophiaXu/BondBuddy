@@ -89,6 +89,8 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'word_chapter_repair_rejected') return '募集说明书章节补写后仍未通过检查，任务已暂停。补写前的草稿、候选稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
+  if (reason === 'word_chapter_repair_unavailable') return '募集说明书有章节缺少正文，暂时无法可靠定位补写位置，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'MATERIAL_ENCRYPTED') return '历史／参考募集说明书已加密，无法读取。请用 Word 打开文件，移除打开密码或加密后另存为未加密的 DOCX，再点击“继续修改”替换原稿并重新开始。原任务和已保存材料会保留。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
