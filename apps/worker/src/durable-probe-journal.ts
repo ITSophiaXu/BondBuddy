@@ -19,6 +19,8 @@ export class DurableProbeJournal implements ProbeJournal {
     blobs: PrivateBlobs;
     lease: Lease;
     validateResult: ProviderResultValidator;
+    fileAuthoringRecoveryCapture?: boolean;
+    fileAuthoringDeadlineAt?:()=>string|undefined;
   }) {}
 
   private assertLeaseIdentity(intent: ProviderCallIntent) {
@@ -28,7 +30,7 @@ export class DurableProbeJournal implements ProbeJournal {
 
   async recordIntent(intent: ProviderCallIntent): Promise<void> {
     this.assertLeaseIdentity(intent);
-    const attemptId=await recordPotentialCall(this.input.pool,this.input.lease,intent.logical_call_id,intent.attempt_no,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:intent.prompt_snapshot_ref});
+    const attemptId=await recordPotentialCall(this.input.pool,this.input.lease,intent.logical_call_id,intent.attempt_no,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:intent.prompt_snapshot_ref,fileAuthoringRecoveryCapture:this.input.fileAuthoringRecoveryCapture===true,fileAuthoringDeadlineAt:this.input.fileAuthoringDeadlineAt?.()});
     if (attemptId!==intent.call_id) throw new Error('PROVIDER_ATTEMPT_ID_MISMATCH');
   }
 

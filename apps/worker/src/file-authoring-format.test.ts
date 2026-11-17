@@ -14,6 +14,7 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
+import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES } from './file-authoring-instructions.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
 function fixture(controlled = true, text = '截至2024年净资产100万元。') {
@@ -38,6 +39,54 @@ function fixture(controlled = true, text = '截至2024年净资产100万元。')
   const delivery=(options:Parameters<typeof fileAuthoringDeliveryStage>[0]={})=>fileAuthoringDeliveryStage({...options,checkpoint});
   return { source, input, objects, ctx, blobs, persisted, delivery };
 }
+
+test('real first, repair and recovery prompts retain full instructions within the byte budget', async () => {
+  const task = await readFile(new URL('../../../python/bondbuddy_file_authoring/task.md', import.meta.url), 'utf8');
+  const fixed = await readFile(new URL('../../../python/bondbuddy_file_authoring/fixed-edit.md', import.meta.url), 'utf8');
+  for (const controlled of [false, true]) for (const repairing of [false, true]) for (const recovering of [false, true]) {
+    const f = fixture(controlled), logicalCallId = repairing ? 'file-authoring-size-repair-2' : 'file-authoring-v1';
+    const deadline = '2030-01-01T00:00:00.000Z';
+    if (recovering) {
+      const attempt = 'saved-attempt', hash = 'b'.repeat(64);
+      f.ctx.lease.checkpoint = {
+        stages: { file_authoring_recovery: { version: 'file-authoring-recovery-v1', input_hash: f.ctx.run.input_hash,
+          attempt_id: attempt, logical_call_id: logicalCallId, deadline_at: deadline,
+          files: [{ path: 'input.json', key: `owners/owner/projects/project/runs/run/file-authoring/recovery/${attempt}/${hash}/input.json`, sha256: hash, byte_size: 2 }] } },
+        operator_reconciliations: { [attempt]: { decision: 'retry_unknown_usage', reason_code: 'file_authoring_context_rotation',
+          attempt_id: attempt, logical_call_id: logicalCallId, deadline_at: deadline } },
+      };
+    }
+    let inspected = false;
+    const result = await fileAuthoringStage({ load: async () => f.input,
+      config: { work_root: '/unused-synthetic-prompt-test' } as NonNullable<Parameters<typeof fileAuthoringStage>[0]>['config'],
+      ...(repairing ? { repair: { round: 2, previous: { version: 'codex-file-word-v1', input_hash: f.ctx.run.input_hash, files: {}, summary: {} },
+        report: { version: 'word-quality-v1', status: 'failed', issues: [], metrics: {}, limitations: [] }, reportRef: { key: 'unused', sha256: 'c'.repeat(64), byte_size: 1 } } as const } : {}),
+      model: options => ({ name: options.name, run: async ctx => {
+        const prompt = await options.buildPrompt(ctx);
+        const preamble = prompt.slice(0, prompt.indexOf('----- BEGIN TRUSTED task.md -----'));
+        inspected = true;
+        for (const text of [task, ...(controlled ? [fixed] : [])]) {
+          assert.ok(prompt.includes(text), 'complete trusted files must survive the real stage composition');
+          assert.equal(prompt.indexOf(text), prompt.lastIndexOf(text));
+        }
+        assert.ok(Buffer.byteLength(prompt) <= FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES);
+        assert.equal(prompt.includes('BEGIN TRUSTED fixed-edit.md'), controlled);
+        assert.equal(prompt.includes(FILE_AUTHORING_HOST_RENDER_HANDOFF), controlled);
+        assert.equal(preamble.includes('quality-feedback.json'), repairing);
+        assert.equal(preamble.includes('本次为执行中断后的已授权续跑'), recovering);
+        assert.equal(options.fileWorkspace!.recovery, recovering);
+        assert.equal(options.fileWorkspace!.deadlineAt, recovering ? deadline : undefined);
+        const modelConfig = typeof options.config === 'function' ? options.config() : options.config;
+        assert.equal(modelConfig!.model_gateway, 'enforce');
+        assert.equal(modelConfig!.model_max_request_bytes, 2 * 1024 * 1024);
+        assert.match(options.templateVersion!, /host-handoff/);
+        return { kind: 'done', value: 'synthetic prompt inspected; no provider call' };
+      } }),
+    }).run(f.ctx);
+    assert.equal(result.kind, 'done');
+    assert.equal(inspected, true);
+  }
+});
 
 test('explicit template choice is independent of random material ids; previous output remains the revision source', () => {
   const { input } = fixture();

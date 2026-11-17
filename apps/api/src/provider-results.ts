@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from 'pg';
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 import { errorDiagnostic } from './error-diagnostics.js';
-import { MODEL_ADAPTER_ERROR_CODES, type ModelAdapterErrorCode, type RunEvent } from '@bondbuddy/contracts';
+import { MODEL_ADAPTER_ERROR_CODES, FILE_AUTHORING_CAPTURE_VERSION, isFileAuthoringDeadline, type ModelAdapterErrorCode, type RunEvent } from '@bondbuddy/contracts';
 import { runEventPayloadDto } from './run-event-dto.js';
 import type { Lease } from './queue.js';
 export type { PrivateBlobs } from './data.js';
@@ -339,7 +339,35 @@ export async function recordProviderCallObservation(
     // A provider's explicit invalid_request_error is a request rejection, with no
     // generated result to reconcile. Keep usage unknown; all other unmeasured failures
     // still require reconciliation because the request may have consumed tokens.
-    const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0;
+    // A file author's previous local work may survive an explicit HTTP 413. Keep
+    // unknown usage intact while the worker checks its bounded recovery policy.
+    const payloadRejected=observation.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && observation.usage.status==='unknown' && candidateCount===0;
+    const payloadRecovery=observation.outcome==='failed' && payloadRejected && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    // The local output cap terminates the child process but leaves supplier usage
+    // unknown. Preserve that pending observation while a separate recovery sweep
+    // verifies termination and the retained workspace before permitting a new call.
+    const outputLimitRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_OUTPUT_TOO_LARGE'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const timeoutRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_TIMEOUT'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const contextRotation=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_CONTEXT_ROTATION_REQUIRED'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const deadlineCapture=job.checkpoint?.file_authoring_recovery_captures?.[a.id];
+    const deadlineExpiredBeforeSend=observation.outcome==='confirmed_not_sent' && observation.error_code==='MODEL_TIMEOUT'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id)
+      && deadlineCapture?.version===FILE_AUTHORING_CAPTURE_VERSION && deadlineCapture.attempt_id===a.id
+      && deadlineCapture.logical_call_id===observation.logical_call_id && deadlineCapture.run_id===r.id
+      && deadlineCapture.job_id===job.id && deadlineCapture.owner_user_id===r.owner_user_id
+      && deadlineCapture.project_id===r.project_id && deadlineCapture.input_revision===r.input_revision
+      && deadlineCapture.input_hash===String(r.input_hash).trim()
+      && isFileAuthoringDeadline(deadlineCapture.deadline_at) && Date.parse(deadlineCapture.deadline_at)<=Date.now();
+    const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0
+      || payloadRejected&&!payloadRecovery;
     const providerBlocked = observation.outcome === 'failed' && observation.usage.status === 'unknown' && candidateCount === 0 &&
       ['MODEL_PROVIDER_BALANCE_EXHAUSTED', 'MODEL_PROVIDER_AUTH_FAILED', 'MODEL_PROVIDER_RATE_LIMITED'].includes(observation.error_code ?? '');
     const failed=observation.outcome==='failed' && (measuredWithoutConflict || rejected);
@@ -378,6 +406,12 @@ export async function recordProviderCallObservation(
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
       await appendRunEvent(client,r,'paused','provider_reconcile',reason,'run.state_changed',eventErrorCode);
       await appendCallFinished(client,observation,'paused');
+    } else if (deadlineExpiredBeforeSend) {
+      // Intent was durable but the host's deadline won before spawn. This attempt
+      // is genuinely not sent; prior attempts retain their own unknown usage.
+      await client.query("UPDATE bb_jobs SET state='failed',stage='failed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
+      await appendRunEvent(client,r,'failed','failed','file_authoring_context_deadline_exhausted','run.state_changed','MODEL_TIMEOUT');
+      await appendCallFinished(client,observation,'failed');
     } else if (failed && options.retryable && options.lease) {
       // A settled, measured failure (for example schema-invalid output) may be re-asked
       // as the next attempt number under the same lease; the job keeps running.
@@ -393,7 +427,9 @@ export async function recordProviderCallObservation(
       await appendCallFinished(client,observation,'paused');
     } else {
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
-      await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':'provider_result_pending');
+      await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':
+        contextRotation?'file_authoring_context_rotation_pending':payloadRecovery?'file_authoring_payload_recovery_pending':outputLimitRecovery?'file_authoring_output_limit_recovery_pending':timeoutRecovery?'file_authoring_timeout_recovery_pending':'provider_result_pending',
+        'run.state_changed',contextRotation?'MODEL_CONTEXT_ROTATION_REQUIRED':payloadRecovery?'MODEL_PROVIDER_PAYLOAD_TOO_LARGE':outputLimitRecovery?'MODEL_OUTPUT_TOO_LARGE':timeoutRecovery?'MODEL_TIMEOUT':undefined);
       await appendCallFinished(client,observation,'paused');
     }
     return {attempt_status:nextAttemptStatus,usage_status:usageStatus,idempotent:false};

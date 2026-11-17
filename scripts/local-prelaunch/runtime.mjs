@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {accessSync,constants,createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {composeArgs,root,stateDir} from './config.mjs';
@@ -70,10 +70,26 @@ export async function stopOwnedStack(items,{stopContainer,stopCompose}) {
     await stopContainer(item.Id);
   await stopCompose();
 }
+export function validateLocalAuthHelperBinds(services) {
+  for(const [name,service] of Object.entries(services??{})) {
+    if(service.environment?.BB_CODEX_AUTH_MODE!=='copilot_enterprise')continue;
+    for(const volume of service.volumes??[]) {
+      if(volume.type!=='bind'||volume.target!=='/usr/local/bin/bb-copilot-token')continue;
+      if(volume.read_only!==true)throw Error(`Local auth helper bind for ${name} must be read-only.`);
+      try {
+        if(typeof volume.source!=='string'||!statSync(volume.source).isFile())throw Error('not a regular file');
+        accessSync(volume.source,constants.R_OK|constants.X_OK);
+      }catch {
+        throw Error(`Local auth helper bind for ${name} must be an existing readable executable file; fix the public helper source permissions before starting workers.`);
+      }
+    }
+  }
+}
 export async function validateCompose(config) {
   seccompSources();
   // Inspect expanded secrets in process memory only; report no rendered configuration.
   const parsed=JSON.parse((await compose(config,['config','--format','json'])).stdout);
+  validateLocalAuthHelperBinds(parsed.services);
   for(const service of Object.values(parsed.services??{})) {
     if(service.labels?.['io.bondbuddy.local-prelaunch.instance']!==config.instanceId)throw Error('Compose instance label drift');
     if(service.environment?.DATABASE_URL) {
