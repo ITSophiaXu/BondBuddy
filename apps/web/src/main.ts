@@ -51,7 +51,7 @@ import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USER
 import { referenceSnapshotResolver } from './reference';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 import './authoring-onboarding.css';
@@ -785,7 +785,7 @@ function roleGuidance(role: UploadRole) {
   if (guidance) return `选填 · ${guidance.hint}`;
   if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。仅支持 Word（.docx）。';
   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
-  if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
+  if (role === 'audit') return '必须上传并保存审计报告后才能更新募集书；报表及附注已包含在报告中时无需重复上传';
   if (role === 'financial') return '按所需年度提供；已包含在审计报告中时无需另传';
   if (role === 'interimFinancial') return '需要更新最近一期数据时提供对应报表';
   if (role === 'notes') return '报表附注已包含在审计报告中时无需另传';
@@ -925,7 +925,7 @@ function renderMaterialPartitions(projectId: string) {
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
     const saved = roleMaterials.map(material => `<li class="material-file-row bb-upload-file persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker bb-upload-picker bb-upload-picker--standard" for="upload-${esc(role.code)}">${uploadPickerContent()}<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
-    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
+    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}${role.code === 'audit' ? '（必填）' : ''}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul></section>`;
   }).join('');
   return groups;
@@ -937,7 +937,8 @@ function projectMaterialReadiness(projectId: string) {
   const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : prospectusPanel?.sourceSelectionMessage ? prospectusPanel.sourceSelectionMessage : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…'
-    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : '';
+    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE
+    : !hasAuthoringAudit(confirmedMaterials(projectId)) ? AUDIT_REPORT_REQUIRED_MESSAGE : '';
   return {ready: !message, message};
 }
 

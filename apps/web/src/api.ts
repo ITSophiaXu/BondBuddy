@@ -11,13 +11,13 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
-import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, isAuditReportRequiredFieldError, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; auditReportRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -52,7 +52,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
       ? { prospectusDocxOnly: true } : {}),
     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
       ? { prospectusSelectionRequired: true } : {}),
-    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), materialInputIssues: fields.flatMap(field => {
+    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), auditReportRequired: fields.some(isAuditReportRequiredFieldError), materialInputIssues: fields.flatMap(field => {
       if (!isRecord(field)) return [];
       const issue = m4InputIssue(field.code, field.field);
       return issue ? [issue] : [];
@@ -96,7 +96,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'BILLING_PROTOCOL_REPLAY_ONLY': return `页面版本已更新，请刷新页面后重新开始。已保存的材料和要求保留；本次任务未开始。${reference}`;
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
-    case 'INPUT_REQUIRED': return error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
+    case 'INPUT_REQUIRED': return error.details.auditReportRequired ? AUDIT_REPORT_REQUIRED_MESSAGE : error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
       ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_ENCRYPTED': return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;

@@ -7,7 +7,7 @@ import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
-import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
+import { reportingWindow, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -330,7 +330,7 @@ export class ProjectExecution {
     if (this.preflight?.status === 'blocked' && this.selected) return { reason: '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。' };
     const materialBlock = this.materialBlock();
     if (materialBlock) return { reason: materialBlock };
-    if (!this.eligibleMaterials().length) return { reason: '请先添加本次需要的项目材料。' };
+    if (!hasAuthoringAudit(this.eligibleMaterials())) return { reason: AUDIT_REPORT_REQUIRED_MESSAGE };
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return { reason: '项目信息尚未保存，请返回上一步处理。' };
     if (!this.draft.fields.market || !this.draft.fields.offering) return { reason: '请在上一步选择发行市场和发行方式。' };
     if (this.run && !this.nextRequested) return { reason: '需要再次修改时，请点击上方“继续修改”。' };
