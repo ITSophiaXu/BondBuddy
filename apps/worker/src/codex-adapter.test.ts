@@ -427,7 +427,7 @@ for (const credential of ['env', 'command'] as const) {
   }
 }
 
-test('file authoring and recovery use bounded image tools and earlier compaction', () => {
+test('file authoring and recovery retain the same compaction headroom with bounded tools', () => {
   const config = loadCodexAdapterConfig({});
   for (const recovery of [false, true]) {
     const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
@@ -436,7 +436,7 @@ test('file authoring and recovery use bounded image tools and earlier compaction
     assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
     assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
     assert.ok(args.includes('mcp_servers.bb_images.required=true'));
-    assert.ok(args.includes(`model_auto_compact_token_limit=${recovery ? 32000 : 64000}`));
+    assert.ok(args.includes('model_auto_compact_token_limit=64000'));
     assert.ok(args.includes(`tool_output_token_limit=${recovery ? 2048 : 4096}`));
     assert.ok(args.includes('--ephemeral'));
   }

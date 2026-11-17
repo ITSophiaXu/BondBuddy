@@ -66,7 +66,7 @@ test('Copilot file catalog matches the model and preserves direct bounded image 
   assert.match(dockerfile, /COPY .*codex-copilot-file-authoring-model-catalog.json \/opt\/bondbuddy\/codex-copilot-file-authoring-model-catalog.json/);
 });
 
-for (const executable of [true, false]) test(`real Codex 0.169: Copilot file auth ${executable ? 'and shell/image round trips' : 'failure preserves unknown usage'}`, {
+for (const executable of [true, false]) test(`real Codex 0.169: Copilot ${executable ? 'recovery preserves required reads and image round trips' : 'file auth failure preserves unknown usage'}`, {
   skip: !binary ? 'set BB_TEST_CODEX_BIN to the pinned Linux CLI' : process.platform !== 'linux' ? 'Linux file sandbox required' : false,
   timeout: 90000,
 }, async t => {
@@ -83,6 +83,8 @@ for (const executable of [true, false]) test(`real Codex 0.169: Copilot file aut
   await copyFile(binary!, cli);
   await copyFile(join(dirname(dirname(binary!)), 'codex-resources', 'bwrap'), join(cliRoot, 'codex-resources', 'bwrap'));
   await writeFile(join(cwd, 'scratch', 'scan.png'), syntheticPng());
+  await writeFile(join(cwd, 'input.json'), JSON.stringify({ synthetic: 'SYNTHETIC_MATERIAL_READ' }));
+  await writeFile(join(cwd, 'knowledge.md'), 'SYNTHETIC_KNOWLEDGE_READ\n');
   const helper = join(root, 'fake-auth'), wrapper = join(root, 'wrapper.mjs');
   await writeFile(helper, `#!${process.execPath}\nimport('node:fs').then(fs=>{fs.appendFileSync(${JSON.stringify(marker)},'called\\n');process.stdout.write(${JSON.stringify(token)}+'\\n');});\n`);
   await chmod(helper, executable ? 0o700 : 0o600);
@@ -90,7 +92,7 @@ for (const executable of [true, false]) test(`real Codex 0.169: Copilot file aut
 const args=process.argv.slice(2).map(value=>value.startsWith('model_providers.copilot_enterprise.auth.command=')?'model_providers.copilot_enterprise.auth.command='+JSON.stringify(${JSON.stringify(helper)}):value);
 const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error',()=>process.exit(97));child.on('close',code=>process.exit(code??98));
 `);
-  const requests: { authenticated: boolean; bytes: number; shell: boolean; image: boolean }[] = [];
+  const requests: { authenticated: boolean; bytes: number; materials: boolean; knowledge: boolean; image: boolean }[] = [];
   const violations: string[] = [];
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -98,25 +100,33 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
     const shell = declared.find(tool => tool.name === 'exec_command' && tool.type === 'function');
     const image = declared.find(tool => tool.type === 'function' && tool.name.endsWith('view_image') && (tool.namespace === 'mcp__bb_images' || tool.name.includes('bb_images')));
     const inputs: any[] = Array.isArray(body.input) ? body.input : [];
-    const shellOutput = outputText(inputs.find(item => item.type === 'function_call_output' && item.call_id === 'call_shell')?.output);
+    const readSucceeded = (call: string, marker: string) => {
+      const output = outputText(inputs.find(item => item.type === 'function_call_output' && item.call_id === call)?.output);
+      return output.includes(marker) && /Process exited with code 0/.test(output);
+    };
     const instructions = [body.instructions ?? '', ...inputs.filter(item => item.type === 'message').map(item => outputText(item.content))].join('\n');
     const observation = { authenticated: req.headers.authorization === 'Bearer ' + token, bytes: raw.length,
-      shell: shellOutput.includes('SYNTHETIC_SHELL_ROUNDTRIP_OK') && /Process exited with code 0/.test(shellOutput), image: hasJpegInput(inputs) };
+      materials: readSucceeded('call_materials', 'SYNTHETIC_MATERIAL_READ'), knowledge: readSucceeded('call_knowledge', 'SYNTHETIC_KNOWLEDGE_READ'), image: hasJpegInput(inputs) };
     requests.push(observation);
     if (!observation.authenticated) { res.writeHead(400, { 'content-type': 'text/plain' }); res.end('bad request: missing required Authorization header\n'); return; }
+    if (!declared.length && instructions.includes('CONTEXT CHECKPOINT COMPACTION')) {
+      violations.push('unexpected_recovery_compaction'); res.writeHead(400); res.end('Synthetic recovery compacted before completing required reads'); return;
+    }
     if (req.url !== '/responses' || body.model !== 'gpt-6-sol' || body.reasoning?.effort !== 'max' || !shell || !image
       || !instructions.includes('Read task.md and input.json') || !instructions.includes('sandboxed shell and file tools')
       || declared.some(tool => tool.namespace === 'collaboration' || tool.name === 'view_image' && !tool.namespace)) {
       violations.push('unexpected_protocol_shape'); res.writeHead(400); res.end('Synthetic protocol shape rejected'); return;
     }
-    if (count === 2 && !observation.shell) violations.push('shell_result_missing');
-    if (count === 3 && !observation.image) violations.push('image_result_missing');
-    const item = count === 1 ? { type: 'function_call', id: 'fc_shell', call_id: 'call_shell', name: shell.name,
-      arguments: JSON.stringify({ cmd: '/usr/bin/printf SYNTHETIC_SHELL_ROUNDTRIP_OK', workdir: cwd, shell: '/bin/bash', login: false, max_output_tokens: 1000, yield_time_ms: 10000 }) }
-      : count === 2 ? { type: 'function_call', id: 'fc_image', call_id: 'call_image', name: image.name, ...(image.namespace ? { namespace: image.namespace } : {}), arguments: JSON.stringify({ path: 'scratch/scan.png' }) }
+    if (count >= 2 && !observation.materials) violations.push('material_read_lost');
+    if (count >= 3 && !observation.knowledge) violations.push('knowledge_read_lost');
+    if (count === 4 && !observation.image) violations.push('image_result_missing');
+    const item = count <= 2 ? { type: 'function_call', id: 'fc_read_' + count, call_id: count === 1 ? 'call_materials' : 'call_knowledge', name: shell.name,
+      arguments: JSON.stringify({ cmd: count === 1 ? '/usr/bin/cat input.json' : '/usr/bin/cat knowledge.md', workdir: cwd, shell: '/bin/bash', login: false, max_output_tokens: 2048, yield_time_ms: 10000 }) }
+      : count === 3 ? { type: 'function_call', id: 'fc_image', call_id: 'call_image', name: image.name, ...(image.namespace ? { namespace: image.namespace } : {}), arguments: JSON.stringify({ path: 'scratch/scan.png' }) }
       : { type: 'message', id: 'msg_done', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'done', annotations: [] }] };
+    // Synthetic provider usage exercises the real CLI threshold; this is not a tokenizer measurement.
     const response = { id: 'resp_synthetic_' + count, object: 'response', status: 'completed', model: 'gpt-6-sol', output: [item],
-      usage: { input_tokens: 100, output_tokens: 5, total_tokens: 105, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
+      usage: { input_tokens: 33000, output_tokens: 5, total_tokens: 33005, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     for (const event of [{ type: 'response.created', response: { ...response, status: 'in_progress', output: [] } },
       { type: 'response.output_item.added', output_index: 0, item }, { type: 'response.output_item.done', output_index: 0, item }, { type: 'response.completed', response }])
@@ -130,8 +140,8 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
     BB_CODEX_REASONING_EFFORT: 'max', BB_CODEX_CONFIG_VERSION: 'synthetic-copilot-file-v1', BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: '2097152' });
   const result = await runCodexProcess({ ...config, command: [process.execPath, wrapper], base_url: 'http://127.0.0.1:' + (server.address() as AddressInfo).port,
     work_root: root, timeout_ms: 45000, kill_grace_ms: 500, exec_log_max_bytes: 8 * 1024 * 1024 }, {
-    prompt: 'Synthetic local protocol test. Follow the tool workflow and then reply done.', cwd, home, codexHome: home, schemaFile: null,
-    ephemeral: true, resumeThreadId: null, fileAuthoring: true, fileCompletion: true, captureExecLog: true, gatewayLog: () => {},
+    prompt: 'Synthetic local recovery test. Read input.json and knowledge.md, inspect the image, then reply done.', cwd, home, codexHome: home, schemaFile: null,
+    ephemeral: true, resumeThreadId: null, fileAuthoring: true, fileRecovery: true, fileCompletion: true, captureExecLog: true, gatewayLog: () => {},
   });
   const log = result.exec_log?.bytes.toString() ?? '';
   assert.ok(!/Model metadata for.*gpt-6-sol.*not found/.test(log), 'the selected catalog must resolve the actual model');
@@ -140,11 +150,12 @@ const child=spawn(${JSON.stringify(cli)},args,{stdio:'inherit'});child.on('error
   assert.ok(requests.every(request => request.bytes <= 2 * 1024 * 1024));
   if (executable) {
     assert.equal(result.turn_completed, true, log.slice(-3000));
-    assert.equal(requests.length, 3);
+    assert.equal(requests.length, 4, 'required reads and image inspection finish without an intervening compaction request');
     assert.ok(requests.every(request => request.authenticated));
-    assert.equal(requests[1].shell, true); assert.equal(requests[2].image, true);
-    assert.ok(result.file_diagnostics?.tools.some(tool => tool.exit_code === 0 && typeof tool.output === 'string'
-      && tool.output.trim() === 'SYNTHETIC_SHELL_ROUNDTRIP_OK'), 'the actual shell event must report successful output');
+    assert.equal(requests[1].materials, true); assert.equal(requests[2].knowledge, true); assert.equal(requests[3].image, true);
+    for (const marker of ['SYNTHETIC_MATERIAL_READ', 'SYNTHETIC_KNOWLEDGE_READ'])
+      assert.ok(result.file_diagnostics?.tools.some(tool => tool.exit_code === 0 && typeof tool.output === 'string'
+        && tool.output.includes(marker)), 'the actual shell event must report the required file read');
     assert.equal((await readFile(marker, 'utf8')).trim(), 'called');
   } else {
     assert.equal(requests.length, 1, 'a 400 is not retried');
