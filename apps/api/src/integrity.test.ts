@@ -6,7 +6,7 @@ import {Value} from '@sinclair/typebox/value';
 import {validateIntegrityDraft} from './integrity.js';
 
 // Expected decisions come from committed live evidence, not from the implementation's allowlist.
-const audit = JSON.parse(readFileSync(new URL('../../../docs/acceptance/integrity-site-sweep-20261116.json', import.meta.url), 'utf8')) as {
+const audit = JSON.parse(readFileSync(new URL('../../../docs/acceptance/integrity-accessibility-20261117.json', import.meta.url), 'utf8')) as {
   enabled_site_ids: string[];
   results: {site_id:string;category:string;decision:string;subject:IntegrityDraft['subjects'][number];configured_url:string}[];
 };

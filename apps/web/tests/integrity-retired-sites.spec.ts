@@ -1,9 +1,20 @@
 import {test, expect} from '@playwright/test';
-import {INTEGRITY_SITES, integritySelectableSitesForSubjects, removeUnavailableIntegritySites} from '@bondbuddy/contracts';
+import {INTEGRITY_SITES, isRetiredIntegritySite, integritySelectableSitesForSubjects, removeUnavailableIntegritySites} from '@bondbuddy/contracts';
 import {fixture, install, projectId, ownerId, checkId, historicalRounds, writes} from './integrity-continuation-fixtures';
 
-const retired = ['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit', 'customs', 'customs-credit', 'nmpa', 'tax', 'tax-dishonest', 'csrc', 'mofcom'];
+const retired = INTEGRITY_SITES.filter(site=>!site.legacy&&isRetiredIntegritySite(site.id)).map(site=>site.id);
 const route = `/#integrity?project=${projectId}`;
+
+test('a saved accessible legacy portal stays editable without joining the new catalogue',async({page})=>{
+ const state=fixture();state.workspace.draft.site_ids=['pbc','judgments'];
+ await install(page,state);await page.goto(route);
+ await page.locator('.integrity-legacy-sites summary').click();
+ const legacy=page.locator('[name=integrity-site][value="judgments"]');
+ await expect(legacy).toBeEnabled();await expect(legacy).toBeChecked();await legacy.uncheck();
+ await expect(page.locator('#integrity-site-count')).toHaveText('（已选 1 个）');
+ await page.locator('#integrity-save').click();await expect.poll(()=>state.drafts.length).toBe(1);
+ expect(state.drafts[0].draft.site_ids).toEqual(['pbc']);
+});
 
 for (const source of ['server', 'local'] as const) test(`${source} saved selections drop retired sites and keep verified scope`, async ({page}) => {
   const state = fixture();
@@ -15,7 +26,7 @@ for (const source of ['server', 'local'] as const) test(`${source} saved selecti
   }, {ownerId, projectId, draft, revision: state.workspace.revision});
   await install(page, state); await page.goto(route);
   await expect(page.locator('#integrity-site-count')).toHaveText('（已选 2 个）');
-  for (const id of retired) await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toHaveCount(0);
+  for (const id of retired) await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toBeDisabled();
   await expect(page.locator('[name=integrity-site][value="bankruptcy"]')).toBeChecked();
   expect(writes(state)).toEqual([]);
   await page.locator('#integrity-save').click();
@@ -28,9 +39,10 @@ test('all/group selections include only the verified scope for the current compa
   const state = fixture(); state.workspace.draft.site_ids = [];
   await install(page, state); await page.goto(route);
   const available=integritySelectableSitesForSubjects(state.workspace.draft.subjects);
-  await expect(page.locator('[name=integrity-site]')).toHaveCount(available.length);
+  await expect(page.locator('[name=integrity-site]')).toHaveCount(54);
+  await expect(page.locator('[name=integrity-site]:enabled')).toHaveCount(available.length);
   await page.locator('[data-site-group="基础征信"]').check();
-  await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(1);
+  await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(available.filter(site=>site.group==='基础征信').length);
   await page.locator('#integrity-all').click();
   await expect(page.locator('#integrity-site-count')).toHaveText(`（已选 ${available.length} 个）`);
   await expect(page.locator('[name=integrity-site][value="pbc"]')).toBeChecked();
@@ -40,7 +52,7 @@ test('all/group selections include only the verified scope for the current compa
   expect(writes(state)).toEqual([]);
 });
 
-for (const archivedSite of ['credit-china', 'customs', 'customs-credit', 'nmpa']) test(`${archivedSite} historical selection adoption filters only new preparation and keeps old records`, async ({page}) => {
+for (const archivedSite of ['credit-china', 'industry-credit', 'customs-credit', 'nmpa']) test(`${archivedSite} historical selection adoption filters only new preparation and keeps old records`, async ({page}) => {
   const state = fixture(), site = INTEGRITY_SITES.find(value => value.id === archivedSite)!;
   for (const round of state.workspace.rounds) {
     round.manifest.draft.site_ids = round.manifest.draft.site_ids.map(id => id === 'credit-china' ? archivedSite : id);
@@ -55,7 +67,7 @@ for (const archivedSite of ['credit-china', 'customs', 'customs-credit', 'nmpa']
   await expect(page.locator('.integrity-modal[open]')).not.toContainText(site.name);
   await page.locator('#integrity-adopt-confirm').click();
   await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(expected.length);
-  for (const id of retired) await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toHaveCount(0);
+  for (const id of retired) await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toBeDisabled();
   await page.reload(); await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(expected.length);
   expect(historicalRounds(state)).toEqual(history); expect(writes(state)).toEqual([]);
   // The remaining historical items only accept companies; the roster has a person.
@@ -79,7 +91,7 @@ test('registration changes exclude unresolved regional scope while preserving th
   await install(page,state);await page.goto(route);
   await expect(page.locator('[name=integrity-site][value="local-csrc"]')).toBeChecked();
   await page.locator('[data-region][data-field="province"]').selectOption('');
-  await expect(page.locator('[name=integrity-site][value="local-csrc"]')).toHaveCount(0);
+  await expect(page.locator('[name=integrity-site][value="local-csrc"]')).toBeDisabled();
   await expect(page.locator('[name=integrity-site][value="pbc"]')).toBeChecked();
   await expect(page.locator('#integrity-site-count')).toHaveText('（已选 1 个）');
   await page.locator('#integrity-save').click();
@@ -93,10 +105,27 @@ test('adding an unresolved company updates availability without losing notes or 
   await install(page,state);await page.goto(route);
   await page.locator('#integrity-notes').fill('保留本轮说明');
   await page.locator('#integrity-add').click();
-  await expect(page.locator('[name=integrity-site][value="local-csrc"]')).toHaveCount(0);
+  await expect(page.locator('[name=integrity-site][value="local-csrc"]')).toBeDisabled();
   await expect(page.locator('[name=integrity-site][value="pbc"]')).toBeChecked();
   await expect(page.locator('#integrity-notes')).toHaveValue('保留本轮说明');
   expect(writes(state)).toEqual([]);
+});
+
+for(const width of [1440,320])test(`accessible portals and Shandong registration remain selectable at ${width}px`,async({page},testInfo)=>{
+ const state=fixture();state.workspace.draft.site_ids=[];
+ Object.assign(state.workspace.draft.subjects[0],{name:'山东示例企业有限公司',province:'山东',city:'邹城'});
+ await page.setViewportSize({width,height:1000});await install(page,state);await page.goto(route);
+ await expect(page.locator('[name=integrity-site]')).toHaveCount(54);
+ for(const id of ['tax','tax-dishonest','csrc','csrc-portal','szse','safe','amac','mofcom','industry','local-csrc'])await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toBeEnabled();
+ await expect(page.locator('#integrity-regions')).toContainText('山东证监局');
+ await page.locator('#integrity-all').click();
+ await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(integritySelectableSitesForSubjects(state.workspace.draft.subjects).length);
+ await expect(page.locator('[name=integrity-site]:disabled:checked')).toHaveCount(0);
+ await page.locator('#integrity-save').click();await expect.poll(()=>state.drafts.length).toBe(1);
+ expect(state.drafts[0].draft.site_ids).toContain('local-csrc');expect(state.drafts[0].draft.site_ids).toContain('szse');
+ await page.locator('.integrity-sites-panel').scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath(`accessibility-${width}.png`),fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 

@@ -1,4 +1,5 @@
-/** Turn a complete real-site sweep into the new-check allowlist and a reviewable report. */
+/** Historical query-completion report only. Website eligibility is maintained by
+ * summarize-integrity-accessibility.mjs under the 2026-11-17 user decision. */
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const root=process.env.BB_SITE_SWEEP_OUTPUT;
@@ -26,7 +27,6 @@ const report={version:'integrity-site-sweep-v1',screenshot_review:review,started
 mkdirSync('docs/acceptance',{recursive:true});
 writeFileSync('docs/acceptance/integrity-site-sweep-20261116.json',JSON.stringify(report,null,2)+'\n');
 writeFileSync(root+'/测试汇总.json',JSON.stringify(report,null,2)+'\n');
-writeFileSync('packages/contracts/src/integrity-site-availability.ts',`/** Verified public endpoints for NEW checks only. Historical metadata is preserved.\n * Evidence: docs/acceptance/integrity-site-sweep-20261116.json.\n * A reachable homepage or an unconfirmed query is insufficient for this allowlist. */\nexport const INTEGRITY_AVAILABILITY_CHECKED_AT = '${checkedDate}';\nexport const INTEGRITY_VERIFIED_ENDPOINTS: Readonly<Record<string, readonly string[]>> = ${JSON.stringify(endpoints,null,2)};\n`);
 const labels={results:'返回查询结果',no_results:'明确返回零结果',captcha_required:'验证码阻断',login_required:'需登录',authentication_required:'需登录和验证码',access_denied:'访问被拒绝',http_error:'HTTP 错误',blank_page_timeout:'页面空白超时',page_load_timeout:'页面加载超时',result_load_timeout:'结果加载超时',query_form_unavailable:'查询入口未就绪',result_unverified:'结果未确认',network_error:'网络或页面资源错误',page_error:'页面报错',operation_failed:'查询操作失败'};
 const national=results.filter(r=>r.category==='national'),regional=results.filter(r=>r.category==='regional'),legacy=results.filter(r=>r.category==='legacy');
 const detail=r=>[labels[r.diagnostic?.code]??r.outcome,r.diagnostic?.phase,r.diagnostic?.http_status,r.diagnostic?.detail].filter(Boolean).join(' / ').replaceAll('|','\\|');

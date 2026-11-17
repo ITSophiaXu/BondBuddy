@@ -89,7 +89,8 @@ const CATALOG_SITES: IntegritySite[] = [
 
   ...PREVIOUS_SITES.filter(s => s.group === '属地监管'),
 ];
-// New checks only use endpoints verified by the live website sweep.
+// New checks use portals that render a usable page and screenshot. Search
+// completion, empty results and captcha/login are per-run outcomes, not eligibility.
 // Keep all metadata below for immutable historical runs, evidence and free exports.
 export const isRetiredIntegritySite = (id: string): boolean => {
   const item = CATALOG_SITES.find(site => site.id === id) ?? PREVIOUS_SITES.find(site => site.id === id);
