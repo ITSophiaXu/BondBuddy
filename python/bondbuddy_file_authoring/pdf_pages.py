@@ -9,6 +9,7 @@ import argparse
 import base64
 import hashlib
 import importlib.metadata
+import io
 import json
 import math
 import os
@@ -44,6 +45,18 @@ def digest_file(path):
     with path.open("rb") as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def png_digest(image):
+    digest = hashlib.sha256()
+
+    class Sink:
+        def write(self, data):
+            digest.update(data)
+            return len(data)
+
+    image.save(Sink(), format="PNG")
     return digest.hexdigest()
 
 
@@ -93,9 +106,9 @@ def ocr_runtime_identity(language):
             "dpi": 250, "max_pixels": engine.MAX_PIXELS}
 
 
-def render_ocr_page(source, page_number, language):
+def render_rgb_page(source, page_number):
     import pypdfium2 as pdfium
-    from bondbuddy_ocr.engine import MAX_PIXELS, extract_page
+    from bondbuddy_ocr.engine import MAX_PIXELS
     document = pdfium.PdfDocument(source)
     try:
         page = document[page_number - 1]
@@ -105,18 +118,20 @@ def render_ocr_page(source, page_number, language):
                 raise PdfPageError("PDF_PAGE_PIXEL_LIMIT")
             bitmap = page.render(scale=250 / 72)
             try:
-                image = bitmap.to_pil().convert("RGB")
+                return bitmap.to_pil().convert("RGB")
             finally:
                 bitmap.close()
         finally:
             page.close()
-        try:
-            with tempfile.TemporaryDirectory(prefix="bb-pdf-page-ocr-") as temporary:
-                metadata, records = extract_page(image, language, temporary, page_number)
-        finally:
-            image.close()
     finally:
         document.close()
+
+
+def render_ocr_page(source, page_number, language):
+    from bondbuddy_ocr.engine import extract_page
+    with render_rgb_page(source, page_number) as image:
+        with tempfile.TemporaryDirectory(prefix="bb-pdf-page-ocr-") as temporary:
+            metadata, records = extract_page(image, language, temporary, page_number)
     # Validate the full-resolution image then discard it. Keeping one PNG per
     # scanned page would exhaust the authoring workspace snapshot budget.
     pixels = base64.b64decode(metadata.pop("image_base64"), validate=True)
@@ -336,6 +351,68 @@ class PdfPages:
                 break
         return result
 
+    def crop(self, page, ids, clip=None):
+        """Recover original page pixels for visual checking, without repeating OCR."""
+        if (type(page) is not int or not 1 <= page <= self.page_count
+                or not isinstance(ids, list) or not 1 <= len(ids) <= 8
+                or any(not isinstance(i, str) or not re.fullmatch(fr'p{page}-r[1-9][0-9]{{0,4}}', i) for i in ids)
+                or len(set(ids)) != len(ids)):
+            raise PdfPageError("PDF_CROP_RECORD_INVALID")
+        self._unchanged()
+        data = self._cached(page, "ocr")
+        if data is None:
+            raise PdfPageError("PDF_CROP_READ_OCR_PAGE_FIRST")
+        selected = [r for r in data["records"] if r.get("record_id") in ids]
+        if len(selected) != len(ids) or {r['record_id'] for r in selected} != set(ids):
+            raise PdfPageError("PDF_CROP_RECORD_INVALID")
+        rotation = data.get("rotation_clockwise")
+        if type(rotation) is not int or rotation not in (0, 90, 180, 270):
+            raise PdfPageError("PDF_CROP_RENDER_MISMATCH")
+        with render_rgb_page(self.source, page) as raw:
+            upright = raw.rotate(-rotation, expand=True) if rotation else raw
+            try:
+                # The OCR boxes are in the oriented 250dpi page, not PDF points
+                # or a resized overview. Use the same PNG encoder as extract_page.
+                digest = png_digest(upright)
+                if (upright.size != (data['width'], data['height']) or digest != data.get('image_sha256')
+                        or data.get('coordinate_system') != 'rendered_pixels_top_left'):
+                    raise PdfPageError("PDF_CROP_RENDER_MISMATCH")
+                boxes = [r['bbox'] for r in selected]
+                if any(not all(type(n) is int for n in box)
+                       or not (0 <= box[0] < box[2] <= upright.width and 0 <= box[1] < box[3] <= upright.height)
+                       for box in boxes):
+                    raise PdfPageError("PDF_CROP_RECORD_INVALID")
+                left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
+                right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)
+                if clip is not None:
+                    if (len(clip) != 4 or any(type(n) is not int for n in clip)
+                            or not (left <= clip[0] < clip[2] <= right and top <= clip[1] < clip[3] <= bottom)):
+                        raise PdfPageError("PDF_CROP_CLIP_INVALID")
+                    left, top, right, bottom = clip
+                if ((right-left)*(bottom-top) > 2_000_000
+                        or [left, top, right, bottom] == [0, 0, upright.width, upright.height]):
+                    raise PdfPageError("PDF_CROP_SELECT_FEWER_RECORDS_OR_CLIP")
+                bbox = [left, top, right, bottom]
+                with upright.crop(tuple(bbox)) as region, io.BytesIO() as buf:
+                    region.save(buf, format="PNG")
+                    content = buf.getvalue()
+            finally:
+                if rotation:
+                    upright.close()
+        if len(content) > 4 * 1024 * 1024:
+            raise PdfPageError("PDF_CROP_SELECT_FEWER_RECORDS_OR_CLIP")
+        self._unchanged()
+        crop_hash = hashlib.sha256(content).hexdigest()
+        # A recoverable workspace includes all scratch files. Keep only the
+        # current regenerable crop; the viewer checks its expected hash.
+        path = Path("scratch/pdf-crops/current.png")
+        atomic_write(path, content)
+        return {"source_sha256": self.source_hash, "page": page, "record_ids": ids,
+                "coordinate_system": "rendered_pixels_top_left", "rotation_clockwise": rotation,
+                "page_image_sha256": digest, "bbox": bbox, "crop_sha256": crop_hash,
+                "path": path.as_posix(), "byte_size": len(content), "eligible_for_manuscript": False,
+                "note": "Use bb_images.view_image with path and expected_sha256=crop_sha256. Check labels, period, unit, sign and digits against these pixels. A crop is not a verified fact."}
+
     def search(self, query, page=1, offset=0, limit=30, max_pages=10):
         if not isinstance(query, str) or not query or len(query) > 200 or type(page) is not int or not 1 <= page <= self.page_count:
             raise PdfPageError("PDF_SEARCH_INVALID")
@@ -401,7 +478,7 @@ class PdfPages:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source")
-    parser.add_argument("command", choices=["outline", "read", "search"])
+    parser.add_argument("command", choices=["outline", "read", "search", "crop"])
     parser.add_argument("--cache-dir", default="scratch/pdf-pages")
     parser.add_argument("--language", default="chi_sim+eng", choices=["eng", "chi_sim+eng"])
     parser.add_argument("--page", type=int, default=1)
@@ -410,10 +487,19 @@ def main(argv=None):
     parser.add_argument("--ocr", choices=["auto", "never", "force"], default="auto")
     parser.add_argument("--query")
     parser.add_argument("--max-pages", type=int, default=10)
+    parser.add_argument("--record-id", dest="record_ids", action="append", help="OCR record to crop (repeat for adjacent labels/columns)")
+    parser.add_argument("--clip", type=int, nargs=4, metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"), help="Smaller region inside selected OCR boxes, in oriented page pixels")
     args = parser.parse_args(argv)
     try:
         with PdfPages(args.source, args.cache_dir, args.language) as pdf:
-            result = pdf.outline(args.offset, args.limit) if args.command == "outline" else pdf.read(args.page, args.offset, args.limit, args.ocr) if args.command == "read" else pdf.search(args.query, args.page, args.offset, args.limit, args.max_pages)
+            if args.command == "crop":
+                result = pdf.crop(args.page, args.record_ids, args.clip)
+            elif args.command == "outline":
+                result = pdf.outline(args.offset, args.limit)
+            elif args.command == "read":
+                result = pdf.read(args.page, args.offset, args.limit, args.ocr)
+            else:
+                result = pdf.search(args.query, args.page, args.offset, args.limit, args.max_pages)
         print(encoded(result).decode("utf-8"))
         return 0
     except Exception as error:

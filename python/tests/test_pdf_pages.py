@@ -1,4 +1,6 @@
 import hashlib
+import io
+from contextlib import chdir
 import json
 import os
 from pathlib import Path
@@ -361,6 +363,50 @@ class PdfPagesTests(unittest.TestCase):
                            lambda: pdf.read(1, limit=201), lambda: pdf.search(''), lambda: pdf.search('x', max_pages=21)):
                 with self.assertRaises(pages.PdfPageError):
                     action()
+
+    def test_record_crop_is_bound_to_source_pixels_rotation_and_selected_boxes(self):
+        image = Image.new("RGB", (240, 110), "white")
+        ImageDraw.Draw(image).rectangle((10, 4, 225, 28), fill="red")
+        rotated = image.rotate(-90, expand=True)
+        with io.BytesIO() as buf:
+            rotated.save(buf, format="PNG")
+            page_sha = hashlib.sha256(buf.getvalue()).hexdigest()
+        records = [dict(record('uncertain A', index=1), bbox=[5, 15, 20, 200]),
+                   dict(record('uncertain B', index=2), bbox=[20, 15, 100, 200])]
+        page = {'page': 1, 'mode': 'ocr', 'width': rotated.width, 'height': rotated.height,
+                'coordinate_system': 'rendered_pixels_top_left', 'rotation_clockwise': 90,
+                'image_sha256': page_sha, 'records': records}
+        with self.open() as pdf, chdir(self.root), patch.object(pdf, '_cached', return_value=page), \
+                patch.object(pages, 'render_rgb_page', side_effect=lambda *args: image.copy()), \
+                patch.object(pages, 'render_ocr_page', side_effect=AssertionError('crop must not rerun OCR')):
+            meta = pdf.crop(1, ['p1-r1', 'p1-r2'])
+            self.assertEqual(meta['bbox'], [5, 15, 100, 200])
+            self.assertEqual(meta['page_image_sha256'], page_sha)
+            self.assertFalse(meta['eligible_for_manuscript'])
+            with Image.open(meta['path']) as crop:
+                self.assertEqual(crop.tobytes(), rotated.crop(tuple(meta['bbox'])).tobytes())
+            self.assertEqual(hashlib.sha256(Path(meta['path']).read_bytes()).hexdigest(), meta['crop_sha256'])
+            smaller = pdf.crop(1, ['p1-r2'], [75, 16, 95, 55])
+            self.assertEqual(meta['path'], smaller['path'])
+            self.assertNotEqual(meta['crop_sha256'], smaller['crop_sha256'])
+            self.assertEqual(list(Path('scratch').rglob('*.png')), [Path(smaller['path'])])
+            with self.assertRaisesRegex(pages.PdfPageError, 'CLIP_INVALID'):
+                pdf.crop(1, ['p1-r1'], [0, 0, 20, 200])
+            with self.assertRaisesRegex(pages.PdfPageError, 'RECORD_INVALID'):
+                pdf.crop(1, ['p2-r1'])
+            with patch.dict(records[0], bbox=[0, 0, rotated.width, rotated.height]):
+                with self.assertRaisesRegex(pages.PdfPageError, 'SELECT_FEWER_RECORDS_OR_CLIP'):
+                    pdf.crop(1, ['p1-r1'])
+            page['image_sha256'] = '0' * 64
+            with self.assertRaisesRegex(pages.PdfPageError, 'RENDER_MISMATCH'):
+                pdf.crop(1, ['p1-r1'])
+            self.assertEqual(hashlib.sha256(Path(smaller['path']).read_bytes()).hexdigest(), smaller['crop_sha256'])
+
+    def test_record_crop_requires_existing_ocr_and_does_not_render_unread_page(self):
+        with self.open() as pdf, patch.object(pdf, '_cached', return_value=None), \
+                patch.object(pages, 'render_rgb_page', side_effect=AssertionError('no bound records')):
+            with self.assertRaisesRegex(pages.PdfPageError, 'READ_OCR_PAGE_FIRST'):
+                pdf.crop(1, ['p1-r1'])
 
     @unittest.skipIf(os.name == 'nt', 'symlink permissions vary on Windows')
     def test_symlink_cache_ancestor_is_rejected(self):
