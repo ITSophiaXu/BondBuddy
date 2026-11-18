@@ -16,6 +16,18 @@ from .review_corrections import package, write
 from .word_patch import Patcher, add_layout_comments, paragraph_text, q, serialized, xml
 
 
+def coverage_is_complete(warnings):
+    """Only unread content blocks coverage.
+
+    A PDF is always converted to an editable Word package, and existing revisions
+    are normalized to their accepted text. Those are layout/provenance notices,
+    not evidence that text was missed. Blank pages, images and embedded content
+    still make the snapshot partial until they are actually read.
+    """
+    advisory = ('原稿为 PDF，', '原稿既有文字修订')
+    return not any(not (isinstance(warning, str) and warning.startswith(advisory)) for warning in warnings)
+
+
 def inspect(path, complete=False, packaged=None):
     path = Path(path)
     if path.suffix.lower() not in ('.docx', '.pdf'):
@@ -61,7 +73,7 @@ def inspect(path, complete=False, packaged=None):
         warnings.append('文件没有可提取的文字，需补充可检索 PDF 或 Word 后重新检查。')
     return dict(version='project-file-text-v1', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                 format=path.suffix.lower()[1:], spans=spans, warnings=warnings,
-                coverage='partial' if warnings else 'complete')
+                coverage='complete' if coverage_is_complete(warnings) else 'partial')
 
 
 def anchor(snapshot, paragraph_id, quote):
