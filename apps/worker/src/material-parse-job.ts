@@ -137,7 +137,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
     const stages = lease.checkpoint.stages ?? {};
     if (isPdfQualityJobVersion(lease.parserVersion)) {
       if (material.role !== 'audit' || material.media_type !== 'application/pdf') throw new StageFailure('NOT_FOUND', false);
-      if (readPdfQuality(stages[PDF_QUALITY_STAGE])?.version !== PDF_QUALITY_VERSION) {
+      if (!isPdfQualityJobVersion(readPdfQuality(stages[PDF_QUALITY_STAGE])?.version ?? '')) {
         const quality = await inspectAuthorizedPdf(dependencies.material,
           {...context, version: lease.materialVersion, requestId: lease.jobId + '-quality', requiredRole: 'audit'},
           dependencies.pdfQualityInspector ?? inspectPdfQuality);

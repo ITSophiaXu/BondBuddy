@@ -1,4 +1,4 @@
-"""Bounded advisory inspection of large raster content, without layout extraction/OCR.
+"""Bounded representative-page inspection of large raster content, without layout extraction/OCR.
 
 DPI is derived from image pixels and actual placement, including Form transforms.
 Small logos, signatures and stamps cannot trigger a page warning by themselves.
@@ -11,12 +11,12 @@ import time
 import pypdfium2 as pdfium
 import pypdfium2.raw as raw
 
-VERSION = "pdf-raster-quality-2"
+VERSION = "pdf-raster-quality-3"
 DPI_THRESHOLD = 200
 # PDFium returns float32 placement matrices; this tolerance covers their quantization.
 DPI_EPSILON = 0.0001
 MIN_COVERAGE = 0.5
-MAX_PAGES = 1500
+SAMPLE_LIMIT = 8
 IDENTITY = (1, 0, 0, 1, 0, 0)
 
 
@@ -88,24 +88,35 @@ def page_resolution(page, deadline):
     return max(1, min(199, int(round(max(dpi for _, dpi in low)))))
 
 
-def inspect(path, emit, seconds=18):
+def sample_pages(count):
+    # Mirrors the public pdfQualitySamplePages policy; cross-language tests verify it.
+    if count <= SAMPLE_LIMIT:
+        return list(range(1, count+1))
+    return list(dict.fromkeys([5, 8, min(12, count), 1,
+                              (count+3)//4, (count+1)//2, (count*3+3)//4, count]))
+
+
+def inspect(path, emit, seconds=3):
     deadline = time.monotonic()+seconds
     with pdfium.PdfDocument(path) as document:
         count = len(document)
         if count < 1:
             raise ValueError("Empty PDF")
         emit({"page_count": count})
-        for index in range(min(count, MAX_PAGES)):
+        for number in sample_pages(count):
             if time.monotonic() > deadline:
                 return
-            page = document[index]
+            page = document[number-1]
             try:
                 dpi = page_resolution(page, deadline)
             finally:
                 page.close()
-            emit({"page": index+1, "dpi": dpi})
-        if count <= MAX_PAGES:
-            emit({"complete": True})
+            emit({"page": number, "dpi": dpi})
+            if dpi is not None:
+                # One measured low page is already enough to require replacement.
+                emit({"complete": True})
+                return
+        emit({"complete": True})
 
 
 def main():
