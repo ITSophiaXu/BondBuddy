@@ -13,6 +13,7 @@ import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY
 import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
+import { nextProviderReconcileUnknown } from './provider-reconcile-unknown.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
@@ -1052,7 +1053,9 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
     AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[]))
     AND ($1<>'credits_exhausted' OR ((NOT j.user_pause_requested OR j.stage='provider_reconcile')
       AND EXISTS(SELECT 1 FROM bb_credit_lots l WHERE l.owner_user_id=r.owner_user_id AND l.remaining>l.frozen
-        AND (l.expires_at IS NULL OR l.expires_at>now())))) ORDER BY j.updated_at,j.id LIMIT $2`,
+        AND (l.expires_at IS NULL OR l.expires_at>now()))))
+    AND NOT ($1='provider_reconcile' AND COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true')
+    ORDER BY j.updated_at,j.id LIMIT $2`,
     [stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
@@ -1064,12 +1067,39 @@ export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,
   const q=await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
     WHERE j.state='paused' AND j.stage='provider_reconcile' AND r.state='paused' AND r.stage='provider_reconcile'
     AND r.task_kind='update' AND ($2::text[] IS NULL OR r.task_kind=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
+    AND NOT (COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true')
     AND EXISTS(SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=j.id AND a.owner_user_id=j.owner_user_id AND a.status='pending_reconcile'
       AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED')
       AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$')
     ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
+/**
+ * Record an unobservable supplier result without guessing it. `codex exec` has
+ * no lookup API, so without a bound this paused run would be re-queried by the
+ * sweep forever. Keep it paused and visible, but stop re-querying after the
+ * grace window; usage stays `unknown` and no retry or settlement is fabricated.
+ */
+export async function recordProviderReconcileUnknown(
+  pool:Pool,owner:string,runId:string,jobId:string,reconciler:string,now=Date.now()
+) {
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+    if(!r||r.state!=='paused'||r.stage!=='provider_reconcile')return false;
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
+    if(!j||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until)return false;
+    const transition=nextProviderReconcileUnknown(j.checkpoint?.provider_reconcile_unknown,now,reconciler);
+    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(COALESCE(checkpoint,'{}'::jsonb),
+      '{provider_reconcile_unknown}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(transition.state)]);
+    if(transition.first)await event(client,r,'paused','provider_reconcile','provider_reconcile_unknown',
+      'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:transition.state.queries});
+    if(transition.exhausted&&!transition.previousExhausted)await event(client,r,'paused','provider_reconcile',
+      'provider_reconcile_unknown_exhausted','MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',
+      {reconciler,queries:transition.state.queries,first_at:transition.state.first_at});
+    return transition.exhausted;
+  });
 }
 
 export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';

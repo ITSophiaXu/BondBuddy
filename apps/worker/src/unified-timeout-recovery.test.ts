@@ -7,7 +7,7 @@ import { digest, uid, transaction, type PrivateBlobs } from '@bondbuddy/api/data
 import {grantCredits,publishPrices,creditBalanceExact} from '../../api/dist/billing.js';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
-import { claim, finish, pauseRun, recordPotentialCall, recoverUnifiedTimeout, repairUnifiedTimeoutRetry } from '@bondbuddy/api/queue';
+import { claim, finish, pauseRun, pausedRuns, recordPotentialCall, recordProviderReconcileUnknown, recoverUnifiedTimeout, repairUnifiedTimeoutRetry } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime, recordProviderCallObservation, latestProviderAttempt, READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -157,5 +157,14 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       assert.deepEqual((await pool.query('SELECT state,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paidLease.runId])).rows[0],paidBefore);
       assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[paidLease.runId])).rows,eventsBefore);
       assert.deepEqual(await creditBalanceExact(pool,owner),balanceBefore);
+      // A legacy (non-unified) unknown call has no timeout recovery path. Bound
+      // the sweep so it records evidence once and then stops re-querying forever.
+      const unknown = await fixture({unified:false});
+      const unknownStart = Date.now();
+      assert.equal(await recordProviderReconcileUnknown(pool, owner, unknown.lease.runId, unknown.lease.jobId, 'codex_no_lookup', unknownStart), false);
+      assert.equal((await pausedRuns(pool, 'provider_reconcile', 100)).some(r => r.run_id === unknown.lease.runId), true);
+      assert.equal(await recordProviderReconcileUnknown(pool, owner, unknown.lease.runId, unknown.lease.jobId, 'codex_no_lookup', unknownStart + 60 * 60 * 1000 + 1), true);
+      assert.equal((await pausedRuns(pool, 'provider_reconcile', 100)).some(r => r.run_id === unknown.lease.runId), false);
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason' IN ('provider_reconcile_unknown','provider_reconcile_unknown_exhausted')", [unknown.lease.runId])).rows[0].n, 2);
     }finally{await app.close();await paidApp.close();await pool.end();}
   });
