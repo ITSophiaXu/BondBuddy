@@ -163,6 +163,32 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 控制角色仅需 `lighthouse:DescribeInstances` 与 `lighthouse:DescribeInstancesTrafficPackages`。前者官方 CAM 支持的实例查询范围为地域内 `instance/*`；后者绑定约定实例资源。客户端额外固定账户、地域和准确实例，不能把 API 支持的地域级权限说成 IAM 的单实例隔离。新私网代理仅增加 `lighthouse.tencentcloudapi.com` 的 CONNECT/443 出口，保留原代理与其它服务。
 
+### 单价证据续核（2026-11-18）
+
+可选 `cloud_quote_refresh.tariff_refresh` 在每天首次刷新时重新查询计算与两块磁盘单价，同时核对四份腾讯云官方计费正文。旧配置仍要求 `pricing_valid_until` 有效；新模式必须有完整复核记录，不能单独延长日期。配置示例中的摘要需由本次实际复核产生：
+
+```json
+{
+  "version": "tencent-readonly-tariffs-v1",
+  "review_sha256": "REVIEW_RECORD_SHA256",
+  "enforcement_sha256": "UNCHANGED_ENFORCEMENT_EVIDENCE_SHA256",
+  "reviewed_at": "ACTUAL_REVIEW_TIME",
+  "terms_valid_until": "EARLIEST_APPLICABLE_TARIFF_TERM_END",
+  "documents": [
+    {"url":"https://cloud.tencent.com/document/product/1140/40372","body_sha256":"REVIEWED_ARTICLE_BODY_SHA256"},
+    {"url":"https://cloud.tencent.com/document/product/362/2413","body_sha256":"REVIEWED_ARTICLE_BODY_SHA256"},
+    {"url":"https://cloud.tencent.com/document/product/877/18676","body_sha256":"REVIEWED_ARTICLE_BODY_SHA256"},
+    {"url":"https://cloud.tencent.com/document/product/215/20096","body_sha256":"REVIEWED_ARTICLE_BODY_SHA256"}
+  ]
+}
+```
+
+CAM 权限与 API 名称不同：新增只读动作是 `name/cvm:DescribeZoneInstanceConfigInfos` 和 `name/cvm:InquiryStoragePrice`（对应 CBS API `InquiryPriceCreateDisks`，不是 `cbs:InquiryPriceCreateDisks`）。目标身份为原控制角色；不替换已有策略，不给业务节点加云管理权限。两项价格 API 的 resource 为 `*`；传输器逐字段限定北京七区 SA9.LARGE16、POSTPAID_BY_HOUR、CLOUD_PREMIUM 40/80 GiB，各一次。出口增加准确的 `cbs.tencentcloudapi.com` 和 `cloud.tencent.com` CONNECT/443，无子域通配或任意代理。
+
+计算单价所有阶梯不超过 0.8 元/小时，磁盘显示单价和高精度合计不超过 0.11 元/小时（实际 0.036 + 0.072 = 0.108，不能把 0.072 错当超过显示值 0.07）。不改变模板费率、现有自然日/小时上限、完整固定承诺及其他运行准入条件。零网络费用仍依赖已核且继续强制的私网拓扑/无公网 IP、云联网条款、主站真实流量包及整机带宽；仅网页正文相同不构成拓扑验收。
+
+文档只以 JSON 解码读取正文，不执行脚本；正文哈希不同、条款到期、缺权限、价格上涨、证据缺失和超时均拒绝新增支出。同一自然日复用已校验的单价观测，每次仍刷新主站流量；新一天重新取证。费用快照原子包含价格、网络证据和有效配置。首次升级仅允许添加该可选策略，完整重建旧快照并保留流量单调性，其他配置变化仍拒绝，禁止删除快照绕过绑定。
+
 ## 底稿执行角色权限
 
 底稿创建子任务的间接 SQL 依赖、四角色授权与现存/未来节点预检更新，见[底稿执行角色权限 #1551](workpaper-runtime-permissions-1551.md)。

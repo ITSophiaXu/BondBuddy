@@ -1,10 +1,12 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig, retainedNodePin, nodeLaunchConfig, requireRetainedRequest} from './policy.mjs';
 import {bootstrapUserData,warmBootstrapUserData} from './bootstrap.mjs';
+import {validateTariffRequest} from './cloud-tariff-refresh.mjs';
 import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
-const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', lighthouse: '2020-03-24'};
-const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
+const apiVersion = {cvm: '2017-03-12', cbs:'2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', lighthouse: '2020-03-24'};
+const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus','DescribeZoneInstanceConfigInfos']),
+  cbs: new Set(['InquiryPriceCreateDisks']),
   sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']),
   lighthouse: new Set(['DescribeInstances','DescribeInstancesTrafficPackages'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
@@ -46,6 +48,7 @@ export class TencentTransport {
       allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
     if(service==='lighthouse')requireThat(payload?.InstanceIds?.length===1&&payload.InstanceIds[0]==='lhins-4i18xeto'&&
       payload.Offset===0&&payload.Limit===1&&Object.keys(payload).every(k=>['InstanceIds','Offset','Limit'].includes(k)), 'LIGHTHOUSE_EXACT_SCOPE');
+    if(service==='cbs'||service==='cvm'&&action==='DescribeZoneInstanceConfigInfos')validateTariffRequest(service,action,payload);
     const c = await this.credentials();
     signal?.throwIfAborted();
     requireThat(typeof c.secretId==='string' && c.secretId && typeof c.secretKey==='string' && c.secretKey &&
