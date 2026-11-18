@@ -273,3 +273,31 @@ test('QA original-scope evidence followup requires owned settled original and ca
   await assert.rejects(transaction(pool,c=>reserveQaCredits(c,owner,forged.run,bad)),/Owned settled original-scope QA task/);
  }finally{await pool.end();}
 });
+
+test('issue 1583: reviewed authoring scopes remain one purchase across identical input revisions',{skip:!database},async()=>{
+ const pool=new Pool({connectionString:database});
+ try{
+  const owner=await setup(pool),s=await seed(pool,owner,authoring());
+  const pending=await quoteCredits(pool,owner,s.project,1,s.hash,true);
+  await approve(pool,pending.quote.scope_quote_id!,s.hash,100);
+  const original=(await quoteCredits(pool,owner,s.project,1,s.hash,true)).quote;
+  const resave=async(revision:number)=>{
+   await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+    SELECT project_id,$2,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids FROM bb_input_revisions WHERE project_id=$1 AND revision=1`,[s.project,revision]);
+   await pool.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[s.project,revision]);
+   const q=(await quoteCredits(pool,owner,s.project,revision,s.hash,true)).quote;
+   const r=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$1,'generation',$5,'queued') RETURNING *",[randomUUID(),owner,s.project,revision,s.hash])).rows[0];
+   return {quote:q,run:r,project:s.project,input:{...s.input,revision},hash:s.hash};
+  };
+  const next=await resave(2);assert.equal(next.quote.scope_quote_id,original.scope_quote_id);assert.notEqual(next.quote.quote_id,original.quote_id);
+  await fund(pool,owner,1000);await reserveAuthoring(pool,owner,next,next.quote.quote_id);
+  const duplicate=await resave(3);
+  await assert.rejects(reserveAuthoring(pool,owner,duplicate,duplicate.quote.quote_id),{code:'IDEMPOTENCY_CONFLICT'});
+  // Even an older writer that checks only quote_id cannot reserve another revision.
+  await assert.rejects(pool.query(`INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy)
+    VALUES($1,$2,$3,$4,100,'on_delivery')`,[randomUUID(),owner,duplicate.run.id,duplicate.quote.quote_id]),{code:'23505'});
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_authoring_scope_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,1);
+  assert.deepEqual(await creditBalance(pool,owner),{available:900,frozen:100});
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,1);
+ }finally{await pool.end();}
+});
