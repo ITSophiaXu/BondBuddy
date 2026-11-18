@@ -56,7 +56,7 @@ import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
 import { admitProjectCreate, admitRunSubmit, admitUploadCreate, reportTrialRejection, sourceHash, TrialLimitProblem, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
 import { installTrialRoutes } from './trial-routes.js';
 import { installPlatformProbeRoutes } from './platform-probe.js';
-import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
+import { enqueueAuditPdfQuality, requestAuditPdfQuality, cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
 import { installFactEvidenceReviewRoutes } from './fact-evidence-reviews.js';
@@ -77,6 +77,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
+import { assertAuditPdfQuality } from './audit-pdf-quality.js';
 import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
@@ -777,6 +778,7 @@ export function createServer(settings: Settings = {}) {
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
         assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
+      if (p.kind === 'update') await assertAuditPdfQuality(client, user, id, resolved);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
       let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
@@ -1200,6 +1202,8 @@ export function createServer(settings: Settings = {}) {
         VALUES($1,$2,'material',$3,'material.role_copied',$4)`,
         [uid(),user,materialId,{project_id:id,source_material_id:source.id,source_material_version:source.version,material_id:materialId,material_version:1,receipt_id:receipt.id}]);
       await appendProjectMaterialEvent(client,user,id,materialId,Number(source.byte_size));
+      if(copyProject.kind==='update' && saved.role==='audit' && saved.media_type==='application/pdf')
+        await enqueueAuditPdfQuality(client,{owner:user,projectId:id,materialId,materialVersion:1,sha256:b.source_sha256,traceId});
       if(copyProject.update_details?.authoring_mode!=='unified_v1')
         await enqueueMaterialParse(client,{owner:user,projectId:id,materialId,materialVersion:1,sha256:b.source_sha256,traceId});
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_role_copy',status:'submitted'});
@@ -1513,6 +1517,7 @@ export function createServer(settings: Settings = {}) {
         assertAuthoringSourceRequired(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.previous_output);
         assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
       }
+      if (lockedKind === 'update') await assertAuditPdfQuality(client, user, b.project_id, input.rows[0].manifest.materials);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
@@ -1651,6 +1656,9 @@ export function createServer(settings: Settings = {}) {
     const result=await correctOcr(db(),blob(),await owner(request),param(request,'project_id'),param(request,'material_id'),body<OcrCorrectionRequest>(request));
     return reply.code(201).send(result);
   });
+  app.post('/api/v1/projects/:project_id/materials/:material_id/pdf-quality',
+    {schema:{body:schemas.AuditPdfQualityCheckRequest,response:{200:schemas.MaterialParseJobResponse}}},async request=>
+      materialParseJobDto(await requestAuditPdfQuality(db(),await owner(request),param(request,'project_id'),param(request,'material_id'),body<{retry?:boolean}>(request).retry)));
   const sourceProfile='/api/v1/projects/:project_id/materials/:material_id/source-profile';
   const parseJob='/api/v1/projects/:project_id/materials/:material_id/parse-job';
   app.get(parseJob,{schema:{response:{200:schemas.MaterialParseJobResponse}}},async request=>

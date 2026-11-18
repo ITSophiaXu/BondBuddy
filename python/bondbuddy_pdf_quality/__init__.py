@@ -11,8 +11,10 @@ import time
 import pypdfium2 as pdfium
 import pypdfium2.raw as raw
 
-VERSION = "pdf-raster-quality-1"
+VERSION = "pdf-raster-quality-2"
 DPI_THRESHOLD = 200
+# PDFium returns float32 placement matrices; this tolerance covers their quantization.
+DPI_EPSILON = 0.0001
 MIN_COVERAGE = 0.5
 MAX_PAGES = 1500
 IDENTITY = (1, 0, 0, 1, 0, 0)
@@ -69,7 +71,7 @@ def page_resolution(page, deadline):
             if not xlen or not ylen:
                 continue
             dpi = min(pixels_x*72/xlen, pixels_y*72/ylen)
-            if not math.isfinite(dpi) or dpi >= DPI_THRESHOLD:
+            if not math.isfinite(dpi) or dpi >= DPI_THRESHOLD-DPI_EPSILON:
                 continue
             corners = [(e, f), (a+e, b+f), (c+e, d+f), (a+c+e, b+d+f)]
             rect = (max(0, min(p[0] for p in corners)), max(0, min(p[1] for p in corners)),

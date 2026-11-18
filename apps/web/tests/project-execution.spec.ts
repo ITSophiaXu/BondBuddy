@@ -1,3 +1,4 @@
+import {serveAuditPdfQuality} from './audit-pdf-quality-fixture';
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
@@ -87,6 +88,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     const method = request.method();
     if (path === '/auth/logout') { state.loggedOut = true; return route.fulfill({ status: 204 }); }
     if (state.loggedOut) return json(route, 401, { code: 'UNAUTHENTICATED' });
+    if(await serveAuditPdfQuality(route,id,state.materials))return;
     if(path==='/account')return json(route,200,{user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,support_contact:null});
     if(path==='/account/sessions')return json(route,200,{items:[]});
     if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
@@ -1455,7 +1457,7 @@ test('operator denial remains a failed task without automatic-recovery guidance'
 
 
 for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
-  test(`lost upload acknowledgement restores start without resending ${label}`, async ({ page, context }) => {
+  test(`lost upload acknowledgement restores start without resending bytes ${label}`, async ({ page, context }) => {
     const state = fixture();
     state.project.update_details!.authoring_mode='unified_v1';
     const puts: string[] = [];
@@ -1471,8 +1473,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/complete')) {
         completes++;
         const body = fixtureRequest(request);
-        state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
-        return route.abort('connectionreset');
+        let saved=state.materials.find(m=>m.material_id==='lost-material');
+        if(!saved){saved={material_id:'lost-material',material_version:1,upload_id:'lost-upload',role:'audit',filename:'lost.pdf',media_type:'application/pdf',byte_size:body.byte_size,sha256:body.sha256,state:'persisted',persisted_at:now,error:null};state.materials.push(saved);}
+        // Complete retries confirm the same immutable receipt; the original byte upload is never repeated.
+        return completes===1 ? route.abort('connectionreset') : json(route,200,saved);
       }
       return route.fallback();
     });
@@ -1484,7 +1488,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
-    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
+    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:2, puts:1});
     expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
     if (process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR) {
       const output = resolve(process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR); await mkdir(output, {recursive:true});
@@ -1566,7 +1570,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await expect(financial).toContainText('服务器已确认保存');
     completed = true;
     await page.getByRole('button', { name: '刷新已保存材料' }).click();
-    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '清晰度检查完成']);
     await expect(page.locator('.source-profile, [data-source-correction], a[href$="/ocr"], .workspace-evidence, .fact-review')).toHaveCount(0);
     await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|历史稿信息|核对识别内容|待确认项/);
     expect(state.materials).toHaveLength(2);
@@ -1593,7 +1597,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await page.getByRole('button', { name: '查看材料' }).click();
-    await expect(page.locator('.processing-title')).toHaveCount(0);
+    await expect(page.locator('.processing-title')).toHaveText(['清晰度检查完成']);
     await expect(page.locator('.material-file-row')).toHaveCount(2);
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
   });

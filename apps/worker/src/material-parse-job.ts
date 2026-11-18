@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { PDF_QUALITY_STAGE, readPdfQuality } from '@bondbuddy/contracts';
+import { PDF_QUALITY_STAGE, PDF_QUALITY_VERSION, isPdfQualityJobVersion, readPdfQuality } from '@bondbuddy/contracts';
 import { inspectPdfQuality } from './pdf-quality.js';
 import { ERROR_CODES, type ErrorCode } from '@bondbuddy/contracts';
 import { Problem } from '@bondbuddy/api/data';
@@ -8,7 +8,7 @@ import {
   type MaterialParseLease, type MaterialParseResult,
 } from '@bondbuddy/api/material-jobs';
 import { DOCUMENT_PARSER_MEDIA_TYPES } from './document-parser.js';
-import type { MaterialParserDependencies } from './material-parser.js';
+import { inspectAuthorizedPdf, type MaterialParserDependencies } from './material-parser.js';
 import { getParseSnapshotForMaterialJob, parseAndPersistAuthorizedMaterial, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { appendHistoricalOcrRecognition, appendHistoricalRecognition, getLatestHistoricalProfile, type HistoricalOcrProfileDependencies, type HistoricalProfileDependencies } from './historical-profile-repository.js';
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
@@ -135,6 +135,19 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
   try {
     const material = await activeMaterial(pool, lease);
     const stages = lease.checkpoint.stages ?? {};
+    if (isPdfQualityJobVersion(lease.parserVersion)) {
+      if (material.role !== 'audit' || material.media_type !== 'application/pdf') throw new StageFailure('NOT_FOUND', false);
+      if (readPdfQuality(stages[PDF_QUALITY_STAGE])?.version !== PDF_QUALITY_VERSION) {
+        const quality = await inspectAuthorizedPdf(dependencies.material,
+          {...context, version: lease.materialVersion, requestId: lease.jobId + '-quality', requiredRole: 'audit'},
+          dependencies.pdfQualityInspector ?? inspectPdfQuality);
+        if (!readPdfQuality(quality) || quality.version !== PDF_QUALITY_VERSION) throw new StageFailure('DATA_UNAVAILABLE', true);
+        await stage(PDF_QUALITY_STAGE, {...quality});
+      }
+      // Completion means the measurement finished, not that the source was parsed or readable.
+      await succeedMaterialParse(pool, lease, {pdf_quality: readPdfQuality(lease.checkpoint.stages?.[PDF_QUALITY_STAGE])!});
+      return 'succeeded';
+    }
     const parseable = (DOCUMENT_PARSER_MEDIA_TYPES as readonly string[]).includes(material.media_type);
     const needsNativeRecognition=material.role==='historical' && HISTORICAL_MEDIA.includes(material.media_type);
     let snapshot: StoredParseSnapshot | null = null;

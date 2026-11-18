@@ -1,3 +1,4 @@
+import {serveAuditPdfQuality} from './audit-pdf-quality-fixture';
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { expect, test, type Page, type Route } from '@playwright/test';
@@ -119,7 +120,7 @@ async function reply<T extends keyof typeof schemas>(route: Route, name: T, body
 const errorReply = (route: Route, status: number, code: string) => route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route,{ code }) });
 const activeMaterials = (state: State) => state.materials.filter(material => !state.versions.inactive_material_ids.includes(material.material_id));
 const refs = (state: State) => activeMaterials(state).map(material => ({ material_id: material.material_id, material_version: material.material_version }));
-const writes = (state: State) => state.calls.filter(call => call.method !== 'GET');
+const writes = (state: State) => state.calls.filter(call => call.method !== 'GET' && !call.path.endsWith('/pdf-quality'));
 function expectNoExecution(state: State) {
   expect(state.inputAttempts).toEqual([]); expect(state.locked).toEqual([]); expect(state.preflights).toEqual([]);
   expect(state.quotes).toEqual([]); expect(state.executes).toEqual([]);
@@ -175,6 +176,7 @@ async function install(page: Page, state = fixture()) {
       if (state.owner !== ownerId || ![projectId, otherProjectId].includes(requestedProject)) return errorReply(route, 404, 'NOT_FOUND');
       const project = requestedProject === projectId ? state.project : state.otherProject;
       const materials = requestedProject === projectId ? state.materials : [];
+      if(await serveAuditPdfQuality(route,requestedProject,materials))return;
       if (method === 'GET' && suffix === '') {
         if (requestedProject === projectId && state.holdNextProjectRead) {
           state.holdNextProjectRead = false; state.heldProjectRead = true;
@@ -632,7 +634,7 @@ test('unknown execute without acceptance survives read-only refresh and a defini
   await expect(page.locator('#execution-message')).toContainText(/准确回执|尚未确认|核对/);
   await expect(page.locator('#execute-input')).toBeDisabled(); await expect(page.locator('#prepare-next-version')).toHaveCount(0);
   await expect(page).toHaveURL(/prepare=next/); await expect(page).toHaveURL(/basis=result/); await expect(page).toHaveURL(/prepare_after=7/);
-  expect(state.calls.slice(beforeReadback).filter(call => call.method !== 'GET')).toEqual([]);
+  expect(state.calls.slice(beforeReadback).filter(call => call.method !== 'GET' && !call.path.endsWith('/pdf-quality'))).toEqual([]);
   expect(state.executes).toEqual([envelope]); expect(state.inputAttempts).toEqual([inputRequest]); expect(state.locked).toEqual([locked]);
   expect(state.preflights).toEqual([preflight]); expect(state.quotes).toEqual([quoteRequest]); expect(state.runs.size).toBe(1);
   state.rejectNextExecute = 'QUOTE_CHANGED'; await page.locator('#retry-execution').click();
@@ -659,7 +661,7 @@ test('read-only execution refresh finds an exact completed receipt without retry
   await expect(page).toHaveURL(new RegExp(`run=${accepted.run_id}`)); await expect(page).not.toHaveURL(/prepare=next/);
   await expect.poll(() => state.calls.some(call => call.method === 'GET' && call.path === `/artifacts/${accepted.artifact_id}`)).toBe(true);
   await expect(page.locator('#artifact-downloads')).toBeVisible();
-  expect(state.calls.slice(beforeReadback).filter(call => call.method !== 'GET')).toEqual([]);
+  expect(state.calls.slice(beforeReadback).filter(call => call.method !== 'GET' && !call.path.endsWith('/pdf-quality'))).toEqual([]);
   expect(state.executes).toEqual([envelope]); expect(state.locked).toEqual([locked]); expect(state.inputAttempts).toHaveLength(1);
   expect(state.preflights).toHaveLength(1); expect(state.quotes).toHaveLength(1); expect(state.inputs.size).toBe(2); expect(state.runs.size).toBe(2);
   await page.reload(); await expect(page.locator('#artifact-downloads')).toBeVisible();

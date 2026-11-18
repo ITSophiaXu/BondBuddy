@@ -17,7 +17,10 @@ class PdfQualityTests(unittest.TestCase):
         return data.getvalue()
 
     def image(self, width, height):
-        return ImageReader(Image.new('RGB', (width, height), 'white'))
+        image = Image.new('RGB', (width, height), 'white')
+        # ReportLab hashes pixel bytes without dimensions: distinguish transposed fixtures.
+        image.putpixel((0,0), (width % 256, height % 256, 0))
+        return ImageReader(image)
 
     def probe(self, data, seconds=10):
         with tempfile.TemporaryDirectory() as td:
@@ -54,6 +57,31 @@ class PdfQualityTests(unittest.TestCase):
             c.translate(600,0); c.rotate(90)
             c.drawImage(self.image(1600,1200),0,0,width=800,height=600); c.showPage()
         self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144})
+
+    def test_nominal_200_dpi_float32_placements_do_not_warn(self):
+        def draw(c):
+            for px, py in [(2340,1654),(1654,2338)]:
+                c.drawImage(self.image(px,py),0,0,width=px*72/200,height=py*72/200)
+                c.showPage()
+            c.saveState()
+            c.beginForm('boundary',0,0,300,400)
+            c.drawImage(self.image(1667,2223),0,0,width=1667*72/200/2,height=2223*72/200/2)
+            c.endForm()
+            c.scale(2,2); c.doForm('boundary'); c.restoreState(); c.showPage()
+            c.translate(600,0); c.rotate(90)
+            c.drawImage(self.image(2223,1667),0,0,width=2223*72/200,height=1667*72/200)
+            c.showPage()
+        result=self.probe(self.make(draw))
+        self.assertEqual([r['dpi'] for r in result if 'page' in r],[None]*4)
+        self.assertEqual(result[-1],{'complete':True})
+
+    def test_genuinely_below_threshold_remains_low(self):
+        def draw(c):
+            for dpi in [96,110,144,150,199.9,199.9995]:
+                c.drawImage(self.image(1200,1600),0,0,width=1200*72/dpi,height=1600*72/dpi)
+                c.showPage()
+        result=self.probe(self.make(draw))
+        self.assertEqual([r['dpi'] for r in result if 'page' in r],[96,110,144,150,199,199])
 
     def test_budget_exhaustion_is_not_complete(self):
         events = self.probe(self.make(lambda c: (c.drawString(40,40,'Synthetic'),c.showPage())),seconds=-1)
