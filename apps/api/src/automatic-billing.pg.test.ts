@@ -69,6 +69,21 @@ test('HTTP exposes automatic price metadata, rejects client amounts and preserve
   }finally{await app.close();await pool.end();}
 });
 
+test('HTTP quote returns 409 instead of 500 when scope quote already binds an older revision quote', {skip:!database},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),origin='https://synthetic.invalid';
+  const app=createServer({pool,enableSubscriptionBilling:true,allowedOrigin:origin,paymentProviders:[],principal:async()=>({userId:f.owner,csrfVerified:true})});
+  try{
+    const first=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/credit-quote`,headers:{origin},payload:{input_revision:1,input_hash:f.hash}});
+    assert.equal(first.statusCode,200,first.body);
+    await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      SELECT project_id,2,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids
+      FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=1`,[f.owner,f.project]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=2 WHERE owner_user_id=$1 AND id=$2',[f.owner,f.project]);
+    const retry=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/credit-quote`,headers:{origin},payload:{input_revision:2,input_hash:f.hash}});
+    assert.equal(retry.statusCode,409,retry.body);assert.equal(retry.json().code,'QUOTE_CHANGED');
+  }finally{await app.close();await pool.end();}
+});
+
 test('HTTP charge readback preserves the exact original scope terms after a replacement quote', {skip:!database},async()=>{
   const pool=new Pool({connectionString:database}),f=await fixture(pool),origin='https://synthetic.invalid';let actor=f.owner;
   const app=createServer({pool,enableSubscriptionBilling:true,allowedOrigin:origin,paymentProviders:[],principal:async()=>({userId:actor,csrfVerified:true})});

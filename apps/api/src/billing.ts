@@ -111,7 +111,19 @@ export async function quoteCreditsExact(pool: Pool, owner: string, projectId: st
     await c.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,pricing_mode,outcome_key,scope_quote_id,scope_lines)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
       [uid(), owner, projectId, revision, hash, priceVersion, task, points, reason,commercial?OUTCOME_MODE:'legacy_credit',commercial?'scoped_authoring':null,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])]);
-    const row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL AND scope_quote_id IS NOT DISTINCT FROM $5::text', [owner, projectId, revision, priceVersion,scope?.scope_quote_id??null])).rows[0];
+    let row = (await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL AND scope_quote_id IS NOT DISTINCT FROM $5::text', [owner, projectId, revision, priceVersion,scope?.scope_quote_id??null])).rows[0];
+    if(!row&&scope?.scope_quote_id){
+      const prior=(await c.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND scope_quote_id=$2 ORDER BY created_at DESC LIMIT 1',[owner,scope.scope_quote_id])).rows[0];
+      if(prior){
+        if(prior.project_id===projectId&&prior.input_revision===revision&&prior.price_version===priceVersion&&prior.intent_hash==null)row=prior;
+        else throw new Problem(409,'QUOTE_CHANGED','项目输入或报价范围已变化，请刷新后重新确认。');
+      }
+    }
+    if(!row){
+      const prior=(await c.query('SELECT 1 FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND price_version=$4 AND intent_hash IS NULL LIMIT 1',[owner,projectId,revision,priceVersion])).rowCount;
+      if(prior)throw new Problem(409,'QUOTE_CHANGED','项目输入或报价范围已变化，请刷新后重新确认。');
+      throw new Problem(503,'DATA_UNAVAILABLE','报价记录暂不可用，请稍后重试。');
+    }
     const quote = quoteDto({...row,...scope});
     return { enabled: true, quote, balance, shortage: shortageInt64(quote.points,balance.available), reason: null };
   });
