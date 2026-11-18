@@ -1,3 +1,4 @@
+import { inputManifestHash } from './production-rule-pin.js';
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { Pool, type PoolClient } from 'pg';
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
@@ -270,6 +271,22 @@ export async function recordProviderCallObservation(
       if(!options.lease||job.subtype!=='project_qa_v1'||!observation.logical_call_id.startsWith('qa-')||!frozen)
         throw new Problem(409,'CAPABILITY_NOT_READY','Deferred provider outcome requires a frozen parallel question run');
     }
+    const integrityInterpretation=!!options.lease&&job.subtype==='integrity_v1'&&/^integrity_browser_[a-f0-9]{24}$/.test(observation.logical_call_id);
+    if(integrityInterpretation){
+      // Only a captured official-site interpretation may keep a settled schema
+      // failure local. The frozen job/call identity excludes other task types.
+      const batches=(await client.query(`SELECT i.manifest,i.input_hash,b.subject_id,b.site_id,b.payload,b.sha256
+        FROM bb_integrity_runs i JOIN bb_integrity_browser_batches b ON b.owner_user_id=i.owner_user_id AND b.run_id=i.run_id
+        WHERE i.owner_user_id=$1 AND i.run_id=$2 AND i.operation='check'`,[r.owner_user_id,r.id])).rows;
+      const frozen=batches.some(b=>b.manifest.collector==='official-browser-v1'&&inputManifestHash(b.manifest)===b.input_hash.trim()
+        &&b.input_hash.trim()===r.input_hash.trim()&&b.manifest.draft.site_ids.includes(b.site_id)
+        &&b.manifest.draft.subjects.some((s:{id:string})=>s.id===b.subject_id)
+        &&observation.logical_call_id==='integrity_browser_'+inputManifestHash({subject:b.subject_id,site:b.site_id}).slice(0,24)
+        &&inputManifestHash(b.payload)===b.sha256.trim()&&b.payload.outcome==='results'&&b.payload.search_performed===true
+        &&Array.isArray(b.payload.captures)&&b.payload.captures.length>0);
+      if(!frozen)
+        throw new Problem(409,'CAPABILITY_NOT_READY','Site-local interpretation requires a frozen official browser result');
+    }
     const a=(await client.query('SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.logical_call_id,observation.attempt_no])).rows[0];
     if (!a || a.id!==observation.call_id || a.model_id!==observation.model_id || a.prompt_snapshot_id!==observation.prompt_snapshot_ref || observation.trace_id!==r.id) throw missing();
     if (a.provider_request_id && observation.provider_request_id && a.provider_request_id!==observation.provider_request_id) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
@@ -364,10 +381,10 @@ export async function recordProviderCallObservation(
       await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
       await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
       await appendCallFinished(client,observation,'succeeded');
-    } else if (options.deferRunOutcome) {
-      // Keep the lease for accepted siblings. Attempt, cost and unknown evidence
-      // above are durable; the question stage closes admission and drains before
-      // returning the aggregate outcome. Crash recovery reuses those attempts.
+    } else if (options.deferRunOutcome || integrityInterpretation&&failed&&observation.error_code==='MODEL_OUTPUT_SCHEMA_INVALID') {
+      // Keep the lease for accepted QA siblings or a settled, site-local schema
+      // failure. Attempt and cost evidence remain durable; the enclosing stage
+      // decides the aggregate outcome. Unknown integrity calls still pause below.
       await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{deferred_provider_calls}',
         COALESCE(checkpoint->'deferred_provider_calls','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb)),updated_at=now() WHERE id=$1`,
         [job.id,a.id,JSON.stringify({logical_call_id:observation.logical_call_id,attempt_no:observation.attempt_no,status:nextAttemptStatus,error_code:observation.error_code,usage_status:usageStatus})]);
