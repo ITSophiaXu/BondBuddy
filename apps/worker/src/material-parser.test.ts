@@ -757,3 +757,16 @@ test('#17 streamed PDF/TXT stdout and text budgets map to terminal MATERIAL_TOO_
     return true;
   });
 });
+
+
+test('PDF advisory runs on verified immutable bytes before parser failure; integrity failure cannot invoke it', async()=>{
+ let inspected=0;
+ const pdfRow={...row,media_type:'application/pdf'};
+ const dependencies: MaterialParserDependencies={pool:{query:async()=>({rows:[pdfRow]})},blobs:{getPrivate:async()=>bytes},
+   onStagedPdf:async path=>{assert.deepEqual(await readFile(path),bytes);inspected++;},
+   parser:async()=>{assert.equal(inspected,1);throw Error('DOCUMENT_PARSER_TIMEOUT');}};
+ await assert.rejects(parseAuthorizedMaterial(dependencies,input),/MATERIAL_PARSE_TIMEOUT/);
+ assert.equal(inspected,1);
+ await assert.rejects(parseAuthorizedMaterial({...dependencies,blobs:{getPrivate:async()=>Buffer.from('wrong')}},input),/MATERIAL_INTEGRITY_MISMATCH/);
+ assert.equal(inspected,1);
+});

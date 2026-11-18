@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
+import { PDF_QUALITY_STAGE, readPdfQuality } from '@bondbuddy/contracts';
 import {
   ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_OCR_STAGE, MATERIAL_PARSE_STAGES,
   type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MATERIAL_PARSE_RUNTIME_EVENT_TYPES, type MaterialParseJob,
@@ -13,7 +14,7 @@ export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.8'
 export const DEFAULT_MATERIAL_PARSE_MAX_ATTEMPTS = 3;
 export const documentParserVersion = () => process.env.BB_DOCUMENT_PARSER_VERSION ?? DEFAULT_DOCUMENT_PARSER_VERSION;
 
-type Stage = typeof MATERIAL_PARSE_STAGES[number] | typeof MATERIAL_PARSE_OCR_STAGE;
+type Stage = typeof MATERIAL_PARSE_STAGES[number] | typeof MATERIAL_PARSE_OCR_STAGE | typeof PDF_QUALITY_STAGE;
 type EventType = typeof MATERIAL_PARSE_EVENT_TYPES[number] | typeof MATERIAL_PARSE_RUNTIME_EVENT_TYPES[number];
 type Category = typeof ERROR_CATEGORIES[number];
 export type MaterialParseCheckpoint = { stages?: Partial<Record<Stage, Record<string, unknown>>> };
@@ -232,7 +233,8 @@ export async function failMaterialParse(pool: Pool, lease: MaterialParseLease, f
 export function materialParseJobDto(job: any): MaterialParseJob {
   const stages = Object.keys(job.checkpoint?.stages ?? {}).filter((s): s is Stage => (MATERIAL_PARSE_STAGES as readonly string[]).includes(s));
   const result = job.result as MaterialParseResult | null;
-  return { job_id: job.id, job_type: MATERIAL_PARSE_JOB_TYPE, subtype: MATERIAL_PARSE_JOB_SUBTYPE, project_id: job.project_id, material_id: job.material_id,
+  const quality = readPdfQuality(job.checkpoint?.stages?.[PDF_QUALITY_STAGE]);
+  return { ...(quality ? {pdf_quality: quality} : {}), job_id: job.id, job_type: MATERIAL_PARSE_JOB_TYPE, subtype: MATERIAL_PARSE_JOB_SUBTYPE, project_id: job.project_id, material_id: job.material_id,
     material_version: job.material_version, material_sha256: job.material_sha256.trim(), parser_version: job.parser_version, state: job.state, stage: job.stage,
     completed_stages: MATERIAL_PARSE_STAGES.filter(s => stages.includes(s)), attempts: job.attempts, max_attempts: job.max_attempts,
     error_code: job.error_code ?? null, outcome: result?.outcome ?? null, parse_status: result?.parse_status ?? null,
