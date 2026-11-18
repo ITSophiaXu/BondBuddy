@@ -12,6 +12,10 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
       ('workpaper_execution_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_m4_executions',col,'INSERT'))
         FROM unnest(ARRAY['run_id','owner_user_id','topic_id','manifest','input_hash']) AS columns(col))),
       ('reservation_charged_points_insert', has_column_privilege(current_user,'public.bb_credit_reservations','charged_points','INSERT')),
+      ('refund_unit_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_units',col,'INSERT'))
+        FROM unnest(ARRAY['owner_user_id','reservation_id','item_id','run_id','ordinal','source_item_key','label','points','scope_quote_id','evidence_kind','evidence']) AS columns(col))),
+      ('refund_slice_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_unit_slices',col,'INSERT'))
+        FROM unnest(ARRAY['reservation_id','item_id','origin_lot_id','points']) AS columns(col))),
       ('platform_probe_owner', (SELECT bool_and(has_column_privilege(current_user,'public.bb_platform_principals',col,'SELECT'))
         FROM unnest(ARRAY['user_id','purpose']) AS columns(col))),
       ('evidence_gate_lock', has_function_privilege(current_user,to_regprocedure('public.bb_lock_evidence_gate(boolean)'),'EXECUTE')),
