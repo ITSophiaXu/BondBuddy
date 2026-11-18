@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
-import { enqueue,claim,checkpointStage,pauseRun,recordPotentialCall,recordProviderReconcileUnknown,providerReconciliationCandidates } from '@bondbuddy/api/queue';
+import { enqueue,claim,resumePausedRun,checkpointStage,pauseRun,recordPotentialCall,recordProviderReconcileUnknown,providerReconciliationCandidates } from '@bondbuddy/api/queue';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { recordModelAttemptRuntime,recordProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { uploadSyntheticAudit,uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
@@ -138,6 +138,20 @@ test('provider reconciliation closes system failures independently of execution 
       for(const flag of ['user_pause_requested','credit_pause_requested']){
         const f=await fixture();await pool.query(`UPDATE bb_jobs SET ${flag}=true WHERE id=$1`,[f.lease.jobId]);
         assert.equal(await reconcile(f),false);assert.equal((await state(f.lease.runId)).stage,flag==='user_pause_requested'?'user_paused':'credits_exhausted');await end(f.lease.runId);
+      }
+      for(const path of ['unknown','resume']){
+        const cancelled=await fixture({paid:true});
+        await transaction(pool,async c=>{
+          const r=(await c.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[cancelled.lease.runId])).rows[0];
+          await c.query('SELECT 1 FROM bb_jobs WHERE id=$1 FOR UPDATE',[cancelled.lease.jobId]);
+          await debitAuthoringCredits(c,r,100);
+        });
+        const balance=await creditBalanceExact(pool,owner);
+        await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=now() WHERE id=$1',[cancelled.lease.jobId]);
+        assert.equal(await (path==='unknown'?reconcile(cancelled):resumePausedRun(pool,owner,cancelled.lease.runId,'provider_reconciled')),true);
+        assert.deepEqual(await state(cancelled.lease.runId),{state:'cancelled',stage:'cancelled'});
+        assert.deepEqual(await creditBalanceExact(pool,owner),balance,'explicit cancellation retains its original debit policy');
+        assert.equal(await reconcile(cancelled),false);
       }
       const f=await fixture();await pool.query('UPDATE bb_projects SET archived_at=now() WHERE id=$1',[f.project]);
       assert.equal(await reconcile(f),true);assert.equal((await state(f.lease.runId)).state,'failed');

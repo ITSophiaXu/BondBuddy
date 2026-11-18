@@ -995,6 +995,10 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    if(reason==='provider_reconciled'&&j.billing_cancel_requested_at){
+      if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
+      await finalizePendingCancellation(client,r,j);return true;
+    }
     if(reason==='provider_reconciled'&&!(await client.query('SELECT 1 FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL',[r.project_id,owner])).rowCount)return false;
     if(reason==='billing_reconciled'){
       if(r.stage!=='billing_reconcile'||j.stage!=='billing_reconcile'||await walletIsolated(client,r))return false;
@@ -1108,6 +1112,7 @@ export async function recordProviderReconcileUnknown(
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
     if(!j||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until)return false;
     if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
+    if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return true;}
     if(j.user_pause_requested||j.credit_pause_requested){
       const stage=j.user_pause_requested?'user_paused':'credits_exhausted';
       await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[jobId,stage]);
