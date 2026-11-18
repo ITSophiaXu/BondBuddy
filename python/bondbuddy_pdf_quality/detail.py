@@ -40,7 +40,16 @@ def edge_strength(gray):
 
 
 def crop_detail(image, deadline):
+    if time.monotonic() > deadline:
+        raise TimeoutError('Detail budget')
     gray = neutral_gray(image)
+    edge_step = edge_strength(gray)
+    if time.monotonic() > deadline:
+        raise TimeoutError('Detail budget')
+    # The rejection requires BOTH weak edges and tiny components. Most readable
+    # scans fail the first condition, so do not scan their connected components.
+    if edge_step >= MIN_EDGE_STEP:
+        return {'components': 0, 'glyph_pixels': 0, 'edge_step': edge_step}
     ink = gray < 160
     parents, bounds, previous = [], [], []
 
@@ -93,7 +102,7 @@ def crop_detail(image, deadline):
     return {
         'components': len(dimensions),
         'glyph_pixels': float(np.median(dimensions)) if dimensions else 0,
-        'edge_step': edge_strength(gray),
+        'edge_step': edge_step,
     }
 
 
