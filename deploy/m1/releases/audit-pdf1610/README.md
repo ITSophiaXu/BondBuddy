@@ -25,7 +25,11 @@ This fixed package carries PRs #1591, #1605 and #1610 into the inspected product
 
 ## Release gate and status
 
-The user's instruction to deploy #1610 authorizes preparation and deployment of this batch. The current repository release policy separately requires a current commit/tree real-model golden bundle and independent human document review. No such receipt exists for this candidate; `full_quality_gate_passed=false`, `independent_human_document_acceptance=false`. Earlier release exceptions do not apply automatically. This candidate has not been activated, no production service has been restarted, and no deployment or user acceptance is claimed. Do not merge/activate on these scoped test results alone without the required receipt or an explicit user decision changing the gate for this exact batch.
+On 2026-11-18 the user explicitly approved this exact limited exception: “批准本批限定例外并继续部署”. `authorization.json` binds the original question/answer to PR #1611, #1610/#1605/#1591 and archive SHA256. The 21 scoped checks authorize this PDF-only release; full current-version prospectus real-model golden and independent human review remain pending. `full_quality_gate_passed=false` and `independent_human_document_acceptance=false`. This is not a full-quality attestation or user document acceptance.
+
+All four create-only configuration probes passed against actual production containers; processes were never started. Existing configuration, resource limits, image IDs, environment values and non-target mounts are unchanged except the declared 27 read-only code/asset files. Azure's original wrapper-only image tag, unused legacy DB interpolation, and confirmation profile/replica parameters were restored for faithful Compose rendering; failed preparation receipts were retained privately. Production activation is still pending at this source commit.
+
+The five hosted GitHub jobs did not start because of GitHub account billing/spending limits (confirmed from every check annotation). They are not reported as passing. Exact-image scoped test results and create-only configuration probes are recorded separately.
 
 ## Controlled activation and rollback plan
 

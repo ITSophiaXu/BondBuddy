@@ -1,0 +1,13 @@
+{
+  "pr": 1611,
+  "source_prs": [
+    1610,
+    1605,
+    1591
+  ],
+  "question": "是否批准 PR #1611（仅打包 #1610、#1605、#1591）的限定发布例外：依据已通过的 21 项定向检查部署审计 PDF 抽查与低清拦截，完整募集书真实模型金样和独立人工复核继续作为待办，不宣称完整质量门禁通过？现行仓库发布规则要求这份凭据，目前缺失。",
+  "answer": "批准本批限定例外并继续部署",
+  "archive_sha256": "19430979b0fa4af00e1feb9da0849993fff4a107b961621f7775abdc4618690e",
+  "full_quality_gate_passed": false,
+  "independent_human_document_acceptance": false
+}
