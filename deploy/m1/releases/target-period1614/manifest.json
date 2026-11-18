@@ -1,0 +1,184 @@
+{
+  "schema": "component-scoped-target-period1614-v1",
+  "source_pr": 1614,
+  "source_commit": "9041719457743c5f55f47612879f67621f030726",
+  "release_base": "271d693161c6b08fa567472f2f05aec6a3994f04",
+  "scope": "Eight display-only target-period strings in four web source files; preserve original-source labels.",
+  "api_changed": false,
+  "migrations": 0,
+  "new_dependencies": 0,
+  "real_model_calls": 0,
+  "full_quality_gate_passed": false,
+  "user_acceptance_recorded": false,
+  "authorization": "User requested testing PR1614 then explicitly instructed deployment to the server; limited to this UX change.",
+  "candidate_browser_tests_passed": 12,
+  "candidate_browser_initial_failures": 2,
+  "candidate_browser_failure_notes": [
+    "assistant-period-hints requires source module import and must be run on Vite dev server",
+    "mobile source radio click timeout also reproduced on exact current production baseline"
+  ],
+  "original_pr_tests": {
+    "pr": 1614,
+    "head": "9041719457743c5f55f47612879f67621f030726",
+    "baseline_commit": "34e22dcd2bc79e6e0ba20fec5a0f940c575f5682",
+    "web_build": "passed",
+    "unit": {
+      "failed": 0,
+      "skipped": 0,
+      "passed": 22
+    },
+    "browser_unique": {
+      "failed": 5,
+      "skipped": 0,
+      "passed": 29
+    },
+    "baseline_tests": {
+      "failed": 5,
+      "skipped": 0,
+      "passed": 2
+    },
+    "new_regressions_observed": 0,
+    "model_calls": 0,
+    "backend": "synthetic HTTP fixtures",
+    "deployed": false,
+    "user_accepted": false,
+    "product_source_modified": false
+  },
+  "registry_before_sha256": "133ff562782818726ec416fb15da81b7d32761dba0691985b05d019a39c5bb5d",
+  "web_before": {
+    "id": "1260f00259900575f0b9f5f8e56fdcc9ac5b188313659eba8f9c9ff64936f1b8",
+    "image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be"
+  },
+  "protected_ids": {
+    "bb-main-api-1": "f8d26aab984d8bbf6188f1970469d76e7123e216fc96512f91b085289007bc38",
+    "bb-main-postgres-1": "4d58b1af9c3bb0f2fc4fae50be6ce1eaf04dd4d323cdada64cfee6b38a4e786e",
+    "bb-main-ops-1": "fa0d6516da6f9c762804dc5aec143c5ff0d7391996c25de28b2427ab17b5d406"
+  },
+  "source_configs": {
+    "/var/lib/bondbuddy/audit-pdf1610-20261118/private/web.candidate.compose.json": "cf0ca01b7aee9be374b4ba1fc382aea0aa94f3593594fa7e8b647216549f242a"
+  },
+  "prior_web_files": [
+    {
+      "path": "index.html",
+      "sha256": "6071ebad2c41242d02e6d339dd31a58f892b2a0b91c7679704036030289544a8",
+      "bytes": 1106
+    },
+    {
+      "path": "assets/main-DQgv5ynC.js",
+      "sha256": "26fcb7bf3ee41626b3d21cb15f22f06cc671996cda1d9667e2d23ff5ab3d48b7",
+      "bytes": 1773500
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "bytes": 716
+    },
+    {
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "bytes": 670
+    },
+    {
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "bytes": 557
+    },
+    {
+      "path": "assets/api-BvmZwZII.js",
+      "sha256": "4c430161aabec0e0ec4ab2cbfb685195c9c4a28fbbb4e1dacba2ebb96b0f7360",
+      "bytes": 360438
+    },
+    {
+      "path": "assets/main-Coj1xGwZ.css",
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e",
+      "bytes": 482656
+    }
+  ],
+  "candidate_web_files": [
+    {
+      "path": "assets/api-BvmZwZII.js",
+      "sha256": "4c430161aabec0e0ec4ab2cbfb685195c9c4a28fbbb4e1dacba2ebb96b0f7360",
+      "bytes": 360438
+    },
+    {
+      "path": "assets/main-CkDxpGTE.js",
+      "sha256": "ef2deee5152f361ac4d022b2664bfa20deab331646f4fda1be7d64a07a05c593",
+      "bytes": 1773500
+    },
+    {
+      "path": "assets/main-Coj1xGwZ.css",
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e",
+      "bytes": 482656
+    },
+    {
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "bytes": 670
+    },
+    {
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "bytes": 557
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "bytes": 716
+    },
+    {
+      "path": "index.html",
+      "sha256": "1ab887a56e1ae378bcaeedb9179491fc52e094cf36593e208d534fee0db1cb27",
+      "bytes": 1106
+    }
+  ],
+  "files": [
+    {
+      "path": "assets/main-CkDxpGTE.js",
+      "sha256": "ef2deee5152f361ac4d022b2664bfa20deab331646f4fda1be7d64a07a05c593",
+      "bytes": 1773500
+    },
+    {
+      "path": "index.html",
+      "sha256": "1ab887a56e1ae378bcaeedb9179491fc52e094cf36593e208d534fee0db1cb27",
+      "bytes": 1106
+    }
+  ],
+  "archive_sha256": "126c94d6fa90ed57cb7b35f633458f7c03e430f27a2acde5c2dfc424c9b0a742",
+  "adapter_sha256": "00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67",
+  "activation_script_sha256": "7339847cbb248139604d13e4cdcaa15f4d871da40570628a08366e6a6b2384df",
+  "source_provenance": [
+    {
+      "path": "apps/web/src/material-draft-comparison.ts",
+      "before_sha256": "bed8953b60cbe5b744db96aeafeeb6f4c11f9404982f7e87897c8258ac25347d",
+      "after_sha256": "464d8793dc680089527025af5b6029b5597e8e5628d1bb0c35e6b5256bafe5b0",
+      "replacements": 1,
+      "only_target_label_changed": true
+    },
+    {
+      "path": "apps/web/src/project-assistant.ts",
+      "before_sha256": "d34c6c0b7ffc4cd0e3ae698351e582f7fa633f3770c7a7c1eedfa11132f8fd67",
+      "after_sha256": "a5ddf4fbf09baf4c8b4e84fe20b5c8096624d9987ccf42aa3f0b6b9eaf329ef7",
+      "replacements": 3,
+      "only_target_label_changed": true
+    },
+    {
+      "path": "apps/web/src/review-workspace.ts",
+      "before_sha256": "ed07f8cf29f6392d1a98e3307b21a83edd87c94796b09a6237c993e0f28652cb",
+      "after_sha256": "c9ab5c4209a06a0f37cc9c27fd7368185d09cbeddf683a47e6b32c3a765d5d5d",
+      "replacements": 2,
+      "only_target_label_changed": true
+    },
+    {
+      "path": "apps/web/src/update-form.ts",
+      "before_sha256": "d38b03af926395185d4d931e7a335b805b03c070a882524d2b8494e34ac72f9d",
+      "after_sha256": "1c2e49b3fc3fca3451172f28f66866009d91dd25f30697153c7cb7f3c417f3e5",
+      "replacements": 2,
+      "only_target_label_changed": true
+    }
+  ],
+  "compiled_scope": {
+    "only_eight_label_replacements": true,
+    "replacement_count": 8,
+    "same_length": true
+  }
+}
