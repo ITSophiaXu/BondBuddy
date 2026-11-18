@@ -323,7 +323,7 @@ class FixedEditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'WORD_EDIT_SOURCE_HASH_MISMATCH'):
             load_input(self.input)
 
-    def test_unsupported_merge_does_not_silently_rebuild(self):
+    def test_merged_header_allows_data_row_insertion_without_rebuilding_the_grid(self):
         doc = Document(self.source)
         doc.tables[0].cell(0, 0).merge(doc.tables[0].cell(0, 1))
         doc.save(self.source)
@@ -331,8 +331,45 @@ class FixedEditTests(unittest.TestCase):
         write_json(self.input, self.data)
         self.log = empty_log(self.data, self.source.read_bytes())
         row = self.node('净资产\n100', 'row')
-        with self.assertRaisesRegex(ValueError, 'WORD_EDIT_COMPLEX_ROW_UNSUPPORTED'):
-            self.generate([{'id': 'row', 'kind': 'insert_row', 'node_id': row['node_id'], 'before': row['text'], 'values': ['x', 'y']}])
+        output, receipt = self.generate([{'id': 'row', 'kind': 'insert_row', 'node_id': row['node_id'],
+                                          'before': row['text'], 'values': ['负债', '50']}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        clean = Document(output / 'clean.docx').tables[0]
+        self.assertEqual(len(clean.rows), 3)
+        header = clean.rows[0]._tr
+        self.assertEqual(len(header.findall(q('tc'))), 1)
+        self.assertEqual(header.find(q('tc') + '/' + q('tcPr') + '/' + q('gridSpan')).get(q('val')), '2')
+        self.assertEqual((clean.cell(2, 0).text, clean.cell(2, 1).text), ('负债', '50'))
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
+
+    def test_vertical_merge_extends_when_appending_a_row(self):
+        doc = Document(self.source)
+        doc.tables[0].cell(0, 0).merge(doc.tables[0].cell(1, 0))
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        self.log = empty_log(self.data, self.source.read_bytes())
+        row = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'row' and n['text'].strip().endswith('100'))
+        output, receipt = self.generate([{'id': 'row', 'kind': 'insert_row', 'node_id': row['node_id'],
+                                          'before': row['text'], 'values': ['', '50']}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        clean = Document(output / 'clean.docx').tables[0]
+        self.assertEqual(len(clean.rows), 3)
+        first = [r.findall(q('tc'))[0] for r in clean._tbl.findall(q('tr'))]
+        merges = [cell.find(q('tcPr') + '/' + q('vMerge')) for cell in first]
+        self.assertEqual(merges[0].get(q('val')), 'restart')
+        self.assertIsNotNone(merges[1])
+        self.assertIsNotNone(merges[2])
+        self.assertEqual(clean.cell(2, 1).text, '50')
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
 
     def test_style_and_paragraph_drift_reported_without_failing_delivery_command(self):
         self.log['no_changes_reason'] = '合成测试保留原稿，验证独立诊断。'
