@@ -36,7 +36,7 @@ function scannedPagePng(width: number, height: number): Buffer {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-type Scripted = (call: number, body: Record<string, unknown>) => { status: number; item?: Record<string, unknown>; html?: string };
+type Scripted = (call: number, body: Record<string, unknown>) => { status: number; item?: Record<string, unknown>; html?: string; incompleteReason?: string };
 async function provider(script: Scripted) {
   const received: { bytes: number; body: Record<string, unknown> }[] = [];
   const server = createServer(async (req: IncomingMessage, res) => {
@@ -45,11 +45,16 @@ async function provider(script: Scripted) {
     received.push({ bytes: raw.length, body });
     const reply = script(received.length, body);
     if (reply.status !== 200) { res.writeHead(reply.status, { 'content-type': 'text/html' }); res.end(reply.html ?? ''); return; }
-    const response = { id: 'resp_e2e_' + received.length, object: 'response', status: 'completed', model: 'deepseek-flash', output: [reply.item],
+    const incomplete = reply.incompleteReason !== undefined;
+    const response = { id: 'resp_e2e_' + received.length, object: 'response', status: incomplete ? 'incomplete' : 'completed', model: 'deepseek-flash',
+      output: reply.item ? [reply.item] : [], ...(incomplete ? { incomplete_details: { reason: reply.incompleteReason } } : {}),
       usage: { input_tokens: 100, output_tokens: 5, total_tokens: 105, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
     res.writeHead(200, { 'content-type': 'text/event-stream', 'x-request-id': 'req_e2e_' + received.length });
-    for (const e of [{ type: 'response.created', response: { ...response, status: 'in_progress', output: [] } }, { type: 'response.output_item.added', output_index: 0, item: reply.item },
-      { type: 'response.output_item.done', output_index: 0, item: reply.item }, { type: 'response.completed', response }]) res.write('event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n');
+    const events = [{ type: 'response.created', response: { ...response, status: 'in_progress', output: [] } },
+      ...(reply.item ? [{ type: 'response.output_item.added', output_index: 0, item: reply.item },
+        { type: 'response.output_item.done', output_index: 0, item: reply.item }] : []),
+      { type: incomplete ? 'response.incomplete' : 'response.completed', response }];
+    for (const e of events) res.write('event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n');
     res.end();
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -142,6 +147,37 @@ test('real Codex: provider 413 stops repeated requests and the gateway records t
   const live = logs.filter(l => l.event === 'request');
   assert.equal(live.length, summary.status_counts['413'], 'every 413 is visible in the live worker log');
   t.diagnostic(JSON.stringify({ attempts_413: summary.status_counts['413'], first_413_request_bytes: summary.first_413_request_bytes }));
+});
+
+const outputLimitMessage = 'Incomplete response returned, reason: max_output_tokens';
+
+test('real Codex: HTTP 200 response.incomplete plus pinned JSONL failure identifies the provider output limit', { skip: !codex && 'set BB_TEST_CODEX_BIN', timeout: 30000 }, async t => {
+  const upstream = await provider(() => ({ status: 200, incompleteReason: 'max_output_tokens' }));
+  const s = await setup(upstream.url);
+  process.env.BB_SYNTH_E2E_KEY = KEY;
+  t.after(async () => { delete process.env.BB_SYNTH_E2E_KEY; await upstream.close(); await rm(s.root, { recursive: true, force: true }); });
+  const failures: unknown[] = [];
+  const result = await runCodexProcess({ ...s.config, model_gateway: 'enforce', model_max_request_bytes: 2 * 1024 * 1024 }, {
+    prompt: 'Run the synthetic authoring task.', cwd: s.cwd, codexHome: s.home, home: s.home, schemaFile: null, ephemeral: true, resumeThreadId: null,
+    fileAuthoring: true, contextRotation: true, captureExecLog: true,
+    onEvent: event => { if (event.type === 'turn.failed') failures.push(event.error); }, gatewayLog: () => {},
+  });
+  assert.equal(result.exit_code, 1);
+  assert.equal(result.stop, null);
+  assert.deepEqual(failures, [{ message: outputLimitMessage }]);
+  assert.equal(result.turn_completed, false);
+  assert.equal(upstream.received.length, 1);
+  const [, request] = gatewaySection(result.exec_log!.bytes.toString());
+  assert.equal(request.response.status, 200);
+  assert.equal(request.response.terminal_event, 'response.incomplete');
+  assert.equal(request.response.incomplete_reason, 'max_output_tokens');
+  assert.equal(request.response.usage.output_tokens, 5);
+  const classified = classifyCodexResult(result, () => assert.fail('an incomplete outcome cannot be accepted as a result'));
+  assert.equal(classified.outcome, 'pending_reconcile');
+  assert.equal(classified.error_code, 'MODEL_PROVIDER_OUTPUT_LIMIT');
+  assert.equal(classified.finish_reason, 'max_output_tokens');
+  assert.equal(classified.usage.status, 'unknown');
+  assert.equal(classified.usage.output_tokens, null, 'one HTTP observation is not the whole CLI attempt usage');
 });
 
 test('real Codex: enforcement blocks a scan-expanded request before the provider receives it', { skip: !codex && 'set BB_TEST_CODEX_BIN', timeout: 120000 }, async t => {

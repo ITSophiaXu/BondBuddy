@@ -51,6 +51,8 @@ export type ModelGatewayRequestShape = {
   json_bytes: number | null;
   model: string | null;
   stream: boolean | null;
+  /** The explicit top-level wire parameter, not inferred from usage. */
+  max_output_tokens: number | null;
   input_items: number | null;
   /** Item type (with role for messages) -> count and serialized bytes. */
   items: Record<string, { count: number; bytes: number }>;
@@ -69,6 +71,7 @@ export type ModelGatewayRequestShape = {
   images_omitted: number;
 };
 export type ModelGatewayUsage = { input_tokens: number | null; cached_input_tokens: number | null; output_tokens: number | null; reasoning_tokens: number | null; total_tokens: number | null };
+type ModelOutputItemType = 'message' | 'reasoning' | 'function_call' | 'custom_tool_call' | 'other';
 export type ModelGatewayResponseShape = {
   status: number;
   content_type: 'event-stream' | 'json' | 'html' | 'text' | 'other' | null;
@@ -78,6 +81,9 @@ export type ModelGatewayResponseShape = {
   response_id: string | null;
   sse_events: number;
   terminal_event: string | null;
+  incomplete_reason: 'max_output_tokens' | 'content_filter' | null;
+  /** Fixed keys, terminal response snapshot only; no item payloads are retained. */
+  output_item_counts: Partial<Record<ModelOutputItemType, number>> | null;
   usage: ModelGatewayUsage | null;
   error_type: string | null;
   error_code: string | null;
@@ -192,7 +198,7 @@ function itemKey(item: unknown): string {
 export function analyzeModelRequest(body: Buffer, contentEncoding?: string | null): ModelGatewayRequestShape {
   const encoding = contentEncoding ? contentEncoding.trim().toLowerCase() : null;
   const shape: ModelGatewayRequestShape = { analysis: 'empty', content_encoding: encoding ? (safeToken(encoding, 32) ? encoding : 'other') : null,
-    json_bytes: null, model: null, stream: null, input_items: null, items: {}, largest_item: null, instructions_bytes: 0, tools_bytes: 0, tool_count: 0,
+    json_bytes: null, model: null, stream: null, max_output_tokens: null, input_items: null, items: {}, largest_item: null, instructions_bytes: 0, tools_bytes: 0, tool_count: 0,
     image_count: 0, image_data_url_bytes: 0, image_decoded_bytes: 0, max_image_data_url_bytes: 0, image_refs: 0, images: [], images_omitted: 0 };
   if (!body.length) return shape;
   let json = body;
@@ -209,6 +215,7 @@ export function analyzeModelRequest(body: Buffer, contentEncoding?: string | nul
   shape.analysis = 'parsed';
   shape.model = safeToken(p.model) ? p.model : null;
   shape.stream = typeof p.stream === 'boolean' ? p.stream : null;
+  shape.max_output_tokens = count(p.max_output_tokens);
   shape.instructions_bytes = typeof p.instructions === 'string' ? Buffer.byteLength(p.instructions) : 0;
   if (Array.isArray(p.tools)) { shape.tool_count = p.tools.length; shape.tools_bytes = jsonBytes(p.tools); }
   const add = (key: string, bytes: number) => {
@@ -249,6 +256,22 @@ function usageOf(raw: unknown): ModelGatewayUsage | null {
     output_tokens: count(u.output_tokens), reasoning_tokens: detail('output_tokens_details', 'reasoning_tokens'), total_tokens: count(u.total_tokens) };
 }
 
+function isOutputLimitedResponse(shape: ModelGatewayResponseShape | null): boolean {
+  return shape?.status === 200 && shape.content_type === 'event-stream' && shape.parse === 'ok' &&
+    shape.terminal_event === 'response.incomplete' && shape.incomplete_reason === 'max_output_tokens';
+}
+
+function outputItemCounts(output: unknown): ModelGatewayResponseShape['output_item_counts'] {
+  if (!Array.isArray(output)) return null;
+  const counts: Partial<Record<ModelOutputItemType, number>> = {};
+  for (const item of output) {
+    const type: unknown = item?.type;
+    const key = type === 'message' || type === 'reasoning' || type === 'function_call' || type === 'custom_tool_call' ? type : 'other';
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /** Observes the bytes Codex receives. Parsing is bounded and can never alter the stream. */
 export class ModelGatewayResponseMeter {
   private readonly shape: ModelGatewayResponseShape;
@@ -264,8 +287,8 @@ export class ModelGatewayResponseMeter {
     const encoding = typeof rawEncoding === 'string' ? rawEncoding.toLowerCase().trim() : null;
     const kind = contentKind(typeof headers['content-type'] === 'string' ? headers['content-type'] : undefined);
     this.shape = { status, content_type: kind, content_encoding: encoding ? (safeToken(encoding, 32) ? encoding : 'other') : null, bytes: 0,
-      upstream_request_id: requestIdHeader(headers), response_id: null, sse_events: 0, terminal_event: null, usage: null, error_type: null, error_code: null,
-      parse: 'ok' };
+      upstream_request_id: requestIdHeader(headers), response_id: null, sse_events: 0, terminal_event: null, incomplete_reason: null, output_item_counts: null,
+      usage: null, error_type: null, error_code: null, parse: 'ok' };
     const compressed = !!encoding && encoding !== 'identity';
     this.mode = compressed ? 'skip' : kind === 'event-stream' ? 'sse' : kind === 'json' ? 'body' : 'skip';
     this.bodyLimit = status >= 400 ? MAX_ERROR_BODY_BYTES : MAX_JSON_RESPONSE_BYTES;
@@ -279,7 +302,10 @@ export class ModelGatewayResponseMeter {
   private sse(text: string) {
     let start = 0;
     for (let nl = text.indexOf('\n'); nl >= 0; nl = text.indexOf('\n', start)) {
-      if (!this.overflow) this.event(this.line + text.slice(start, nl));
+      if (!this.overflow) {
+        if (this.line.length + nl - start > MAX_SSE_LINE_CHARS) this.shape.parse = 'incomplete';
+        else this.event(this.line + text.slice(start, nl));
+      }
       this.line = ''; this.overflow = false; start = nl + 1;
     }
     if (this.overflow) return;
@@ -303,7 +329,22 @@ export class ModelGatewayResponseMeter {
     const response = o.response && typeof o.response === 'object' ? o.response as Record<string, unknown> : o.object === 'response' ? o : null;
     if (response && safeToken(response.id)) this.shape.response_id = response.id;
     const type = typeof o.type === 'string' ? o.type : null;
-    if (type && ['response.completed', 'response.failed', 'response.incomplete', 'error'].includes(type)) this.shape.terminal_event = type;
+    if (type && ['response.completed', 'response.failed', 'response.incomplete', 'response.cancelled', 'error'].includes(type)) {
+      // Conflicting terminal records cannot corroborate a CLI failure, even
+      // if the latest event by itself would qualify.
+      if (this.shape.terminal_event !== null) this.shape.parse = 'incomplete';
+      this.shape.terminal_event = type;
+      this.shape.incomplete_reason = null;
+      this.shape.output_item_counts = null;
+      if (type === 'response.incomplete' && response && response === o.response) {
+        const details = response.incomplete_details;
+        const reason = details && typeof details === 'object' ? (details as Record<string, unknown>).reason : null;
+        if (reason === 'max_output_tokens' || reason === 'content_filter') this.shape.incomplete_reason = reason;
+        this.shape.output_item_counts = outputItemCounts(response.output);
+        if ((response.status !== undefined && response.status !== 'incomplete') || response.error != null || o.error != null)
+          this.shape.parse = 'incomplete';
+      }
+    }
     if (response?.usage) this.shape.usage = usageOf(response.usage);
     const error = response?.error && typeof response.error === 'object' ? response.error : o.error && typeof o.error === 'object' ? o.error : type === 'error' ? o : null;
     if (error) {
@@ -312,8 +353,16 @@ export class ModelGatewayResponseMeter {
       if (safeToken(err.code, 64)) this.shape.error_code = err.code;
     }
   }
+  observedOutputLimit(): boolean { return isOutputLimitedResponse(this.shape); }
   finish(): ModelGatewayResponseShape {
-    if (this.mode === 'sse') { const tail = this.line + this.decoder.end(); if (tail && !this.overflow) this.event(tail); this.line = ''; }
+    if (this.mode === 'sse') {
+      const tail = this.decoder.end();
+      if (!this.overflow) {
+        if (this.line.length + tail.length > MAX_SSE_LINE_CHARS) this.shape.parse = 'incomplete';
+        else if (this.line || tail) this.event(this.line + tail);
+      }
+      this.line = '';
+    }
     if (this.mode === 'body') {
       if (this.bodyBytes > this.bodyLimit) this.shape.parse = 'incomplete';
       else if (this.bodyBytes) { try { this.apply(JSON.parse(Buffer.concat(this.body).toString('utf8'))); } catch { this.shape.parse = 'incomplete'; } }
@@ -442,6 +491,8 @@ export type ModelGatewayOptions = {
 export type ModelGateway = {
   readonly baseUrl: string;
   readonly proxied: boolean;
+  /** Per-attempt evidence for the latest request only, independent of log retention. */
+  latestOutputLimit(): { seq: number; transport_completed: boolean } | null;
   records(): ModelGatewayRecord[];
   summary(): ModelGatewaySummary;
   close(): Promise<void>;
@@ -465,6 +516,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
 
   const records: ModelGatewayRecord[] = [];
   let seq = 0, dropped = 0;
+  let latestOutputLimit: ModelGateway['latestOutputLimit'] = () => null;
   const summary: ModelGatewaySummary = { kind: 'summary', v: MODEL_GATEWAY_RECORD_VERSION, mode, upstream_host: upstream.host, proxied: !!proxy,
     requests: 0, completed: 0, client_closed: 0, upstream_errors: 0, gateway_rejected: 0, status_counts: {},
     total_request_bytes: 0, max_request_bytes: 0, max_request_seq: null, last_request_bytes: null, max_image_count: 0, max_image_data_url_bytes: 0,
@@ -521,6 +573,13 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       outcome: 'completed', gateway_error: null };
     let meter: ModelGatewayResponseMeter | null = null;
     let done = false;
+    // Replace at arrival, not finalization: even a newer request whose body
+    // never finishes makes an older incomplete response stale.
+    latestOutputLimit = () => {
+      if (record.method !== 'POST' || record.path !== '/responses') return null;
+      const observed = done ? record.outcome === 'completed' && isOutputLimitedResponse(record.response) : meter?.observedOutputLimit();
+      return observed ? { seq: record.seq, transport_completed: done } : null;
+    };
     const finalize = (outcome: ModelGatewayRecord['outcome'], gatewayError: string | null) => {
       if (done) return;
       done = true;
@@ -616,6 +675,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
   return {
     baseUrl: 'http://127.0.0.1:' + port,
     proxied: !!proxy,
+    latestOutputLimit: () => latestOutputLimit(),
     records: () => records.map(r => structuredClone(r)),
     summary: () => ({ ...structuredClone(summary), records_retained: records.length, records_dropped: dropped }),
     close: () => closing ??= new Promise<void>(resolve => {
@@ -650,9 +710,12 @@ export type ModelGatewayTrace = { run_id: string; call_id: string; logical_call_
 /** Compact, content-free worker log line for a request worth seeing live; null otherwise. */
 export function modelGatewayRequestLog(record: ModelGatewayRecord, trace?: ModelGatewayTrace): Record<string, unknown> | null {
   const status = record.response?.status ?? null;
-  if (record.outcome === 'completed' && status !== null && status < 400 && record.request_bytes < MODEL_GATEWAY_LARGE_REQUEST_BYTES) return null;
+  const incomplete = record.response?.terminal_event === 'response.incomplete' ? record.response : null;
+  if (!incomplete && record.outcome === 'completed' && status !== null && status < 400 && record.request_bytes < MODEL_GATEWAY_LARGE_REQUEST_BYTES) return null;
   const r = record.request;
   return { kind: 'model_gateway', event: 'request', ...(trace ?? {}), seq: record.seq, outcome: record.outcome, gateway_error: record.gateway_error,
+    ...(incomplete ? { terminal_event: incomplete.terminal_event, incomplete_reason: incomplete.incomplete_reason, max_output_tokens: r?.max_output_tokens ?? null,
+      output_item_counts: incomplete.output_item_counts } : {}),
     status, request_bytes: record.request_bytes, input_items: r?.input_items ?? null, image_count: r?.image_count ?? null,
     image_data_url_bytes: r?.image_data_url_bytes ?? null, max_image_data_url_bytes: r?.max_image_data_url_bytes ?? null,
     largest_item: r?.largest_item ?? null, upstream_request_id: record.response?.upstream_request_id ?? null, duration_ms: record.duration_ms };

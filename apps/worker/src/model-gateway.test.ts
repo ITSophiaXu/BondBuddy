@@ -9,7 +9,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
-import { analyzeModelRequest, formatModelGatewayExecLogSection, imageDimensions, modelGatewayRequestLog, selectModelGatewayProxy, startModelGateway, MODEL_GATEWAY_EXEC_LOG_MARKER, MODEL_GATEWAY_LARGE_REQUEST_BYTES, type ModelGatewayRecord, type ModelGatewayPayloadRejection } from './model-gateway.js';
+import { analyzeModelRequest, formatModelGatewayExecLogSection, imageDimensions, modelGatewayRequestLog, selectModelGatewayProxy, startModelGateway, ModelGatewayResponseMeter, MODEL_GATEWAY_EXEC_LOG_MARKER, MODEL_GATEWAY_LARGE_REQUEST_BYTES, type ModelGatewayRecord, type ModelGatewayPayloadRejection } from './model-gateway.js';
 import { createCodexExecLogCapture, loadCodexAdapterConfig, runCodexProcess, DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig } from './codex-adapter.js';
 
 const SECRET = 'SYNTHETIC-PRIVATE-CONTENT-7f3a';
@@ -141,6 +141,63 @@ test('measuring gateway forwards bytes, headers and SSE unchanged and records on
   const persisted = JSON.stringify([summary, gateway.records()]);
   assert.ok(!persisted.includes(SECRET) && !persisted.includes(KEY) && !persisted.includes('Bearer'), 'measurements carry no content or credentials');
   assert.equal(modelGatewayRequestLog(r), null, 'ordinary successful requests stay out of the live worker log');
+});
+
+test('incomplete metering only records an explicit quota, allowed reason and fixed output item counts', async t => {
+  const upstream = createServer(async (req, res) => {
+    await collect(req);
+    const mode = new URL(req.url!, 'http://127.0.0.1').searchParams.get('mode');
+    const reason = mode === 'unknown' ? SECRET : mode === 'safety' ? 'content_filter' : 'max_output_tokens';
+    const status = mode === 'inconsistent-status' ? 'completed' : 'incomplete';
+    const reply = { type: 'response.incomplete', response: { object: 'response', status, incomplete_details: { reason },
+      output: [{ type: 'message', content: [{ text: SECRET }] }, { type: 'function_call', arguments: SECRET }, { type: SECRET }] } };
+    res.writeHead(mode === 'http-error' ? 400 : 200, { 'content-type': 'text/event-stream' });
+    res.write('data: ' + JSON.stringify(reply) + '\n\n');
+    if (mode === 'duplicate-terminal') res.write('data: ' + JSON.stringify(reply) + '\n\n');
+    res.end();
+  });
+  const port = await listen(upstream);
+  const gateway = await startModelGateway({ upstreamBaseUrl: 'http://127.0.0.1:' + port });
+  t.after(async () => { await gateway.close(); await closeServer(upstream); });
+  const body = Buffer.from(JSON.stringify({ ...responsesBody(false), max_output_tokens: 2000 }));
+  await post(gateway.baseUrl + '/responses', body);
+  assert.deepEqual(gateway.latestOutputLimit(), { seq: 1, transport_completed: true });
+  const [record] = gateway.records();
+  assert.equal(record.request?.max_output_tokens, 2000);
+  assert.equal(record.response?.incomplete_reason, 'max_output_tokens');
+  assert.deepEqual(record.response?.output_item_counts, { message: 1, function_call: 1, other: 1 });
+  assert.equal(analyzeModelRequest(Buffer.from(JSON.stringify(responsesBody(false)))).max_output_tokens, null);
+  assert.equal(analyzeModelRequest(Buffer.from('{"max_output_tokens":"2000"}')).max_output_tokens, null);
+  assert.equal(modelGatewayRequestLog(record)?.max_output_tokens, 2000);
+  assert.equal(modelGatewayRequestLog(record)?.incomplete_reason, 'max_output_tokens');
+  for (const mode of ['unknown', 'safety', 'inconsistent-status', 'http-error', 'duplicate-terminal']) {
+    await post(gateway.baseUrl + '/responses?mode=' + mode, body);
+    assert.equal(gateway.latestOutputLimit(), null, mode + ' must invalidate the preceding output-limit evidence');
+  }
+  assert.equal(gateway.records()[1].response?.incomplete_reason, null);
+  assert.equal(gateway.records()[2].response?.incomplete_reason, 'content_filter');
+  assert.ok(!JSON.stringify([gateway.records(), modelGatewayRequestLog(record)]).includes(SECRET));
+});
+
+test('SSE line bound covers complete lines in one chunk and lines finished in a later chunk', () => {
+  const limit = 16 * 1024 * 1024;
+  const event = 'data: ' + JSON.stringify({ type: 'response.incomplete', response: {
+    status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }
+  } });
+  const large = Buffer.from(event.padEnd(limit + 1) + '\n\n');
+  for (const cut of [0, limit]) {
+    const meter = new ModelGatewayResponseMeter(200, { 'content-type': 'text/event-stream' });
+    if (cut) meter.push(large.subarray(0, cut));
+    meter.push(large.subarray(cut));
+    const response = meter.finish();
+    assert.equal(response.parse, 'incomplete');
+    assert.equal(response.sse_events, 0, 'an oversized line is not parsed as a terminal event');
+    assert.equal(meter.observedOutputLimit(), false);
+  }
+  const atBound = new ModelGatewayResponseMeter(200, { 'content-type': 'text/event-stream' });
+  atBound.push(Buffer.from(event.padEnd(limit) + '\n\n'));
+  assert.equal(atBound.finish().parse, 'ok', 'the original limit remains inclusive');
+  assert.equal(atBound.observedOutputLimit(), true);
 });
 
 test('provider 413 passes through unchanged and is summarized for diagnosis', async t => {
