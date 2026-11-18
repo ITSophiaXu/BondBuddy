@@ -944,5 +944,7 @@ The material row displays affected page numbers and recommends electronic origin
 
 
 ## 审计 PDF 清晰度拦截（2026-11-18，#1603）
-募集书更新上传审计 PDF 后单独入队轻量检查。复用 bb_jobs 的 parse/material_parse、唯一材料版本及 parser_version 命名空间 pdf-raster-quality-2；显式重试用 :retry:<uuid> 保留已终态回执。worker只核验并暂存原件、执行有界PDFium探测，完成不代表全文解析或识别成功。POST材料/pdf-quality为幂等确保检查及显式重试入口，复用MaterialParseJobResponse，旧parse-job接口不变。v1结果可读取但不能作为新拦截依据。
-输入锁定、报价、新执行在项目事务锁内查询当前未删除审计PDF的精确owner/project/version/hash和最新v2检查回执；页面同样阻止待检查、低清和未完成检查，显示更换电子版或重试。现有run幂等重放提前返回。没有模型调用、账务写入、数据库迁移或新增运行依赖。完整产品行为见同日audit-pdf-quality-gate决定。
+募集书更新上传审计 PDF 后单独入队轻量检查。复用 bb_jobs 的 parse/material_parse、唯一材料版本及 parser_version 命名空间 pdf-raster-quality-3（同日 #1606 升级为最多8页抽查，兼容复用v2全页回执）；显式重试用 :retry:<uuid> 保留已终态回执。worker只核验并暂存原件、执行有界PDFium探测，完成不代表全文解析或识别成功。POST材料/pdf-quality为幂等确保检查及显式重试入口，复用MaterialParseJobResponse，旧parse-job接口不变。v1结果可读取但不能作为新拦截依据。
+输入锁定、报价、新执行在项目事务锁内查询当前未删除审计PDF的精确owner/project/version/hash和最新v2/v3有效检查回执；页面同样阻止待检查、低清和未完成检查，显示更换电子版或重试。现有run幂等重放提前返回。没有模型调用、账务写入、数据库迁移或新增运行依赖。完整产品行为见同日audit-pdf-quality-gate决定。
+
+审计 PDF 快速抽查（#1606）：公共契约定义代表页策略与 v3 sampled_pages，Python 对前部/中尾部最多8页测量，首个低清页即结束。complete 只表示所声明检查范围完成，前后端共同校验实际页序与完成条件；无有效依据的提前结束不能放行。只读取图片尺寸/位置，不执行OCR或图像解码。旧v2结果复用避免重复检查；详见2026-11-18-audit-pdf-quality-sampling决定。

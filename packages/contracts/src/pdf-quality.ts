@@ -1,15 +1,25 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-export const PDF_QUALITY_VERSION = 'pdf-raster-quality-2' as const;
+export const PDF_QUALITY_VERSION = 'pdf-raster-quality-3' as const;
+/** v2 used the same DPI rule with full-page coverage; reuse its immutable receipts. */
+export const PDF_QUALITY_JOB_VERSIONS = [PDF_QUALITY_VERSION, 'pdf-raster-quality-2'] as const;
+export const PDF_QUALITY_SAMPLE_LIMIT = 8;
+/** One-based representative pages, front body first, then distributed across the report. */
+export function pdfQualitySamplePages(count: number): number[] {
+  if (!Number.isSafeInteger(count) || count < 1) return [];
+  if (count <= PDF_QUALITY_SAMPLE_LIMIT) return Array.from({length: count}, (_, i) => i + 1);
+  return [...new Set([5, 8, Math.min(12, count), 1, Math.ceil(count / 4), Math.ceil(count / 2), Math.ceil(count * 3 / 4), count])];
+}
 /** Measured raster resolution, not an OCR/readability verdict. v1 remains readable for old jobs. */
 export const PdfQualitySchema = Type.Object({
-  version: Type.Union([Type.Literal('pdf-raster-quality-1'), Type.Literal(PDF_QUALITY_VERSION)]),
+  version: Type.Union([Type.Literal('pdf-raster-quality-1'), Type.Literal('pdf-raster-quality-2'), Type.Literal(PDF_QUALITY_VERSION)]),
   status: Type.Union([Type.Literal('complete'), Type.Literal('partial'), Type.Literal('unavailable')]),
   page_count: Type.Union([Type.Integer({minimum: 1}), Type.Null()]),
   checked_pages: Type.Integer({minimum: 0, maximum: 1500}),
+  sampled_pages: Type.Optional(Type.Array(Type.Integer({minimum: 1}), {maxItems: PDF_QUALITY_SAMPLE_LIMIT, uniqueItems: true})),
   low_resolution_pages: Type.Array(Type.Object({
-    page: Type.Integer({minimum: 1, maximum: 1500}),
+    page: Type.Integer({minimum: 1}),
     dpi: Type.Integer({minimum: 1, maximum: 199}),
   }, {additionalProperties: false}), {maxItems: 1500}),
 }, {additionalProperties: false});
@@ -19,11 +29,17 @@ export function readPdfQuality(value: unknown): PdfQuality | undefined {
   if (!Value.Check(PdfQualitySchema, value)) return undefined;
   if (value.page_count === null && (value.checked_pages || value.low_resolution_pages.length || value.status !== 'unavailable')) return undefined;
   if (value.page_count !== null && value.checked_pages > value.page_count) return undefined;
-  if (value.status === 'complete' && value.checked_pages !== value.page_count) return undefined;
+  if (value.version === PDF_QUALITY_VERSION) {
+    const sampled = value.sampled_pages, plan = pdfQualitySamplePages(value.page_count ?? 0);
+    if (!sampled || sampled.length !== value.checked_pages || sampled.some((page, i) => page !== plan[i])) return undefined;
+    // Completion covers the sample plan, or ends on the first measured low page.
+    if (value.low_resolution_pages.length > 1 || value.low_resolution_pages.some(p => p.page !== sampled.at(-1))) return undefined;
+    if (value.status === 'complete' && (!sampled.length || !value.low_resolution_pages.length && sampled.length !== plan.length)) return undefined;
+  } else if (value.sampled_pages !== undefined || value.status === 'complete' && value.checked_pages !== value.page_count) return undefined;
   if (value.status === 'unavailable' && (value.checked_pages || value.low_resolution_pages.length)) return undefined;
   let previous = 0;
   for (const page of value.low_resolution_pages) {
-    if (page.page <= previous || page.page > value.checked_pages) return undefined;
+    if (page.page <= previous || page.page > (value.version === PDF_QUALITY_VERSION ? value.page_count! : value.checked_pages)) return undefined;
     previous = page.page;
   }
   return value;
@@ -41,7 +57,7 @@ export const AUDIT_PDF_PENDING_MESSAGE = '正在检查审计报告 PDF 的清晰
 export const AUDIT_PDF_INCOMPLETE_MESSAGE = '审计报告 PDF 的清晰度检查未完成，暂不能继续。请重试检查；仍无法完成时，请重新上传电子版材料。';
 export function auditPdfQualityState(value: unknown): 'pending' | 'low' | 'incomplete' | 'ready' {
   const quality = readPdfQuality(value);
-  if (!quality || quality.version !== PDF_QUALITY_VERSION) return 'pending';
+  if (!quality || !PDF_QUALITY_JOB_VERSIONS.some(version => version === quality.version)) return 'pending';
   if (quality.low_resolution_pages.length) return 'low';
   return quality.status === 'complete' ? 'ready' : 'incomplete';
 }
@@ -51,4 +67,4 @@ export function auditPdfQualityMessage(value: unknown): string {
     : state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : AUDIT_PDF_PENDING_MESSAGE;
 }
 
-export const isPdfQualityJobVersion = (version: string) => version === PDF_QUALITY_VERSION || version.startsWith(PDF_QUALITY_VERSION + ':retry:');
+export const isPdfQualityJobVersion = (version: string) => PDF_QUALITY_JOB_VERSIONS.some(current => version === current || version.startsWith(current + ':retry:'));

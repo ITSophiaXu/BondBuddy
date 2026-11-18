@@ -1,5 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
-import { PDF_QUALITY_STAGE, PDF_QUALITY_VERSION, isAuditPdf, auditPdfQualityState, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
+import { PDF_QUALITY_STAGE, PDF_QUALITY_VERSION, PDF_QUALITY_JOB_VERSIONS, isAuditPdf, auditPdfQualityState, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
 import {
   ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_OCR_STAGE, MATERIAL_PARSE_STAGES,
   type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MATERIAL_PARSE_RUNTIME_EVENT_TYPES, type MaterialParseJob,
@@ -289,8 +289,8 @@ export async function enqueueAuditPdfQuality(client: PoolClient, input: {
   owner: string; projectId: string; materialId: string; materialVersion: number; sha256: string; traceId: string;
 }) {
   const existing = (await client.query(
-    "SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND material_sha256=$5 AND job_type='parse' AND subtype='material_parse' AND (parser_version=$6 OR parser_version LIKE $6 || ':retry:%') ORDER BY created_at DESC,id DESC LIMIT 1",
-    [input.owner,input.projectId,input.materialId,input.materialVersion,input.sha256,PDF_QUALITY_VERSION])).rows[0];
+    "SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND material_sha256=$5 AND job_type='parse' AND subtype='material_parse' AND split_part(parser_version, ':retry:', 1)=ANY($6::text[]) ORDER BY created_at DESC,id DESC LIMIT 1",
+    [input.owner,input.projectId,input.materialId,input.materialVersion,input.sha256,PDF_QUALITY_JOB_VERSIONS])).rows[0];
   return existing ? {jobId: existing.id as string, created: false} : enqueueMaterialParse(client, {...input, parserVersion: PDF_QUALITY_VERSION});
 }
 
