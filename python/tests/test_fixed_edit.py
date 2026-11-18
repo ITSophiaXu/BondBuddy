@@ -16,7 +16,9 @@ from docx.shared import Inches, Pt
 from lxml import etree as ET
 
 from bondbuddy_file_authoring.check import package, resolve_revisions
-from bondbuddy_file_authoring.fixed_edit import Editor, empty_log, finalize, load_input, write_json
+from bondbuddy_file_authoring.fixed_edit import (Editor, RECOVERY_BATCH_BYTES, RECOVERY_BATCH_OPERATIONS,
+                                                 RECOVERY_BATCH_POLICY, RECOVERY_BATCH_POLICY_BYTES,
+                                                 empty_log, finalize, load_input, write_json)
 from bondbuddy_file_authoring.format_diff import audit, canonical
 from bondbuddy_file_authoring.format_plan import restore_absent_property_shells
 from bondbuddy_file_authoring.template_manifest import build_manifest, node_text, sha
@@ -581,6 +583,53 @@ class FixedEditTests(unittest.TestCase):
         inspected = subprocess.run(args + ['inspect', '--input', str(self.input), '--operations', str(self.log_path), '--node', node['node_id']], capture_output=True, encoding='utf-8')
         self.assertEqual(inspected.returncode, 0, inspected.stderr)
         self.assertEqual(json.loads(inspected.stdout)['nodes'][0]['text'], '保留😀并更新文字。')
+
+    def test_output_limit_retry_bounds_batches_without_losing_saved_edits(self):
+        node = self.node('保留😀的原始段落。')
+        operation = self.root / 'op.json'
+        args = [sys.executable, '-m', 'bondbuddy_file_authoring.fixed_edit', 'apply',
+                '--input', str(self.input), '--operations', str(self.log_path), '--operation-file', str(operation)]
+
+        def apply(value):
+            write_json(operation, value)
+            return subprocess.run(args, capture_output=True, encoding='utf-8', timeout=15)
+
+        def replace(op_id, before, after):
+            return {'id': op_id, 'kind': 'replace_text', 'node_id': node['node_id'], 'before': before, 'after': after}
+
+        # First segment wrote this exact edit before exhausting its provider output.
+        first = replace('kept', node['text'], '已保存。')
+        self.assertEqual(apply(first).returncode, 0)
+        saved = self.log_path.read_bytes()
+        (self.root / RECOVERY_BATCH_POLICY).write_bytes(RECOVERY_BATCH_POLICY_BYTES)
+        adds = [replace(f'part-{i}', '已保存。' if i == 0 else f'小批次{i - 1}。', f'小批次{i}。')
+                for i in range(RECOVERY_BATCH_OPERATIONS + 1)]
+        oversized = apply(adds)
+        self.assertEqual(oversized.returncode, 1)
+        self.assertEqual(json.loads(oversized.stderr)['error'], 'WORD_EDIT_BATCH_LIMIT')
+        self.assertEqual(self.log_path.read_bytes(), saved)
+        for chunk in (adds[:-1], adds[-1:]):
+            result = apply(chunk)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        saved = self.log_path.read_bytes()
+
+        # Bytes are counted in UTF-8 rather than code points. A single atomic
+        # operation assembled on disk remains supported even when not splittable.
+        large = '长' * (RECOVERY_BATCH_BYTES // 3 + 1)
+        one = replace('large-one', adds[-1]['after'], large)
+        two = replace('short-final', large, '最终短段落。')
+        oversized = apply([one, two])
+        self.assertEqual(oversized.returncode, 1)
+        self.assertEqual(json.loads(oversized.stderr)['error'], 'WORD_EDIT_BATCH_LIMIT')
+        self.assertEqual(self.log_path.read_bytes(), saved)
+        for value in (one, two):
+            result = apply(value)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.log_path.read_text())['operations'], [first, *adds, one, two])
+        output = self.root / 'recovered-words'
+        finalize(self.input, self.log_path, output)
+        self.assertTrue((output / 'tracked.docx').is_file())
+        self.assertIn('最终短段落。', Document(output / 'clean.docx').paragraphs[2].text)
 
     def test_large_prospectus_replay_finishes_without_repeated_document_scans(self):
         # A long, run-heavy synthetic package exercises the real finalization

@@ -100,6 +100,11 @@ export function readinessMessage(reason: string, lastProcessingStage?: string, r
   if (runState === 'failed' && reason === 'provider_reconcile_project_inactive') return '所属项目已归档或删除，本轮任务已失败。已保存的处理记录仍保留。';
   if (runState === 'failed' && ['provider_reconcile_unrecoverable','provider_reconcile_unknown_exhausted'].includes(reason)) return '本轮处理未能恢复，任务已失败。已保存材料和处理记录仍保留；可在项目中明确开始新一轮任务。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
+  if (reason === 'file_authoring_output_limit_recovery_pending') return '编制服务的单步输出达到上限，正在核对已保存的进度。通过核对后将继续原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_recovery_unavailable') return runState === 'failed'
+    ? '编制服务的单步输出达到上限，本轮无法从已核验的进度继续。已保存材料仍保留，请联系支持核对本轮任务。'
+    : '编制服务的单步输出达到上限，目前无法核实可接续的进度。请联系支持核对原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_retries_exhausted') return '编制服务多次达到单步输出上限，已停止自动重试。已保存材料与处理记录仍保留，请联系支持核对。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
   if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“继续修改”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';

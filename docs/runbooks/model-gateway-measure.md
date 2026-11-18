@@ -50,7 +50,9 @@ BB_MODEL_MAX_REQUEST_BYTES=
 - `enforce` 首次本地预算/编码拒绝，或首次收到上游 HTTP 413 后，本次调用进入停止状态；Codex 后续重连不能再次转发。上游 413 说明该请求已经到达供应商，和本地拦截的“未转发”分开记录。停止前已经发出的请求不能被当成从未调用。
 - 明确 HTTP 413 或本地请求字节超限使用 `MODEL_PROVIDER_PAYLOAD_TOO_LARGE`，编码拒绝使用 `MODEL_PROVIDER_REQUEST_REJECTED`；`enforce` 网关启动失败使用 `MODEL_ADAPTER_CONFIG_INVALID`。不会把本次调用此前未知的用量改为零，也不会因为最后一条请求被本地拦截就认定整场没有消耗。
 - 文件编制优先使用 `pdf_pages.py` 按页分段读取原生文本或本地 OCR，缓存绑定原件哈希、页码和 OCR 引擎。受控 `view_image` 单图最多 128 KiB，每个上下文累计图片 base64 和 data-URL 前缀最多 512 KiB；达到限额后返回宿主可识别的明确标记，停止当前上下文，在完整快照核验后按下述正常轮换次数限制换新上下文接续；已有 OCR 缓存和工作记录随快照保留，不把未查看区域当成已核验。
-- 累计图片预算耗尽是宿主的 `MODEL_CONTEXT_ROTATION_REQUIRED` 正常轮换，不冒充供应商 413。只有进程退出、不可变观测匹配、完整工作区快照及捕获元数据均核验通过，才在原任务内继续；整个任务最多正常轮换 32 次。明确 413、本地输出上限或超时仍共用每个逻辑调用最多 2 次、整个任务最多 6 次的故障恢复预算，正常轮换不占用该预算。
+- 累计图片预算耗尽是宿主的 `MODEL_CONTEXT_ROTATION_REQUIRED` 正常轮换，不冒充供应商 413。只有进程退出、不可变观测匹配、完整工作区快照及捕获元数据均核验通过，才在原任务内继续；整个任务最多正常轮换 32 次。明确 413、本地输出上限、明确的供应商输出 token 耗尽或超时仍共用每个逻辑调用最多 2 次、整个任务最多 6 次的故障恢复预算，正常轮换不占用该预算。
+- [#1604](https://github.com/ITSophiaXu/BondBuddy/issues/1604)：HTTP 200 只表示请求被接受。编制及篇幅修复须同时取得最后一条已完整收到的 `/responses` SSE `response.incomplete`、`incomplete_details.reason=max_output_tokens`、匹配的 CLI `turn.failed` 和正常退出 1，才记为 `MODEL_PROVIDER_OUTPUT_LIMIT`；断流、冲突、后续请求或不能解析的终态不触发此恢复。只能以本次完整快照、固定 deadline 和原积分预留有界续跑，不能自动重发原请求、复活旧任务，或使用上一模型段的快照冒充本段进度。
+- 输出额度恢复后的同一逻辑调用使用较小批次；受控固定编辑的多项 `apply` 最多 12 项且不超过 32 KiB，超限不改操作日志。同一个不可分割的操作可用分段落盘的本地片段组装后按原接口原子提交。供应商输出上限、输入预算、编制范围和 Word 质量门禁不因此改变。
 - 同一逻辑调用在首次宿主准备阶段按既有编制超时配置产生绝对 `deadline_at`，在首次调用 intent 的捕获元数据中绑定；快照、恢复审计、自动恢复和运维 retry 都必须保留同值，不能删除或延期。后续上下文只使用剩余时间，截止后不再启动模型并正常失败；缺少截止时间的历史快照不能授权正常轮换。配置默认编制时限仍为 5 小时，未扩大默认值。
 - 每次轮换继续使用原输入、run、积分预留、调用准入和并发许可；逐次保存供应商用量，未知仍为 unknown，不把部分 HTTP 响应计量冒充完整调用用量。现有 token 汇总是报告，不是硬额度；执行范围由轮换次数和绝对时间约束。用户暂停、积分暂停、钱包隔离和取消请求继续生效。
 - 工作区快照统一限制为 4096 文件、单文件 100 MiB、总计 512 MiB，完整保存 `input.json` 及 scratch/output；恢复前重新核对私有对象归属、路径、大小和哈希。现代调用的捕获失败、不完整或冲突时保持暂停，不静默从原材料重新开始。
@@ -84,7 +86,9 @@ exec-log ATTEMPT_ID --tail 400
 | `request.image_count` / `image_data_url_bytes` | 请求中内联图片数量，以及它们在请求体中占用的字节。 |
 | `request.images[]` | 每张图片的位置、格式、宽高、请求内字节和解码后字节（最多列 16 张）。 |
 | `response.status` / `upstream_request_id` | 响应状态码和上游请求编号；本地拒绝响应不是供应商 413，也没有供应商请求编号。 |
-| `response.usage` | 流式响应结束时供应商报告的 token 用量；缺失不等于零。 |
+| `response.usage` | 流式响应结束时供应商报告的单请求 token 用量；缺失不等于零，也不代替整次 CLI 调用的账务。 |
+| `request.max_output_tokens` | 本次实际 JSON 请求显式携带的输出额度；`null` 时不能据此推断供应商默认值。 |
+| `response.terminal_event` / `response.incomplete_reason` / `response.output_item_counts` | SSE 终态、允许记录的未完成原因，以及输出项分类计数（正文、推理、工具调用等）；不保存正文或工具参数。 |
 | `max_request_bytes` / `max_request_seq` | 本次调用中最大的请求及其序号。 |
 | `first_413_seq` / `first_413_request_bytes` | 首次上游响应 413 的请求序号和大小；本地拒绝没有上游响应，不计入这两个字段。 |
 | `mode`（汇总） | 本次网关使用 `measure` 还是 `enforce`。 |
