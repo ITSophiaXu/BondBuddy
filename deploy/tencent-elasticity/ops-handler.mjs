@@ -47,7 +47,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if(!expenseLedger)throw Error('PG_EXPENSE_LEDGER_REQUIRED');
         const ledger=await expenseLedger();
         const fresh=await refreshCloudQuote({configPath,config:baseConfig,transport:cloud.transport,
-          capturedAt:ledger.captured_at,readConfig,now:dependencies.now??Date.now});
+          capturedAt:ledger.captured_at,readConfig,now:dependencies.now??Date.now,fetchImpl:dependencies.tariffFetch??fetch});
         config=fresh.config;controller.config=config;cloud.config=config;
         return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config,history:await readExpenseHistory(config)});
       });

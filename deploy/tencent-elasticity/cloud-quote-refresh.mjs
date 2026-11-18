@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {canonical, sha256, requireThat} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
 import {expensePeriod, expensePeriodCap} from './costcap.mjs';
+import {tariffRefreshPolicy,collectTariffs,verifyTariffObservation} from './cloud-tariff-refresh.mjs';
 
 export const QUOTE_REFRESH_VERSION='lighthouse-quote-refresh-v1';
 const OWNER='100006372392', REGION='ap-beijing', INSTANCE='lhins-4i18xeto';
@@ -32,7 +33,8 @@ function refreshPolicy(config, at) {
   const period=expensePeriod(new Date(at).toISOString(),config.time_zone), end=date(period.period_end);
   // This is a separate reviewed tariff horizon, not the previous day's
   // observed network allowance. Expired tariff evidence cannot be extended.
-  requireThat(date(p.pricing_valid_until)>=end,'QUOTE_TARIFF_EXPIRED');
+  if(p.tariff_refresh)tariffRefreshPolicy(config,end);
+  else requireThat(date(p.pricing_valid_until)>=end,'QUOTE_TARIFF_EXPIRED');
   return {p,period,end};
 }
 
@@ -100,15 +102,20 @@ export function observeLighthouseQuote({caller,instances,traffic,config,at,previ
     request_ids:{caller:caller.RequestId,instance:instances.RequestId,traffic:traffic.RequestId}};
 }
 
-function makeSnapshot(template,config,observation) {
+function makeSnapshot(template,config,observation,tariff) {
   const at=date(observation.observed_at),end=date(observation.period_end),bounds=priceTemplate(template,config,at,end);
+  const period=expensePeriod(observation.observed_at,config.time_zone);
+  if(config.cloud_quote_refresh.tariff_refresh)verifyTariffObservation(tariff,config,template,period,at);
+  else requireThat(!tariff,'QUOTE_UNEXPECTED_TARIFF');
   const evidence=sha256(canonical(observation));
   const quote={...template,valid_from:observation.observed_at,valid_until:observation.period_end,refreshed_from_quote_sha256:config.quote_sha256,
     refresh_bounds:bounds,network_observation:{evidence_sha256:evidence,instance_id:INSTANCE,observed_at:observation.observed_at},
+    ...(tariff?{tariff_observation:{evidence_sha256:sha256(canonical(tariff)),observed_at:tariff.observed_at,
+      review_sha256:tariff.review_sha256,terms_valid_until:config.cloud_quote_refresh.tariff_refresh.terms_valid_until}}:{}),
     components:template.components.map(c=>['network','egress'].includes(c.kind)?
       {...c,enforced_bound_sha256:evidence,previous_enforced_bound_sha256:c.enforced_bound_sha256}:c)};
   return {version:'execution-cloud-quote-snapshot-v1',source_config_sha256:sha256(canonical(config)),source_quote_sha256:config.quote_sha256,
-    config:{...config,quote_sha256:sha256(canonical(quote))},quote,observation};
+    config:{...config,quote_sha256:sha256(canonical(quote))},quote,observation,...(tariff?{tariff_observation:tariff}:{})};
 }
 
 async function publish(path,value,{check,beforeRename=async()=>{}}) {
@@ -127,7 +134,7 @@ async function publish(path,value,{check,beforeRename=async()=>{}}) {
 /** Both entry points hold the existing control-tick.lock. One rename publishes
  * configuration and quote together; the reviewed source files remain intact. */
 export async function refreshCloudQuote({configPath,config,transport,capturedAt,readConfig=readPrivateJson,now=Date.now,
-  deadlineMs=20000,beforeRename}) {
+  deadlineMs=20000,beforeRename,fetchImpl=fetch}) {
   if(!config.cloud_quote_refresh)return {config,quote:await readConfig(config.cloud_quote_file)};
   const at=date(capturedAt), began=now(), {p,period,end}=refreshPolicy(config,at);
   requireThat(!flights.has(p.snapshot_file),'QUOTE_REFRESH_BUSY');
@@ -143,30 +150,44 @@ export async function refreshCloudQuote({configPath,config,transport,capturedAt,
     const template=await readConfig(config.cloud_quote_file);priceTemplate(template,config,at,end);
     let previous;
     try {previous=await readConfig(p.snapshot_file);}catch(e){if(e.code!=='ENOENT')throw e;}
+    let previousConfig=config;
+    // Upgrade only the new optional policy. Reconstruct the entire legacy
+    // snapshot against its exact old source; never erase the traffic history
+    // or accept unrelated changes to a configuration/hash binding.
+    if(previous&&p.tariff_refresh&&previous.source_config_sha256!==sha256(canonical(config))){
+      previousConfig=structuredClone(config);delete previousConfig.cloud_quote_refresh.tariff_refresh;
+    }
     if(previous)requireThat(previous.version==='execution-cloud-quote-snapshot-v1'&&
-      previous.source_config_sha256===sha256(canonical(config))&&previous.source_quote_sha256===config.quote_sha256&&
+      previous.source_config_sha256===sha256(canonical(previousConfig))&&previous.source_quote_sha256===config.quote_sha256&&
       sha256(canonical(previous.quote))===previous.config?.quote_sha256&&
       sha256(canonical(previous.observation))===previous.quote?.network_observation?.evidence_sha256,'QUOTE_SNAPSHOT_DRIFT');
     await check();
     if(previous){
       const o=previous.observation;
       requireThat(at>=date(o.observed_at),'QUOTE_CLOCK_ROLLBACK');
-      const verified=observeLighthouseQuote({config,at:date(o.observed_at),caller:{AccountId:o.account_id,RequestId:o.request_ids?.caller},
+      const verified=observeLighthouseQuote({config:previousConfig,at:date(o.observed_at),caller:{AccountId:o.account_id,RequestId:o.request_ids?.caller},
         instances:{RequestId:o.request_ids?.instance,TotalCount:1,InstanceSet:[{InstanceId:o.instance_id,...o.instance}]},
         traffic:{RequestId:o.request_ids?.traffic,TotalCount:1,InstanceTrafficPackageSet:[{InstanceId:o.instance_id,TrafficPackageSet:[o.traffic]}]}});
-      requireThat(canonical(verified)===canonical(o)&&canonical(makeSnapshot(template,config,o))===canonical(previous),'QUOTE_SNAPSHOT_DRIFT');
+      requireThat(canonical(verified)===canonical(o)&&canonical(makeSnapshot(template,previousConfig,o,previous.tariff_observation))===canonical(previous),'QUOTE_SNAPSHOT_DRIFT');
       // Reuse only within this tick's freshness window. Its reservation covers
       // ALL remaining main-site traffic through day end, not just node traffic.
-      if(period.period_key===o.period_key&&now()-date(o.observed_at)<=30000){
+      if(previousConfig===config&&period.period_key===o.period_key&&now()-date(o.observed_at)<=30000){
         await check();return {config:previous.config,quote:previous.quote,observation:o};
       }
     }
     const call=(service,action,payload)=>transport.call(service,action,payload,{signal:controller.signal});
     const caller=await call('sts','GetCallerIdentity',{});requireThat(String(caller?.AccountId)===OWNER,'QUOTE_ACCOUNT');await check();
+    let tariff;
+    if(p.tariff_refresh){
+      tariff=previous?.tariff_observation;
+      if(tariff?.period_key===period.period_key)verifyTariffObservation(tariff,config,template,period,at);
+      else tariff=await collectTariffs({config,template,at,period,transport,caller,fetchImpl,signal:controller.signal});
+      await check();
+    }
     const instances=await call('lighthouse','DescribeInstances',{InstanceIds:[INSTANCE],Offset:0,Limit:1});await check();
     const traffic=await call('lighthouse','DescribeInstancesTrafficPackages',{InstanceIds:[INSTANCE],Offset:0,Limit:1});await check();
     const observation=observeLighthouseQuote({caller,instances,traffic,config,at,previous:previous?.observation});
-    const snapshot=makeSnapshot(template,config,observation);
+    const snapshot=makeSnapshot(template,config,observation,tariff);
     await publish(p.snapshot_file,snapshot,{check,beforeRename});
     // Consume the actual on-disk indivisible pair, not speculative write data.
     const published=await readConfig(p.snapshot_file);await check();
