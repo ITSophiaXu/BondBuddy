@@ -36,9 +36,21 @@ export function reportModelCancellation(diagnostic: ReturnType<typeof modelCance
   try { process.stderr.write(JSON.stringify(diagnostic) + '\n'); } catch { /* evidence cannot alter cancellation */ }
 }
 export function modelCallConcurrency(env: NodeJS.ProcessEnv = process.env) {
-  const value = env.BB_MODEL_CALL_CONCURRENCY ?? '4';
-  if (!/^[1-8]$/.test(value)) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
+  const value = env.BB_MODEL_CALL_CONCURRENCY;
+  if (value === undefined || value === 'auto') return undefined;
+  if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
   return Number(value);
+}
+/** Resource capacity, never a business-task limit. An explicit local setting may
+ * reduce this worker's footprint; omission follows the shared policy. */
+export async function resolveModelCallConcurrency(pool:Pool,local=modelCallConcurrency()):Promise<number>{
+  const policy=(await pool.query('SELECT global_model_limit,node_model_limit,managed_nodes FROM bb_execution_capacity_policy WHERE singleton')).rows[0];
+  if(!policy)throw Error('Model capacity policy unavailable');
+  const node=executionNodeForPool(pool);
+  if(policy.managed_nodes&&!node)throw Error('Managed execution node identity required');
+  const values=[Number(policy.global_model_limit),...(node?[Number(policy.node_model_limit)]:[]),...(local===undefined?[]:[local])];
+  if(values.some(value=>!Number.isSafeInteger(value)||value<1))throw Error('Invalid model capacity policy');
+  return Math.min(...values);
 }
 async function processIdentity(pid: number): Promise<{start:string;group:number} | null> {
   try {
@@ -82,15 +94,18 @@ export class PgModelCallBudget implements ModelCallBudget {
   private readonly waiters = new Map<string, (() => void)[]>();
   private readonly sessions: Pool;
   private readonly host = hostname();
-  constructor(private readonly pool: Pool, private readonly limit: number = 4) {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 8) throw new Error('Invalid model call concurrency');
-    this.sessions = new Pool({ ...pool.options, max: limit, application_name: 'bondbuddy_model_budget',
+  private limit = 0;
+  constructor(private readonly pool: Pool, private readonly configuredLimit?: number) {
+    if (configuredLimit !== undefined && (!Number.isSafeInteger(configuredLimit) || configuredLimit < 1)) throw new Error('Invalid model call concurrency');
+    this.sessions = new Pool({ ...pool.options, max: pool.options.max ?? 10, application_name: 'bondbuddy_model_budget',
       // Renew every five seconds on the existing connection instead of reopening
       // the database transport each time. Idle connections still retire promptly.
       connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 30000, allowExitOnIdle: true });
     this.sessions.on('error', () => { /* a failed operation is fail-closed */ });
   }
   private async enter(scope: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    this.limit=await resolveModelCallConcurrency(this.pool,this.configuredLimit);
     signal?.throwIfAborted();
     if (this.active < this.limit && !this.waiters.size) { this.active++; return; }
     await new Promise<void>((resolve, reject) => {
@@ -104,10 +119,12 @@ export class PgModelCallBudget implements ModelCallBudget {
       queue.push(ready); this.waiters.set(scope,queue);
       signal?.addEventListener('abort', cancel, { once: true });
       if (signal?.aborted) cancel();
+      this.drain();
     });
   }
-  private leave() {
-    this.active--;
+  private leave() { this.active--;this.drain(); }
+  private drain() {
+    while(this.active<this.limit){
     const head = this.waiters.entries().next().value;
     if (!head) return;
     const [scope,queue] = head;
@@ -115,6 +132,7 @@ export class PgModelCallBudget implements ModelCallBudget {
     this.waiters.delete(scope);
     if (queue.length) this.waiters.set(scope,queue);
     ready();
+    }
   }
   /** Only this container's prior process may be recovered using /proc start identity.
    * Foreign/unreadable/possibly-live holders remain fenced for host reconciliation.

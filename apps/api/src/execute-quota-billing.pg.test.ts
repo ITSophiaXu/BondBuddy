@@ -8,17 +8,18 @@ import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {creditBalance,grantCredits,publishPrices} from './billing.js';
 import {digest,transaction,type PrivateBlobs} from './data.js';
+import {claim} from './queue.js';
 import {trialConfigFromEnv} from './trial-guard.js';
 
 const connection=await isolatedTestDatabase(undefined,'execute-quota-billing');
-test('paid quota retry reserves only one task and never charges a rejected attempt',{skip:!connection},async()=>{
+for(const automatic of [false,true])test('multiple paid updates queue, cancel and replay without waiting charge: '+(automatic?'automatic tariff':'historical progress'),{skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection}),owner=`quota-paid-${randomUUID()}`;
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),
+  const app=createServer({pool,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),
     enableSyntheticQueue:true,enablePaidAuthoring:true,
-    trial:{...trialConfigFromEnv({BB_TRIAL_GUARD:'on'}),active_runs_per_user:1,global_active_runs:100,
+    trial:{...trialConfigFromEnv({BB_TRIAL_GUARD:'on'}),active_runs_per_user:1,global_active_runs:1,
       runs_per_user_per_day:1,projects_per_user_per_day:1,upload_bytes_per_user_per_day:1,model_tokens_per_user_per_day:1}});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const ready=async()=>{
@@ -42,26 +43,38 @@ test('paid quota retry reserves only one task and never charges a rejected attem
   };
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`quota_paid_${randomUUID().slice(0,8)}`]);
-    await publishPrices(pool,{id:`quota-${randomUUID()}`,prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
-    await transaction(pool,c=>grantCredits(c,{owner,points:1_000_000,key:randomUUID(),source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
-    const occupied=await ready(),target=await ready();
-    const first=await send('POST','/api/v1/runs/execute',occupied);assert.equal(first.statusCode,202,first.body);
-    const before=await creditBalance(pool,owner);
-    for(let attempt=0;attempt<2;attempt++){
-      const rejected=await send('POST','/api/v1/runs/execute',target);assert.equal(rejected.statusCode,429,rejected.body);
-      assert.equal(rejected.json().code,'TRIAL_QUOTA_EXCEEDED');
-    }
-    assert.deepEqual(await creditBalance(pool,owner),before);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[target.project_id])).rows[0].n,0);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,1);
-    assert.equal((await send('POST',`/api/v1/runs/${first.json().run_id}/cancel`,{reason:'synthetic-capacity-release'})).statusCode,200);
-    const concurrent=await Promise.all([send('POST','/api/v1/runs/execute',target),send('POST','/api/v1/runs/execute',target)]);
-    concurrent.forEach(r=>assert.equal(r.statusCode,202,r.body));
-    const runId=concurrent[0].json().run_id;assert.equal(concurrent[1].json().run_id,runId);
-    assert.equal(concurrent[0].json().billing_mode,'fixed_credits');assert.ok(concurrent[0].json().reservation_id);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[runId])).rows[0].n,1);
-    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[owner])).rows[0].n,0);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[target.project_id])).rows[0].n,1);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE project_id=$1',[target.project_id])).rows[0].n,2);
-  }finally{await app.close();await pool.end();}
+    if(!automatic)await publishPrices(pool,{id:`quota-${randomUUID()}`,prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
+    await transaction(pool,c=>grantCredits(c,{owner,points:10_000_000,key:randomUUID(),source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
+    const requests:Awaited<ReturnType<typeof ready>>[]=[];for(let i=0;i<12;i++)requests.push(await ready());
+    const source=randomUUID();await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic shared source','generation')",[source,owner]);
+    await pool.query('UPDATE bb_projects SET execution_scope_project_id=$2 WHERE id=ANY($1::text[])',[requests.map(r=>r.project_id),source]);
+    const inputBefore=(await pool.query('SELECT project_id,revision,input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 ORDER BY project_id,revision',[owner])).rows;
+    const responses=await Promise.all(requests.map(request=>send('POST','/api/v1/runs/execute',request)));
+    responses.forEach(r=>assert.equal(r.statusCode,202,r.body));
+    const ids=responses.map(r=>r.json().run_id);assert.equal(new Set(ids).size,12);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,12);
+    const reserved=await creditBalance(pool,owner);
+    const replay=await Promise.all(Array.from({length:3},()=>send('POST','/api/v1/runs/execute',requests[0])));
+    replay.forEach(r=>{assert.equal(r.statusCode,202,r.body);assert.equal(r.json().run_id,ids[0]);});
+    assert.deepEqual(await creditBalance(pool,owner),reserved);
+    const lease=await claim(pool,60,{runKinds:['update']});assert.ok(lease);
+    const control=ids.find(id=>id!==lease.runId)!;
+    assert.equal((await send('POST','/api/v1/runs/'+control+'/pause',{reason:'synthetic'})).statusCode,200);
+    assert.equal((await send('POST','/api/v1/runs/'+control+'/resume',{reason:'synthetic'})).statusCode,200);
+    assert.deepEqual(await creditBalance(pool,owner),reserved);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[owner])).rows[0].n,0,'queueing and control do not settle credits');
+    assert.equal((await send('POST','/api/v1/runs/'+control+'/cancel',{reason:'synthetic'})).statusCode,200);
+    const cancelled=(await pool.query('SELECT state,billing_policy,charged_points,points FROM bb_credit_reservations WHERE run_id=$1',[control])).rows[0];
+    assert.equal(cancelled.state,'released');assert.equal(cancelled.charged_points,'0');
+    assert.equal(cancelled.billing_policy,automatic?'on_delivery':'authoring_balance_v2');
+    const afterCancel=await creditBalance(pool,owner),released=automatic?Number(cancelled.points):0;
+    assert.deepEqual(afterCancel,{available:reserved.available+released,frozen:reserved.frozen-released},'queued cancellation releases exactly its original hold, with no charge');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE run_id=ANY($1::text[]) AND state='queued'",[ids])).rows[0].n,10);
+    assert.deepEqual((await pool.query('SELECT project_id,revision,input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 ORDER BY project_id,revision',[owner])).rows,inputBefore);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,12);
+  }finally{
+    await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE owner_user_id=$1",[owner]);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE owner_user_id=$1",[owner]);
+    await app.close();await pool.end();
+  }
 });

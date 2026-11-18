@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -90,6 +90,25 @@ test('project review: real dual Word delivery, explicit promotion, manual export
     const failedCharge=await ok('GET','/api/v1/runs/'+incomplete.run_id+'/credit-charge');
     assert.equal(failedCharge.state,'released');assert.equal(failedCharge.progress.charged_points,'0');
     const preserved=await ok('GET',path+'/review-workspace');assert.equal(preserved.artifact_run.run_id,exported.run_id,'failed review preserves previous successful artifacts');
+    // Out-of-scope output must fail the paid delivery and release the reservation.
+    const scopeRequest={execution_request_id:randomUUID(),operation:'differential_review',expected_input_version:1,source_report_id:ws.selected_report.report_id,expected_plan_version:null,finding_ids:[ws.selected_report.findings[0].finding_id]};
+    const scopeQuote=await ok('POST',path+'/review-executions/quote',scopeRequest);
+    const scopeRun=await ok('POST',path+'/review-executions',{...scopeRequest,quote_id:scopeQuote.quote.quote_id});
+    let scopeCalls=0;
+    assert.equal(await execute(reviewFileStage({model:options=>({name:options.name,run:async()=>{
+      scopeCalls++;
+      const directory=await mkdtemp(join(tmpdir(),'review-out-of-scope-'));
+      try{
+        await options.fileWorkspace!.prepare(directory);
+        await writeFile(join(directory,'output/report.md'),markdown+'\n'+markdown.replace('合成文本修订','额外问题'));
+        return {kind:'done',value:await options.fileWorkspace!.collect(directory,{call_id:'synthetic-out-of-scope'} as never,{text:'合成越界报告已保存'})};
+      }finally{await rm(directory,{recursive:true,force:true});}
+    }})})),'failed');
+    assert.equal(scopeCalls,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_artifacts WHERE run_id=$1',[scopeRun.run_id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_editors WHERE run_id=$1',[scopeRun.run_id])).rows[0].n,0);
+    const scopeCharge=await ok('GET','/api/v1/runs/'+scopeRun.run_id+'/credit-charge');
+    assert.equal(scopeCharge.state,'released');assert.equal(scopeCharge.progress.charged_points,'0');
     owner=randomUUID();assert.equal((await send('GET',path+'/review-executions/'+first.run_id+'/editor')).statusCode,404);assert.equal((await send('POST',path+'/review-exports',{...exportRequest,request_id:randomUUID()})).statusCode,404);assert.equal((await send('POST',path+'/review-source',{version_id:generated.version_id})).statusCode,404);
   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();}
 });

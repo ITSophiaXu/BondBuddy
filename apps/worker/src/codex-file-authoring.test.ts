@@ -16,6 +16,17 @@ async function setup(){
       collect:async cwd=>{collected++;return {file:await readFile(join(cwd,'output/fixture.txt'),'utf8')};}}};
   return {root,config,input,counts:()=>({prepared,collected})};
 }
+test('continuation capability matches the workspace contract and foreign resource tools remain blocked', {skip:process.platform!=='linux'},async()=>{
+  for(const [completion,scenario,allowed] of [[true,'file_checkpoint',true],[false,'file_checkpoint',false],[true,'file_resource',false]] as const){
+    const s=await setup();try{
+      const result=await runContainedModelCall({...s.input,prompt:`SCENARIO:${scenario}`,
+        fileWorkspace:{...s.input.fileWorkspace!,completionCheck:completion}},new MemoryCodexJournal(),s.config);
+      if(allowed){assert.equal(result.status,'completed');assert.equal(s.counts().collected,1);}
+      else {assert.equal(result.error_code,'MODEL_TOOL_ATTEMPT_BLOCKED');assert.equal(s.counts().collected,0);}
+    }finally{await rm(s.root,{recursive:true,force:true});}
+  }
+});
+
 test('file mode accepts prose, stores actual file result and replays without a second CLI', {skip:process.platform!=='linux'},async()=>{
   const s=await setup();try{
     const journal=new MemoryCodexJournal();const r=await runContainedModelCall(s.input,journal,s.config);

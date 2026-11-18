@@ -146,17 +146,45 @@ def numeric_donor(source_p, source_ids, allow_ascii_projection=False):
     p,value=candidates[0]
     return {'donor_node_id':source_ids[p],'corroborating_node_ids':[source_ids[p] for p,_ in candidates],**value},'same_column_two_agreeing_detail_rows'
 
+def header_label(text):
+    # Units may be attached to a label; do not strip arbitrary business qualifiers.
+    return re.sub(r'[（(](?:(?:单位|金额)[:：]?)?(?:人民币)?(?:亿|万)?元[）)]$', '', compact(text))
+
+
+def header_period(text):
+    parts = re.split(r'[/／]', compact(text))
+    return bool(PERIOD.fullmatch(parts[0])) and all(
+        PERIOD.fullmatch(p) or re.fullmatch(r'年度|年末|(?:[1-9]|1[0-2])(?:[-—–－](?:[1-9]|1[0-2]))?月(?:末)?', p)
+        for p in parts[1:])
+
+
 def header_count(table):
     rows=table.findall(q('tr'))
     if len(rows)<2 or capability_limits(table): return None
     cells=row_cells(rows[0]); first=[compact(paragraph_text(cell_paragraph(c))) if cell_paragraph(c) is not None else '' for c in cells]
-    if len(first)<2 or first[0] not in LABELS or not all(PERIOD.fullmatch(v) for v in first[1:]): return None
+    if len(first)<2 or header_label(first[0]) not in LABELS or not all(header_period(v) for v in first[1:]): return None
     second=[compact(paragraph_text(cell_paragraph(c))) if cell_paragraph(c) is not None else '' for c in row_cells(rows[1])]
     count=2 if len(second)==len(first) and second[0] in LABELS|{''} and all(v in SUBHEADERS for v in second[1:]) else 1
     if len(rows)<=count: return None
     data=row_cells(rows[count])
     if len(data)!=len(cells) or label(rows[count]) in LABELS or not any(numeric(paragraph_text(p)) for c in data[1:] if (p:=cell_paragraph(c)) is not None): return None
     return count
+
+def short_numeric_row(row):
+    """Keep a bounded financial label and its amounts on the same page.
+
+    Do not bind adjacent rows or change long narrative/complex table cells.
+    Placeholder cells remain unknown, never interpreted as zero.
+    """
+    cells = row_cells(row)
+    paragraphs = [cell_paragraph(cell) for cell in cells]
+    if len(cells) < 2 or any(p is None for p in paragraphs): return False
+    if any(p.find('.//' + q('br')) is not None for p in paragraphs): return False
+    texts = [compact(paragraph_text(p)) for p in paragraphs]
+    if not texts[0] or len(texts[0]) > 64 or any(len(text) > 64 for text in texts[1:]): return False
+    return any(numeric(text) for text in texts[1:]) and all(
+        numeric(text) or text in {'', '—', '-', '未提供', '未披露', '不适用', '待核对'} for text in texts[1:])
+
 
 def build_plan(editor):
     source_roots={name:xml(data) for name,data in editor.parts.items() if name in editor.roots}
@@ -197,7 +225,7 @@ def build_plan(editor):
                 if CAPTION.match(text): chain.append(before);break
                 if not text or compact(text).startswith('单位：'): chain.append(before);before=before.getprevious();continue
                 break
-            if not chain or not CAPTION.match(paragraph_text(chain[-1]).strip()): continue
+            if not chain or not CAPTION.match(paragraph_text(chain[-1]).strip()): chain=[]
             if any(capability_limits(p) for p in chain):
                 table_notes.append({'node_id':inverse.get(table),'status':'caption_contains_unsupported_content_no_change'});continue
             count=header_count(table)
@@ -219,7 +247,7 @@ def build_plan(editor):
                         if p in inverse: change(inverse[p],'pPr','keepNext')
                 else:
                     if ri<marked_prefix: change(key,'trPr','tblHeader',False)
-                    if ri==count: change(key,'trPr','cantSplit')
+                    if ri==count or short_numeric_row(row): change(key,'trPr','cantSplit')
     properties=[]
     for entry in changes.values():
         after=entry.pop('after')

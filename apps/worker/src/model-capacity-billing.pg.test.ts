@@ -11,7 +11,7 @@ import {createServer} from '@bondbuddy/api';
 import {claim, renew, checkpointStage, pauseAtCheckpoint, type Lease} from '@bondbuddy/api/queue';
 import {digest, transaction, type PrivateBlobs} from '@bondbuddy/api/data';
 import {emptyM4Draft} from '@bondbuddy/api/m4-workspace';
-import {uploadSyntheticReference} from '@bondbuddy/api/test-authoring-source';
+import {uploadSyntheticReference,uploadSyntheticAudit} from '@bondbuddy/api/test-authoring-source';
 import {grantCredits, publishPrices} from '../../api/dist/billing.js';
 import {readAuthoringProgress} from '../../api/dist/authoring-progress.js';
 import {CodexDurableJournal} from './durable-probe-journal.js';
@@ -116,8 +116,9 @@ async function fixture(kind: Kind) {
         market: 'sse', offering: 'private',
         update_details: {...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30'}
       }));
+      const audit=await uploadSyntheticAudit(app,project.project_id);
       const reference = await uploadSyntheticReference(app, project.project_id);
-      const input = ok(await send('POST', '/api/v1/projects/' + project.project_id + '/input-revisions', reference));
+      const input = ok(await send('POST', '/api/v1/projects/' + project.project_id + '/input-revisions', {...reference,material_versions:[...reference.material_versions,audit]}));
       const quote = ok(await send('POST', '/api/v1/projects/' + project.project_id + '/credit-quote', {
         input_revision: input.input_revision, input_hash: input.input_hash
       }));

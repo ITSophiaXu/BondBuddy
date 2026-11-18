@@ -5,22 +5,38 @@ import io
 import os
 import sys
 import unittest
+import multiprocessing
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 MODULES = (
     'test_pdf_pages', 'test_bounded_image',
     'test_file_authoring', 'test_reverse_audit_fixed', 'test_period_definition_guard', 'test_fixed_edit', 'test_format_plan', 'test_fixed_edit_authorized', 'test_source_outline',
     'test_document_quality', 'test_document_size', 'test_document_size_render', 'test_authorized_docx_regression', 'test_authorized_authoring_quality',
+    'test_correction_rounding', 'test_review_corrections', 'test_document_test_runner',
 )
 
-if __name__ == '__main__':
-    if os.environ.get('BB_REQUIRE_DOCUMENT_RENDER') != '1':
-        raise SystemExit('Release document rendering must be required')
-    if os.environ.get('BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION') != '1':
-        raise SystemExit('Authorized DOCX regression must be enabled')
+COUNTERS = ('tests', 'passed', 'failures', 'errors', 'skipped', 'expected_failures',
+            'unexpected_successes', 'authorized_render_reports', 'rendered_documents')
+
+
+def scheduled_modules():
+    # Start full-manuscript work first, so rendering is not left until the other
+    # workers are idle. Coverage and result ordering still use the fixed list.
+    heavy = ('test_fixed_edit_authorized', 'test_authorized_authoring_quality',
+             'test_fixed_edit', 'test_document_quality', 'test_file_authoring')
+    scheduled = (*heavy, *(module for module in MODULES if module not in heavy))
+    if len(scheduled) != len(MODULES) or set(scheduled) != set(MODULES):
+        raise ValueError('Document execution schedule changed required coverage')
+    return scheduled
+
+
+def run_suite(suite):
+    expected = suite.countTestCases()
     captured = io.StringIO()
+    details = io.StringIO()
     with contextlib.redirect_stdout(captured):
-        result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(MODULES))
-    print(captured.getvalue(), end='')
+        result = unittest.TextTestRunner(stream=details, verbosity=2).run(suite)
     render_reports = []
     for line in captured.getvalue().splitlines():
         try:
@@ -39,5 +55,52 @@ if __name__ == '__main__':
         'authorized_render_reports': len(render_reports), 'rendered_documents': len(render_reports) * 3,
     }
     summary['passed'] = summary['tests'] - sum(summary[key] for key in ('failures', 'errors', 'skipped', 'expected_failures', 'unexpected_successes'))
+    complete = result.wasSuccessful() and expected > 0 and summary['tests'] == expected and summary['passed'] == expected
+    return {'summary': summary, 'complete': complete, 'output': captured.getvalue() + details.getvalue()}
+
+
+def run_module(module):
+    # Each process owns its imports, mocks, temporary files and renderer profiles.
+    # The caller cannot supply a reduced test list or change the concurrency.
+    if module not in MODULES:
+        raise ValueError('Unknown required document module')
+    started = time.monotonic()
+    record = run_suite(unittest.defaultTestLoader.loadTestsFromName(module))
+    return {**record, 'module': module, 'seconds': round(time.monotonic() - started, 3)}
+
+
+def summarize(records):
+    if [record['module'] for record in records] != list(MODULES) or len(set(MODULES)) != len(MODULES):
+        raise ValueError('Required document module coverage is incomplete or duplicated')
+    summary = {key: sum(record['summary'][key] for record in records) for key in COUNTERS}
+    summary['render_required'] = True
+    complete = (all(record['complete'] for record in records)
+                and summary['passed'] == summary['tests']
+                and summary['authorized_render_reports'] > 0)
+    return summary, complete
+
+
+def main():
+    if os.environ.get('BB_REQUIRE_DOCUMENT_RENDER') != '1':
+        raise SystemExit('Release document rendering must be required')
+    if os.environ.get('BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION') != '1':
+        raise SystemExit('Authorized DOCX regression must be enabled')
+    # Keep the gate's existing 600-second group deadline. Independent suites run
+    # in at most three processes; no tests, renderer requirements or assertions
+    # are removed. A failed/crashed worker cannot yield a passing summary.
+    completed = {}
+    with ProcessPoolExecutor(max_workers=3, mp_context=multiprocessing.get_context('spawn')) as executor:
+        pending = [executor.submit(run_module, module) for module in scheduled_modules()]
+        for future in as_completed(pending):
+            record = future.result()
+            completed[record['module']] = record
+            print(f"Document module: {record['module']} ({record['seconds']}s)")
+            print(record['output'], end='', flush=True)
+    records = [completed[module] for module in MODULES]
+    summary, complete = summarize(records)
     print('DOCUMENT_QUALITY_RESULT=' + json.dumps(summary, sort_keys=True))
-    sys.exit(0 if result.wasSuccessful() and summary['tests'] > 0 and summary['passed'] == summary['tests'] and render_reports else 1)
+    return 0 if complete else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

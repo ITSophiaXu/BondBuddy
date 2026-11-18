@@ -56,6 +56,20 @@ export async function readReviewReport(db: Db, user: string, projectId: string, 
   if (!isReviewReport(row.report) || inputManifestHash(row.report) !== row.content_sha256.trim()) throw new Problem(503, 'DATA_UNAVAILABLE', 'Report snapshot is invalid');
   return { ...row, report: row.report as ReviewReport };
 }
+async function executionSource(db:Db,user:string,id:string,b:ReviewExecutionRequest,input:ReviewDraftInput){
+  const source=b.source_report_id?await readReviewReport(db,user,id,b.source_report_id):null;
+  if(b.operation==='full_review'){
+    if(source||b.finding_ids.length||b.expected_plan_version)invalid('Full review must show the complete new scope');
+    return null;
+  }
+  if(!source||!b.finding_ids.length)invalid('Choose findings from the source report');
+  // Legacy immutable reports can be explicitly selected even if later Word
+  // delivery was cancelled. Preserve that recovery path; validate the report,
+  // owner, source version and selected IDs identically for quote and execution.
+  if(b.finding_ids.some(f=>!source!.report.findings.some(v=>v.finding_id===f)))invalid('Selected findings are not in the source report');
+  if(b.operation==='revision'&&!same(source!.report.source_material,input.source_material_ref))invalid('Revision must use the reviewed source version');
+  return source;
+}
 async function context(db: Db, user: string, id: string, value: ReviewContext) {
   if (value.project_id !== id) invalid('The message is bound to another project');
   await pins(db, user, id, value.material_refs);
@@ -349,7 +363,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       return transaction(db(),async client=>{
         const p=await requireReview(client,user,id,true),balance=await creditBalanceExact(client,user);
         if(!paidReview)return {enabled:false,quote:null,balance,shortage:0,reason:null};
-        if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);}
+        if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);await executionSource(client,user,id,b,d);}
         else {const source=(await client.query("SELECT 1 FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.state='succeeded' AND e.operation IN ('full_review','differential_review')",[b.source_run_id,user,id])).rowCount;if(!source)throw missing();}
         const task:BillingTask='operation' in b?(b.operation==='revision'?'review_revision':b.operation):'review_revision';
         const hash=await intentHash(client,user,id,p,b);
@@ -384,7 +398,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       if (!input.source_material_ref) invalid('Select the reviewed source before executing');
       const materialRows = await pins(client, user, id, input.material_versions);
       if (!input.material_versions.some((m: ReviewMaterialPin) => same(m, input.source_material_ref))) invalid('The source is absent from the input');
-      const source = b.source_report_id ? await readReviewReport(client, user, id, b.source_report_id) : null;
+      const source = await executionSource(client,user,id,b,input);
       let accepted: ReviewAcceptedProposal | null = null;
       if (b.accepted_proposal_id) {
         const adopted = (await client.query('SELECT acceptance,content_sha256 FROM bb_review_proposal_adoptions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [user, id, b.accepted_proposal_id])).rows[0];

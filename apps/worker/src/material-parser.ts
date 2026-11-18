@@ -232,6 +232,7 @@ export async function parseAuthorizedMaterialToStream(
   } catch(error) {
     if(cleanup)try{await cleanup();}catch{/* preserve parse error */}
     if(error instanceof Error && error.name==='MaterialParserError')throw error;
+    if(error instanceof Error && error.message==='PARSE_STAGING_CAPACITY')throw bridgeError('MATERIAL_PARSE_CAPACITY_WAIT');
     if(error instanceof Error && error.message.startsWith('PARSE_STAGING_'))throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_OUTPUT_LIMIT')throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_MEMORY_LIMIT')throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
@@ -315,6 +316,7 @@ export async function parseAuthorizedMaterial(
     return response;
   } catch (error) {
     if (error instanceof Error && error.name === 'MaterialParserError') throw error;
+    if (error instanceof Error && error.message==='PARSE_STAGING_CAPACITY') throw bridgeError('MATERIAL_PARSE_CAPACITY_WAIT');
     if (error instanceof Error && error.message.startsWith('PARSE_STAGING_')) throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
     throw bridgeError('MATERIAL_PARSE_FAILED');
   } finally {

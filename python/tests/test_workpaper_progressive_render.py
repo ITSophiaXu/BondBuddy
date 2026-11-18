@@ -93,6 +93,43 @@ class ProgressiveRenderTests(unittest.TestCase):
         if role.get('rPr'):
             self.assertEqual(signature(paragraphs[0].runs[0]._r.rPr), signature(etree.fromstring(role['rPr'].encode())))
 
+    def test_adjacent_identical_source_prose_keeps_all_links_and_table_boundaries(self):
+        statement = '本期拟发行人民币1亿元普通私募公司债券，期限3年，募集资金全部用于偿还有息债务。发行人主要从事交通基础设施建设和运营，注册资本2亿元。'
+        changed = statement.replace('注册资本2亿元', '注册资本3亿元')
+        source_doc = Document()
+        for text in [statement, statement, statement]:
+            source_doc.add_paragraph(text)
+        source_doc.add_paragraph('2025年度财务情况表')
+        source_doc.add_paragraph('单位：人民币万元')
+        table = source_doc.add_table(rows=2, cols=2)
+        for row, values in zip(table.rows, [('项目', '2025年度'), ('资产总额', '130000')]):
+            for cell, value in zip(row.cells, values): cell.text = value
+        for text in [statement, statement, changed, '单位：人民币万元', '单位：人民币万元']:
+            source_doc.add_paragraph(text)
+        source_doc.save(self.path)
+        source = extract(self.path)
+        plan = copy.deepcopy(self.plan)
+        ids = [span['id'] for span in source['source']['spans'] if span['text'].strip()]
+        plan.update(source_sha256=source['source']['sha256'], reviewed_span_ids=ids, excluded=[])
+        item = plan['items'][0]
+        item.update(facts=ids, narrative=[], calculations=[])
+        item['decision']['citations'] = [dict(span_id=ids[0], quote=statement)]
+        before_source = self.path.read_bytes(); before_plan = copy.deepcopy(plan)
+        _, doc = self.output(source=source, plan=plan)
+        texts = [p.text for p in doc.paragraphs]
+        self.assertEqual(texts.count(statement), 2)  # One per side of the table.
+        self.assertEqual(texts.count(changed), 1)
+        self.assertEqual(texts.count('单位：人民币万元'), 3)
+        self.assertEqual(doc.tables[0].cell(1, 1).text, '130000')
+        links = json.loads((self.directory/'render/file-links.json').read_text(encoding='utf8'))['links']
+        repeated_ids = {span['id'] for span in source['source']['spans'] if span['text'] == statement}
+        repeated_links = [link for link in links if link['source_span_id'] in repeated_ids]
+        self.assertEqual({link['source_span_id'] for link in repeated_links}, repeated_ids)
+        self.assertEqual(len({link['target_span_id'] for link in repeated_links}), 2)
+        self.assertTrue(all(link['target_quote'] == statement for link in repeated_links))
+        self.assertEqual(self.path.read_bytes(), before_source)
+        self.assertEqual(plan, before_plan)
+
     def test_legacy_helper_bytes_and_runtime_identity_input_stay_unchanged(self):
         legacy = ROOT/'python/bondbuddy_workpaper_batch.py'
         # Existing checkouts use Git LF or Windows autocrlf. Both exact baseline

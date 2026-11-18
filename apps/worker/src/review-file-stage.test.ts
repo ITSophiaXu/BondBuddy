@@ -33,6 +33,8 @@ test('CLI Word is delivered without a structured report, JSON response, or secon
     let calls = 0;
     const stage = reviewFileStage({ load: async () => f.input, config: loadCodexAdapterConfig({}), model: options => ({ name: options.name, run: async () => {
       calls++; assert.ok(options.fileWorkspace); assert.equal(options.reviewTools, undefined);
+      assert.equal(options.fileWorkspace.reviewCompletionCheck, true);
+      assert.equal(options.fileWorkspace.completionCheck, undefined);
       await options.fileWorkspace.prepare(f.directory);
       assert.equal((await readFile(join(f.directory, 'materials/m0.txt'))).toString(), f.source.toString());
       const received = JSON.parse(await readFile(join(f.directory, 'input.json'), 'utf8'));
@@ -133,6 +135,42 @@ for (const output of ['absent', 'progress-markdown', 'invalid-word'] as const) t
     f.ctx.values.set('model_generation',result.value);
     assert.deepEqual(await reviewFileDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});
   }finally{await rm(f.directory,{recursive:true,force:true});}
+});
+
+for(const mode of ['valid','extra','wrong-original'] as const)test(`differential collector enforces immutable selected targets: ${mode}`,async()=>{
+ const f=await fixture();
+ try{
+  f.input.manifest.review.operation='differential_review';f.input.manifest.review.finding_ids=['R007'];
+  f.input.manifest.review.file_delivery!.version='review-correction-v2';
+  const original=makeWorkerDocxFixture({externalLink:false});f.store.set('source',original);f.input.materials[0].pin.sha256=digest(original);
+  f.input.materials[0].media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document';f.input.materials[0].filename='synthetic.docx';
+  f.input.selected_targets=[{id:'R007',decision:'suggested',manual_text:'',category:'格式',title:'合成原问题',original:'Synthetic worker upload fixture',replacement:'Synthetic reviewed fixture',reason:'合成',evidence:'合成',missing:'',uncertain:false,paragraph_id:'p0',applied:false,limitation:''}];
+  f.input.selected_findings=[{finding_id:'R007',title:'合成原问题'}];
+  let savedHash='',inserts=0;
+  f.ctx.pool={query:async(sql:string,args:unknown[])=>{if(sql.startsWith('INSERT')){inserts++;savedHash=args[4] as string;}return {rows:[{sha256:savedHash}]};}} as never;
+  const one='### 合成重核\n复核类别：格式\n原问题编号：R007\n问题说明：已核对合成原文\n原文披露：'+(mode==='wrong-original'?'worker':'Synthetic worker upload fixture')+'\n核对依据：合成依据\n处理方式：直接修改\n替换文本：Synthetic reviewed fixture\n缺少材料：无\n';
+  const stage=reviewFileStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+   await options.fileWorkspace!.prepare(f.directory);
+   const received=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
+   assert.equal(received.scope.operation,'differential_review');assert.equal(received.scope.selected_targets[0].source_finding_id,'R007');
+   assert.equal(received.scope.selected_targets[0].original,'Synthetic worker upload fixture');
+   await writeFile(join(f.directory,'output/report.md'),'# 合成差异复核\n'+one+(mode==='extra'?one.replaceAll('R007','R008'):''));
+   return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'scope-synthetic'} as never,{text:'已保存实际报告'})};
+  }})});
+  const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('result');
+  assert.ok(validReviewFileResult(result.value,f.ctx));
+  if(mode==='valid'){
+   assert.equal(result.value.error,undefined);assert.equal(inserts,1);
+   const editor=JSON.parse(f.store.get(result.value.files['editor.json'].key)!.toString());
+   assert.equal(editor.issues[0].source_finding_id,'R007');assert.equal(editor.issues[0].applied,true);
+  }else{
+   assert.equal(result.value.error,'WORD_DELIVERY_UNAVAILABLE');assert.equal(inserts,0);
+   assert.equal(result.value.files['revision.docx'],undefined);assert.equal(result.value.files['editor.json'],undefined);
+   assert.ok(result.value.files['report.md']);
+   f.ctx.values.set('model_generation',result.value);
+   assert.deepEqual(await reviewFileDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});
+  }
+ }finally{await rm(f.directory,{recursive:true,force:true});}
 });
 
 test('correction delivery reads actual Word report fields when Markdown is absent and preserves final response',async()=>{

@@ -14,7 +14,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from bondbuddy_file_authoring.project_files import inspect
-from bondbuddy_workpaper_source import ATTRIBUTION
+from bondbuddy_workpaper_source import ATTRIBUTION, CONTEXT
 from bondbuddy_workpaper_batch import (validate, expanded_facts, load, apply_role,
                                       column_groups, delivery_text, canonical_save,
                                       calculation, require, save)
@@ -76,6 +76,7 @@ def render(snapshot, batch, plan, item_id, template_path, format_path, output, v
     if item['decision']['status'] != 'generate':
         paragraph('本项要求：' + item['required_evidence'])
     emitted_tables = set()
+    last_source_paragraph = None
     table_for_span = {sid: t for t in snapshot['tables'] if not t['nested'] for sid in t['span_ids']}
     table_by_id = {t['id']: t for t in snapshot['tables']}
 
@@ -150,6 +151,7 @@ def render(snapshot, batch, plan, item_id, template_path, format_path, output, v
         if table:
             if table['id'] in emitted_tables:
                 continue
+            last_source_paragraph = None
             # Keep source columns/merges. Wide tables get a landscape section;
             # no column or row truncation, no guessed financial values.
             columns = max((sum(c['colspan'] for c in r['cells'])+r.get('before', 0)+r.get('after', 0) for r in table['rows']), default=1)
@@ -158,7 +160,16 @@ def render(snapshot, batch, plan, item_id, template_path, format_path, output, v
             for group in column_groups(table):
                 write_table(group, doc, width)
         elif span['text'].strip():
-            paragraph(delivery_text(span['text']), [span['id']])
+            text = delivery_text(span['text'])
+            # Collapse only adjacent, identical complete prose in the
+            # delivered context. Table boundaries, short labels, units and
+            # notes retain their positions; every original span keeps a link.
+            prose = len(text) >= 40 and text.rstrip().endswith(('。', '！', '？', '.', '!', '?')) and not CONTEXT.search(text)
+            if prose and last_source_paragraph is not None and last_source_paragraph[0] == text:
+                records.append((last_source_paragraph[1], span['id']))
+            else:
+                p = paragraph(text, [span['id']])
+                last_source_paragraph = (text, p._p) if prose else None
     for review in plan['image_reviews']:
         if item_id in review['item_ids']:
             asset = next(x for x in snapshot['images'] if x['id'] == review['image_id'])

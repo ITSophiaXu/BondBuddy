@@ -116,17 +116,19 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
-/** Caller holds the target project lock; DB run trigger remains the final race guard. */
+/** Only writers of the same target conflict. Canonical source remains lineage,
+ * not a long-lived execution lock. Caller holds the target project lock. */
 export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:string,p:{id:string;kind:string;execution_scope_project_id?:string|null}){
   const scope=p.execution_scope_project_id||p.id;
   if(!p.execution_scope_project_id&&p.kind!=='review'&&!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1',[owner,scope])).rowCount)return;
-  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
-  catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
+  // Source ownership and availability still matter; independent target submissions
+  // no longer need an exclusive lock on the shared, immutable source lineage.
+  if(!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[owner,scope])).rowCount)throw missing();
   if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
-    WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
+    WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.task_kind<>'qa'
     AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected')
-    AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision) LIMIT 1`,[owner,scope])).rowCount)
-    throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待完成或停止任务后执行。');
+    AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision) LIMIT 1`,[owner,p.id])).rowCount)
+    throw conflict('PROJECT_RUN_ACTIVE','当前目标已有业务任务执行中，请等待完成或停止后继续修改该目标。');
 }
 export async function run(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
   // Runs of a deleted project are owner-safe 404, like the project itself.

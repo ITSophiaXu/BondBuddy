@@ -102,7 +102,7 @@ test('eight real native children share one managed node and a frozen 250-file ba
   await control.recordCloudResult(op.operation_id,op.revision,{state:'completed',identity,provider_request_id:'eight-ack',observation:{instance_state:'RUNNING',latest_operation:'RunInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:'eight-ack',stop_charging_mode:null,observed_at:new Date().toISOString(),evidence_ref:'synthetic.json',evidence_sha256:hash,run_creation:{operation_id:op.operation_id,identity,launch_manifest_sha256:hash,launch_binding_sha256:hash,created_at:op.dispatched_at!,instance_status:'RUNNING',status_request_id:'synthetic-status'}}});
   const token='synthetic-eight-registration-012345';await bindExecutionRegistration(f.pool,identity,'eight-run',token);
   await registerExecutionRuntime(runtimePool,{identity,session_id:randomUUID()},{source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,registration_token:token,service_id:'one',capabilities:['authoring'],process_identity:{pid:String(process.pid)}});
-  const budget=new PgModelCallBudget(runtimePool,8);
+  const budget=new PgModelCallBudget(runtimePool);
   worker=new WorkerRuntime({pool:runtimePool,blobs:f.blobs,kinds:['run'],runKinds:['generation'],concurrency:8,interactiveSlots:0,parseSlots:0,pollMs:25,heartbeatMs:100,sweepMs:60000,executionTransport:{refresh:async()=>{},ready:()=>true,close:()=>{}},log:e=>logs.push(e),
    runStages:[{name:'input_lock',run:async ctx=>{try{
     const permit=await budget.acquire(ctx.signal,'batch:'+batch.batch_id,{kind:'job',id:ctx.lease.jobId,token:ctx.lease.token});

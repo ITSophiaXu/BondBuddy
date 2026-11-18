@@ -12,10 +12,10 @@ const until = async (check:()=>Promise<boolean>) => {
   for (let i=0;i<100;i++) { if (await check()) return; await delay(25); }
   throw new Error('Capacity condition did not settle');
 };
-test('model budget accepts only a bounded strict integer',()=>{
-  assert.equal(modelCallConcurrency({}),4);
-  for (const value of ['5','8']) assert.equal(modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}),Number(value));
-  for (const value of ['0','9','-1','4.0','4; echo injected','']) assert.throws(()=>modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}));
+test('model budget follows resource policy by default and accepts strict operational overrides',()=>{
+  assert.equal(modelCallConcurrency({}),undefined);assert.equal(modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:'auto'}),undefined);
+  for (const value of ['1','5','8','12','64']) assert.equal(modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}),Number(value));
+  for (const value of ['0','-1','4.0','4; echo injected','','9007199254740992']) assert.throws(()=>modelCallConcurrency({BB_MODEL_CALL_CONCURRENCY:value}));
 });
 test('cross-container pools share four durable slots; waiting cancels without holding a job connection',{skip:!connection,timeout:20000},async()=>{
   const pool = new Pool({connectionString:connection,max:1});

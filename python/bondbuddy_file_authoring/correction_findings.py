@@ -6,7 +6,7 @@ mandatory for automatic edits. Narrative recommendations never become replacemen
 import re
 from .annotate_review import plain
 
-FIELDS = ('复核类别', '问题说明', '原文位置', '原文披露', '核对依据', '处理方式', '替换文本', '缺少材料', '待确认事项')
+FIELDS = ('复核类别', '原问题编号', '问题说明', '原文位置', '原文披露', '核对依据', '处理方式', '替换文本', '缺少材料', '待确认事项')
 FIELD = re.compile(r'^\s*(?:[-*+]\s+)?(?:\*\*)?(' + '|'.join(FIELDS) + r')(?:\*\*)?\s*[：:](?:\*\*)?\s*(.*)$')
 HEADING = re.compile(r'^\s{0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$')
 NUMBERED = re.compile(r'^\s*(?:\*\*)?\d+[.、）)]\s*(.+?)(?:\*\*)?$')
@@ -75,7 +75,10 @@ def findings(markdown):
         result.append(dict(id=f'R{len(result)+1:03d}', category=category_label(fields.get('复核类别')),
                            title=re.sub(r'^R\d+\s*[·.、:]\s*', '', title), original=original,
                            replacement=fields.get('替换文本', ''), reason=fields.get('问题说明', title),
+                           original_location=fields.get('原文位置', ''),
                            evidence=evidence, missing=missing,
                            uncertain=fields.get('处理方式') != '直接修改' or bool(missing) or not evidence,
                            paragraph_id=None, decision='suggested', manual_text='', applied=False, limitation=''))
+        if fields.get('原问题编号'):
+            result[-1]['source_finding_id'] = fields['原问题编号'].strip()
     return result

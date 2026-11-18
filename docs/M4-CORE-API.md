@@ -39,13 +39,13 @@ M4 保留 Codex CLI 服务端 worker。`m4_document_v1` 与 `m4_qa_v1` 使用独
 | `GET /artifacts/:artifact_id/versions/:artifact_version/preview` | 准确 artifact 原文预览；没有提取文本时如实提示，保留 Word 下载 |
 | `GET /artifacts/:artifact_id/versions/:artifact_version/bytes` | owner 授权、准确版本/hash 核验下载。QA 是文本，不伪装 Word |
 
-表中简写路径均接 `/api/v1/m4`。话题的材料可来自本账号其他项目；每次采用/执行重新验证归属与准确版本。执行 scope 优先从明确原稿/改稿底稿的项目派生，并锁定 canonical 项目。完整更新、复核和材料制作跨话题互斥；QA 可同时运行。运行中改变材料只保存后继输入，不能重绑定当前 run 的 scope。
+表中简写路径均接 `/api/v1/m4`。话题的材料可来自本账号其他项目；每次采用/执行重新验证归属与准确版本。执行 scope 优先从明确原稿/改稿底稿的项目派生，并锁定 canonical 项目。2026-11-17 起，共用来源的不同目标可并行；保留同目标写入保护和 QA 并行，详见 [任务队列决定](product-decisions/2026-11-17-task-queue-admission.md)。运行中改变材料只保存后继输入，不能重绑定当前 run 的 scope。
 
 跨业务入口先显示原需求和准确来源，由用户在新建更新／复核项目明确采用。`handoffs/bind` 请求含 `message_id`、`message_version`、`target_project_id` 和准确 `source_material`；API 从本账号话题的原 user 消息重新校验来源项目、材料 ID／version／hash，并派生 `execution_scope_project_id`，不接受客户端指定 scope。成功响应的 `binding` 固定上述身份及 canonical scope，页面核对响应后才复用现有 owner 文件接口复制原稿及保存目标要求。没有固定来源时只采用意图，并提示用户明确待处理稿，不能声称已经绑定来源。
 
-首次绑定只增加目标 `draft_revision`、写 scope 和同事务 outbox，不修改文件或已有任务，不预留积分；重复同 scope 是只读幂等。已有非 QA 业务任务历史、已采用其他 canonical、或已经被其他项目用作 canonical 的目标不能重绑定。原来源正在制作不阻断采用草稿；新目标执行仍受同 scope 非 QA 互斥，API 返回 `PROJECT_RUN_ACTIVE`，页面提示同一来源已有任务执行中；DB trigger 保留兜底。QA 可以并行。
+首次绑定只增加目标 `draft_revision`、写 scope 和同事务 outbox，不修改文件或已有任务，不预留积分；重复同 scope 是只读幂等。已有非 QA 业务任务历史、已采用其他 canonical、或已经被其他项目用作 canonical 的目标不能重绑定。原来源正在制作不阻断采用草稿；新目标不因同来源其他目标的任务被拒绝；已有同目标非 QA 写入保护由 API 和 DB trigger 保留。QA 可以并行。
 
-采用形成的 canonical 关系不能在后续换源时拆散：已被其他业务采用为 canonical 的 M4 话题须另建话题使用新来源。执行前对源项目及 canonical 取锁并重新核对派生 scope，防并发绑定后沿用旧 scope。新增路径使用 `FOR UPDATE NOWAIT`；与已有保存／提交重叠时返回 `INPUT_REVISION_CONFLICT`，提示稍后重新核对并明确操作，避免不同锁顺序死锁。此情形与 `PROJECT_RUN_ACTIVE` 的业务任务互斥提示分别展示；不透传后端原始错误消息。付费更新／复核的旧报价随目标 draft 变化失效；既有任务及旧免费输入快照仍按原输入保留，但执行受当前 canonical mutex 约束，不能称为全量旧输入废弃。
+采用形成的 canonical 关系不能在后续换源时拆散：已被其他业务采用为 canonical 的 M4 话题须另建话题使用新来源。执行前对源项目及 canonical 取锁并重新核对派生 scope，防并发绑定后沿用旧 scope。新增路径使用 `FOR UPDATE NOWAIT`；与已有保存／提交重叠时返回 `INPUT_REVISION_CONFLICT`，提示稍后重新核对并明确操作，避免不同锁顺序死锁。此情形与 `PROJECT_RUN_ACTIVE` 的业务任务互斥提示分别展示；不透传后端原始错误消息。付费更新／复核的旧报价随目标 draft 变化失效；既有任务及旧免费输入快照仍按原输入保留，但执行仍受同目标写入保护，不能称为全量旧输入废弃。
 
 文书成果分别交付正文和编制说明 Word，真实存储 `artifact_id/version/hash` 不变。`revision_number` 是服务端锁定后持久分配的稿次，正文与说明同稿次，下载文件名包含稿次。QA 结果持久为文本证据，留在聊天并可免费重新导出。
 

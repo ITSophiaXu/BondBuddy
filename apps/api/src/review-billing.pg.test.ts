@@ -31,6 +31,9 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,input}));
     const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
     await publishPrices(pool,{id:'review-prices-v1',prices,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'test'});
+    const missingSource={...request,operation:'differential_review',source_report_id:uid(),finding_ids:['R001']};
+    assert.equal((await send('POST',`${base}/review-executions/quote`,missingSource)).statusCode,404,'quote rejects the same missing source as execution');
+    assert.equal((await send('POST',`${base}/review-executions/quote`,{...request,finding_ids:['R001']})).statusCode,422,'full review cannot quote a differential selection');
     const quote=ok(await send('POST',`${base}/review-executions/quote`,request));
     assert.equal(quote.quote.points,'300');assert.equal(quote.shortage,'300');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[p.project_id])).rows[0].n,0);

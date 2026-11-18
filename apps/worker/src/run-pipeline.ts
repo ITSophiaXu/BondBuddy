@@ -1,3 +1,4 @@
+import {registerFileReviewReport} from './review-file-report.js';
 import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
 import {DeferredQaJournal} from './deferred-qa-journal.js';
@@ -832,6 +833,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
       }
       if (reviewExecution) {
+        if(!await registerFileReviewReport(ctx))return 'stopped';
         reviewArtifacts.push({ id: delivered.artifactId, version: delivered.artifactVersion, kind: outcome.cleanBytes || reviewExecution.operation === 'revision' ? 'revision' : 'report' });
         for (const artifact of reviewArtifacts) await pool.query(`INSERT INTO bb_review_artifacts(owner_user_id,project_id,run_id,artifact_id,artifact_version,kind,filename)
           VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,kind) DO UPDATE SET artifact_id=EXCLUDED.artifact_id,artifact_version=EXCLUDED.artifact_version`,

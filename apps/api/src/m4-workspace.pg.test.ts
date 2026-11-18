@@ -1,3 +1,4 @@
+import {uploadSyntheticAudit} from './test-authoring-source.js';
 import {debitAuthoringCredits} from './authoring-credit-debit.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -25,7 +26,7 @@ const retentionConnection=await isolatedTestDatabase(undefined,'m4-retention');
 
 test('missing material generation input returns all actionable fields without tasks, quotes or charges', {skip:!connection}, async()=>{
   const pool=new Pool({connectionString:connection}),user=`input-feedback-${randomUUID()}`;
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'synthetic_input_feedback']);
@@ -52,7 +53,7 @@ test('missing material generation input returns all actionable fields without ta
 test('synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes',
   {skip:!fixedQaConnection,timeout:90000},async()=>{
   const pool=new Pool({connectionString:fixedQaConnection}),user=`fixed-qa-${randomUUID()}`;
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const price={id:'synthetic-qa-v1',points:60,effective_at:'2020-01-01T00:00:00.000Z',actor:'synthetic-test',reason:'synthetic fixed-price approval, not a production price'};
@@ -133,7 +134,7 @@ test('synthetic M4 lifecycle: active cross-project source, support, template and
   const pool=new Pool({connectionString:retentionConnection}),user=`m4-retention-${randomUUID()}`,other=`m4-retention-${randomUUID()}`;let actor=user;
   const bytes=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const seedProject=async(owner=user)=>{const id=randomUUID();await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering)
@@ -207,11 +208,11 @@ test('synthetic M4 lifecycle: active cross-project source, support, template and
     const legacyTerminal=await runStorageLifecycle(pool,blobs,policy);assert.equal(legacyTerminal.pinned,0);assert.equal(legacyTerminal.purged,1);assert.equal(legacyTerminal.failed,0);
   }finally{await app.close();await pool.end();}
 });
-test('synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage',{skip:!handoffConnection,timeout:180000},async()=>{
+test('synthetic M4 handoff: explicit owner binding, independent target concurrency and immutable lineage',{skip:!handoffConnection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:handoffConnection}),user=`m4-handoff-${randomUUID()}`,other=`m4-handoff-${randomUUID()}`;let actor=user;
   const bytes=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const seedProject=async(kind:string,owner=user)=>{const id=randomUUID();await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering)
@@ -230,6 +231,7 @@ test('synthetic M4 handoff: explicit owner binding, canonical execution mutex an
     const p=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,projectId])).rows[0],rev=Number((await c.query('SELECT COALESCE(max(revision),0)+1 next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,projectId])).rows[0].next),manifest={kind,draft_revision:p.draft_revision,synthetic:true},hash=inputManifestHash(manifest),id=randomUUID();
     await c.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6,'[]','[]')`,[projectId,rev,user,p.draft_revision,hash,manifest]);
+    await c.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[projectId,rev]);
     await c.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[id,user,projectId,rev,hash,randomUUID(),kind,digest('synthetic-handoff-run'),state]);return id;});
   try{
@@ -274,23 +276,25 @@ test('synthetic M4 handoff: explicit owner binding, canonical execution mutex an
     assert.deepEqual((await pool.query(`SELECT (SELECT count(*) FROM bb_runs WHERE owner_user_id=$1)::int runs,
       (SELECT count(*) FROM bb_material_versions WHERE owner_user_id=$1)::int materials,(SELECT count(*) FROM bb_credit_reservations WHERE owner_user_id=$1)::int reservations`,[user])).rows[0],before);
     assert.deepEqual(await creditBalance(pool,user),wallet);
+    const independentUpdate=await insertRun(targetUpdate,'update');assert.ok(independentUpdate,'source generation does not block a separate update target');
+    assert.ok(await insertRun(targetReview,'review'),'source generation does not block a separate review target');
     await assert.rejects(()=>insertRun(targetUpdate,'update'),/Project already has an active business run/);
-    await assert.rejects(()=>insertRun(targetReview,'review'),/Project already has an active business run/);
-    // The legacy update API also checks the adopted canonical before creating a task.
-    const lockedUpdate=await send('POST',`/api/v1/projects/${targetUpdate}/input-revisions`,{draft_revision:revision+1,material_versions:[],requirement_message_ids:[]});
+    // Another writer of this same target still conflicts; lineage is unchanged.
+    const audit=await uploadSyntheticAudit(app,targetUpdate),targetDraft=await ok('GET',`/api/v1/projects/${targetUpdate}`);
+    const lockedUpdate=await send('POST',`/api/v1/projects/${targetUpdate}/input-revisions`,{draft_revision:targetDraft.draft_revision,material_versions:[audit],requirement_message_ids:[]});
     assert.equal(lockedUpdate.statusCode,201,lockedUpdate.body);const updateInput=lockedUpdate.json();
     const updateResponse=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:targetUpdate,input_revision:updateInput.input_revision,
       input_hash:updateInput.input_hash,task_kind:'update',input_manifest_ref:'synthetic-handoff',storage_origin:'cloud',workspace_id:'synthetic-handoff'});
     assert.equal(updateResponse.statusCode,409,updateResponse.body);assert.equal(updateResponse.json().code,'PROJECT_RUN_ACTIVE');
-    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_runs WHERE project_id=$1 AND task_kind='update'",[targetUpdate])).rows[0].n,0);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_runs WHERE project_id=$1 AND task_kind='update'",[targetUpdate])).rows[0].n,1);
     const parallelQa=await insertRun(targetReview,'qa');assert.ok(parallelQa); // Actual QA may continue alongside generation.
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[parallelQa]);
-    // The real review route is also prevented from creating a task on the adopted canonical source.
+    // The review route also protects its own target from duplicate writers.
     const reviewMaterial=await seedMaterial(targetReview),reviewPin={material_id:reviewMaterial.material_id,material_version:1,sha256:reviewMaterial.sha256};
     await ok('PUT',`/api/v1/projects/${targetReview}/review-draft`,{kind:'input',expected_version:0,input:{source_material_ref:reviewPin,material_versions:[reviewPin],requirements:[],as_of:'2026-10-01'}});
     const reviewRequest={execution_request_id:randomUUID(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
     const reviewResponse=await send('POST',`/api/v1/projects/${targetReview}/review-executions`,reviewRequest);assert.equal(reviewResponse.statusCode,409,reviewResponse.body);assert.equal(reviewResponse.json().code,'PROJECT_RUN_ACTIVE');
-    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_runs WHERE project_id=$1 AND task_kind='review'",[targetReview])).rows[0].n,0);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_runs WHERE project_id=$1 AND task_kind='review'",[targetReview])).rows[0].n,1);
     // Existing non-QA history and a different canonical binding cannot be relabelled.
     const used=await seedProject('update');await insertRun(used,'update','failed');assert.equal((await send('POST',path,{...body,target_project_id:used})).json().code,'INPUT_REVISION_CONFLICT');
     const otherSource=await seedProject('update'),otherPin=await seedMaterial(otherSource),otherTopic=await createTopic(otherSource),otherMessage=await postMessage(otherTopic,otherPin);
@@ -307,6 +311,7 @@ test('synthetic M4 handoff: explicit owner binding, canonical execution mutex an
     }finally{await locker.query('ROLLBACK');locker.release();}
     await ok('POST',path,{...body,target_project_id:racingTarget});
     await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[sourceRun.run_id]);await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[sourceRun.run_id]);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[independentUpdate]);
     const updateRun=await insertRun(targetUpdate,'update');assert.ok(updateRun);
     assert.deepEqual((await ok('POST',path,body)).binding.source_material,pin); // Same-scope retry after a run is read-only.
     await assert.rejects(()=>insertRun(targetReview,'review'),/Project already has an active business run/);
@@ -361,7 +366,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const seedProject=async(name:string)=>{const id=randomUUID();await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering) VALUES($1,$2,$3,'update','Synthetic issuer','sse','private')`,[id,user,name]);return id;};
@@ -420,9 +425,12 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     assert.equal((await creditBalance(pool,user)).frozen,0);assert.equal((await creditBalance(pool,user)).available,4500);
     await transaction(pool,c=>grantCredits(c,{owner:user,points:100000,key:'synthetic-fund',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const quote2=await ok('POST',path(t2,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
-    assert.equal((await send('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
+    const parallel=(await ok('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).run;
+    assert.ok(parallel.run_id,'a different target can use the same source');
     const quote3=await ok('POST',path(t3,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
-    assert.equal((await send('POST',path(t3,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote3.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
+    assert.equal((await send('POST',path(t2,'execute'),{...exec,execution_request_id:randomUUID(),quote_id:quote2.quote.quote_id})).json().code,'PROJECT_RUN_ACTIVE');
+    await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[parallel.run_id]);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[parallel.run_id]);
     await save(t,{...input,source_material:newer,materials:[newer],supplemental_requirements:'下一轮要求'},1);
     const pinned=(await pool.query('SELECT manifest,input_hash FROM bb_m4_executions WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(pinned.manifest.input.source_material.material_version,1);assert.equal(pinned.manifest.input.supplemental_requirements,input.supplemental_requirements);assert.equal(inputManifestHash(pinned.manifest),pinned.input_hash.trim());
     // Ordinary product help continues during document execution and produces a real text result.
@@ -450,7 +458,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const reservation=(await pool.query('SELECT state,points,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paid.run_id])).rows[0];assert.equal(reservation.state,'settled');assert.equal(Number(reservation.charged_points),1);assert.equal((await creditBalance(pool,user)).frozen,0);
     const events=(await pool.query('SELECT kind,points FROM bb_credit_events WHERE run_id=$1 ORDER BY kind',[paid.run_id])).rows;assert.equal(events.filter(e=>e.kind==='settle').length,1);assert.equal(BigInt(events.find(e=>e.kind==='release').points),BigInt(pq.quote.points)-1n);
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,4);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,5);
     // Unsupported requests receive free capability feedback without a selected document or a paid QA fallback.
     for(const content of ['请生成DFI推荐函','请实时查询公开信息','请检索最新法规并判断法规适用性']){
       const capability=(await ok('POST',path(t,'messages'),{submission_request_id:randomUUID(),content,context})).run;

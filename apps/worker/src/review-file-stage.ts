@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile, readFile, copyFile, lstat, realpath } fr
 import { join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { isReviewReport, hasReviewReportBody } from '@bondbuddy/contracts';
+import { isReviewReport, hasReviewReportBody, ReviewEditorSnapshotSchema, type ReviewEditorIssue } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
 import { digest } from '@bondbuddy/api/data';
 import { readDocxBodyText } from '@bondbuddy/api/docx-inspector';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
@@ -24,7 +25,7 @@ function hasReviewReportText(bytes: Buffer | undefined): bytes is Buffer {
 type FileRef = { key: string; sha256: string; byte_size: number };
 export type ReviewFileResult = { version: 'codex-review-file-v1'; input_hash: string; files: Record<string, FileRef>; error?: 'WORD_DELIVERY_UNAVAILABLE' };
 type Material = { pin: ReviewManifest['materials'][number]; object_key: string; media_type: string; filename: string };
-export type ReviewFileInput = { manifest: ReviewManifest; materials: Material[]; selected_findings: unknown[] };
+export type ReviewFileInput = { manifest: ReviewManifest; materials: Material[]; selected_findings: unknown[]; selected_targets?: ReviewEditorIssue[] };
 const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/review-files/`;
 
 export function validReviewFileResult(value: unknown, ctx: StageContext): value is ReviewFileResult {
@@ -52,6 +53,7 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
     materials.push({ pin, object_key: material.object_key, media_type: material.media_type, filename: material.filename });
   }
   let selected_findings: unknown[] = [];
+  let selected_targets: ReviewEditorIssue[] | undefined;
   if (manifest.review.source_report_id) {
     const source = (await ctx.pool.query('SELECT report,content_sha256 FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',
       [ctx.run.owner_user_id, ctx.run.project_id, manifest.review.source_report_id])).rows[0];
@@ -59,8 +61,19 @@ export async function loadReviewFileInput(ctx: StageContext): Promise<ReviewFile
       || inputManifestHash(source.report) !== manifest.review.source_report_sha256
       || manifest.review.finding_ids.some(id => !source.report.findings.some((f: { finding_id: string }) => f.finding_id === id))) throw Error('INPUT_REVISION_CONFLICT');
     selected_findings = source.report.findings.filter((f: { finding_id: string }) => manifest.review.finding_ids.includes(f.finding_id));
+    if(manifest.review.operation==='differential_review'&&manifest.review.file_delivery?.version==='review-correction-v2'){
+      const saved=(await ctx.pool.query(`SELECT snapshot,sha256 FROM bb_review_editors
+        WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3`,
+        [ctx.run.owner_user_id,ctx.run.project_id,source.report.run_id])).rows[0];
+      const snapshot:unknown=saved?.snapshot;
+      if(!Value.Check(ReviewEditorSnapshotSchema,snapshot)||inputManifestHash(snapshot)!==saved.sha256?.trim()
+        ||snapshot.source_sha256!==source.report.source_material.sha256)throw Error('INPUT_REVISION_CONFLICT');
+      const targets=snapshot.issues.filter(i=>manifest.review.finding_ids.includes(i.id));
+      if(targets.length!==manifest.review.finding_ids.length||new Set(targets.map(i=>i.id)).size!==targets.length)throw Error('INPUT_REVISION_CONFLICT');
+      selected_targets=targets;
+    }
   }
-  return { manifest, materials, selected_findings };
+  return { manifest, materials, selected_findings, selected_targets };
 }
 
 async function checkedFile(directory: string, name: string, max = MAX): Promise<Buffer> {
@@ -103,7 +116,8 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       const data = { version: 'review-file-input-v1', input_hash: ctx.run.input_hash.trim(),
         project: { issuer_name: manifest.issuer_name, market: manifest.market, offering: manifest.offering },
         requirements: manifest.review.input.requirements, as_of: manifest.review.input.as_of,
-        scope: { operation: manifest.review.operation, selected_findings: input.selected_findings, source_report_id: manifest.review.source_report_id },
+        scope: { operation: manifest.review.operation, selected_findings: input.selected_findings, source_report_id: manifest.review.source_report_id,
+          ...(input.selected_targets?{selected_targets:input.selected_targets.map(i=>({source_finding_id:i.id,original:i.original,original_location:i.original_location??'',title:i.title}))}:{}) },
         materials, knowledge, public_search: (options.config ?? loadCodexAdapterConfig()).web_search,
         output: { report: 'output/report.docx', text: 'output/report.md' } };
       await writeFile(join(cwd, 'input.json'), JSON.stringify(data, null, 2), { mode: 0o400 });
@@ -151,8 +165,15 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           }finally{await rm(exportDir,{recursive:true,force:true});}
         }
         if(!hasReviewReportText(reportText))return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
-        const result=await correctionFiles(ctx,input,reportText);
-        return {...result,files:{...files,...result.files}};
+        try{
+          const result=await correctionFiles(ctx,input,reportText);
+          return {...result,files:{...files,...result.files}};
+        }catch(error){
+          if(ctx.signal.aborted||!(error instanceof Error)||!error.message.includes('REVIEW_DIFFERENTIAL_SCOPE_INVALID'))throw error;
+          // Keep the completed provider call and its actual report for diagnosis.
+          // Scope rejection is a delivery failure, never a reason to call the model again.
+          return {version:'codex-review-file-v1',input_hash:ctx.run.input_hash.trim(),files,error:'WORD_DELIVERY_UNAVAILABLE'};
+        }
       }
       try { word = await checkedFile(output, 'report.docx'); } catch { /* Plain CLI responses can still be exported. */ }
       if (!word) {
@@ -215,8 +236,8 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
       buildPrompt: async () => `请完整阅读 review.md 和 input.json，在本轮中自主完成复核，把完整报告写入 output/report.md 与 output/report.docx，并检查文件已保存。每个问题以三级标题列出，原文披露字段逐字引用待复核源稿；系统将据此生成原生修订和批注。即使没有发现问题，也须在报告中说明实际覆盖范围、核验结论和未覆盖内容。返回文件，不输出固定JSON，不等待分批请求。输入锁：${ctx.run.input_hash.trim()}。
 
 进度消息仅用于中途通知，不是最终成果：切换实际复核工作时，在 commentary 中独立发送 BB_REVIEW_PROGRESS:类别:状态，随后继续工作，不要在进度消息后结束本轮。类别限 read_materials、read_knowledge、check_financial、check_compliance、search_public、compare_sources、prepare_report；状态限 started、completed、failed。进度消息只报告实际动作，不附带思考过程、正文或路径。完整报告写入文件后才发送 final，简述成果及限制。`,
-      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-report-v3':'review-file-progress-v3',
-      fileWorkspace: { prepare, collect } }).run(ctx);
+      schema: {}, validate: value => validReviewFileResult(value, ctx), resultSchemaVersion: 'codex-review-file-v1', templateVersion: correction?'review-correction-report-v4':'review-file-progress-v3',
+      fileWorkspace: { prepare, collect, reviewCompletionCheck: true } }).run(ctx);
   } };
 }
 

@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import { ERROR_CODES, type ErrorCode } from '@bondbuddy/contracts';
 import { Problem } from '@bondbuddy/api/data';
 import {
-  claimMaterialParse, completeMaterialParseStage, failMaterialParse, pauseMaterialParse, renewMaterialParse, succeedMaterialParse,
+  claimMaterialParse, completeMaterialParseStage, deferMaterialParseForCapacity, failMaterialParse, pauseMaterialParse, renewMaterialParse, succeedMaterialParse,
   type MaterialParseLease, type MaterialParseResult,
 } from '@bondbuddy/api/material-jobs';
 import { DOCUMENT_PARSER_MEDIA_TYPES } from './document-parser.js';
@@ -52,7 +52,7 @@ export interface MaterialParseJobDependencies {
   onLease?: (lease: MaterialParseLease | null) => void;
 }
 
-export type MaterialParseRunOutcome = 'idle' | 'succeeded' | 'paused' | 'retry_scheduled' | 'failed' | 'lost';
+export type MaterialParseRunOutcome = 'idle' | 'succeeded' | 'paused' | 'retry_scheduled' | 'waiting_capacity' | 'failed' | 'lost';
 
 const HISTORICAL_MEDIA = ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'];
 const OCR_WARNINGS = new Set(['PDF_PAGES_WITHOUT_TEXT', 'PDF_IMAGES_NOT_OCRD']);
@@ -156,6 +156,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
           if (snapshot.parserVersion !== lease.parserVersion) throw new Error('PARSER_VERSION_MISMATCH');
           if (snapshot.contentSha256 !== lease.materialSha256) throw new Error('PARSE_EVIDENCE_MATERIAL_MISMATCH');
         } catch (error) {
+          if (error instanceof Error && error.message === 'MATERIAL_PARSE_CAPACITY_WAIT') throw error;
           // Preserve a failed parser attempt (including a failed structured response) before
           // the job retry/failure transition is committed.
           await recordMaterialParseProcessingCost(pool, lease, 'parse', {
@@ -268,7 +269,10 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lostLease(error)) return 'lost';
-    try { return await failMaterialParse(pool, lease, classifyMaterialParseError(error)); }
+    try {
+      if (error instanceof Error && error.message === 'MATERIAL_PARSE_CAPACITY_WAIT') return await deferMaterialParseForCapacity(pool,lease);
+      return await failMaterialParse(pool, lease, classifyMaterialParseError(error));
+    }
     catch (finishError) { if (lostLease(finishError)) return 'lost'; throw finishError; }
   } finally { clearInterval(heartbeat); dependencies.onLease?.(null); }
 }

@@ -281,6 +281,19 @@ class FormatPlanTests(unittest.TestCase):
             self.assertIsNotNone(p.find(q('pPr') + '/' + q('keepNext')))
         self.assertFalse(any(p.find(q('pPr') + '/' + q('keepNext')) is not None for row in rows[1:] for p in row.iter(q('p'))))
 
+    def test_captionless_financial_headers_with_units_and_composite_periods(self):
+        doc = self.fixture(caption=False)
+        for cell, text in zip(doc.tables[0].rows[0].cells, ['项目（万元）', '2025年9月末/1—9月', '2024年末/年度']):
+            cell.text = text
+        doc.save(self.source); self.bind()
+        out, plan = self.generate([self.fill()])
+        self.assertEqual(plan['tables'][0]['header_rows'], 1)
+        root = xml(package(out / 'clean.docx')['word/document.xml'])
+        rows = root.find('.//' + q('tbl')).findall(q('tr'))
+        self.assertIsNotNone(rows[0].find(q('trPr') + '/' + q('tblHeader')))
+        self.assertFalse(any(p.find(q('pPr') + '/' + q('keepNext')) is not None for row in rows[1:] for p in row.iter(q('p'))))
+        self.assertIsNone(root.find(q('body')).find(q('p')).find(q('pPr') + '/' + q('keepNext')))
+
     def test_consecutive_data_header_flags_cleared_only_after_proven_boundary(self):
         doc = self.fixture()
         for row in doc.tables[0].rows:
@@ -289,6 +302,35 @@ class FormatPlanTests(unittest.TestCase):
         out, _ = self.generate([self.fill()])
         rows = xml(package(out / 'clean.docx')['word/document.xml']).find('.//' + q('tbl')).findall(q('tr'))
         self.assertEqual([r.find(q('trPr') + '/' + q('tblHeader')) is not None for r in rows], [True, False, False])
+
+    def test_short_financial_rows_keep_labels_with_amounts_and_reject_to_source(self):
+        doc = self.fixture([['资产总额', '', '100.00'], ['经营活动现金净流量', '4000', '未提供']], caption=False)
+        doc.tables[0].cell(0, 0).text = '项目（金额：万元）'
+        # An explicit old false value must survive rejection of the new format.
+        ET.SubElement(doc.tables[0].rows[2]._tr.get_or_add_trPr(), q('cantSplit'), {q('val'): '0'})
+        doc.save(self.source); self.bind()
+        out, plan = self.generate([self.fill()])
+        rows = xml(package(out / 'clean.docx')['word/document.xml']).find('.//' + q('tbl')).findall(q('tr'))
+        self.assertEqual(plan['tables'][0]['header_rows'], 1)
+        for row in rows:
+            self.assertIsNotNone(row.find(q('trPr') + '/' + q('cantSplit')))
+            self.assertNotEqual(row.find(q('trPr') + '/' + q('cantSplit')).get(q('val')), '0')
+        # The table may still break BETWEEN rows.
+        self.assertFalse(any(p.find(q('pPr') + '/' + q('keepNext')) is not None for row in rows[1:] for p in row.iter(q('p'))))
+
+    def test_narrative_long_multiline_and_multiple_paragraph_rows_are_not_bound(self):
+        for kind in ['narrative', 'long_label', 'line_break', 'multiple_paragraphs']:
+            with self.subTest(kind=kind):
+                doc = self.fixture([['资产总额', '', '100.00'], ['经营活动现金净流量', '4000', '3000']])
+                cells = doc.tables[0].rows[2].cells
+                if kind == 'narrative': cells[1].text = '金额尚待核对的说明段落'
+                elif kind == 'long_label': cells[0].text = '长篇说明' * 40
+                elif kind == 'line_break': cells[0].paragraphs[0].add_run().add_break()
+                else: cells[0].add_paragraph('第二段说明')
+                doc.save(self.source); self.bind()
+                out, _ = self.generate([self.fill()], kind)
+                rows = xml(package(out / 'clean.docx')['word/document.xml']).find('.//' + q('tbl')).findall(q('tr'))
+                self.assertIsNone(rows[2].find(q('trPr') + '/' + q('cantSplit')))
 
     def test_two_header_rows_remain_repeatable_and_first_data_is_bound(self):
         self.fixture([['', '金额', '比例'], ['明细甲', '', '1.00'], ['明细乙', '2.00', '3.00']]); self.bind()
@@ -348,6 +390,9 @@ class FormatPlanTests(unittest.TestCase):
         root = xml(package(out / 'tracked.docx')['word/document.xml'])
         self.assertEqual(len(root.findall('.//' + q('trPr') + '/' + q('ins'))), 2)
         self.assertFalse(root.findall('.//' + q('ins') + '//' + q('ins')))
+        for row in root.find('.//' + q('tbl')).findall(q('tr'))[2:4]:
+            self.assertIsNotNone(row.find(q('trPr') + '/' + q('cantSplit')))
+            self.assertIsNone(row.find(q('trPr') + '/' + q('trPrChange')))
 
     def test_first_inserted_data_row_keeps_its_row_marker(self):
         self.fixture(); self.bind()

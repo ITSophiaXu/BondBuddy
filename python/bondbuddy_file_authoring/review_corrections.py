@@ -8,6 +8,8 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from .word_patch import Patcher, xml, serialized, paragraph_text, q, add_layout_comments
 from .correction_findings import category_label, findings
+from .correction_rounding import rounded_sum_limitation
+from .correction_locator import CorrectionLocator
 from bondbuddy_word_delivery.writer import normalize_old_revisions
 
 
@@ -65,20 +67,53 @@ def build(source, request, output):
         if previous['source_sha256'] != sha or previous['paragraphs'] != paragraphs:
             raise ValueError('INPUT_REVISION_CONFLICT')
         issues = copy.deepcopy(previous['issues'])
+        # Legacy snapshots discarded location. Recover only from the host's
+        # hash-verified original report, with every original finding field equal.
+        # Neither the old snapshot nor the user's saved decisions are rewritten.
+        recovered = {i['id']: i for i in findings(request.get('original_report', ''))}
+        for issue in issues:
+            old = recovered.get(issue['id'])
+            if not issue.get('original_location') and old and all(
+                issue.get(key) == old.get(key) for key in
+                ('title', 'category', 'original', 'replacement', 'reason', 'evidence', 'missing')
+            ):
+                issue['original_location'] = old['original_location']
     else:
         issues = findings(request['markdown'])
+    scope = request.get('review_scope')
+    if scope is not None:
+        # A differential review is a closed set of original findings. The host
+        # supplies these targets from its owner/hash-verified immutable editor.
+        # Never silently discard extra suggestions or accept a reused ID over
+        # unrelated source text. Refuse before writing any deliverable.
+        ids = scope.get('finding_ids', [])
+        targets = {i['id']: i for i in scope.get('targets', [])}
+        reported = [i.get('source_finding_id') for i in issues]
+        if (not ids or len(ids) != len(set(ids)) or set(targets) != set(ids)
+            or len(reported) != len(ids) or set(reported) != set(ids)
+            or any(i['original'] != targets[i['source_finding_id']]['original'] for i in issues)):
+            raise ValueError('REVIEW_DIFFERENTIAL_SCOPE_INVALID')
+        # The model cannot move the authorized quote to another occurrence by
+        # supplying a different location label in its new report.
+        for issue in issues:
+            issue['original_location'] = targets[issue['source_finding_id']].get('original_location', '')
     if not issues:
         warnings.append('复核报告未提供可定位的问题条目，本次未自动修改正文。请阅读报告的覆盖范围并人工核对，不能据此认定未发现问题。')
     decisions = {d['id']: d for d in request.get('decisions', [])}
     if decisions and (len(decisions) != len(issues) or set(decisions) != {i['id'] for i in issues}):
         raise ValueError('REVIEW_DECISIONS_INVALID')
+    locator = CorrectionLocator(baseline)
     for issue in issues:
         issue.update(decisions.get(issue['id'], {}))
         issue.update(applied=False, limitation='', paragraph_id=None)
-        matches = [p for p in paragraphs if issue['original'] and p['text'].count(issue['original']) == 1]
-        if len(matches) == 1 and sum(p['text'].count(issue['original']) for p in paragraphs) == 1:
-            issue['paragraph_id'] = matches[0]['id']
-        else:
+        # Re-evaluate saved editors as well as new reports. Only an explicit
+        # user's manual replacement may override this automated suggestion guard.
+        if issue['decision'] == 'suggested':
+            limitation = rounded_sum_limitation(issue['original'], issue['replacement'], issue['evidence'])
+            if limitation:
+                issue.update(uncertain=True, limitation=limitation)
+        issue['paragraph_id'] = locator.locate(issue['original'], issue.get('original_location', ''))
+        if not issue['paragraph_id']:
             issue['limitation'] = '原文无法唯一定位，保留原文；请下载后人工核对。'
     revised, clean = copy.deepcopy(baseline), copy.deepcopy(baseline)
     maps = [{f'p{i}': p for i, p in enumerate(r.iter(q('p')))} for r in (revised, clean)]

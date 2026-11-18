@@ -14,7 +14,7 @@ from bondbuddy_file_authoring.check import clean, package, resolve_revisions
 from bondbuddy_file_authoring.fixed_edit import empty_log, finalize, write_json
 from bondbuddy_file_authoring.quality import verify
 from bondbuddy_file_authoring.template_manifest import build_manifest, sha
-from bondbuddy_file_authoring.word_patch import q, serialized, xml
+from bondbuddy_file_authoring.word_patch import Patcher, paragraph_text, q, serialized, xml
 
 
 class DocumentQualityTests(unittest.TestCase):
@@ -125,10 +125,33 @@ class DocumentQualityTests(unittest.TestCase):
 
     def test_legacy_direct_authoring_uses_same_flexible_policy_and_keeps_real_revisions(self):
         self.data.pop('operations_path')
+        write_json(self.input, self.data)
+        old = '发行人保持原有经营管理制度，主营基础设施项目投资和建设。' * 8
+        # Legacy callers do not have a trusted format plan. Build their real
+        # tracked edit directly, rather than dropping the log from fixed_edit.
+        parts = package(self.source)
+        root = xml(parts['word/document.xml'])
+        paragraph = next(p for p in root.iter(q('p')) if paragraph_text(p) == old)
+        Patcher(root, True, self.data['revision_author']).patch(paragraph, old, '发行人主营城市公共设施运营。')
+        parts['word/document.xml'] = serialized(root)
+        output = self.root / 'output'
+        output.mkdir()
+        with ZipFile(output / 'tracked.docx', 'w', ZIP_DEFLATED) as archive:
+            for name, raw in parts.items():
+                archive.writestr(name, raw)
+        clean(output / 'tracked.docx', output / 'clean.docx')
+        (output / 'baseline.docx').write_bytes(self.source.read_bytes())
+        self.assertTrue(list(root.iter(q('ins'))))
+        self.assertTrue(list(root.iter(q('del'))))
+        report = verify(self.input)
+        self.assertEqual(report['status'], 'passed', report)
+
+    def test_fixed_format_plan_cannot_be_trusted_without_its_operations_log(self):
+        self.data.pop('operations_path')
         old = '发行人保持原有经营管理制度，主营基础设施项目投资和建设。' * 8
         report = self.generate([{'id': 'concise', 'kind': 'replace_text', 'node_id': self.node(old)['node_id'],
                                  'before': old, 'after': '发行人主营城市公共设施运营。'}])
-        self.assertEqual(report['status'], 'passed', report)
+        self.assertIn('WORD_REJECT_OR_FORMAT_MISMATCH', self.codes(report))
 
     def test_erased_short_section_is_rejected_without_a_minimum_character_threshold(self):
         doc = Document(self.source)

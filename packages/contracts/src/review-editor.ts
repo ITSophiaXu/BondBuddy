@@ -14,7 +14,7 @@ export type ReviewExportPin={source_run_id:string;editor_sha256:string;decisions
 
 /** API response schemas and OpenAPI share the same issue/decision definition. */
 const text=Type.String();
-export const ReviewEditorIssueSchema=Type.Object({...ReviewDecisionSchema.properties,category:text,title:text,original:text,replacement:text,reason:text,evidence:text,missing:text,uncertain:Type.Boolean(),paragraph_id:Type.Union([text,Type.Null()]),applied:Type.Boolean(),limitation:text},{additionalProperties:false});
+export const ReviewEditorIssueSchema=Type.Object({...ReviewDecisionSchema.properties,category:text,title:text,original:text,replacement:text,reason:text,evidence:text,missing:text,uncertain:Type.Boolean(),paragraph_id:Type.Union([text,Type.Null()]),applied:Type.Boolean(),limitation:text,original_location:Type.Optional(text),source_finding_id:Type.Optional(id)},{additionalProperties:false});
 export const ReviewEditorSnapshotSchema=Type.Object({version:Type.Literal('review-editor-v1'),source_filename:text,source_sha256:hash,source_format:Type.Union([Type.Literal('docx'),Type.Literal('pdf')]),warnings:Type.Array(text),paragraphs:Type.Array(Type.Object({id:text,text})),issues:Type.Array(ReviewEditorIssueSchema)},{additionalProperties:false});
 export const ReviewEditorResponseSchema=Type.Object({run_id:id,sha256:hash,snapshot:ReviewEditorSnapshotSchema},{additionalProperties:false});
 export function reviewEditorOpenApiPaths(ref:(name:'RunResponse'|'MaterialResponse')=>unknown){
