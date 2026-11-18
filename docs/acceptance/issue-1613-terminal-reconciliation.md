@@ -24,7 +24,7 @@
 - 完整快照必须全部写入私有 Blob 并回读匹配，才能标记 saved。路径越界、链接、文件变化、容量超限、存储失败或不完整 capture 都不能冒充已保存。测试保留并检查这些失败分支。
 - 一轮模型调用内部的未保存临时内容不等于持久化进度。历史问题 run 没有文件快照，不能从 prompt 或日志凭空还原；新代码也不会把一次全量重跑称为无损续跑。已有源材料、输入和持久化阶段记录继续保留。
 - 确认本地进程已结束、没有可用恢复材料且适配器无查询能力时，任务失败。不能确认的结果每分钟核对一次，从不可变暂停事件起最多一小时；旧版本 exhausted 记录也终结。供应商观察、unknown 用量、进程 fencing 均不改写。
-- `run/job failed`、错误记录、checkpoint 审计、outbox 和原信用合同的失败释放/退款在同一事务完成。账务隔离仍走 `billing_reconcile`，不绕过钱包保护。纯业务暂停（用户主动暂停、积分不足、等待材料）保持既有语义；恢复期限或次数已被证据确认耗尽的执行仍按原恢复协议失败。
+- `run/job failed`、错误记录、checkpoint 审计、outbox 和原信用合同的失败释放/退款在同一事务完成。账务隔离仍走 `billing_reconcile`，不绕过钱包保护。待处理的用户取消优先沿用 `cancelled` 和原扣费政策，不能被自动失败退款覆盖；unknown 和成功核对后的 resume 两条入口均覆盖。纯业务暂停（用户主动暂停、积分不足、等待材料）保持既有语义；恢复期限或次数已被证据确认耗尽的执行仍按原恢复协议失败。
 - 自动继续只使用已验证恢复证据；失败终态不会自动复活。用户明确重新提交时，使用新的 execution_request_id，留下独立任务与账务审计。
 
 ## 实现
@@ -45,7 +45,7 @@ ops 新增默认开启的 `provider_reconcile` 调度任务（30 秒，沿用数
 
 端到端文件用例增加：真实写入 scratch/output → 明确 413 失败 → 完整快照 → 常驻协调恢复 → 新 CLI 核对原字节 → Word 收集/交付 → 两份下载哈希一致。该用例使用真实文件、数据库、Azurite 和 Word 工具，模型为合成 CLI。总期限耗尽的 timeout 必须失败，不能通过重置 deadline 伪造可恢复。
 
-验证源码为 `c3763478f2513f8d8272f19d839965025693b7ef`，已 rebase 到 `develop fa96f8b9`。环境为 Linux Docker、Node 22.23.2、PostgreSQL 16、独立 Azurite、Python 3.11、LibreOffice、Codex CLI 0.169.0。模型响应来自 fake CLI，网关请求数为 0。新增 review/generation/QA 用例验证共享队列状态机，不冒充各产品的完整入口验收。
+验证源码为 `0cb66824b7157421386ad2d216b5756463c4c7e8`，已 rebase 到 `develop fa96f8b9`。环境为 Linux Docker、Node 22.23.2、PostgreSQL 16、独立 Azurite、Python 3.11、LibreOffice、Codex CLI 0.169.0。模型响应来自 fake CLI，网关请求数为 0。新增 review/generation/QA 用例验证共享队列状态机，不冒充各产品的完整入口验收。
 
 | 验证 | 结果 | 命令 / 用例 |
 | --- | --- | --- |
@@ -64,6 +64,8 @@ ops 新增默认开启的 `provider_reconcile` 调度任务（30 秒，沿用数
 PostgreSQL 用例设置 `BB_TRIAL_GUARD=off`、`BB_TEST_DATABASE_URL`、`BB_TEST_AZURITE_CONNECTION_STRING`，均指向本任务独立合成环境；测试容器拥有独立 machine-id，允许 Codex 的真实内层文件沙箱，不开放模型网络调用。测试准备沿用 #1583 的 Linux LF SQL 副本流程；不修改已部署迁移。开发依赖复用锁文件完全一致的本机测试容器，锁文件 SHA-256 为 `849caa9b9f385714c6b1796cc4037a6cc5520ee0bef9f62265b298874965acd2`。
 
 页面对照（1440 × 960）：[现有失败态原型](issue-1613-ui/prototype.png)、[本次实现](issue-1613-ui/implementation.png)。实现图裁去视口以下区域；原完整截图保留在本地验证目录。五步进度、失败摘要、材料保留、继续修改/查看材料入口不变；失败阶段从原型的“保存文档”显示为本例实际“编制募集书”，原因文案按用户本次要求明确终态。没有引入新页面布局或未经确认的新操作流程。
+
+GitHub 托管 CI 的初轮检查没有执行任何步骤。Actions 注释为“recent account payments have failed or your spending limit needs to be increased”（[示例检查](https://github.com/ITSophiaXu/BondBuddy/actions/runs/44296462355/job/134774655921)）。上表为实际本地隔离环境验证，不声称托管 CI 通过；未修改 GitHub 付款、额度或检查保护。
 
 ## 统一发布与验收
 
