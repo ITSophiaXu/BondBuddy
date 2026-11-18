@@ -1,0 +1,13 @@
+{
+  "status": "PREPARED",
+  "at": "2026-11-18T15:06:40.755776+00:00",
+  "roles": [
+    "api",
+    "web"
+  ],
+  "files": 5,
+  "probe_passed": true,
+  "plan_sha256": "0e9fb189e8e11ee66ddbae4dd30c92caf553b5f83c32e995c5139df63b4cd46e",
+  "production_changed": false,
+  "free_bytes": 10012147712
+}
