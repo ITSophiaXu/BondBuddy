@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
-import { claim,checkpointStage,pauseRun,recordPotentialCall,recordProviderReconcileUnknown,providerReconciliationCandidates } from '@bondbuddy/api/queue';
+import { enqueue,claim,checkpointStage,pauseRun,recordPotentialCall,recordProviderReconcileUnknown,providerReconciliationCandidates } from '@bondbuddy/api/queue';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { recordModelAttemptRuntime,recordProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { uploadSyntheticAudit,uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
@@ -12,7 +12,7 @@ import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/bi
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
 import { recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
 import { ProviderReconciliationSweep,reconcileProviderRun,providerReconciliationHealth } from './provider-reconcile-sweep.js';
-import { tasksFromEnv } from './ops-scheduler.js';
+import { OpsScheduler,tasksFromEnv } from './ops-scheduler.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'issue1613');
@@ -26,11 +26,11 @@ test('provider reconciliation closes system failures independently of execution 
   type Options={paid?:boolean;runtime?:boolean;exited?:boolean;kind?:'update'|'review'|'generation'|'qa';pauseOnly?:'user_paused'|'credits_exhausted'|'awaiting_materials';active?:boolean};
   async function fixture(options:Options={}){
     const kind=options.kind??'update';
-    const p=await send('POST','/api/v1/projects',{name:'Synthetic issue1613',kind:kind==='qa'?'generation':kind,issuer_name:'合成企业',market:'sse',offering:'private',
-      ...(kind==='update'?{update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}}:{})});
+    const p=await send('POST','/api/v1/projects',{name:'Synthetic issue1613',kind:'update',issuer_name:'合成企业',market:'sse',offering:'private',
+      update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}});
     assert.equal(p.statusCode,201,p.body);const project=p.json().project_id;
-    const materials=kind==='update'?await uploadSyntheticReference(app,project):{draft_revision:1,material_versions:[],requirement_message_ids:[]};
-    const audit=kind==='update'?await uploadSyntheticAudit(app,project):null;
+    const materials=await uploadSyntheticReference(app,project);
+    const audit=await uploadSyntheticAudit(app,project);
     const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,{...materials,material_versions:[...materials.material_versions,...(audit?[audit]:[])]});
     assert.equal(input.statusCode,201,input.body);
     let quote:string|undefined;
@@ -38,8 +38,23 @@ test('provider reconciliation closes system failures independently of execution 
       assert.equal(q.statusCode,200,q.body);quote=q.json().quote.quote_id;}
     const request={execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.json().input_hash,task_kind:kind,
       input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',...(quote?{quote_id:quote}:{})};
-    const started=options.paid?await paidApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request}):await send('POST','/api/v1/runs/execute',request);
-    assert.equal(started.statusCode,202,started.body);const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,started.json().run_id);
+    let runId:string;
+    if(kind==='update'){
+      const started=options.paid?await paidApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request}):await send('POST','/api/v1/runs/execute',request);
+      assert.equal(started.statusCode,202,started.body);runId=started.json().run_id;
+    }else{
+      // Queue-level synthetic records test the shared failure policy. They do not
+      // claim to satisfy each product's separate execution/quote admission gate.
+      runId=uid();
+      await transaction(pool,async client=>{
+        const r=(await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,
+          execution_request_id,task_kind,request_hash,state,event_cursor,channel)
+          VALUES($1,$2,$3,1,$4,$5,$6,$7,'queued',0,'production') RETURNING *`,
+          [runId,owner,project,input.json().input_hash,request.execution_request_id,kind,digest(Buffer.from(JSON.stringify(request)))])).rows[0];
+        await enqueue(client,r);
+      });
+    }
+    const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,runId);
     await checkpointStage(pool,lease,'materials_ready',{retained:'synthetic extraction'},false);
     if(options.active)return {lease,project,attempt:''};
     if(options.pauseOnly){await pauseRun(pool,lease,options.pauseOnly,options.pauseOnly);return {lease,project,attempt:''};}
@@ -109,7 +124,11 @@ test('provider reconciliation closes system failures independently of execution 
       const old=await fixture({runtime:false});
       await pool.query("UPDATE bb_jobs SET checkpoint=checkpoint||$2::jsonb WHERE id=$1",[old.lease.jobId,JSON.stringify({provider_reconcile_unknown:{first_at:new Date(now-7200000).toISOString(),exhausted:true}})]);
       const task=tasksFromEnv(pool,{BB_STORAGE_PURGE_ENABLED:'false'}).find(t=>t.name==='provider_reconcile');assert.ok(task);
-      const result=await task.run();assert.equal(result.ok,true);assert.equal(result.detail?.progressed,1);
+      const logs:Record<string,unknown>[]=[];
+      const schedulers=['one','two'].map(name=>new OpsScheduler({pool,tasks:[task],owner:'synthetic-1613-'+name,jitter:0,log:event=>logs.push(event)}));
+      await Promise.all(schedulers.map(scheduler=>scheduler.tick()));
+      assert.equal(logs.filter(event=>event.task==='provider_reconcile'&&event.progressed===1).length,1);
+      assert.deepEqual((await pool.query("SELECT last_status,runs FROM bb_ops_schedule WHERE task='provider_reconcile'")).rows[0],{last_status:'succeeded',runs:'1'});
       assert.equal((await state(old.lease.runId)).state,'failed');
     });
     await t.test('user/material/credit pauses stay paused; inactive projects cannot restart',async()=>{

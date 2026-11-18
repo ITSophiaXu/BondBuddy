@@ -165,6 +165,8 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       assert.equal((await pausedRuns(pool, 'provider_reconcile', 100)).some(r => r.run_id === unknown.lease.runId), true);
       assert.equal(await recordProviderReconcileUnknown(pool, owner, unknown.lease.runId, unknown.lease.jobId, 'codex_no_lookup', unknownStart + 60 * 60 * 1000 + 1), true);
       assert.equal((await pausedRuns(pool, 'provider_reconcile', 100)).some(r => r.run_id === unknown.lease.runId), false);
+      assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[unknown.lease.runId])).rows[0].state,'failed');
+      assert.equal((await pool.query('SELECT state FROM bb_jobs WHERE id=$1',[unknown.lease.jobId])).rows[0].state,'failed');
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason' IN ('provider_reconcile_unknown','provider_reconcile_unknown_exhausted')", [unknown.lease.runId])).rows[0].n, 2);
     }finally{await app.close();await paidApp.close();await pool.end();}
   });

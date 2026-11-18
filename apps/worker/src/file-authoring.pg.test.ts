@@ -32,7 +32,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
     const blobs = azureBlobs(connection!,container);
     const owner = `unified-${randomUUID()}`;
     let active = owner;
-    const app = createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true});
+    const app = createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
     const send = (method:string,url:string,payload?:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,
       headers:{origin,...headers},payload:payload as any});
     try {
@@ -46,7 +46,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const project=created.json().project_id;
         const refs:{material_id:string;material_version:number}[]=[];
         let source:SourceProspectus|undefined, completeSource:SourceProspectus|undefined;
-        for(const role of missingMetadata?['historical']:relation?['historical','audit']:['audit']){
+        for(const role of relation||missingMetadata?['historical','audit']:['audit']){
           const bytes=role==='historical'?makeWorkerDocxFixture({externalLink:false}):Buffer.from('合成目标发行人：2025年净资产120万元；无新增对外担保。');
           const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain';
           const declaration={byte_size:bytes.length,sha256:digest(bytes)};
@@ -145,7 +145,11 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,rejectLegacy?legacyRejection:fileAuthoringDeliveryStage()],
           onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
         if(recoverPayload){
-          assert.equal(await execute(),'paused');
+          // The provider journal parks the run before the pipeline's next guard;
+          // the local executor stops while the durable task is paused for recovery.
+          assert.equal(await execute(),'stopped');
+          const parked=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
+          assert.equal(parked.state,'paused');assert.equal(parked.stage,'provider_reconcile');
           const before=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE run_id=$1',[run.run_id])).rows[0].checkpoint;
           assert.ok(before.stages.file_authoring_recovery.files.some((f:{path:string})=>f.path==='scratch/issue1613-completed.txt'));
           assert.ok(before.stages.file_authoring_recovery.files.some((f:{path:string})=>f.path==='output/issue1613-partial.txt'));

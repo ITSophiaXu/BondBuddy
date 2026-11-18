@@ -2179,3 +2179,32 @@ for(const width of [1440,390]) test(`encrypted source feedback matches prototype
     await page.screenshot({path:join(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,`prototype-encrypted-source-${width}.png`)});
   }
 });
+
+
+test('terminal reconciliation failure releases the active task and preserves explicit next-run action',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='failed';state.runStage='failed';state.runReason='provider_reconcile_unknown_exhausted';
+  state.eventError='MODEL_PRIOR_ATTEMPT_UNRESOLVED';
+  await page.setViewportSize({width:1440,height:960});await setup(page,state);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已失败');
+  await expect(page.locator('#execution-progress')).not.toContainText('正在核对并恢复');
+  await expect(page.getByRole('button',{name:'继续修改',exact:true})).toBeVisible();
+  const output=process.env.BB_1613_UI_EVIDENCE_DIR;
+  if(output){await mkdir(output,{recursive:true});await page.screenshot({path:join(output,'implementation-failed-desktop.png'),fullPage:true});}
+  await continueAuthoring(page);expect(state.executes).toHaveLength(1);
+  if(output){
+    const {pathToFileURL}=await import('node:url');
+    const prototype=pathToFileURL(resolve('../../product-prototype/public/authoring-live-progress.html'));prototype.search='state=word_failed';
+    await page.goto(prototype.href);await expect(page.locator('#prototype-progress')).toContainText('失败');
+    await page.screenshot({path:join(output,'prototype-failed-desktop.png'),fullPage:true});
+  }
+});
+
+
+test('legacy reconciliation progress cannot claim a failed state before the server finalizes it',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='paused';state.runStage='provider_reconcile';state.runReason='provider_reconcile_unknown_exhausted';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);await expect(page.locator('#execution-progress .task-progress')).toBeVisible();
+  await expect(page.locator('#execution-progress')).not.toContainText('任务已失败');
+  expect(state.executes).toHaveLength(1);
+});

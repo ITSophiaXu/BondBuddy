@@ -4,7 +4,7 @@ import {writeFileSync,existsSync,readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const args=process.argv.slice(2);
 if(args.includes('sandbox')){
-  const result=spawnSync('/usr/local/bin/codex',args,{stdio:'inherit'});process.exit(result.status??1);
+  const result=spawnSync('/usr/local/bin/codex',args.filter(arg=>arg!=='--synthetic-recovery-once'),{stdio:'inherit'});process.exit(result.status??1);
 }
 let input='';for await(const chunk of process.stdin)input+=chunk;
 if(!args.includes('exec')||args.includes('--output-schema'))throw Error('one plain-text CLI execution required');
