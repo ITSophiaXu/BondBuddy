@@ -1,3 +1,4 @@
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 // Synthetic scheduling and readiness only. No supplier calls or customer material.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -8,6 +9,7 @@ import { type PrivateBlobs } from '@bondbuddy/api/data';
 import { claim, renew, action, pausedRuns, type RunKind } from '@bondbuddy/api/queue';
 import { readiness, recordWorkerHeartbeat, workerGroupsFromEnv } from '@bondbuddy/api/trial-guard';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv } from './runtime.js';
+import { uploadSyntheticReference,uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection = await isolatedTestDatabase('BB_TEST_RUNTIME_DATABASE_URL', 'worker-isolation');
@@ -38,12 +40,15 @@ test('worker filters reject invalid configuration and isolate review assistants'
 test('long review reserves only review capacity; updates run, claims are fenced and recovery stays in its group', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection, max: 12 });
   const owner = `isolation-${randomUUID()}`, origin = 'http://bondbuddy.test';
-  const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  const objects=new Map<string,Buffer>();
+  const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,getIfExistsBounded:async k=>objects.get(k)??null,exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
+  const app = createServer({ pool, blobs, historicalBillingFixture:true, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const submit = async (kind: RunKind) => {
-    const p = await send('POST', '/api/v1/projects', { name: 'Synthetic isolation', kind: 'update', issuer_name: null, market: null, offering: null });
+    const p = await send('POST', '/api/v1/projects', { name: 'Synthetic isolation', kind: 'update', issuer_name: 'Synthetic issuer', market: 'sse', offering: 'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'} });
     assert.equal(p.statusCode, 201, p.body);
-    const input = await send('POST', `/api/v1/projects/${p.json().project_id}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+    const source=await uploadSyntheticReference(app,p.json().project_id),audit=await uploadSyntheticAudit(app,p.json().project_id);
+    const input = await send('POST', `/api/v1/projects/${p.json().project_id}/input-revisions`, { ...source,material_versions:[...source.material_versions,audit] });
     assert.equal(input.statusCode, 201, input.body);
     const response = await send('POST', '/api/v1/runs/execute', { execution_request_id: randomUUID(), project_id: p.json().project_id, input_revision: 1,
       input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' });

@@ -8,7 +8,7 @@ import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/bi
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { uploadSyntheticAudit, uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
-import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns,resolveOperatorReconciliation } from '@bondbuddy/api/queue';
+import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns,providerReconciliationCandidates,resolveOperatorReconciliation } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,providerResultObjectKey,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -427,9 +427,9 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     assert.equal(await active.recover(),false);await end(active.lease.runId);
     const cancelling=await fixture({paid:true,capture:'saved'});await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=now() WHERE id=$1',[cancelling.lease.jobId]);
     assert.equal(await cancelling.recover(),false);await end(cancelling.lease.runId);
-    // Legacy unknown calls must not consume the dedicated size-limit scan. A full
-    // page of ineligible request/output caps must yield to later candidates without changing
-    // any evidence or updated_at just to influence queue ordering.
+    // Every reconciliation candidate shares bounded keyset pagination. Multiple
+    // pages of unknown or still-running calls must yield to the recoverable run;
+    // durable backoff may update scheduling metadata, never provider evidence.
     const unknown=[];
     for(let n=0;n<21;n++)unknown.push(await fixture({error:'MODEL_TURN_FAILED'}));
     const prepared=[];
@@ -452,12 +452,20 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     await new WorkerRuntime({pool,blobs,runKinds:['review']}).sweep();
     assert.deepEqual(await states(untouchedIds),untouchedBefore);
     assert.deepEqual(await states([eligible.run_id]),eligibleBefore,'worker task-kind isolation applies to the dedicated scan');
+    const allCandidates=await providerReconciliationCandidates(pool,100,['update']);
+    const position=allCandidates.findIndex(candidate=>candidate.run_id===eligible.run_id);assert.ok(position>=0);
+    const passes=Math.floor(position/20)+1;assert.ok(passes<=3,'42 candidates need at most three bounded passes');
+    const evidence=async()=>(await pool.query(`SELECT to_jsonb(o) value FROM bb_provider_call_observations o
+      JOIN bb_runs r ON r.id=o.run_id WHERE r.id=ANY($1::text[]) ORDER BY o.id`,[untouchedIds])).rows;
+    const beforeEvidence=await evidence();
     const rotating=new WorkerRuntime({pool,blobs,runKinds:['update']});
-    await rotating.sweep();
-    assert.deepEqual(await states([eligible.run_id]),eligibleBefore,'the first scan contains 20 still-running payload attempts');
-    await rotating.sweep();
-    assert.deepEqual(await row(eligible.run_id),{state:'queued',stage:'queued'},'the second scan reaches the next candidate');
-    assert.deepEqual(await states(untouchedIds),untouchedBefore,'blocked and unknown tasks keep their original state and timestamps');
+    for(let pass=1;pass<=passes;pass++){
+      await rotating.sweep();
+      if(pass<passes)assert.deepEqual(await states([eligible.run_id]),eligibleBefore,'only the current keyset page is processed');
+    }
+    assert.deepEqual(await row(eligible.run_id),{state:'queued',stage:'queued'},'bounded pagination reaches the recoverable candidate');
+    assert.deepEqual(await evidence(),beforeEvidence,'backoff never rewrites provider observations');
+    assert.ok((await states(untouchedIds)).every(row=>row.run_state==='paused'&&row.job_state==='paused'),'other unresolved calls are never automatically requeued');
     assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[eligibleAttempt.attempt])).rows[0].usage_status,'unknown');
     await end(eligible.run_id);
     const isolated=await fixture({paid:true,error:localFailure});

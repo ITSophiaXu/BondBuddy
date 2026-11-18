@@ -1,3 +1,4 @@
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
@@ -12,6 +13,7 @@ import { runDeepSeekProbe, type ProbeInput, type ProbeJournal, type ProbeObserva
 import { runOnce } from './index.js';
 import { reuseProviderCallOrSend } from './provider-reconciliation.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
+import { uploadSyntheticReference,uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
 import { isolatedTestDatabase } from './test-database.js';
 
 const testDatabaseUrl = await isolatedTestDatabase();
@@ -32,13 +34,14 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
   const pool=new Pool({connectionString:connection});
   const blobs=azureBlobs(blobConnection!,'bondbuddy-m1-12-result');
   let activeOwner='synthetic-reconcile-owner';
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   async function fixture(label:string) {
-    const p=await send('POST','/api/v1/projects',{name:`Synthetic reconciliation ${label}`,kind:'update',issuer_name:null,market:null,offering:null});
+    const p=await send('POST','/api/v1/projects',{name:`Synthetic reconciliation ${label}`,kind:'update',issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}});
     assert.equal(p.statusCode,201,p.body);
     const projectId=p.json().project_id;
-    const input=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    const source=await uploadSyntheticReference(app,projectId),audit=await uploadSyntheticAudit(app,projectId);
+    const input=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{...source,material_versions:[...source.material_versions,audit]});
     assert.equal(input.statusCode,201,input.body);
     const request={execution_request_id:`synthetic-reconcile-${label}-${uid()}`,project_id:projectId,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-worker'};
     const submitted=await send('POST','/api/v1/runs/execute',request);

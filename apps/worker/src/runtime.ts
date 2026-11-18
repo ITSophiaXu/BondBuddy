@@ -16,9 +16,10 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, recoverUnifiedTimeout, recordProviderReconcileUnknown, recoverFileAuthoringPayload, fileAuthoringPayloadRecoveryCandidates, releaseLease, completeManagedRunRelease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
+import { releaseLease, completeManagedRunRelease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
-import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
+import { ProviderReconciliationSweep, reconcileProviderRun, codexNoLookupReconciler, type ProviderCallReconciler } from './provider-reconcile-sweep.js';
+export { codexNoLookupReconciler, type ProviderCallReconciler, type PendingAttempt, type ReconcileAnswer } from './provider-reconcile-sweep.js';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type LoadGenerationIssuerBinding, type ParsedFactProducer, type RunStage, type TargetPeriodCandidateProducer } from './run-pipeline.js';
 import {advanceProjectFileBatch} from '@bondbuddy/api/project-file-workspace';
@@ -41,19 +42,6 @@ import { createControlledNativeFactCandidateProducer } from './controlled-native
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { createSsePrivateTestRuleCapabilityLoader } from './sse-private-test-rule-capability.js';
 import type { FactEvidenceReviewGateLoaderOptions } from './fact-evidence-review-gate.js';
-
-export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
-export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
-/** Answers what really happened to an attempt whose outcome was not recorded (worker died mid-call). */
-export interface ProviderCallReconciler { name: string; query(attempt: PendingAttempt): Promise<ReconcileAnswer> }
-
-/**
- * `codex exec` exposes no provider request ID or lookup API (#16: provider_request_id_status is
- * always `unknown`), so the default reconciler cannot prove either supplier outcome.
- * Only the separately checked, bounded unified-timeout policy may authorize another attempt;
- * all other unknown calls stay at `provider_reconcile`. Never guess `confirmed_not_sent`.
- */
-export const codexNoLookupReconciler: ProviderCallReconciler = { name: 'codex_no_lookup', query: async () => ({ outcome: 'unknown' }) };
 
 export type WorkerRuntimeOptions = {
   pool: Pool; blobs: PrivateBlobs;
@@ -119,7 +107,7 @@ export class WorkerRuntime {
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
-  private fileAuthoringRecoveryCursor?: string;
+  private readonly providerRecovery: ProviderReconciliationSweep;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
   private readonly o: Required<Omit<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
     & Pick<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
@@ -131,6 +119,7 @@ export class WorkerRuntime {
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       uploadConfirmationEnabled: false, uploadConfirmationLane: 'general', uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
+    this.providerRecovery = new ProviderReconciliationSweep({...this.o,log:event=>this.emit(event)});
     if (this.o.reviewAssistant && (!Number.isInteger(this.o.reviewAssistant.slots ?? 1) || (this.o.reviewAssistant.slots ?? 1) < 1 || (this.o.reviewAssistant.slots ?? 1) > 8)) throw new Error('Invalid assistant slots');
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
@@ -333,9 +322,8 @@ export class WorkerRuntime {
     const { pool } = this.o;
     this.counters.sweeps++;
     if (this.o.kinds.includes('run')) {
-      const payloads=await fileAuthoringPayloadRecoveryCandidates(pool,20,this.o.runKinds,this.fileAuthoringRecoveryCursor);
-      this.fileAuthoringRecoveryCursor=payloads.length===20?payloads.at(-1)!.job_id:undefined;
-      for(const r of payloads)await recoverFileAuthoringPayload(pool,r.owner_user_id,r.run_id,r.job_id);
+      const recovery=await this.providerRecovery.run();
+      this.counters.errors+=recovery.errors;
       for (const r of await pausedRuns(pool, 'awaiting_materials', 20, this.o.runKinds)) {
         const run = (await pool.query(`SELECT owner_user_id,project_id,input_revision,input_hash,
           (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=bb_runs.id AND state='paused' ORDER BY seq DESC LIMIT 1) AS pause_reason
@@ -349,7 +337,6 @@ export class WorkerRuntime {
       }
       for (const r of await pausedRuns(pool, 'credits_exhausted', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'credits_recharged');
       for (const r of await pausedRuns(pool, 'billing_reconcile', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'billing_reconciled');
-      for (const r of await pausedRuns(pool, 'provider_reconcile', 20, this.o.runKinds)) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
       for (const r of await pausedRuns(pool, 'trial_limit', 20, this.o.runKinds)) {
         const client = await pool.connect();
         let ready = false;
@@ -370,23 +357,7 @@ export class WorkerRuntime {
 
   /** Queries every unresolved attempt first; only proven outcomes are recorded, then the run is re-queued. */
   async reconcileRun(owner: string, runId: string, jobId: string) {
-    const { pool } = this.o;
-    const attempts = (await pool.query(`SELECT a.owner_user_id,r.project_id,r.id AS run_id,a.job_id,a.logical_call_id,a.attempt_no,a.id AS call_id,a.model_id,a.prompt_snapshot_id AS prompt_snapshot_ref,
-        EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed
-      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id
-      WHERE a.owner_user_id=$1 AND a.job_id=$2 AND r.id=$3 AND a.status='pending_reconcile' ORDER BY a.logical_call_id,a.attempt_no`, [owner, jobId, runId])).rows as PendingAttempt[];
-    for (const attempt of attempts) {
-      const answer = await this.o.reconciler.query(attempt);
-      this.emit({ kind: 'reconcile', run_id: runId, logical_call_id: attempt.logical_call_id, attempt_no: attempt.attempt_no, reconciler: this.o.reconciler.name, outcome: answer.outcome });
-      if (answer.outcome === 'confirmed_not_sent') await reconcilePausedCall(pool, owner, runId, attempt.logical_call_id, attempt.attempt_no, 'confirmed_not_sent');
-      else if (answer.outcome === 'completed') await reconcilePausedProviderCall(pool, this.o.blobs, answer.observation, answer.validate);
-      else {
-        const recovered = await recoverFileAuthoringPayload(pool, owner, runId, jobId) || await recoverUnifiedTimeout(pool, owner, runId, jobId);
-        if (!recovered) await recordProviderReconcileUnknown(pool, owner, runId, jobId, this.o.reconciler.name);
-        return recovered;
-      }
-    }
-    return resumePausedRun(pool, owner, runId, 'provider_reconciled');
+    return reconcileProviderRun({...this.o,log:event=>this.emit(event)},owner,runId,jobId);
   }
 
   stop(): Promise<void> { return this.stopTask ??= this.drain(); }

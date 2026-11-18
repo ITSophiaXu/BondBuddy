@@ -64,6 +64,8 @@ export function reviewEmptyResultText(run: Run | null | undefined): { heading: s
 /** Fixed host labels only: an event's raw reason or provider text never becomes UI copy. */
 function eventNotice(event: RunEvent | undefined): string | undefined {
   const reason=event?.payload.reason, code=event?.payload.error_code;
+  if(event?.state==='failed'&&reason==='provider_reconcile_project_inactive') return '所属项目已归档或删除，本轮任务已失败。已保存的处理记录仍保留。';
+  if(event?.state==='failed'&&reason&&['provider_reconcile_unrecoverable','provider_reconcile_unknown_exhausted'].includes(reason)) return '本轮处理未能恢复，任务已失败。已保存材料和处理记录仍保留，可明确开始新一轮任务。';
   const explanation=code&&failureLabels[code];
   if(reason&&reasonLabels[reason])return reason==='provider_call_retrying'&&explanation?`${explanation} ${reasonLabels[reason]}`:reasonLabels[reason];
   if(explanation)return explanation;

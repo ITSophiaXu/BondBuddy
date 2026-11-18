@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { ProviderReconciliationSweep } from './provider-reconcile-sweep.js';
 import { latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
@@ -31,7 +32,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
     const blobs = azureBlobs(connection!,container);
     const owner = `unified-${randomUUID()}`;
     let active = owner;
-    const app = createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true});
+    const app = createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
     const send = (method:string,url:string,payload?:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,
       headers:{origin,...headers},payload:payload as any});
     try {
@@ -45,7 +46,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const project=created.json().project_id;
         const refs:{material_id:string;material_version:number}[]=[];
         let source:SourceProspectus|undefined, completeSource:SourceProspectus|undefined;
-        for(const role of missingMetadata?['historical']:relation?['historical','audit']:['audit']){
+        for(const role of relation||missingMetadata?['historical','audit']:['audit']){
           const bytes=role==='historical'?makeWorkerDocxFixture({externalLink:false}):Buffer.from('合成目标发行人：2025年净资产120万元；无新增对外担保。');
           const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain';
           const declaration={byte_size:bytes.length,sha256:digest(bytes)};
@@ -133,7 +134,9 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         // A later edit never mutates the already locked requirement body.
         assert.equal((await send('POST',`/api/v1/projects/${project}/messages`,{...message,submission_request_id:randomUUID(),expected_message_version:1,body:'合成后续要求：下一轮才生效。'})).statusCode,201);
         const configuration=loadCodexAdapterConfig();
-        const model=fileAuthoringStage({config:live?configuration:{...configuration,command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url))]}});
+        const recoverPayload=scenario==='parent'&&!live,expectedCalls=recoverPayload?2:1;
+        const model=fileAuthoringStage({config:live?configuration:{...configuration,...(recoverPayload?{authoring_timeout_ms:120000}:{}),
+          command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url)),...(recoverPayload?['--synthetic-recovery-once']:[])]}});
         let rejectLegacy=scenario==='same_issuer'&&!live;
         const legacyRejection={name:'word_delivery',run:async(ctx:StageContext)=>{
           await promoteWordArtifact(pool,ctx.lease,Buffer.from('synthetic legacy baseline rejection'),blobs);
@@ -141,6 +144,20 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         }};
         const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,rejectLegacy?legacyRejection:fileAuthoringDeliveryStage()],
           onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
+        if(recoverPayload){
+          // The provider journal parks the run before the pipeline's next guard;
+          // the local executor stops while the durable task is paused for recovery.
+          assert.equal(await execute(),'stopped');
+          const parked=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
+          assert.equal(parked.state,'paused');assert.equal(parked.stage,'provider_reconcile');
+          const before=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE run_id=$1',[run.run_id])).rows[0].checkpoint;
+          assert.ok(before.stages.file_authoring_recovery.files.some((f:{path:string})=>f.path==='scratch/issue1613-completed.txt'));
+          assert.ok(before.stages.file_authoring_recovery.files.some((f:{path:string})=>f.path==='output/issue1613-partial.txt'));
+          // No execution worker is running: the coordinator only authorizes the
+          // same run/checkpoint; the following fresh CLI verifies restored bytes.
+          assert.equal((await new ProviderReconciliationSweep({pool}).run()).progressed,1);
+          assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).json().state,'queued');
+        }
         if(rejectLegacy){
           assert.equal(await execute(),'failed');
           const before=(await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n;
@@ -162,15 +179,16 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         assert.equal(result,'succeeded');
         {
           const calls=(await pool.query('SELECT logical_call_id,outcome,usage_status,total_tokens FROM bb_provider_call_observations WHERE run_id=$1',[run.run_id])).rows;
-          assert.equal(calls.length,1);assert.ok(calls.every(c=>c.outcome==='completed'&&c.usage_status==='measured'&&c.total_tokens>0));
+          assert.equal(calls.length,expectedCalls);assert.equal(calls.filter(c=>c.outcome==='completed'&&c.usage_status==='measured'&&c.total_tokens>0).length,1);
+          if(recoverPayload)assert.equal(calls.filter(c=>c.outcome==='failed'&&c.usage_status==='unknown'&&c.total_tokens===null).length,1);
           console.log(JSON.stringify({synthetic_materials:true,real_provider:live,calls}));
         }
         const delivered=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
         assert.equal(delivered.state,'succeeded');
-        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,expectedCalls);
         if(scenario==='same_issuer'&&!live){
-          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE run_id=$1 AND quality_status='failed'",[run.run_id])).rows[0].n,1);
-          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND state='failed'",[run.run_id])).rows[0].n,1);
+          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE run_id=$1 AND quality_status='failed'",[run.run_id])).rows[0].n,expectedCalls);
+          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND state='failed'",[run.run_id])).rows[0].n,expectedCalls);
         }
         const artifact=(await send('GET',`/api/v1/artifacts/${delivered.artifact_id}`)).json();
         assert.equal(artifact.word_delivery.delivery_policy,'generated_pair_v1');
@@ -193,7 +211,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const bytes=await blobs.getIfExistsBounded(completed.report.key,32*1024*1024);
           assert.ok(bytes);assert.equal(digest(bytes),completed.report.sha256);
           assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).json().state,'succeeded');
-          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,expectedCalls);
         }
         if(scenario==='same_issuer'){
           const next=await lock();

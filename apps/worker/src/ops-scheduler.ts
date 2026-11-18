@@ -18,6 +18,7 @@ import { registerLibrarySource } from '@bondbuddy/api/library';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { backupContainer, pruneOffhostBackups } from './backup-retention.js';
 import { runLibrarySyncPass } from './library-scheduler.js';
+import { ProviderReconciliationSweep, providerReconciliationHealth } from './provider-reconcile-sweep.js';
 import { probeProviderBalance } from './provider-balance-probe.js';
 import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBondProjectAdapter, type LibrarySourceAdapter } from './library-sources.js';
 
@@ -119,6 +120,14 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
+  if(!off(env.BB_OPS_PROVIDER_RECONCILE)){
+    const sweep=new ProviderReconciliationSweep({pool});
+    tasks.push({name:'provider_reconcile',intervalMs:seconds('BB_OPS_PROVIDER_RECONCILE_SECONDS',30),leaseMs:120_000,
+      run:async()=>{
+        const result=await sweep.run(),health=await providerReconciliationHealth(pool);
+        return {ok:result.errors===0,...(result.errors?{errorCode:'provider_reconcile_failed'}:{}),detail:{...result,...health}};
+      }});
+  }
   if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.BB_CODEX_AUTH_MODE !== 'copilot_enterprise' && env.BB_CODEX_PROVIDER !== 'copilot_enterprise' && env.DEEPSEEK_API_KEY) {
     const threshold = Number(env.BB_PROVIDER_BALANCE_THRESHOLD_USD ?? '1');
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1000000) throw new Error('Invalid BB_PROVIDER_BALANCE_THRESHOLD_USD');

@@ -88,7 +88,7 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
-export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+export function readinessMessage(reason: string, lastProcessingStage?: string, runState?: Dto<'RunResponse'>['state']): string {
   if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'MATERIAL_ENCRYPTED') return '历史／参考募集说明书已加密，无法读取。请用 Word 打开文件，移除打开密码或加密后另存为未加密的 DOCX，再点击“继续修改”替换原稿并重新开始。原任务和已保存材料会保留。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
@@ -97,6 +97,8 @@ export function readinessMessage(reason: string, lastProcessingStage?: string): 
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
     : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
+  if (runState === 'failed' && reason === 'provider_reconcile_project_inactive') return '所属项目已归档或删除，本轮任务已失败。已保存的处理记录仍保留。';
+  if (runState === 'failed' && ['provider_reconcile_unrecoverable','provider_reconcile_unknown_exhausted'].includes(reason)) return '本轮处理未能恢复，任务已失败。已保存材料和处理记录仍保留；可在项目中明确开始新一轮任务。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
@@ -525,7 +527,7 @@ export class ProjectExecution {
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
-      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage)
+      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage, run.state)
         : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'

@@ -1,14 +1,27 @@
 // Synthetic provider only. Sandbox preflight is delegated to the real pinned Codex binary.
 import {spawnSync,spawn} from 'node:child_process';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,existsSync,readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const args=process.argv.slice(2);
 if(args.includes('sandbox')){
-  const result=spawnSync('/usr/local/bin/codex',args,{stdio:'inherit'});process.exit(result.status??1);
+  const result=spawnSync('/usr/local/bin/codex',args.filter(arg=>arg!=='--synthetic-recovery-once'),{stdio:'inherit'});process.exit(result.status??1);
 }
 let input='';for await(const chunk of process.stdin)input+=chunk;
 if(!args.includes('exec')||args.includes('--output-schema'))throw Error('one plain-text CLI execution required');
 const cwd=args[args.indexOf('--cd')+1];
+// Synthetic crash after real scratch/output work. The next process can only
+// proceed if the host restores the exact files from the durable checkpoint.
+if(args.includes('--synthetic-recovery-once')){
+  const marker=cwd+'/scratch/issue1613-completed.txt',partial=cwd+'/output/issue1613-partial.txt';
+  if(!existsSync(marker)){
+    writeFileSync(marker,'synthetic completed extraction');writeFileSync(partial,'synthetic saved partial work');
+    console.log(JSON.stringify({type:'item.started',item:{type:'command_execution',id:'synthetic-failure-after-work'}}));
+    console.log(JSON.stringify({type:'error',error:{status:413,message:'synthetic request rejected after saved work'}}));
+    await new Promise(resolve=>setTimeout(resolve,120000));process.exit(1);
+  }
+  if(readFileSync(marker,'utf8')!=='synthetic completed extraction'||readFileSync(partial,'utf8')!=='synthetic saved partial work')
+    throw Error('Synthetic recovery lost previously completed work');
+}
 if(input.includes('SCENARIO:file_checkpoint')||input.includes('SCENARIO:file_resource')){
   const checkpoint=input.includes('SCENARIO:file_checkpoint');
   console.log(JSON.stringify({type:'item.started',item:{type:'mcp_tool_call',id:'synthetic-contract-tool',

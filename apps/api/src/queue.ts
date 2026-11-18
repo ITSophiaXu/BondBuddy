@@ -13,7 +13,7 @@ import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY
 import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
-import { nextProviderReconcileUnknown } from './provider-reconcile-unknown.js';
+import { nextProviderReconcileUnknown, PROVIDER_RECONCILE_UNKNOWN_GRACE_MS } from './provider-reconcile-unknown.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
@@ -995,6 +995,11 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    if(reason==='provider_reconciled'&&j.billing_cancel_requested_at){
+      if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
+      await finalizePendingCancellation(client,r,j);return true;
+    }
+    if(reason==='provider_reconciled'&&!(await client.query('SELECT 1 FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL',[r.project_id,owner])).rowCount)return false;
     if(reason==='billing_reconciled'){
       if(r.stage!=='billing_reconcile'||j.stage!=='billing_reconcile'||await walletIsolated(client,r))return false;
       if(!await billingContractRecoverable(client,r,j))return false;
@@ -1037,7 +1042,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
     }
     const nextStage=reason==='credits_recharged'?'queued':reason==='billing_reconciled'?(j.billing_resume_stage??'queued'):j.stage;
-    await client.query("UPDATE bb_jobs SET state='queued',stage=$2,credit_pause_requested=false,updated_at=now() WHERE id=$1",[j.id,nextStage]);
+    await client.query("UPDATE bb_jobs SET state='queued',stage=$2,credit_pause_requested=false,checkpoint=CASE WHEN $3 THEN checkpoint-'provider_reconcile_unknown' ELSE checkpoint END,updated_at=now() WHERE id=$1",[j.id,nextStage,reason==='provider_reconciled']);
     await event(client,r,'queued',nextStage,reason);
     return true;
   });
@@ -1054,7 +1059,6 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
     AND ($1<>'credits_exhausted' OR ((NOT j.user_pause_requested OR j.stage='provider_reconcile')
       AND EXISTS(SELECT 1 FROM bb_credit_lots l WHERE l.owner_user_id=r.owner_user_id AND l.remaining>l.frozen
         AND (l.expires_at IS NULL OR l.expires_at>now()))))
-    AND NOT ($1='provider_reconcile' AND COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true')
     ORDER BY j.updated_at,j.id LIMIT $2`,
     [stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
@@ -1076,12 +1080,29 @@ export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
-/**
- * Record an unobservable supplier result without guessing it. `codex exec` has
- * no lookup API, so without a bound this paused run would be re-queried by the
- * sweep forever. Keep it paused and visible, but stop re-querying after the
- * grace window; usage stays `unknown` and no retry or settlement is fabricated.
- */
+/** Immutable pause event, not updated_at: scans/progress never extend the deadline. */
+const providerPauseStartedAt = `COALESCE((SELECT e.occurred_at FROM bb_run_events e WHERE e.run_id=r.id
+  AND e.state='paused' AND e.stage='provider_reconcile' AND e.type='run.state_changed'
+  ORDER BY e.seq DESC LIMIT 1),r.updated_at)`;
+
+/** Keyset paging advances even when one row throws or cannot progress. Terminal
+ * history is never scanned. Exhausted records from older releases must be closed. */
+export async function providerReconciliationCandidates(pool:Pool,limit=20,runKinds?:readonly RunKind[],afterJobId?:string) {
+  if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid reconciliation batch size');
+  return (await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
+    WHERE j.state='paused' AND j.stage='provider_reconcile' AND r.state IN ('paused','settlement_pending') AND r.stage='provider_reconcile'
+    AND ($2::text[] IS NULL OR j.job_type=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
+    AND (COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true'
+      OR ${providerPauseStartedAt}<=clock_timestamp()-interval '1 hour'
+      OR CASE WHEN jsonb_typeof(j.checkpoint#>'{provider_reconcile_unknown,next_check_ms}')='number'
+        THEN (j.checkpoint#>>'{provider_reconcile_unknown,next_check_ms}')::numeric ELSE 0 END<=EXTRACT(EPOCH FROM clock_timestamp())*1000)
+    ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null])).rows as
+      {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
+/** A task can fail while supplier usage remains unknown. No observation, usage,
+ * result or native-process fence is rewritten. Existing terminal billing triggers
+ * release/refund the original contract in the same transaction as the event. */
 export async function recordProviderReconcileUnknown(
   pool:Pool,owner:string,runId:string,jobId:string,reconciler:string,now=Date.now()
 ) {
@@ -1090,16 +1111,62 @@ export async function recordProviderReconcileUnknown(
     if(!r||r.state!=='paused'||r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
     if(!j||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until)return false;
-    const transition=nextProviderReconcileUnknown(j.checkpoint?.provider_reconcile_unknown,now,reconciler);
+    if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
+    if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return true;}
+    if(j.user_pause_requested||j.credit_pause_requested){
+      const stage=j.user_pause_requested?'user_paused':'credits_exhausted';
+      await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[jobId,stage]);
+      await event(client,r,'paused',stage,stage,stage==='credits_exhausted'?'CREDITS_INSUFFICIENT':undefined);
+      return false;
+    }
+    const attempts=(await client.query(`SELECT a.id,a.logical_call_id,t.error_code,t.exit_code,t.exit_signal,t.adapter,
+      EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=a.id) AS has_result,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id
+        AND o.error_code=t.error_code AND o.outcome IN ('failed','pending_reconcile') AND o.result_id IS NULL) AS observed_failure,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id
+        AND (o.outcome NOT IN ('failed','pending_reconcile') OR o.error_code IS DISTINCT FROM t.error_code OR o.result_id IS NOT NULL)) AS conflicting
+      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
+      LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+      WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation} ORDER BY a.created_at,a.id`,[jobId,owner])).rows;
+    const project=(await client.query('SELECT archived_at,deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2',[r.project_id,owner])).rows[0];
+    const inactive=!project||!!project.archived_at||!!project.deleted_at;
+    if(!attempts.length&&!inactive)return false;
+    const anchor=(await client.query(`SELECT ${providerPauseStartedAt} AS started_at FROM bb_runs r WHERE r.id=$1`,[runId])).rows[0];
+    const transition=nextProviderReconcileUnknown(j.checkpoint?.provider_reconcile_unknown,now,reconciler,
+      PROVIDER_RECONCILE_UNKNOWN_GRACE_MS,new Date(anchor.started_at).getTime());
+    // Only the no-lookup adapter can prove that another query adds no evidence.
+    // A prepared/saved snapshot or conflicting/result evidence gets the full
+    // reconciliation window; it is never discarded on a transient recovery miss.
+    const unrecoverable=reconciler==='codex_no_lookup'&&attempts.length>0&&attempts.every(a=>
+      a.adapter==='codex_exec'&&(a.exit_code!==null||/^SIG[A-Z0-9]+$/.test(a.exit_signal??''))&&
+      a.error_code&&a.observed_failure&&!a.conflicting&&!a.has_result&&
+      (!/^file-authoring-/.test(a.logical_call_id)||(!j.checkpoint?.stages?.file_authoring_recovery&&
+        !['prepared','saved'].includes(j.checkpoint?.file_authoring_recovery_captures?.[a.id]?.state))));
+    const fail=inactive||unrecoverable||transition.exhausted;
+    if(fail)transition.state.exhausted=true;
     await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(COALESCE(checkpoint,'{}'::jsonb),
       '{provider_reconcile_unknown}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(transition.state)]);
     if(transition.first)await event(client,r,'paused','provider_reconcile','provider_reconcile_unknown',
       'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:transition.state.queries});
-    if(transition.exhausted&&!transition.previousExhausted)await event(client,r,'paused','provider_reconcile',
-      'provider_reconcile_unknown_exhausted','MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',
-      {reconciler,queries:transition.state.queries,first_at:transition.state.first_at});
-    return transition.exhausted;
+    if(fail){
+      const reason=inactive?'provider_reconcile_project_inactive':unrecoverable?'provider_reconcile_unrecoverable':'provider_reconcile_unknown_exhausted';
+      const error=attempts.at(-1)?.error_code??'DATA_UNAVAILABLE';
+      const audit={reconciler,reason_code:reason,decided_at:new Date(now).toISOString(),attempt_ids:attempts.map(a=>a.id)};
+      await client.query(`UPDATE bb_jobs SET state='failed',stage='failed',checkpoint=jsonb_set(checkpoint,
+        '{provider_reconcile_terminal}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(audit)]);
+      await recordRunFailure(client,r,jobId,error,'provider_reconcile');
+      await event(client,r,'failed','failed',reason,error,'run.state_changed',
+        {reconciler,queries:transition.state.queries,first_at:transition.state.first_at});
+    }
+    return fail;
   });
+}
+
+/** Both recovery policies must refuse archived projects before creating work. */
+async function providerRecoveryAllowed(client:PoolClient,r:any,j:any){
+  return j.checkpoint?.provider_reconcile_unknown?.exhausted!==true&&!!(await client.query(
+    'SELECT 1 FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL',
+    [r.project_id,r.owner_user_id])).rowCount;
 }
 
 export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';
@@ -1114,6 +1181,7 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
     if(!r || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
     if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until)return false;
+    if(!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j)||j.billing_cancel_requested_at)return false;
     const input=await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2
       AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,
       [owner,r.project_id,r.input_revision,r.input_hash]);
@@ -1156,8 +1224,10 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
       await event(client,r,'failed','failed','provider_timeout_retries_exhausted','MODEL_TIMEOUT','run.state_changed',audit);
     }else{
       await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
-      await client.query("UPDATE bb_jobs SET state='queued',stage='queued' WHERE id=$1",[jobId]);
-      await event(client,r,'queued','queued','provider_timeout_retry_scheduled',undefined,'run.state_changed',audit);
+      const stage=j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
+      const state=stage==='queued'?'queued':'paused';
+      await client.query("UPDATE bb_jobs SET state=$2,stage=$3,checkpoint=checkpoint-'provider_reconcile_unknown' WHERE id=$1",[jobId,state,stage]);
+      await event(client,r,state,stage,stage==='queued'?'provider_timeout_retry_scheduled':stage,undefined,'run.state_changed',audit);
     }
     return true;
   });
@@ -1235,7 +1305,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
     if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until || j.billing_cancel_requested_at ||
       !fileAuthoringJobMatchesInput(r,j))return false;
-    if(await walletIsolated(client,r) || !await billingContractRecoverable(client,r,j))return false;
+    if(!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r) || !await billingContractRecoverable(client,r,j))return false;
     const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version
       FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
       LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
@@ -1282,7 +1352,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
       ...(ready&&saved.deadline_at!==undefined?{deadline_at:saved.deadline_at}:{})};
     // Unknown usage is an immutable historical fact. A durable disposition permits
     // a later attempt without claiming this multi-turn invocation consumed zero.
-    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',
+    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint-'provider_reconcile_unknown','{operator_reconciliations}',
       COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
       [jobId,a.id,JSON.stringify(audit)]);
     await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
@@ -1551,7 +1621,7 @@ export async function resolveOperatorReconciliation(pool:Pool,input:{runId:strin
         throw new Problem(409,'CAPABILITY_NOT_READY','Existing result or non-unknown usage requires provider reconciliation');
       await client.query("UPDATE bb_model_call_attempts SET status='failed',usage_status='unknown',updated_at=now() WHERE id=$1",[a.id]);
       await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',
-        checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
+        checkpoint=jsonb_set(checkpoint-'provider_reconcile_unknown','{operator_reconciliations}',COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
         [j.id,a.id,JSON.stringify(disposition)]);
       await event(client,r,'queued','queued','provider_operator_retry_unknown_usage',undefined,'run.state_changed',audit);
     }else{
