@@ -1,0 +1,4 @@
+# Preserve byte-pinned deployment artifacts on every host.
+* -text
+*.md text eol=lf
+managed-database-preflight.mjs whitespace=cr-at-eol
