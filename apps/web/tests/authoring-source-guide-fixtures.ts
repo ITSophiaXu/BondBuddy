@@ -2,7 +2,7 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureBody} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
-import {emptyUpdateDetails,reportingWindow,schemas,sourceProspectusInputGaps,updateDetailsErrors,type SourceProspectus} from '@bondbuddy/contracts';
+import {PDF_QUALITY_VERSION,emptyUpdateDetails,reportingWindow,schemas,sourceProspectusInputGaps,updateDetailsErrors,type SourceProspectus} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import '../src/schema-formats';
 import {createHash} from 'node:crypto';
@@ -35,7 +35,7 @@ export function fixture(){
 }
 export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
-export const writes=(s:State)=>s.calls.filter(call=>call.method!=='GET');
+export const writes=(s:State)=>s.calls.filter(call=>call.method!=='GET'&&!call.path.endsWith('/pdf-quality'));
 export function expectNoExecution(s:State){expect(s.locked).toEqual([]);expect(s.preflights).toEqual([]);expect(s.quotes).toEqual([]);expect(s.executes).toEqual([]);}
 function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],value)])}`).toBe(true);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});}
@@ -89,6 +89,8 @@ export async function install(page:Page,s=fixture()){
     }
     const material=s.materials.find(m=>path===`/projects/${projectId}/materials/${m.material_id}`);
     if(material&&method==='GET')return !url.searchParams.has('version')||Number(url.searchParams.get('version'))===material.material_version?reply(route,'MaterialResponse',material):errorReply(route,404,'NOT_FOUND');
+    const qualityMaterial=s.materials.find(m=>path==='/projects/'+projectId+'/materials/'+m.material_id+'/pdf-quality');
+    if(method==='POST'&&qualityMaterial)return reply(route,'MaterialParseJobResponse',qualityJob(qualityMaterial));
     if(method==='GET'&&s.materials.some(m=>path===`/projects/${projectId}/materials/${m.material_id}/parse-job`))return errorReply(route,404,'NOT_FOUND');
     if(path===`/projects/${projectId}/input-revisions`&&method==='POST'){
       checked('InputRevisionCreateRequest',body);expect(body.draft_revision).toBe(s.project.draft_revision);expect(body.prospectus_selection_revision).toBe(s.prospectusVersions?.selection_revision??(s.materials.some(m=>m.role==='historical')?s.selectionRevision:0));
@@ -120,3 +122,11 @@ export async function install(page:Page,s=fixture()){
   });return s;
 }
 export async function assertFixture(page:Page){const s=installed.get(page);if(!s)return;expect(s.unexpected,'Only explicitly allowed synthetic endpoints may run.').toEqual([]);expect(s.errors,'No unhandled browser errors.').toEqual([]);}
+
+export function qualityJob(m:Material):Dto<'MaterialParseJobResponse'>{return {
+  job_id:'quality-'+m.material_id,job_type:'parse',subtype:'material_parse',project_id:projectId,
+  material_id:m.material_id,material_version:m.material_version,material_sha256:m.sha256,
+  parser_version:PDF_QUALITY_VERSION,state:'succeeded',stage:'succeeded',completed_stages:[],
+  attempts:1,max_attempts:3,error_code:null,outcome:null,parse_status:null,profile_version:null,pending_capabilities:[],updated_at:now,
+  pdf_quality:{version:PDF_QUALITY_VERSION,status:'complete',page_count:1,checked_pages:1,low_resolution_pages:[]}
+};}

@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, isOutcomePriceVersion, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
+import { assertAuditPdfQuality } from './audit-pdf-quality.js';
 import { assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertAuthoringAuditRequired, isUnifiedInput } from './unified-authoring.js';
 import {OUTCOME_MODE,outcomeMetadata,outcomePriceVersion} from './outcome-pricing.js';
 import {requestScope,assertScopeQuote} from './scope-quotations.js';
@@ -100,6 +101,7 @@ export async function quoteCreditsExact(pool: Pool, owner: string, projectId: st
       assertAuthoringSourceInformation(i.manifest.materials as any[], i.manifest.authoring.source_prospectuses);
     }
     if (['update','generation'].includes(i.manifest.kind)) assertAuthoringAuditRequired(i.manifest.materials);
+    if (i.manifest.kind === 'update') await assertAuditPdfQuality(c, owner, projectId, i.manifest.materials);
     const balance = await creditBalanceExact(c, owner);
     const classification = classifyFixedPrice(i.manifest);
     if (!commercial&&!classification.task) throw new Problem(422, 'INPUT_REQUIRED', `${classification.reason} 请补齐信息并保存当前输入后重新获取报价。`);

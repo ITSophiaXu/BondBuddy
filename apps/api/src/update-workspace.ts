@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { schemas, emptyUpdateDetails, M1_UPLOAD_LIMITS, sameFormatTemplate } from '@bondbuddy/contracts';
 import { project, transaction, uid, missing, Problem, conflict, readBlobToFile, putBlobFile, type PrivateBlobs } from './data.js';
 import { reserveSpool, spoolDirectory, discardSpool } from './upload-spool.js';
+import { enqueueAuditPdfQuality } from './material-jobs.js';
 import { registerUploadedProspectus, changed } from './prospectus-versions.js';
 
 type MaterialEvent=(c:PoolClient,owner:string,id:string,materialId:string,size:number)=>Promise<void>;
@@ -59,6 +60,8 @@ async function copyMaterial(pool:Pool,blobs:PrivateBlobs,owner:string,target:str
       sameFormatTemplate(source.update_details?.format_template,{material_id:materialId,material_version:version,sha256:m.sha256.trim()}))
       await c.query(`UPDATE bb_projects SET update_details=jsonb_set(update_details,'{format_template}',$3::jsonb),draft_revision=draft_revision+1 WHERE owner_user_id=$1 AND id=$2`,
         [owner,target,JSON.stringify({material_id:id,material_version:1,sha256:m.sha256.trim()})]);
+    if(m.role==='audit' && m.media_type==='application/pdf')
+      await enqueueAuditPdfQuality(c,{owner,projectId:target,materialId:id,materialVersion:1,sha256:m.sha256.trim(),traceId:uid()});
     await event(c,owner,target,id,Number(m.byte_size));
     if(m.role==='historical')await registerUploadedProspectus(c,owner,target,{...m,id,version:1});
     await c.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'update.material_copied',$4)`,[uid(),owner,target,{source_project_id:sourceId,source_material_id:materialId,source_material_version:version,material_id:id}]);
