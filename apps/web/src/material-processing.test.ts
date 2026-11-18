@@ -145,7 +145,7 @@ test('low raster quality warns with page and replacement advice, preserving proc
 
 test('update audit PDF blocks pending/low/incomplete, clears only with exact completed replacement',async t=>{
  const audit={...material,role:'audit' as const,media_type:'application/pdf' as const,filename:'audit.pdf'};
- const full={version:'pdf-raster-quality-2' as const,status:'complete' as const,page_count:1,checked_pages:1,low_resolution_pages:[{page:1,dpi:144}]};
+ const full={version:'pdf-raster-quality-4' as const,status:'complete' as const,page_count:1,checked_pages:1,sampled_pages:[1],blocking_pages:[1],low_resolution_pages:[{page:1,dpi:144}]};
  let response={...job,pdf_quality:full};
  let reads=0;
  const controller=new MaterialProcessing({material:async()=>audit,materialParseJob:async()=>{throw Error('must not parse');},
@@ -160,7 +160,7 @@ test('update audit PDF blocks pending/low/incomplete, clears only with exact com
  const next={...audit,material_version:2,sha256:'b'.repeat(64)};
  controller.sync([next]);await tick();
  assert.match(controller.block([next]),/检查未完成/,'old result cannot admit replacement');
- response={...job,material_version:2,material_sha256:next.sha256,pdf_quality:{...full,low_resolution_pages:[]}};
+ response={...job,material_version:2,material_sha256:next.sha256,pdf_quality:{...full,blocking_pages:[],low_resolution_pages:[]}};
  controller.refresh();await tick();
  assert.equal(controller.block([next]),'');
  controller.sync([]);assert.equal(controller.block([]),'');
@@ -168,13 +168,13 @@ test('update audit PDF blocks pending/low/incomplete, clears only with exact com
  // A validated measurement checkpoint remains authoritative if final bookkeeping was interrupted.
  for(const state of ['failed','cancelled','paused'] as const){
   response={...response,state};controller.sync([next]);controller.refresh();await tick();
-  assert.equal(controller.block([next]),'');assert.match(controller.render(next),/清晰度检查完成/);
+  assert.equal(controller.block([next]),'');assert.match(controller.render(next),/清晰度抽查完成/);
  }
 });
 
 test('inconclusive inspection retries explicitly and default modes remain advisory',async t=>{
  const audit={...material,role:'audit' as const,media_type:'application/pdf' as const};
- const incomplete={version:'pdf-raster-quality-2' as const,status:'partial' as const,page_count:2,checked_pages:1,low_resolution_pages:[]};
+ const incomplete={version:'pdf-raster-quality-4' as const,status:'partial' as const,page_count:2,checked_pages:1,sampled_pages:[1],blocking_pages:[],low_resolution_pages:[]};
  const retries:boolean[]=[];
  const controller=new MaterialProcessing({material:async()=>audit,materialParseJob:async()=>job,
   materialPdfQuality:async(_p,_m,retry)=>{retries.push(Boolean(retry));return {...job,pdf_quality:incomplete};}},
@@ -189,10 +189,18 @@ test('inconclusive inspection retries explicitly and default modes remain adviso
 
 test('sample result is labelled as sampling and releases the gate without claiming full coverage',async t=>{
  const audit={...material,role:'audit' as const,media_type:'application/pdf' as const};
- const quality={version:'pdf-raster-quality-3' as const,status:'complete' as const,page_count:100,checked_pages:8,sampled_pages:[5,8,12,1,25,50,75,100],low_resolution_pages:[]};
+ const quality={version:'pdf-raster-quality-4' as const,status:'complete' as const,page_count:100,checked_pages:8,blocking_pages:[],sampled_pages:[5,8,12,1,25,50,75,100],low_resolution_pages:[]};
  const controller=new MaterialProcessing({material:async()=>audit,materialParseJob:async()=>job,
   materialPdfQuality:async()=>({...job,pdf_quality:quality})},'project-a',()=>{},{auditPdfGate:true});
  t.after(()=>controller.dispose());controller.sync([audit]);await tick();
  assert.equal(controller.block([audit]),'');assert.match(controller.render(audit),/清晰度抽查完成/);
  assert.match(controller.render(audit),/已抽查 8 页/);assert.doesNotMatch(controller.render(audit),/全文|全部页面/);
+});
+
+test('completed low-DPI advisory releases the gate and never claims no low-resolution pages',async t=>{
+ const audit={...material,role:'audit' as const,media_type:'application/pdf' as const};
+ const quality={version:'pdf-raster-quality-4' as const,status:'complete' as const,page_count:1,checked_pages:1,sampled_pages:[1],blocking_pages:[],low_resolution_pages:[{page:1,dpi:150}]};
+ const c=new MaterialProcessing({material:async()=>audit,materialParseJob:async()=>job,materialPdfQuality:async()=>({...job,pdf_quality:quality})},'project-a',()=>{},{auditPdfGate:true});
+ t.after(()=>c.dispose());c.sync([audit]);await tick();
+ assert.equal(c.block([audit]),'');assert.match(c.render(audit),/分辨率偏低，可继续/);assert.doesNotMatch(c.render(audit),/未发现低分辨率|请更换电子版/);
 });

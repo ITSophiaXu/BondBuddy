@@ -76,9 +76,9 @@ export class MaterialProcessing {
     const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? (quality?.sampled_pages ? '清晰度抽查完成' : '清晰度检查完成')
       : state === 'incomplete' ? '清晰度检查未完成' : '正在检查清晰度';
     const tone = state === 'low' || state === 'incomplete' ? 'error' : state === 'ready' ? 'ready' : 'pending';
-    const pages = quality?.low_resolution_pages.slice(0, 8).map(p => p.page).join('、');
+    const pages = (quality?.blocking_pages ?? quality?.low_resolution_pages.map(p => p.page))?.slice(0, 8).join('、');
     const pageHint = state === 'low' && pages ? 'PDF 第 ' + pages + (quality!.low_resolution_pages.length > 8 ? ' 等' : '') + ' 页。' : '';
-    const hint = state === 'ready' && quality?.sampled_pages ? '已抽查 ' + quality.checked_pages + ' 页，未发现低分辨率页面。'
+    const hint = state === 'ready' && quality?.sampled_pages ? '已抽查 ' + quality.checked_pages + (quality.low_resolution_pages.length ? ' 页。部分页面分辨率偏低，可继续；建议优先使用清晰电子版，并核对生成后的财务数字。' : ' 页，未发现低分辨率页面。')
       : state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
     const key = esc(materialProcessingKey(material));
     return '<div class="material-processing" data-material-processing="' + key + '" data-tone="' + tone + '">' +

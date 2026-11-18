@@ -3,10 +3,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import pypdfium2 as pdfium
+from pdf_quality_fixture import number_scan
+from bondbuddy_pdf_quality.detail import insufficient_detail, crop_detail
 from bondbuddy_pdf_quality import inspect, union_area, page_resolution, sample_pages
 
 class PdfQualityTests(unittest.TestCase):
@@ -61,13 +63,13 @@ class PdfQualityTests(unittest.TestCase):
             c.beginForm('scan',0,0,300,400)
             c.drawImage(self.image(1200,1600),0,0,width=300,height=400)
             c.endForm(); c.scale(2,2); c.doForm('scan'); c.showPage()
-        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144})
+        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144,'blocking':False})
 
     def test_quarter_turn_and_high_dpi_do_not_depend_on_filename(self):
         def draw(c):
             c.translate(600,0); c.rotate(90)
             c.drawImage(self.image(1600,1200),0,0,width=800,height=600); c.showPage()
-        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144})
+        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144,'blocking':False})
 
     def test_nominal_200_dpi_float32_placements_do_not_warn(self):
         def draw(c):
@@ -109,7 +111,7 @@ class PdfQualityTests(unittest.TestCase):
         with self.assertRaises(Exception): self.probe(out.getvalue())
 
     def report(self, count, low_pages=()):
-        image = self.image(1200,1600)
+        image = ImageReader(number_scan(degraded=True))
         def draw(c):
             for page in range(1, count+1):
                 c.drawString(40,700,'Synthetic page '+str(page))
@@ -136,11 +138,11 @@ class PdfQualityTests(unittest.TestCase):
             with self.subTest(low_page=low_page):
                 events=self.probe(self.report(100,{low_page}))
                 measured=[e for e in events if 'page' in e]
-                self.assertEqual(measured[-1],{'page':low_page,'dpi':144})
+                self.assertEqual(measured[-1],{'page':low_page,'dpi':144,'blocking':True})
                 self.assertEqual(len(measured),sample_pages(100).index(low_page)+1)
                 self.assertEqual(events[-1],{'complete':True})
         events=self.probe(self.report(100,set(range(1,101))))
-        self.assertEqual([e for e in events if 'page' in e],[{'page':5,'dpi':144}])
+        self.assertEqual([e for e in events if 'page' in e],[{'page':5,'dpi':144,'blocking':True}])
 
     def test_unselected_isolated_low_page_is_outside_sampling_coverage(self):
         events=self.probe(self.report(100,{2}))
@@ -153,6 +155,50 @@ class PdfQualityTests(unittest.TestCase):
         data=self.report(100)
         with patch('bondbuddy_pdf_quality.time.monotonic',side_effect=[0,0,1]):
             events=self.probe(data,seconds=0.05)
-        self.assertEqual(events,[{'page_count':100},{'page':5,'dpi':None}])
+        self.assertEqual(events,[{'page_count':100},{'page':5,'dpi':None,'blocking':False}])
+
+
+    def test_readable_low_dpi_is_advisory_including_rotated_pages(self):
+        for rotated in (False, True):
+            def draw(c):
+                if rotated:
+                    c.translate(600,0); c.rotate(90)
+                    c.drawImage(ImageReader(number_scan().transpose(Image.Transpose.ROTATE_90)),0,0,width=800,height=600)
+                else:
+                    c.drawImage(ImageReader(number_scan()),0,0,width=600,height=800)
+                c.showPage()
+            self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144,'blocking':False})
+
+    def test_blank_low_dpi_and_stamp_do_not_supply_text_evidence(self):
+        def draw(c):
+            c.drawImage(self.image(1200,1600),0,0,width=600,height=800)
+            c.setFillColorRGB(1,0,0); c.circle(300,600,40,fill=1); c.showPage()
+        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144,'blocking':False})
+
+    def test_clear_foreground_above_low_dpi_background(self):
+        def draw(c):
+            c.drawImage(self.image(1200,1600),0,0,width=600,height=800)
+            mask=Image.new('RGBA',(2400,3200),(255,255,255,0))
+            ink=ImageDraw.Draw(mask);font=ImageFont.load_default(size=36)
+            for y in range(32,3150,64):
+                for x in range(24,2250,320): ink.text((x,y),'123,456.78',font=font,fill=(0,0,0,255))
+            c.drawImage(ImageReader(mask),0,0,width=600,height=800,mask='auto');c.showPage()
+        self.assertEqual(self.probe(self.make(draw))[1], {'page':1,'dpi':144,'blocking':False})
+
+    def test_transparent_high_resolution_overlay_does_not_hide_degraded_body(self):
+        def draw(c):
+            c.drawImage(ImageReader(number_scan(True)),0,0,width=600,height=800)
+            mask=Image.new('RGBA',(2400,3200),(255,255,255,0))
+            ImageDraw.Draw(mask).text((20,20),'LOGO',fill=(0,0,0,255))
+            c.drawImage(ImageReader(mask),0,0,width=600,height=800,mask='auto');c.showPage()
+        self.assertTrue(self.probe(self.make(draw))[1]['blocking'])
+
+    def test_detail_resource_and_deadline_limits_are_not_passes(self):
+        from unittest.mock import Mock
+        page=Mock();page.get_size.return_value=(10000,10000)
+        with self.assertRaises(ValueError): insufficient_detail(page,150,time.monotonic()+1)
+        page.render.assert_not_called()
+        with self.assertRaises(TimeoutError): insufficient_detail(page,150,time.monotonic()-1)
+        with self.assertRaises(TimeoutError): crop_detail(number_scan().crop((0,0,480,240)),time.monotonic()-1)
 
 if __name__ == '__main__': unittest.main()
