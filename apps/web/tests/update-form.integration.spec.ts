@@ -15,7 +15,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   await page.getByLabel('发行人全称', { exact: true }).fill('合成测试发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
   await page.getByLabel('发行方式', { exact: true }).selectOption('dfi');
-  await page.getByLabel('最新报告期年份').selectOption('2026');
+  await page.getByLabel('目标报告期年份').selectOption('2026');
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await page.getByLabel('承销安排', { exact: true }).fill('合成证券担任主承销商');
   await page.getByRole('button', { name: '＋ 添加资金用途' }).click();
