@@ -1,0 +1,24 @@
+{
+  "base_source": "eccbe0728dd0adc0c7a588181c04674da6771f25",
+  "source_fix": "7981f058",
+  "candidate_source": "c7fb8fc6",
+  "base_sha256": "b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9",
+  "sha256": "51600119c096e2d5dab5e3827687e1dfc307e89695a04823876c449faa885a6b",
+  "bytes": 463206,
+  "changed": [
+    {
+      "path": "authoring/apps/api/dist/provider-results.js",
+      "before_sha256": "232a268051f2f85598fe5bc061ba00ec6053ba6e14bee374e503e95deb1431f1",
+      "after_sha256": "c807f55828ae7236f5be47fb3e929538559dc9598d8f8030fe35d6fd4146923d"
+    },
+    {
+      "path": "authoring/apps/worker/dist/integrity-browser-stage.js",
+      "before_sha256": "de9a2381332379fec5145a75850b45534ca82f928a02ba045a2449a7ac95edff",
+      "after_sha256": "689b0a232ffeae41b0639e2485af7732ebdc5c36e1dabebed1aaae8e6313ef95"
+    }
+  ],
+  "unchanged_members": 81,
+  "runtime_files": 78,
+  "base_compiled_bytes_match_actual_runtime": true,
+  "production_deployed": false
+}
