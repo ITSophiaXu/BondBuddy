@@ -988,3 +988,8 @@ The explicit standalone four-lane profile sets `BB_UPLOAD_CONFIRMATION_CONCURREN
 Per [the user decision](product-decisions/2026-11-18-pdf-quality-warning.md), uploaded PDFs receive a bounded raster-resolution probe after owner/version/SHA verification and before native parsing. `python/bondbuddy_pdf_quality` uses existing PDFium; the worker enforces a 20-second subprocess deadline and 128 KiB protocol budget. A `pdf_quality` checkpoint is retained across parser failures/retries and exposed as optional `MaterialParseJobResponse.pdf_quality`, validated by the single contract schema. Missing/partial/unavailable inspection is never a quality pass. No database migration or paid/model call is introduced. Existing jobs without a checkpoint remain valid; no production job is backfilled or rewritten.
 
 The material row displays affected page numbers and recommends electronic originals or 300 DPI rescanning. It does not change run admission, parsing/OCR outcomes, billing or error recovery. Only large low-resolution raster areas trigger the advisory, including tiled scans and Form transforms; vector text and small low-resolution logos do not. This does not certify focus, compression quality, OCR accuracy or completeness, and does not resolve the existing PDFMiner timeout in #1567.
+
+
+## 审计 PDF 清晰度拦截（2026-11-18，#1603）
+募集书更新上传审计 PDF 后单独入队轻量检查。复用 bb_jobs 的 parse/material_parse、唯一材料版本及 parser_version 命名空间 pdf-raster-quality-2；显式重试用 :retry:<uuid> 保留已终态回执。worker只核验并暂存原件、执行有界PDFium探测，完成不代表全文解析或识别成功。POST材料/pdf-quality为幂等确保检查及显式重试入口，复用MaterialParseJobResponse，旧parse-job接口不变。v1结果可读取但不能作为新拦截依据。
+输入锁定、报价、新执行在项目事务锁内查询当前未删除审计PDF的精确owner/project/version/hash和最新v2检查回执；页面同样阻止待检查、低清和未完成检查，显示更换电子版或重试。现有run幂等重放提前返回。没有模型调用、账务写入、数据库迁移或新增运行依赖。完整产品行为见同日audit-pdf-quality-gate决定。

@@ -1,3 +1,4 @@
+import {serveAuditPdfQuality} from './audit-pdf-quality-fixture';
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
@@ -56,6 +57,7 @@ async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message));
   await page.context().route('**/api/v1/**', async route => {
     if(await serveDisabledBillingCatalog(route))return;
+    if(await serveAuditPdfQuality(route,projectId,state.materials))return;
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace('/api/v1', ''), method = request.method();
     const body: unknown = request.headers()['content-type']?.includes('application/json') && request.postData() ? fixtureRequest(request) : undefined;

@@ -442,6 +442,9 @@ export class ApiClient {
   materialParseJob(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialParseJobResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/parse-job`, undefined, {}, signal);
   }
+  materialPdfQuality(id: string, materialId: string, retry = false, signal?: AbortSignal) {
+    return this.request<Dto<'MaterialParseJobResponse'>>('POST', '/projects/' + encodeURIComponent(id) + '/materials/' + encodeURIComponent(materialId) + '/pdf-quality', {retry}, {}, signal);
+  }
   sourceProfile(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'RecognitionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, undefined, {}, signal);
   }

@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
+import { PDF_QUALITY_VERSION, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
 
 /** No model call. The private file was already owner-authorized and hash-verified. */
 export function inspectPdfQuality(path: string, options: {pythonExecutable?: string; repoRoot?: string; timeoutMs?: number} = {}): Promise<PdfQuality> {
   return new Promise(resolveResult => {
-    const result: PdfQuality = {version: 'pdf-raster-quality-1', status: 'unavailable', page_count: null, checked_pages: 0, low_resolution_pages: []};
+    const result: PdfQuality = {version: PDF_QUALITY_VERSION, status: 'unavailable', page_count: null, checked_pages: 0, low_resolution_pages: []};
     const root = options.repoRoot ?? process.cwd();
     const child = spawn(options.pythonExecutable ?? 'python3', ['-m', 'bondbuddy_pdf_quality', path], {
       cwd: root, env: {...process.env, PYTHONPATH: resolve(root, 'python'), PYTHONIOENCODING: 'utf-8'}, stdio: ['ignore', 'pipe', 'ignore'],
@@ -34,7 +34,7 @@ export function inspectPdfQuality(path: string, options: {pythonExecutable?: str
       if (settled) return;
       settled = true; clearTimeout(timer); lines.close();
       result.status = completed && code === 0 && !invalid ? 'complete' : result.checked_pages ? 'partial' : 'unavailable';
-      resolveResult(readPdfQuality(result) ?? {version: 'pdf-raster-quality-1', status: 'unavailable', page_count: null, checked_pages: 0, low_resolution_pages: []});
+      resolveResult(readPdfQuality(result) ?? {version: PDF_QUALITY_VERSION, status: 'unavailable', page_count: null, checked_pages: 0, low_resolution_pages: []});
     };
     child.on('error', () => finish(null));
     child.on('close', finish);
