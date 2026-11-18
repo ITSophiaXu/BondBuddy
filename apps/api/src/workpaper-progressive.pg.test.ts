@@ -344,11 +344,11 @@ test('historical frozen two-way input uses shared eight-way capacity without cha
 });
 
 
-test('restricted workpaper consumer creates child runs through the real mutex, delivers and resumes without duplicate billing',
+for(const automatic of [false,true])test(`restricted workpaper consumer creates child runs, delivers and resumes without duplicate billing (${automatic?'automatic on_delivery':'historical dynamic'})`,
  {skip:!configured,timeout:180000},async()=>{
-  const f=await fixture('restricted-role',2),role='synthetic_workpaper_'+randomUUID().replaceAll('-','');
+  const f=await fixture('restricted-role-'+automatic,2,automatic),role='synthetic_workpaper_'+randomUUID().replaceAll('-',''),password=randomUUID();
   const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
-  await f.pool.query(`CREATE ROLE ${quote(role)} LOGIN`);
+  await f.pool.query(`CREATE ROLE ${quote(role)} LOGIN PASSWORD '${password}'`);
   const acl=JSON.parse(await readFile(new URL('../../worker/src/fixtures/managed-runtime-acl.json',import.meta.url),'utf8'));
   for(const table of acl.tables){
     for(const privilege of table.privileges)await f.pool.query(`GRANT ${privilege} ON public.${quote(table.name)} TO ${quote(role)}`);
@@ -360,9 +360,13 @@ test('restricted workpaper consumer creates child runs through the real mutex, d
   await apply();
   // Isolate the first production failure; the other new grants are checked separately.
   await f.pool.query(`REVOKE SELECT ON public.bb_workpaper_paid_check_items FROM ${quote(role)}`);
-  const url=new URL(f.pool.options.connectionString!);url.username=role;url.password='';
+  const url=new URL(f.pool.options.connectionString!);url.username=role;url.password=password;
   const worker=new Pool({connectionString:url.toString()});
   try{
+    if(automatic){
+      const pricing=(await f.ok('GET',f.path+'/file-generation')).pricing;
+      f.request.price_version=pricing.price_version;f.request.expected_points=f.request.item_ids.length*Number(pricing.workpaper_points);
+    }
     let batch=await f.start();
     await assert.rejects(worker.query('SELECT 1 FROM public.bb_workpaper_paid_check_items'),{code:'42501'});
     assert.equal(await advanceWorkpaperBatch(worker),true);
@@ -372,6 +376,22 @@ test('restricted workpaper consumer creates child runs through the real mutex, d
     await apply();await apply();
     batch=await f.action(batch,{action:'resume'});
     assert.equal(batch.progressive?.trial_item_ids.length,2,'one trial file per chapter');
+    if(automatic){
+      // Each deferred dependency must fail at COMMIT and leave no partial child,
+      // attempt, reservation or wallet freeze before the normal next scheduler tick.
+      const before=(await f.pool.query('SELECT sum(frozen)::text frozen FROM bb_credit_lots WHERE owner_user_id=$1',[f.user])).rows[0];
+      for(const [table,column] of [['bb_task_refund_units','evidence'],['bb_task_refund_unit_slices','origin_lot_id']]){
+        await f.pool.query(`REVOKE INSERT(${quote(column)}) ON public.${quote(table)} FROM ${quote(role)}`);
+        await assert.rejects(advanceWorkpaperBatch(worker),{code:'42501'});
+        assert.deepEqual(await f.read(batch.batch_id),batch,'deferred failure rolls back the complete child admission');
+        assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[f.user])).rows[0].n,0);
+        assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[f.user])).rows[0].n,0);
+        assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_workpaper_attempts WHERE batch_id=$1',[batch.batch_id])).rows[0].n,0);
+        assert.deepEqual((await f.pool.query('SELECT sum(frozen)::text frozen FROM bb_credit_lots WHERE owner_user_id=$1',[f.user])).rows[0],before);
+        await apply();
+      }
+    }
+
     const deadline=performance.now()+60000;
     while((await f.read(batch.batch_id)).items.filter(i=>i.run_id).length<2){
       // Competing consumers must not create duplicate siblings or reservations.
@@ -412,6 +432,16 @@ test('restricted workpaper consumer creates child runs through the real mutex, d
     const billing=(await f.pool.query(`SELECT count(*)::int n,count(DISTINCT r.run_id)::int runs,
       bool_and(r.state='settled') AS settled FROM bb_credit_reservations r WHERE r.run_id=ANY($1::text[])`,[runs])).rows[0];
     assert.deepEqual(billing,{n:4,runs:4,settled:true});
+    if(automatic){
+      const captured=(await f.pool.query(`SELECT count(*)::int n,bool_and(r.billing_policy='on_delivery') policy,
+        bool_and(r.points=(SELECT sum(u.points) FROM bb_task_refund_units u WHERE u.reservation_id=r.id)) units,
+        bool_and(r.points=(SELECT sum(s.points) FROM bb_task_refund_unit_slices s WHERE s.reservation_id=r.id)) slices,
+        bool_and((SELECT count(*) FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle')=1) unique_settlement
+        FROM bb_credit_reservations r WHERE r.run_id=ANY($1::text[])`,[runs])).rows[0];
+      assert.deepEqual(captured,{n:4,policy:true,units:true,slices:true,unique_settlement:true});
+      assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_task_refund_requests WHERE owner_user_id=$1',[f.user])).rows[0].n,0);
+    }
+
     assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_workpaper_attempts WHERE batch_id=$1',[batch.batch_id])).rows[0].n,4);
     assert.equal((await f.pool.query("SELECT has_table_privilege($1,'public.bb_workpaper_paid_check_items','INSERT,UPDATE,DELETE,TRUNCATE') AS mutation",[role])).rows[0].mutation,false);
   }finally{

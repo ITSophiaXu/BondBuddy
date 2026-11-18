@@ -26,8 +26,8 @@ const hash='a'.repeat(64),registration='synthetic-registration-token-0123456789'
 test('captured consumer ACL supports real admission, result persistence and terminal paths',
  {skip:!connection,timeout:90000},async t=>{
   const admin=new Pool({connectionString:connection});
-  const role='synthetic_acl_'+randomUUID().replaceAll('-','');
-  await admin.query(`CREATE ROLE ${ident(role)} LOGIN`);
+  const role='synthetic_acl_'+randomUUID().replaceAll('-',''),password=randomUUID();
+  await admin.query(`CREATE ROLE ${ident(role)} LOGIN PASSWORD '${password}'`);
   const acl=JSON.parse(await readFile(new URL('../src/fixtures/managed-runtime-acl.json',import.meta.url),'utf8'));
   for(const table of acl.tables){
     for(const privilege of table.privileges)await admin.query(`GRANT ${privilege} ON public.${ident(table.name)} TO ${ident(role)}`);
@@ -40,7 +40,7 @@ test('captured consumer ACL supports real admission, result persistence and term
   };
   await apply('managed-model-activity-grants.sql');
   await apply('managed-capacity-settlement-grants.sql');
-  const url=new URL(connection!);url.username=role;url.password='';
+  const url=new URL(connection!);url.username=role;url.password=password;
   const worker=new Pool({connectionString:url.toString()}),peer=new Pool({connectionString:url.toString()});
   const scratch=await mkdtemp(join(tmpdir(),'bb-managed-acl-'));
   t.after(async()=>{
@@ -107,6 +107,24 @@ test('captured consumer ACL supports real admission, result persistence and term
     for(const table of ['bb_task_refund_units','bb_task_refund_unit_slices','bb_task_refund_requests','bb_task_refund_decisions','bb_task_refund_credits']){
       assert.equal((await admin.query('SELECT has_table_privilege($1,$2,$3) AS broad',[role,'public.'+table,'INSERT,UPDATE,DELETE,TRUNCATE'])).rows[0].broad,false,table);
     }
+  });
+  await t.test('acceptance evidence checks every insert column without granting refund authority',async()=>{
+    for(const [table,columns,missing] of [
+      ['bb_task_refund_units',['owner_user_id','reservation_id','item_id','run_id','ordinal','source_item_key','label','points','scope_quote_id','evidence_kind','evidence'],'refund_unit_insert'],
+      ['bb_task_refund_unit_slices',['reservation_id','item_id','origin_lot_id','points'],'refund_slice_insert']
+    ] as const){
+      for(const column of columns){
+        await admin.query(`REVOKE INSERT(${ident(column)}) ON public.${ident(table)} FROM ${ident(role)}`);
+        await assert.rejects(assertManagedDatabasePrivileges(worker),new RegExp('MANAGED_DATABASE_PRIVILEGES_MISSING:'+missing+'$'));
+        await apply('managed-execution-prerequisites.sql');
+      }
+      assert.equal((await admin.query("SELECT has_table_privilege($1,$2,'INSERT,UPDATE,DELETE,TRUNCATE') broad",[role,table])).rows[0].broad,false);
+    }
+    assert.equal((await admin.query("SELECT has_column_privilege($1,'bb_task_refund_units','created_at','INSERT') AS insert",[role])).rows[0].insert,false);
+    for(const table of ['bb_task_refund_requests','bb_task_refund_decisions','bb_task_refund_returned_items','bb_task_refund_credits']){
+      assert.equal((await admin.query("SELECT has_any_column_privilege($1,$2,'INSERT,UPDATE') OR has_table_privilege($1,$2,'DELETE,TRUNCATE') AS mutate",[role,table])).rows[0].mutate,false);
+    }
+    await assertManagedDatabasePrivileges(worker);
   });
   await t.test('preflight detects missing individual activity and settlement column grants',async()=>{
     await admin.query(`REVOKE INSERT(lease_token) ON public.bb_run_model_activity FROM ${ident(role)}`);
