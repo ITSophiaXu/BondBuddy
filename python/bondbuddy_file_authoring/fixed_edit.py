@@ -405,15 +405,19 @@ class Editor:
                 self.inserted_paragraphs.add(key)
             else:
                 self.target(operation['node_id'], 'tr')
-                if capability_limits(node):
+                # Existing revisions, fields and section breaks cannot be cloned
+                # safely. Horizontal/vertical merges can: copy each source cell's
+                # tcPr and keep its gridSpan; turn a vMerge restart into a
+                # continuation so the new row extends an existing vertical merge.
+                limits = capability_limits(node)
+                if any(limit in limits for limit in ('existing_revisions', 'fields_or_embedded_objects', 'section_break')):
                     error('WORD_EDIT_COMPLEX_ROW_UNSUPPORTED')
                 cells = node.findall(q('tc'))
                 values = operation.get('values')
                 if not isinstance(values, list) or len(values) != len(cells) or not cells:
                     error('WORD_EDIT_ROW_VALUES_INVALID')
-                # Reject irregular surrounding grids as well as merged source rows.
                 table = node.getparent()
-                if table.tag != q('tbl') or 'merged_or_irregular_grid' in capability_limits(table):
+                if table.tag != q('tbl') or table.findall(q('tbl')):
                     error('WORD_EDIT_COMPLEX_ROW_UNSUPPORTED')
                 added = ET.Element(q('tr'))
                 props = node.find(q('trPr'))
@@ -427,7 +431,11 @@ class Editor:
                     new_cell = ET.SubElement(added, q('tc'))
                     props = cell.find(q('tcPr'))
                     if props is not None:
-                        new_cell.append(copy.deepcopy(props))
+                        copied = copy.deepcopy(props)
+                        merge = copied.find(q('vMerge'))
+                        if merge is not None and merge.get(q('val')) == 'restart':
+                            merge.set(q('val'), 'continue')
+                        new_cell.append(copied)
                     self.nodes[f'op:{op_id}:cell:{index}'] = (part, new_cell)
                     for pindex, (source_p, paragraph_value) in enumerate(zip(ps, paragraph_values)):
                         new_p = self.clone_paragraph(source_p, text_value(paragraph_value))
