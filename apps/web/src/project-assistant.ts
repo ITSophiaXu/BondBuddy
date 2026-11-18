@@ -29,6 +29,7 @@ import { AssistantUploadRecovery, AssistantUploadRecoveryError, type AssistantUp
 import { AssistantTemplateUploadRecovery, assistantTemplateUploadRecordMatches, type AssistantTemplateUploadEnvelope, type AssistantTemplateUploadResult } from './assistant-template-upload-recovery';
 import { AssistantProjectCopyRecovery, assistantProjectCopyRecordMatches, type AssistantProjectCopyEnvelope, type AssistantProjectCopyResult } from './assistant-project-copy-recovery';
 import { AssistantViewCache, AssistantViewCacheError, assistantSame, assertAssistantTemplateClear, withAssistantTopicWrite, type AssistantViewSnapshot, type AssistantViewCacheRecord } from './assistant-view-cache';
+import {uncertainServerAccepted} from './assistant-uncertainty.js';
 import { UploadRecoveryNeedsFileError, UploadRecoveryConflictError, UploadRecoveryStorageError, UploadRecoveryLockError, UploadRecoveryReceiptError, type UploadRecoveryRecord, type UploadRecoveryJson } from './upload-recovery';
 import './project-assistant.css';
 
@@ -62,7 +63,7 @@ export class ProjectAssistant {
   private templateFiles=new Map<string,File>();private templateErrors=new Map<string,string>();private templateStatuses=new Map<string,string>();private templateProgress=new Map<string,FileUploadProgress>();private templateNeedsFile=new Set<string>();
   private cacheQueue:Promise<void>=Promise.resolve();private cachePending=0;private cacheProblem='';
   private cacheBaselines=new Map<string,AssistantViewCacheRecord|null>();
-  private editGeneration=0;private runtimeGeneration=0;private actionPending=0;private actionUncertain=false;
+  private editGeneration=0;private runtimeGeneration=0;private actionPending=0;private actionUncertain=false;private reconcilingUncertain=false;
   private readingGeneration=0;
   private templateGeneration=0;
   private templateSaved=new Map<string,AssistantTemplateUploadEnvelope>();
@@ -175,9 +176,37 @@ export class ProjectAssistant {
   private get view(){return this.workspace!.view;}
   private get action(){return this.workspace?.view.assistant?.action??null;}
   private scopeCurrent(topic:string,project:string){return this.live&&this.workspace?.topic.topic_id===topic&&this.workspace.topic.project_id===project;}
+  private identityFrom(workspace:M4Workspace|undefined,cards:AssistantCard[]):UploadRecoveryJson{
+    return JSON.parse(JSON.stringify({quote:this.qaQuote?{content:this.qaQuote.content,key:this.qaQuote.key,quote_id:this.qaQuote.value.quote.quote_id}:null,messages:(workspace?.messages??[]).map(m=>({id:m.message_id,version:m.version,role:m.role,status:m.reply_status,run:m.run_id})),cards:cards.map(c=>({id:c.card_id,token:c.draft_token,execution:c.execution_request_id,run:c.run?{id:c.run.run_id,state:c.run.state}:null})),active_run:workspace?.active_run?{id:workspace.active_run.run_id,state:workspace.active_run.state}:null,project:this.data?{id:this.data.project.project_id,revision:this.data.project.draft_revision}:null})) as UploadRecoveryJson;
+  }
   private runtimeSnapshot():AssistantViewSnapshot['runtime']{
-    const identity=JSON.parse(JSON.stringify({quote:this.qaQuote?{content:this.qaQuote.content,key:this.qaQuote.key,quote_id:this.qaQuote.value.quote.quote_id}:null,messages:(this.workspace?.messages??[]).map(m=>({id:m.message_id,version:m.version,role:m.role,status:m.reply_status,run:m.run_id})),cards:this.cards.map(c=>({id:c.card_id,token:c.draft_token,execution:c.execution_request_id,run:c.run?{id:c.run.run_id,state:c.run.state}:null})),active_run:this.workspace?.active_run?{id:this.workspace.active_run.run_id,state:this.workspace.active_run.state}:null,project:this.data?{id:this.data.project.project_id,revision:this.data.project.draft_revision}:null})) as UploadRecoveryJson;
-    return {generation:this.runtimeGeneration,pending:this.actionPending>0,uncertain:this.actionUncertain,identity};
+    return {generation:this.runtimeGeneration,pending:this.actionPending>0,uncertain:this.actionUncertain,identity:this.identityFrom(this.workspace,this.cards)};
+  }
+  /** Re-check the server instead of leaving a reloaded uncertain action as a
+   * permanent local block. The identity includes accepted messages, cards,
+   * active run and project revision, so a server-side receipt is visible even
+   * when the original response was lost. Never retry a call here. */
+  private async reconcileUncertain(){
+    if(!this.actionUncertain||!this.workspace||this.reconcilingUncertain)return;
+    const topic=this.workspace.topic.topic_id,project=this.workspace.topic.project_id,saved=this.viewCache.read(topic,project);
+    if(!saved?.snapshot.runtime?.identity)return;
+    this.reconcilingUncertain=true;
+    try{
+      const [workspace,cardResult]=await Promise.all([
+        this.m4.workspace(topic),
+        this.api.request<{cards:AssistantCard[]}>('GET',`/assistant/topics/${encodeURIComponent(topic)}/cards`,undefined,{},this.controller.signal)
+      ]);
+      if(!this.live||!this.scopeCurrent(topic,project))return;
+      if(uncertainServerAccepted(saved.snapshot.runtime.identity,this.identityFrom(workspace,cardResult.cards))){
+        this.actionUncertain=false;this.error='';this.runtimeGeneration++;
+        this.status='服务器已受理原业务请求；已解除本地未确认阻塞，当前输入保留。';
+        this.cache();this.paint();
+      }else{
+        this.status='服务器尚未发现原业务请求；请先核对消息与任务。确认未受理后可按新请求重试。';
+        this.paintStatus();
+      }
+    }catch{/* keep the local uncertain state when the server cannot be checked */}
+    finally{this.reconcilingUncertain=false;}
   }
   private viewSnapshot():AssistantViewSnapshot|undefined{
     if(!this.workspace)return;const {version,...view}=structuredClone(this.view);view.unsent_content=this.text;
@@ -332,7 +361,7 @@ export class ProjectAssistant {
     if(!this.live||token!==this.epoch)return;
     try{const record=this.viewCache.read(id,w.topic.project_id);this.cacheBaselines.set(`${w.topic.project_id}:${id}`,record);if(record){const saved=record.snapshot;this.editGeneration=saved.generation;this.runtimeGeneration=saved.runtime.generation;this.actionUncertain=saved.runtime.uncertain||saved.runtime.pending;if(saved.dirty||saved.conflict){const serverView=structuredClone(w.view);this.conflictServer=serverView;this.workspace.view={...structuredClone(saved.view),version:saved.version};this.text=saved.view.unsent_content;this.viewDirty=saved.dirty;this.viewConflict=saved.conflict||serverView.version!==saved.version||!assistantSame(this.fullView(serverView),saved.view);this.formOpen=!!this.action;this.status='已恢复本机完整输入，请核对后继续。';}}}catch(e){this.cacheProblem=assistantError(e,'read');this.error=this.cacheProblem;}
     const restoredProject=this.view.assistant?.project_id;if(restoredProject&&this.data?.project.project_id!==restoredProject){this.data=await this.projectData(restoredProject);if(!this.live||token!==this.epoch)return;}if(this.data&&this.view.assistant?.source_prospectuses)(this.data.project.update_details??=emptyUpdateDetails()).source_prospectuses=structuredClone(this.view.assistant.source_prospectuses);
-    this.setupCopyRecovery();this.setupTemplateRecovery();this.restoreUploads(id);this.history=false;this.projectPicker=false;
+    this.setupCopyRecovery();this.setupTemplateRecovery();this.restoreUploads(id);if(this.actionUncertain)void this.reconcileUncertain();this.history=false;this.projectPicker=false;
     if(this.templateEnvelopes.length||this.copyEnvelopes.length){if(this.viewDirty||this.viewConflict){this.cache();await this.cacheQueue;}if(this.templateEnvelopes.length)await this.readTemplates();if(this.copyEnvelopes.length)await this.readCopies();}else if(!this.cacheProblem&&!this.viewDirty&&!this.viewConflict)this.cache();
     void this.poll();
   }
@@ -542,6 +571,8 @@ export class ProjectAssistant {
   private async download(id:string){const a=await this.api.artifact(id,this.controller.signal),bytes=await this.api.artifactBytes(a,this.controller.signal),url=URL.createObjectURL(bytes),link=document.createElement('a');link.href=url;link.download=artifactFilename(a);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   private async click(event:Event){const el=(event.target as HTMLElement).closest<HTMLElement>('[data-a]');if(!el)return;const a=el.dataset.a;if(this.embeddedProject&&['toggle','wide','project','current-project'].includes(a??''))return;
     if(a==='embed-retry'&&this.embeddedProject&&this.host.parentElement){await this.embedProject(this.host.parentElement,this.embeddedProject);return;}
+    if(a==='reconcile-uncertain'){await this.reconcileUncertain();return;}
+    if(a==='clear-uncertain'){this.actionUncertain=false;this.error='';this.status='已清除未确认状态；请重新提交原操作，系统将作为新请求处理。';this.cache();this.paint();return;}
     if(a==='toggle'){await this.setOpen(!this.open);return;}
     if(a==='wide'){this.wide=!this.wide;this.paint();return;}
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
@@ -710,7 +741,7 @@ export class ProjectAssistant {
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
       ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy&&!this.localEditingAllowed()?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.filter(t=>!this.embeddedProject||t.source_project_id===this.embeddedProject).map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
-      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div>${this.history||!this.formOpen||this.action?.business!=='generation'||this.action.fields.document_type!=='init'?`<div data-template-recovery>${this.templateRecovery()}</div>`:''}${this.history||!this.formOpen||this.action?.business==='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<p data-status role="status"></p>${this.viewComparison()}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy&&!this.localEditingAllowed()?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="bb-upload-picker bb-upload-picker--compact ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
+      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div>${this.history||!this.formOpen||this.action?.business!=='generation'||this.action.fields.document_type!=='init'?`<div data-template-recovery>${this.templateRecovery()}</div>`:''}${this.history||!this.formOpen||this.action?.business==='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<p data-status role="status"></p>${this.actionUncertain?`<div class="ba-uncertain-actions"><button data-a="reconcile-uncertain" ${this.busy?'disabled':''}>核对服务器结果</button><button data-a="clear-uncertain" ${this.busy?'disabled':''}>确认未受理，按新请求重试</button></div>`:''}${this.viewComparison()}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy&&!this.localEditingAllowed()?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="bb-upload-picker bb-upload-picker--compact ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
     // Keep the selected native input alive while upload completion redraws the panel.
     // Only reuse it within the same conversation/project, never across contexts.
     for(const fresh of this.host.querySelectorAll<HTMLInputElement>('input[type="file"]')){
