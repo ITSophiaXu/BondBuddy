@@ -1,0 +1,13 @@
+{
+  "status": "PREPARED",
+  "at": "2026-11-18T09:33:04.989380+00:00",
+  "roles": [
+    "parser",
+    "confirmation"
+  ],
+  "files": 12,
+  "probe_passed": true,
+  "plan_sha256": "39616eb36f8066801b382b7c93c4ab905604bacf1cab5a757ad9c7a1c2741eaf",
+  "production_changed": false,
+  "free_bytes": 2802466816
+}

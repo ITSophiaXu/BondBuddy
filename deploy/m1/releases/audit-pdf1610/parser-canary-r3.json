@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-18T08:06:00.598480+00:00",
+  "role": "parser",
+  "image": "sha256:bd8b15bdf589f26da4a6f11d17fe38271e309ee0c1484569ba4ce2da830e11f7",
+  "digest": "e414ffbd9b2a6240fd35d5d4c724646cedbea53748de6941f6ce7b1484a1dcc4",
+  "exit": 0,
+  "stdout": "TAP version 13\n# {\"pythonExit\":0,\"pythonStdout\":\"/opt/venv/bin/python3\\\\n/opt/venv/lib/python3.11/site-packages/pypdfium2/__init__.py\\\\n\",\"pythonStderr\":\"\"}\n# Subtest: new contract is v3 and samples at most eight pages\nok 1 - new contract is v3 and samples at most eight pages\n  ---\n  duration_ms: 2.043097\n  type: 'test'\n  ...\n# Subtest: live parser dependency graph imports\nok 2 - live parser dependency graph imports\n  ---\n  duration_ms: 0.898583\n  type: 'test'\n  ...\n# {\"synthetic\":true,\"dpi\":144,\"pages\":120,\"checked\":1,\"elapsed_ms\":151.92552799999999}\n# Subtest: real PDFium 120 pages at 144 DPI\nok 3 - real PDFium 120 pages at 144 DPI\n  ---\n  duration_ms: 270.508445\n  type: 'test'\n  ...\n# {\"synthetic\":true,\"dpi\":200,\"pages\":1600,\"checked\":8,\"elapsed_ms\":119.26611899999989}\n# Subtest: real PDFium 1600 pages at 200 DPI\nok 4 - real PDFium 1600 pages at 200 DPI\n  ---\n  duration_ms: 566.283599\n  type: 'test'\n  ...\n1..4\n# tests 4\n# suites 0\n# pass 4\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 2258.247756\n",
+  "stderr": "",
+  "network": "none",
+  "production_service_changed": false,
+  "root": "/var/tmp/bb-audit1610-canary-e414ffbd9b2a6240"
+}
