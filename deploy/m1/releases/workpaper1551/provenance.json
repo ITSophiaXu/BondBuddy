@@ -1,21 +1,22 @@
 {
-  "source_fix": "466d2952d13fa24c51c9d2e5f0b98e56ee322e16",
-  "candidate_head": "393c3f924919c874ce4638f853c90982a94d4e16",
+  "source_fix": "e5e8ac0481734af0acfe2c9ccd6f469d9a207211",
+  "candidate_head": "d0104b1aff274600ea364f2c5e030109dabedbc4",
   "base_sha256": "c9449fc3294e0a1590ddc5081d99cb9387ea439acf4d096db4ea41e790391770",
-  "sha256": "eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c",
-  "bytes": 461990,
+  "sha256": "b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9",
+  "bytes": 462195,
   "changed": [
     {
       "path": "authoring/apps/worker/dist/managed-database-preflight.js",
       "before_sha256": "0f6fda69fec595f5a4ddd369a36f44c9372b307a2b2af52d9c3b9c537acf5e89",
-      "after_sha256": "0d37fa38b0fc141b14ed790ff2e9dfc953d3106893c7fde13f784eddb1d80df3"
+      "after_sha256": "258f33e9842279db61cb6c4abd03ce530e71cd6eb363126f84e77faa688878d9"
     },
     {
       "path": "review/apps/worker/dist/managed-database-preflight.js",
       "before_sha256": "0f6fda69fec595f5a4ddd369a36f44c9372b307a2b2af52d9c3b9c537acf5e89",
-      "after_sha256": "0d37fa38b0fc141b14ed790ff2e9dfc953d3106893c7fde13f784eddb1d80df3"
+      "after_sha256": "258f33e9842279db61cb6c4abd03ce530e71cd6eb363126f84e77faa688878d9"
     }
   ],
   "unchanged_members": 81,
-  "production_deployed": false
+  "production_deployed": false,
+  "supersedes_unactivated_candidate": "eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c"
 }

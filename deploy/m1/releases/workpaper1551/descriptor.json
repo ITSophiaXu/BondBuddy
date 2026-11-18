@@ -1,5 +1,5 @@
 {
-  "bytes": 461990,
+  "bytes": 462195,
   "files": [
     {
       "bytes": 1222,
@@ -176,10 +176,10 @@
       "sha256": "c05a5e5486ec28572e7b600293c84b2bfbdda18cf5537cb255b62ac3011cc5d6"
     },
     {
-      "bytes": 2402,
+      "bytes": 2926,
       "path": "apps/worker/dist/managed-database-preflight.js",
       "service_id": "authoring",
-      "sha256": "0d37fa38b0fc141b14ed790ff2e9dfc953d3106893c7fde13f784eddb1d80df3"
+      "sha256": "258f33e9842279db61cb6c4abd03ce530e71cd6eb363126f84e77faa688878d9"
     },
     {
       "bytes": 1555,
@@ -374,10 +374,10 @@
       "sha256": "c05a5e5486ec28572e7b600293c84b2bfbdda18cf5537cb255b62ac3011cc5d6"
     },
     {
-      "bytes": 2402,
+      "bytes": 2926,
       "path": "apps/worker/dist/managed-database-preflight.js",
       "service_id": "review",
-      "sha256": "0d37fa38b0fc141b14ed790ff2e9dfc953d3106893c7fde13f784eddb1d80df3"
+      "sha256": "258f33e9842279db61cb6c4abd03ce530e71cd6eb363126f84e77faa688878d9"
     },
     {
       "bytes": 1555,
@@ -470,6 +470,6 @@
       "sha256": "61c6fbe2010a5385374b9f3ebb2d363258d7bd0c3080e47b49ce294a4dfca21a"
     }
   ],
-  "sha256": "eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c",
+  "sha256": "b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9",
   "version": "shared-business-eight-permissions-encrypted-v1"
 }

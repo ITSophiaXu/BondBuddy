@@ -4,7 +4,7 @@ price/traffic evidence, then require a fresh official read-only quote. No Start.
 Usage on main as root: python3 rebind-quote.py validate|apply
 """
 import copy,datetime,fcntl,hashlib,json,os,pathlib,stat,subprocess,sys
-R=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118');P=R/'private';S=pathlib.Path('/var/lib/bondbuddy/migration-908/state-main');OWNER='workpaper1551-control'
+R=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118-r2');P=R/'private';S=pathlib.Path('/var/lib/bondbuddy/migration-908/state-main');OWNER='workpaper1551-control-r2'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def read(p):return json.loads(p.read_bytes())
