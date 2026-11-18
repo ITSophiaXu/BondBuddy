@@ -29,7 +29,7 @@ def main():
  for v in overlay:mapping[v['target']]=v
  service['volumes']=list(mapping.values());after={'name':'bb-main','services':{'ops':service},'networks':networks,'volumes':volumes}
  save('ops.before.inspect.private.json',c);save('ops.rollback.compose.private.json',module.escape(before));save('ops.candidate.compose.private.json',module.escape(after))
- name='bb-workpaper1551-create-probe';probe=copy.deepcopy(after);probe['services']['ops']['container_name']=name;probe['services']['ops'].setdefault('labels',{})['com.bondbuddy.workpaper1551.probe']='eb3e2a9a8000';save('ops.probe.compose.private.json',module.escape(probe))
+ name='bb-workpaper1551-create-probe-r2';probe=copy.deepcopy(after);probe['services']['ops']['container_name']=name;probe['services']['ops'].setdefault('labels',{})['com.bondbuddy.workpaper1551.probe']='b0080b09ab87';save('ops.probe.compose.private.json',module.escape(probe))
  need(not run(['docker','ps','-aq','--filter','name=^/'+name+'$']).strip(),'probe_exists_reconcile')
  result=None
  try:
@@ -53,7 +53,7 @@ def main():
  finally:
   q=subprocess.run(['docker','inspect',name],capture_output=True,timeout=20)
   if q.returncode==0:
-   p=json.loads(q.stdout)[0];need(p['Config']['Labels'].get('com.bondbuddy.workpaper1551.probe')=='eb3e2a9a8000' and not p['State']['Running'] and p['State']['StartedAt'].startswith('0001-'),'probe_cleanup_scope');run(['docker','rm',p['Id']])
+   p=json.loads(q.stdout)[0];need(p['Config']['Labels'].get('com.bondbuddy.workpaper1551.probe')=='b0080b09ab87' and not p['State']['Running'] and p['State']['StartedAt'].startswith('0001-'),'probe_cleanup_scope');run(['docker','rm',p['Id']])
  if result:result['probe_removed']=True;save('probe.safe.json',result);print(json.dumps(result))
 if __name__=='__main__':
  try:main()
