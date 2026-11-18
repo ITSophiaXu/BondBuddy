@@ -1,4 +1,6 @@
 import type { Pool } from 'pg';
+import { PDF_QUALITY_STAGE, readPdfQuality } from '@bondbuddy/contracts';
+import { inspectPdfQuality } from './pdf-quality.js';
 import { ERROR_CODES, type ErrorCode } from '@bondbuddy/contracts';
 import { Problem } from '@bondbuddy/api/data';
 import {
@@ -30,6 +32,7 @@ export interface IssuerIdentityObservationCandidate {
 
 export interface MaterialParseJobDependencies {
   pool: Pool;
+  pdfQualityInspector?: typeof inspectPdfQuality;
   /** Existing #13 parser bridge dependencies: private Blob reader, parser bridge and optional parse cache. */
   material: MaterialParserDependencies;
   evidence?: ParseEvidenceDependencies;
@@ -125,7 +128,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
   if (!lease) return 'idle';
   const heartbeat = setInterval(() => { void renewMaterialParse(pool, lease, leaseSeconds).catch(() => clearInterval(heartbeat)); }, Math.max(1000, leaseSeconds * 400));
   const context = { ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, materialVersion: lease.materialVersion };
-  const stage = async (name: 'parse_evidence' | 'historical_profile' | 'ocr_evidence', value: Record<string, unknown>) => {
+  const stage = async (name: 'parse_evidence' | 'historical_profile' | 'ocr_evidence' | typeof PDF_QUALITY_STAGE, value: Record<string, unknown>) => {
     await completeMaterialParseStage(pool, lease, name, value);
     await dependencies.afterStage?.(name, lease);
   };
@@ -145,7 +148,17 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
       } else {
         const started = performance.now();
         try {
-          snapshot = await parseAndPersistAuthorizedMaterial(dependencies.material, evidence, {
+          const inspect = dependencies.pdfQualityInspector ?? inspectPdfQuality;
+          const materialDependencies: MaterialParserDependencies = {...dependencies.material};
+          // Custom parser fixtures opt into the real inspection explicitly. Production
+          // always runs the bounded probe once, and retains it even if parsing times out.
+          if ((!dependencies.material.parser || dependencies.pdfQualityInspector) && !readPdfQuality(stages[PDF_QUALITY_STAGE])) {
+            materialDependencies.onStagedPdf = async path => {
+              const quality = await inspect(path);
+              await stage(PDF_QUALITY_STAGE, {...quality});
+            };
+          }
+          snapshot = await parseAndPersistAuthorizedMaterial(materialDependencies, evidence, {
             ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion,
             requestId: `${lease.jobId}-parse`,
           });
