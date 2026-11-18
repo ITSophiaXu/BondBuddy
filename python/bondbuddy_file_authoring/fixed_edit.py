@@ -211,6 +211,7 @@ class Editor:
         self.inserted_paragraphs = set()
         self.inserted_rows = set()
         self.inserted_cells = set()
+        self.deleted_tables = set()
         self.property_changes = {}
         self.changed_parts = set()
         self.operations = []
@@ -218,6 +219,17 @@ class Editor:
         self.comments = []
         self.format_origins = {}
         self.format_plan = None
+
+    def revision_marker(self, kind):
+        """Create a structural revision marker with a document-unique id."""
+        if not hasattr(self, '_next_revision'):
+            self._next_revision = max([int(n.get(q('id'))) for root in self.roots.values() for n in root.iter()
+                                       if (n.get(q('id')) or '').isdigit()] + [0]) + 1
+        marker = ET.Element(q(kind), {q('id'): str(self._next_revision), q('author'): self.data['revision_author']})
+        if self.data.get('revision_date'):
+            marker.set(q('date'), self.data['revision_date'])
+        self._next_revision += 1
+        return marker
 
     def target(self, node_id, tag=None):
         if not isinstance(node_id, str) or node_id not in self.nodes:
@@ -343,6 +355,110 @@ class Editor:
                 cell_width.set(q('w'), str(width))
         self.changed_parts.add(part)
 
+    def new_paragraph(self, style_node, text):
+        if style_node is not None:
+            return self.clone_paragraph(style_node, text)
+        paragraph = ET.Element(q('p'))
+        run = ET.SubElement(paragraph, q('r'))
+        value = ET.SubElement(run, q('t'))
+        value.text = text
+        return paragraph
+
+    def insert_table(self, part, anchor, operation):
+        """Insert a plain table after/before an existing paragraph or table.
+
+        The table is intentionally rectangular; merged grids are handled by
+        insert_row/insert_column, while a brand-new table has no source merges.
+        """
+        if anchor.tag not in {q('p'), q('tbl')}:
+            error('WORD_EDIT_NODE_KIND_MISMATCH')
+        rows = operation.get('rows')
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 100:
+            error('WORD_EDIT_TABLE_ROWS_INVALID')
+        width_count = len(rows[0]) if isinstance(rows[0], list) else 0
+        if not 1 <= width_count <= 20 or any(not isinstance(row, list) or len(row) != width_count for row in rows):
+            error('WORD_EDIT_TABLE_ROWS_INVALID')
+        values = [[text_value(value) for value in row] for row in rows]
+        if not any(value.strip() for row in values for value in row):
+            error('WORD_EDIT_TABLE_ROWS_INVALID')
+        position = operation.get('position', 'after')
+        if position not in {'before', 'after'}:
+            error('WORD_EDIT_POSITION_INVALID')
+        style_node = None
+        style_key = operation.get('style_node_id')
+        if style_key is not None:
+            _, style_node = self.target(style_key, 'p')
+        elif anchor.tag == q('p'):
+            style_node = anchor
+        else:
+            style_node = next(anchor.iter(q('p')), None)
+        table = ET.Element(q('tbl'))
+        if anchor.tag == q('tbl') and anchor.find(q('tblPr')) is not None:
+            table.append(copy.deepcopy(anchor.find(q('tblPr'))))
+        else:
+            props = ET.SubElement(table, q('tblPr'))
+            ET.SubElement(props, q('tblW'), {q('w'): '5000', q('type'): 'pct'})
+            ET.SubElement(props, q('tblLayout'), {q('type'): 'fixed'})
+            borders = ET.SubElement(props, q('tblBorders'))
+            for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+                ET.SubElement(borders, q(side), {q('val'): 'single', q('sz'): '4', q('color'): 'B8C2BD'})
+            margins = ET.SubElement(props, q('tblCellMar'))
+            for side in ('top', 'left', 'bottom', 'right'):
+                ET.SubElement(margins, q(side), {q('w'): '80', q('type'): 'dxa'})
+        widths = [5000 // width_count] * width_count
+        widths[-1] += 5000 - sum(widths)
+        grid = ET.SubElement(table, q('tblGrid'))
+        for width in widths:
+            ET.SubElement(grid, q('gridCol'), {q('w'): str(width)})
+        self.nodes[f'op:{operation["id"]}:table'] = (part, table)
+        for row_index, row in enumerate(values):
+            tr = ET.SubElement(table, q('tr'))
+            props = ET.SubElement(tr, q('trPr'))
+            ET.SubElement(props, q('cantSplit'))
+            if row_index == 0:
+                ET.SubElement(props, q('tblHeader'))
+            row_key = f'op:{operation["id"]}:row:{row_index}'
+            self.nodes[row_key] = (part, tr)
+            self.inserted_rows.add(row_key)
+            for cell_index, value in enumerate(row):
+                tc = ET.SubElement(tr, q('tc'))
+                cell_props = ET.SubElement(tc, q('tcPr'))
+                ET.SubElement(cell_props, q('tcW'), {q('w'): str(widths[cell_index]), q('type'): 'pct'})
+                ET.SubElement(cell_props, q('vAlign'), {q('val'): 'center'})
+                paragraph = self.new_paragraph(style_node, value)
+                tc.append(paragraph)
+                cell_key = f'op:{operation["id"]}:cell:{row_index}:{cell_index}'
+                self.nodes[cell_key] = (part, tc)
+                self.inserted_cells.add(cell_key)
+                paragraph_key = cell_key + ':paragraph'
+                self.nodes[paragraph_key] = (part, paragraph)
+                self.inserted_paragraphs.add(paragraph_key)
+                if style_key is not None:
+                    self.format_origins[paragraph_key] = style_key
+        parent = anchor.getparent()
+        parent.insert(parent.index(anchor) + (position == 'after'), table)
+        self.changed_parts.add(part)
+
+    def delete_table(self, part, table, operation):
+        """Mark every row deleted; accept removes the rows/table, reject keeps it."""
+        if table.tag != q('tbl'):
+            error('WORD_EDIT_NODE_KIND_MISMATCH')
+        limits = capability_limits(table)
+        if 'existing_revisions' in limits or 'fields_or_embedded_objects' in limits:
+            error('WORD_EDIT_COMPLEX_TABLE_UNSUPPORTED')
+        rows = table.findall(q('tr'))
+        if not rows:
+            error('WORD_EDIT_COMPLEX_TABLE_UNSUPPORTED')
+        for row in rows:
+            props = row.find(q('trPr'))
+            if props is None:
+                props = ET.Element(q('trPr'))
+                row.insert(0, props)
+            if props.find(q('del')) is None:
+                props.append(self.revision_marker('del'))
+        self.deleted_tables.add(operation['node_id'])
+        self.changed_parts.add(part)
+
     def apply(self, operation):
         if not isinstance(operation, dict):
             error('WORD_EDIT_OPERATION_INVALID')
@@ -354,7 +470,9 @@ class Editor:
         fields = {'replace_text': {'after'}, 'replace_cell_text': {'after'},
                   'insert_paragraph': {'text', 'style_node_id', 'position'},
                   'insert_column': {'column_index', 'position', 'values'},
-                  'insert_row': {'values', 'position'}, 'add_comment': {'text'}}
+                  'insert_row': {'values', 'position'},
+                  'insert_table': {'rows', 'style_node_id', 'position'},
+                  'delete_table': set(), 'add_comment': {'text'}}
         if kind not in fields:
             error('WORD_EDIT_OPERATION_UNSUPPORTED')
         if set(operation) - common - fields[kind] or not {'id', 'kind', 'node_id', 'before'} <= set(operation):
@@ -379,6 +497,10 @@ class Editor:
                 self.replace_paragraph(paragraph_id, paragraph_text(p), text_value(value))
         elif kind == 'insert_column':
             self.insert_column(part, node, operation)
+        elif kind == 'insert_table':
+            self.insert_table(part, node, operation)
+        elif kind == 'delete_table':
+            self.delete_table(part, node, operation)
         elif kind == 'add_comment':
             self.target(operation['node_id'], 'p')
             if part != 'word/document.xml':
@@ -596,7 +718,7 @@ class Editor:
         parts[comment_path] = serialized(comments)
 
     def has_changes(self):
-        return bool(self.inserted_paragraphs or self.inserted_rows or self.inserted_cells or self.comments or any(
+        return bool(self.inserted_paragraphs or self.inserted_rows or self.inserted_cells or self.deleted_tables or self.comments or any(
             paragraph_text(self.original_paragraphs[key]) != paragraph_text(self.nodes[key][1])
             for key in self.touched if key in self.original_paragraphs))
 

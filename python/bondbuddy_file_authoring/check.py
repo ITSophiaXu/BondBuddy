@@ -98,7 +98,11 @@ def resolve_revisions(root, accept, only_new=False):
         elif local in ('ins','moveTo','del','moveFrom'):
             # Property-level revision markers are not text wrappers.
             if node.getparent().tag in {Q('rPr'),Q('trPr'),Q('tcPr')}:
-                node.getparent().remove(node);continue
+                parent=node.getparent();parent.remove(node)
+                if parent.tag in {Q('trPr'),Q('tcPr')} and not len(parent) and not parent.attrib:
+                    grand=parent.getparent()
+                    if grand is not None:grand.remove(parent)
+                continue
             keep=(local in ('ins','moveTo'))==accept
             if keep:
                 for t in node.iter(Q('delText')):t.tag=Q('t')
