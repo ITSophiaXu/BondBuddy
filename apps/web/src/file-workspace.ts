@@ -25,6 +25,7 @@ import './file-workspace.css';
 import {WorkpaperPanel} from './workpaper-panel';
 import {WorkpaperTaskPanel} from './workpaper-task';
 import {FileGenerationPanel} from './file-generation-panel';
+import {generationRoute,type FileGenerationEntry} from './file-generation-entry';
 import '../../../product-prototype/public/file-generation-ux.css';
 import '../../../product-prototype/public/workpaper-entry.css';
 import './generation-flow.css';
@@ -88,11 +89,11 @@ export class FileWorkspace {
   private entryIntent?:M4DocumentType;private entryWaiting=false;private entryAdopted?:M4DocumentType;private entryError='';
   private blankRow=false;private requirementsExpanded?:boolean;private supportExpanded?:boolean;private reusedExpanded=new Set<M4DocumentType>();
   private entry?:ProjectEntry;
-  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string,private owner?:string){
+  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string,private owner?:string,private generationKind:FileGenerationEntry='documents'){
     this.m4=new M4Api(api,this.controller.signal);
     const params=new URLSearchParams(location.hash.split('?')[1]),requested=params.getAll('prepare_document');
-    if(owner&&id&&params.get('project')===id&&!params.has('topic')&&requested.length===1&&PROJECT_DOCUMENT_CATALOG.some(d=>d.id===requested[0])){this.entryIntent=requested[0] as M4DocumentType;this.entryWaiting=params.get('prepare_wait')==='1';}
-    if(owner&&id){this.cache=new FileGenerationCache(owner,id);this.restoreCachedPreparation();}else if(id)this.cacheUnknown=true;
+    if(generationKind==='documents'&&owner&&id&&params.get('project')===id&&!params.has('topic')&&requested.length===1&&PROJECT_DOCUMENT_CATALOG.some(d=>d.id===requested[0])){this.entryIntent=requested[0] as M4DocumentType;this.entryWaiting=params.get('prepare_wait')==='1';}
+    if(generationKind==='documents'&&owner&&id){this.cache=new FileGenerationCache(owner,id);this.restoreCachedPreparation();}else if(generationKind==='documents'&&id)this.cacheUnknown=true;
   }
   private restoreCachedPreparation(){
     const saved=this.cache?.readForEntry();this.cacheUnknown=saved?.status!=='ok';if(!saved||saved.status!=='ok')return false;
@@ -112,7 +113,9 @@ export class FileWorkspace {
     if(context.kind==='support'&&context.types.some(type=>!Value.Check(M4DraftRequestSchema,context.supportBases?.[type])||context.supportBases?.[type]?.input.document_type!==type))throw new UserFacingError('原补料草稿依据无法核实，请保留记录并核对。');
     return context;
   }
-  private href(extra:Record<string,string>={}){return '#generate?'+withProjectContext(new URLSearchParams({project:this.id!,...(this.entryIntent?{prepare_document:this.entryIntent,...(this.entryWaiting?{prepare_wait:'1'}:{})}:{}),...extra}));}
+  private get section(){return generationRoute(this.generationKind);}
+  private get title(){return this.generationKind==='workpapers'?'尽调底稿包':'文件生成';}
+  private href(extra:Record<string,string>={}){return '#'+this.section+'?'+withProjectContext(new URLSearchParams({project:this.id!,...(this.entryIntent?{prepare_document:this.entryIntent,...(this.entryWaiting?{prepare_wait:'1'}:{})}:{}),...extra}));}
   private syncEntryUrl(){
     if(!this.live())return;const params=new URLSearchParams(location.hash.split('?')[1]);if(params.get('project')!==this.id||params.has('topic'))return;
     params.delete('prepare_document');params.delete('prepare_wait');if(this.entryIntent){params.set('prepare_document',this.entryIntent);if(this.entryWaiting)params.set('prepare_wait','1');}
@@ -189,14 +192,14 @@ export class FileWorkspace {
   dispose(){this.workpapers?.dispose();this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
   private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={},signal=this.controller.signal){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,signal);}
   async render(){
-    this.shell('<p role="status">正在读取文件生成…</p>','generate');
+    this.shell('<p role="status">正在读取'+this.title+'…</p>',this.section);
     if(!this.id){await this.chooseProject();return;}
     try{
       this.project=await this.api.project(this.id,this.controller.signal);
       const taskQuery=new URLSearchParams(location.hash.split('?')[1]),operation=taskQuery.get('operation');
       if(taskQuery.get('run')&&(operation==='workpaper_assessment'||operation==='workpaper_check')){
         if(!this.live())return;
-        this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
+        this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,this.section);
         this.workpapers=new WorkpaperTaskPanel(this.api,document.querySelector('#pf-workpapers')!,this.id,taskQuery.get('run')!,operation,()=>this.live());
         await this.workpapers.render();return;
       }
@@ -207,14 +210,14 @@ export class FileWorkspace {
         await this.paint();
       }
     }
-    catch(e){if(this.live())this.shell(`<div class="collection-empty"><h1>文件生成暂时无法打开</h1><p role="alert">${esc(friendlyError(e,'read'))}</p><a class="btn secondary" href="#generate">重新选择项目</a></div>`,'generate');}
+    catch(e){if(this.live())this.shell(`<div class="collection-empty"><h1>${this.title}暂时无法打开</h1><p role="alert">${esc(friendlyError(e,'read'))}</p><a class="btn secondary" href="#${this.section}">重新选择项目</a></div>`,this.section);}
   }
   private status(s:string){this.message=s;if(!this.live())return;const node=document.querySelector('#pf-status');if(node)node.textContent=s;}
   private syncSourceAction(){
     const button=document.querySelector<HTMLButtonElement>('#pf-source-next');
     if(button)button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;
   }
-  private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
+  private sourceDestination():string{if(this.generationKind==='workpapers')return 'prepare';const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
   private async continueFromSource(){
     this.status('正在核对募集说明书…');
     const deadline=AbortSignal.timeout(15_000);
@@ -237,19 +240,19 @@ export class FileWorkspace {
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
   private header(step:string){
     const unified=step==='prepare'||step==='source'&&this.sourceDestination()==='prepare';
-    const workpapers=step==='workpapers'||step==='source'&&this.sourceDestination()==='workpapers',results=step==='results'||workpapers&&new URLSearchParams(location.hash.split('?')[1]).get('view')==='results';
+    const workpapers=this.generationKind==='workpapers'||step==='workpapers'||step==='source'&&this.sourceDestination()==='workpapers',results=step==='results'||workpapers&&new URLSearchParams(location.hash.split('?')[1]).get('view')==='results';
     const active=step==='source'||step==='choose'?1:step==='confirm'?3:results?4:2;
-    return `<header class="pf-workspace-heading pf-generation-heading"><div class="pf-title-row"><div><h1>生成文件</h1></div><nav class="pf-workspace-actions" aria-label="文件生成导航"><a class="btn secondary" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录</a>${results?`<a class="btn secondary" href="${esc(this.href(workpapers?{step:'results'}:{step:'workpapers',view:'results'}))}">${workpapers?'模板文件生成记录':'底稿生成记录'}</a>`:''}</nav></div></header>
-      <nav class="pf-flow-steps" aria-label="文件生成步骤">${['选择募集说明书','选择生成内容','确认并生成','查看成果'].map((label,i)=>{const n=i+1,href=unified?this.href({step:n===1?'source':'prepare'}):n===1?this.href({step:'source',mode:workpapers?'workpapers':'documents'}):this.href({step:workpapers?'workpapers':'documents'});return `<${n<active&&n<3?'a':'span'} ${n<active&&n<3?`href="${esc(href)}"`:''} data-flow-step="${n}" class="${n===active?'is-current':n<active?'is-complete':''}" ${n===active?'aria-current="step"':''}><b>${n<active?'✓':n}</b>${label}</${n<active&&n<3?'a':'span'}>`;}).join('')}</nav>
+    return `<header class="pf-workspace-heading pf-generation-heading"><div class="pf-title-row"><div><h1>${this.generationKind==='workpapers'?'尽调底稿包':'生成文件'}</h1></div><nav class="pf-workspace-actions" aria-label="${this.title}导航"><a class="btn secondary" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录</a></nav></div></header>
+      <nav class="pf-flow-steps" aria-label="${this.title}步骤">${['选择募集说明书','选择生成内容','确认并生成','查看成果'].map((label,i)=>{const n=i+1,href=unified?this.href({step:n===1?'source':'prepare'}):n===1?this.href({step:'source',mode:workpapers?'workpapers':'documents'}):this.href({step:workpapers?'workpapers':'documents'});return `<${n<active&&n<3?'a':'span'} ${n<active&&n<3?`href="${esc(href)}"`:''} data-flow-step="${n}" class="${n===active?'is-current':n<active?'is-complete':''}" ${n===active?'aria-current="step"':''}><b>${n<active?'✓':n}</b>${label}</${n<active&&n<3?'a':'span'}>`;}).join('')}</nav>
       ${active===2&&step!=='prepare'?this.generationModes(workpapers?'workpapers':'documents'):''}<section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`;
   }
-  private generationModes(_mode:'workpapers'|'documents'){return `<nav class="pf-flow-modes" aria-label="文件生成导航"><a href="${esc(this.href({step:'prepare'}))}"><strong>准备生成文件</strong><span>选择目录、模板和本批文件</span></a></nav>`;}
+  private generationModes(_mode:'workpapers'|'documents'){return `<nav class="pf-flow-modes" aria-label="文件生成导航"><a href="${esc(this.href({step:'prepare'}))}"><strong>${this.generationKind==='workpapers'?'准备尽调底稿包':'准备生成文件'}</strong><span>${this.generationKind==='workpapers'?'选择目录和底稿模板':'选择文件和对应模板'}</span></a></nav>`;}
   private setWorkpaperStep(step:number){document.querySelectorAll<HTMLElement>('[data-flow-step]').forEach((el,i)=>{const n=i+1;el.classList.toggle('is-current',n===step);el.classList.toggle('is-complete',n<step);if(n===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');el.querySelector('b')!.textContent=n<step?'✓':String(n);});const modes=document.querySelector<HTMLElement>('.pf-flow-modes');if(modes)modes.hidden=step!==2;}
   private async chooseProject(){
-    this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:'generate',title:'文件生成',eyebrow:'FILE GENERATION',
-      description:'选择募集说明书、所需文件和模板，统一生成本批成果。',
-      steps:[],next:'打开文件生成',onNew:()=>this.newProject(),
-      open:async(id)=>{if(this.live())location.hash='generate?project='+encodeURIComponent(id);}});
+    this.entry=new ProjectEntry(this.api,this.shell,()=>this.live(),{section:this.section,title:this.title,eyebrow:this.generationKind==='workpapers'?'DUE DILIGENCE WORKPAPERS':'FILE GENERATION',
+      description:this.generationKind==='workpapers'?'选择募集说明书、底稿目录和模板，按目录编制尽调底稿包。':'选择募集说明书、所需文件和模板，统一生成本批成果。',
+      steps:[],next:'打开'+this.title,onNew:()=>this.newProject(),
+      open:async(id)=>{if(this.live())location.hash=this.section+'?project='+encodeURIComponent(id);}});
     await this.entry.render();
   }
   private modal(title:string,body:string){this.dialog?.remove();const d=document.createElement('dialog');d.className='pf-modal';d.innerHTML=`<header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="关闭">${ico('close')}</button></header>${body}<p id="pf-modal-status" role="status"></p>`;document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.busy)d.close();});d.addEventListener('cancel',e=>{if(this.busy)e.preventDefault();});d.addEventListener('close',()=>d.remove());this.dialog=d;return d;}
@@ -259,14 +262,14 @@ export class FileWorkspace {
     const sync=()=>{offering.innerHTML=MARKET_OFFERINGS[market.value as keyof typeof MARKET_OFFERINGS].map(v=>`<option value="${v}">${OFFERING_LABELS[v]}</option>`).join('');};market.addEventListener('change',sync);sync();
     const key=crypto.randomUUID();d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();if(this.busy)return;this.busy=true;const data=new FormData(e.target as HTMLFormElement);
       void this.api.request<Dto<'ProjectResponse'>>('POST','/projects',{creation_request_id:key,kind:'generation',name:data.get('name'),issuer_name:data.get('issuer_name'),market:market.value,offering:offering.value}, {},this.controller.signal)
-        .then(p=>{if(this.live()){d.close();location.hash=`generate?project=${p.project_id}&step=choose`;}}).catch(e=>{d.querySelector('#pf-modal-status')!.textContent=friendlyError(e,'submit');}).finally(()=>{this.busy=false;});});
+        .then(p=>{if(this.live()){d.close();location.hash=`${this.section}?project=${p.project_id}&step=choose`;}}).catch(e=>{d.querySelector('#pf-modal-status')!.textContent=friendlyError(e,'submit');}).finally(()=>{this.busy=false;});});
   }
   private async paint(){
     this.workpapers?.dispose();this.workpapers=undefined;
     if(!this.state||!this.live())return;this.capturePreparationView();this.panel?.dispose();this.panel=undefined;
     const requested=new URLSearchParams(location.hash.split('?')[1]).get('step');
     const step=!requested||requested==='choose'?'source':requested;
-    if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
+    if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,this.section);this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
     const query=new URLSearchParams(location.hash.split('?')[1]);
     let legacyWorkpaperPending=query.get('legacy')==='1';
@@ -276,25 +279,25 @@ export class FileWorkspace {
       // Resolve them on their existing screen before moving to the unified preparation.
       legacyWorkpaperPending ||= this.uploadRecovery('workpaper-catalogue').list().length>0;
     }catch{legacyWorkpaperPending=true;}
-    if((step==='prepare'||step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch'))&&legacyWorkpaperPending){
+    if(this.generationKind==='workpapers'&&(step==='prepare'||step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch'))&&legacyWorkpaperPending){
       if(step==='prepare'){location.hash=this.href({step:'workpapers'});return;}
-      this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
+      this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,this.section);
       this.workpapers=new WorkpaperPanel(this.api,document.querySelector('#pf-workpapers')!,this.id!,this.owner!,this.state.source,()=>this.live(),step=>this.setWorkpaperStep(step));await this.workpapers.render();return;
     }
     if(step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch')){location.hash=this.href({step:'prepare'});return;}
     if(step==='prepare'){
       if(!this.state.source){location.hash=this.href({step:'source'});return;}
-      this.shell(`${this.header('prepare')}<div id="pf-unified-generation"></div>`,'generate');
-      this.workpapers=new FileGenerationPanel(this.api,document.querySelector('#pf-unified-generation')!,this.id!,this.owner!,this.state,()=>this.live(),step=>this.setWorkpaperStep(step));await this.workpapers.render();return;
+      this.shell(`${this.header('prepare')}<div id="pf-unified-generation"></div>`,this.section);
+      this.workpapers=new FileGenerationPanel(this.api,document.querySelector('#pf-unified-generation')!,this.id!,this.owner!,this.state,()=>this.live(),step=>this.setWorkpaperStep(step),this.generationKind);await this.workpapers.render();return;
     }
     if(step==='workpapers'){
       if(!this.state.source&&new URLSearchParams(location.hash.split('?')[1]).get('view')!=='results'){location.hash=this.href({step:'source',mode:'workpapers'});return;}
-      this.shell(`${this.header(step)}<div id="pf-workpapers"></div>`,'generate');
+      this.shell(`${this.header(step)}<div id="pf-workpapers"></div>`,this.section);
       this.workpapers=new WorkpaperPanel(this.api,document.querySelector('#pf-workpapers')!,this.id!,this.owner!,this.state.source,()=>this.live(),step=>this.setWorkpaperStep(step));await this.workpapers.render();return;
     }
     if(step==='source'){
       const nextLabel='下一步：选择生成内容';
-      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>${nextLabel} ${ico('arrow')}</button></footer></div>`,'generate');this.paintEntryIntent();
+      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>${nextLabel} ${ico('arrow')}</button></footer></div>`,this.section);this.paintEntryIntent();
       const sourceProject=this.state.source?.project_id??this.id!;
       this.panel=new ProspectusPanel(this.api,sourceProject,document.querySelector('#pf-prospectus')!,async()=>!this.busy,async()=>{this.state=await this.request<Workspace>('GET','/workspace');if(this.live())this.syncSourceAction();},()=>this.syncSourceAction(),'generation',this.owner);await this.panel.refresh();this.syncSourceAction();
       document.querySelector('#pf-source-next')!.addEventListener('click',()=>void this.act(async()=>{
@@ -313,7 +316,7 @@ export class FileWorkspace {
       <div class="pf-file-table-wrap"><table class="pf-file-table" aria-label="文件与模板清单"><thead><tr><th scope="col">序号</th><th scope="col">文件类型</th><th scope="col">采用的模板 / 已保存依据</th><th scope="col">操作</th></tr></thead><tbody id="pf-template-list"></tbody></table></div>
       <div class="pf-builder-bottom"><button class="btn secondary" id="pf-add-row">添加一行</button><div id="pf-package-readiness" role="status"></div></div><p class="pf-builder-note">完成后自动归入项目，旧版本保留。诚信核查底稿请<a href="${esc('#integrity?'+withProjectContext(new URLSearchParams({project:this.id!})))}">前往诚信核查</a>准备。</p></section></div>
       <div class="pf-optional-grid"><details class="panel pf-optional" id="pf-requirements-details" ${requirementsOpen?'open':''}><summary>补充要求（选填） <span id="pf-note-summary"></span></summary><div class="pf-optional-content"><label for="pf-requirements">本轮统一补充要求</label><textarea id="pf-requirements" rows="4" maxlength="12000" placeholder="例如保留待补充标记，供项目组逐项核实">${esc(this.note)}</textarea><p>保存时只追加到当前所选文件；各文件已有要求保留。</p><div id="pf-note-actions-slot"><div id="pf-note-actions"><button class="btn secondary" id="pf-save-requirements">保存到所选文件</button><p id="pf-note-status" role="status">${this.note?'未保存的补充要求已从本浏览器会话恢复。':''}</p></div></div></div></details>
-      <details class="panel pf-optional" id="pf-support-details" ${supportOpen?'open':''}><summary>补充依据（选填） <span id="pf-support-summary"></span></summary><div class="pf-optional-content"><input id="pf-support" type="file" multiple accept=".docx,.pdf,.xlsx" aria-label="为所选文件补充依据" hidden/><button type="button" class="pf-support-dropzone bb-upload-picker bb-upload-picker--standard" id="pf-support-upload" aria-label="上传补充依据" aria-describedby="pf-support-upload-hint pf-support-formats"><span class="pf-support-upload-icon" aria-hidden="true">${ico('upload')}</span><span class="pf-support-upload-copy"><strong>上传补充依据</strong><span id="pf-support-upload-hint">点击选择，或将文件拖到此处</span></span></button><p class="pf-support-formats" id="pf-support-formats"><span>DOCX、PDF、XLSX</span><span>支持多选 · 单份不超过 100 MB</span></p><p class="pf-support-purpose">可补充财务报告、核查依据或履职材料，用于当前所选文件。</p><p id="pf-support-feedback" role="status" aria-live="polite"></p><div id="pf-support-actions-slot"><div id="pf-support-actions"><div id="pf-support-list"></div><button class="bb-upload-action bb-upload-action--primary btn secondary" id="pf-retry-support" hidden>重试保存补充资料</button></div></div></div></details></div><footer class="pf-footer pf-documents-next"><a class="btn secondary" href="${esc(this.filesHref())}">返回项目文件</a><div><span id="pf-price"></span><button class="btn primary" id="pf-generate" disabled>开始生成文件包</button></div></footer></div>`,'generate');
+      <details class="panel pf-optional" id="pf-support-details" ${supportOpen?'open':''}><summary>补充依据（选填） <span id="pf-support-summary"></span></summary><div class="pf-optional-content"><input id="pf-support" type="file" multiple accept=".docx,.pdf,.xlsx" aria-label="为所选文件补充依据" hidden/><button type="button" class="pf-support-dropzone bb-upload-picker bb-upload-picker--standard" id="pf-support-upload" aria-label="上传补充依据" aria-describedby="pf-support-upload-hint pf-support-formats"><span class="pf-support-upload-icon" aria-hidden="true">${ico('upload')}</span><span class="pf-support-upload-copy"><strong>上传补充依据</strong><span id="pf-support-upload-hint">点击选择，或将文件拖到此处</span></span></button><p class="pf-support-formats" id="pf-support-formats"><span>DOCX、PDF、XLSX</span><span>支持多选 · 单份不超过 100 MB</span></p><p class="pf-support-purpose">可补充财务报告、核查依据或履职材料，用于当前所选文件。</p><p id="pf-support-feedback" role="status" aria-live="polite"></p><div id="pf-support-actions-slot"><div id="pf-support-actions"><div id="pf-support-list"></div><button class="bb-upload-action bb-upload-action--primary btn secondary" id="pf-retry-support" hidden>重试保存补充资料</button></div></div></div></details></div><footer class="pf-footer pf-documents-next"><a class="btn secondary" href="${esc(this.filesHref())}">返回项目文件</a><div><span id="pf-price"></span><button class="btn primary" id="pf-generate" disabled>开始生成文件包</button></div></footer></div>`,this.section);
     this.bindPreparationView();
     document.querySelector('#pf-add-row')!.addEventListener('click',()=>{if(this.busy||this.selected.size===PROJECT_DOCUMENT_CATALOG.length)return;this.blankRow=true;this.paintTemplates();document.querySelector<HTMLSelectElement>('[data-pf-document=""]')?.focus();});
     document.querySelector<HTMLTextAreaElement>('#pf-requirements')!.addEventListener('input',e=>{this.note=(e.target as HTMLTextAreaElement).value;this.noteStored=this.cache?.saveNote(this.note)??false;document.querySelector('#pf-note-status')!.textContent=this.noteStored?'补充要求草稿已保存在当前浏览器会话，保存或核对文件包时加入所选文件。':'草稿暂未保存在浏览器，请先保存到所选文件。';document.querySelector<HTMLButtonElement>('#pf-save-requirements')!.disabled=!this.selected.size||!this.note.trim()||this.busy;this.paintPreparationView();this.paintEntryIntent();});
@@ -533,7 +536,7 @@ export class FileWorkspace {
     }
     if(quote&&quote.documents.every(isAutomaticCharge)){await this.submitGeneration(body);return;}
     this.capturePreparationView();
-    this.shell(`${this.header('confirm')}<section class="panel pf-flow-confirm"><h2>确认本次生成</h2><p>核对募集说明书、生成范围及预计积分。</p><div class="pf-confirm-section"><h3>募集说明书</h3><p>${esc(s.filename)} · V${s.sequence}</p></div><div class="pf-confirm-section"><h3>生成内容 · ${documents.length} 份文件</h3><ul class="pf-confirm-files">${documents.map(({document_type})=>{const template=this.template(document_type)!;return `<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${esc(template.name)} · V${template.template_version}</span>${quote?'<span>'+displayPrice(quote.documents.find(item=>item.document_type===document_type))+'</span>'+scopeLinesHtml(quote.documents.find(item=>item.document_type===document_type))+scopeLifecycleHtml(quote.documents.find(item=>item.document_type===document_type)):''}</li>`;}).join('')}</ul></div><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${quote?cny(quote.points):this.filePrice(documents.length)}</strong></p>${isCnyPrice(this.state.price)?'<p>每份包含正文Word和编制说明，按所选模板及固定募集书生成工作稿，待确认内容明确列示。确认后预留总价，各份按约定交付结算；未交付部分释放。原范围修正和平台重试包含，新范围另行确认。</p>':'<p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p>'}<p id="pf-status" role="status"></p><footer class="pf-footer"><button class="btn secondary" id="pf-back-to-prepare">上一步：调整文件</button><button class="btn primary" id="pf-confirm-generation">确认并开始生成</button></footer></section>`,'generate');
+    this.shell(`${this.header('confirm')}<section class="panel pf-flow-confirm"><h2>确认本次生成</h2><p>核对募集说明书、生成范围及预计积分。</p><div class="pf-confirm-section"><h3>募集说明书</h3><p>${esc(s.filename)} · V${s.sequence}</p></div><div class="pf-confirm-section"><h3>生成内容 · ${documents.length} 份文件</h3><ul class="pf-confirm-files">${documents.map(({document_type})=>{const template=this.template(document_type)!;return `<li><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)!.name}</strong><span>${esc(template.name)} · V${template.template_version}</span>${quote?'<span>'+displayPrice(quote.documents.find(item=>item.document_type===document_type))+'</span>'+scopeLinesHtml(quote.documents.find(item=>item.document_type===document_type))+scopeLifecycleHtml(quote.documents.find(item=>item.document_type===document_type)):''}</li>`;}).join('')}</ul></div><p class="pf-confirm-total">${documents.length} 份全部完成共 <strong>${quote?cny(quote.points):this.filePrice(documents.length)}</strong></p>${isCnyPrice(this.state.price)?'<p>每份包含正文Word和编制说明，按所选模板及固定募集书生成工作稿，待确认内容明确列示。确认后预留总价，各份按约定交付结算；未交付部分释放。原范围修正和平台重试包含，新范围另行确认。</p>':'<p>每份包含正文 Word 和编制说明。按顺序逐份处理，按有效处理时间和已完成工作扣减；排队和暂停不扣积分。</p><p>有积分即可开始；余额用完保存后暂停。主动结束保留已扣部分，平台失败退回已扣积分。后续新增要求用于下一轮。</p>'}<p id="pf-status" role="status"></p><footer class="pf-footer"><button class="btn secondary" id="pf-back-to-prepare">上一步：调整文件</button><button class="btn primary" id="pf-confirm-generation">确认并开始生成</button></footer></section>`,this.section);
     document.querySelector('#pf-back-to-prepare')!.addEventListener('click',()=>{if(!this.busy)void this.paint();});
     document.querySelector('#pf-confirm-generation')!.addEventListener('click',()=>{if(this.busy)return;if(quote&&quote.documents.some(item=>scopeStatus(item)!=='ready')){this.status('报价已过期，未开始；准备内容保留，请返回重新核对。');return;}void this.generate(body);});this.status('文件包已准备，请核对范围和费用。');
   });}
@@ -561,7 +564,7 @@ export class FileWorkspace {
   }
   private paintRecovery(){
     if(!this.live()||!this.pendingBatch||!this.state)return;const pending=this.pendingBatch,source=this.state.source;
-    this.shell(`${this.header('documents')}<section class="panel pf-generation-recovery"><h2>${this.pendingExpired?'原文件包未提交，请按当前版本重新准备':'确认上次文件包是否已提交'}</h2><p>已保留上次确认的 ${pending.documents.length} 份文件和募集书依据。重新打开页面不会自动生成。</p><p>本次仍核对${source?.version_id===pending.source_version_id?esc(source.filename)+'（V'+source.sequence+'）':'此前确认的募集书版本'}；现在更换的募集书、模板或要求不会带入这次提交。</p><ul>${pending.documents.map(d=>`<li>${PROJECT_DOCUMENT_CATALOG.find(c=>c.id===d.document_type)!.name}</li>`).join('')}</ul><p>同一次提交只创建一个文件包。若原请求未被接收且依据已变化，服务会拒绝这次提交。</p>${this.pendingExpired?'<button class="btn primary" id="pf-reprepare">返回准备，重新核对</button>':'<button class="btn primary" id="pf-retry-batch">确认上次提交</button>'}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">先返回项目文件，稍后继续确认 →</a></section>`,'generate');
+    this.shell(`${this.header('documents')}<section class="panel pf-generation-recovery"><h2>${this.pendingExpired?'原文件包未提交，请按当前版本重新准备':'确认上次文件包是否已提交'}</h2><p>已保留上次确认的 ${pending.documents.length} 份文件和募集书依据。重新打开页面不会自动生成。</p><p>本次仍核对${source?.version_id===pending.source_version_id?esc(source.filename)+'（V'+source.sequence+'）':'此前确认的募集书版本'}；现在更换的募集书、模板或要求不会带入这次提交。</p><ul>${pending.documents.map(d=>`<li>${PROJECT_DOCUMENT_CATALOG.find(c=>c.id===d.document_type)!.name}</li>`).join('')}</ul><p>同一次提交只创建一个文件包。若原请求未被接收且依据已变化，服务会拒绝这次提交。</p>${this.pendingExpired?'<button class="btn primary" id="pf-reprepare">返回准备，重新核对</button>':'<button class="btn primary" id="pf-retry-batch">确认上次提交</button>'}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">先返回项目文件，稍后继续确认 →</a></section>`,this.section);
     this.paintEntryIntent();document.querySelector('#pf-retry-batch')?.addEventListener('click',()=>void this.generate());
     document.querySelector('#pf-reprepare')?.addEventListener('click',()=>void this.act(async()=>{this.state=await this.request<Workspace>('GET','/workspace');this.cache?.clearPending();this.pendingBatch=undefined;this.pendingStored=false;this.pendingUncertain=false;this.pendingExpired=false;this.status('原文件包未提交，请按当前募集书和文件要求重新核对。');const next=this.href({step:'documents'});if(location.hash===next)await this.paint();else location.hash=next;},'read'));
   }
@@ -593,7 +596,7 @@ export class FileWorkspace {
       const incomplete=!!i.run_id&&['succeeded','test_completed','failed','cancelled','rejected'].includes(i.state)&&(!task||task.run.state!==i.state||i.state==='succeeded'&&!['document','preparation_note'].every(kind=>artifacts.some(a=>a.kind===kind)));
       const label=i.run_id?(runStateLabel[i.state as keyof typeof runStateLabel]??i.state):b.state==='cancelled'?'本轮未启动，不会继续生成':b.state==='paused'?'本轮未启动，请先处理此文件包':'本轮尚未启动，等待前一份文件完成';
       return `<div class="pf-template-row pf-result-row" data-pf-document="${i.document_type}" data-pf-run="${esc(i.run_id??'')}" data-pf-item-state="${esc(i.state)}"><div><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===i.document_type)?.name??''}</strong><small>${esc(label)}</small>${i.error?'<small class="pf-result-error">'+esc(i.error)+'</small>':''}${incomplete?'<small class="pf-result-sync">任务与成果尚未读取完整，可刷新生成状态或查看原任务。</small>':''}</div><div class="pf-result-actions">${artifacts.map(a=>`<button class="btn secondary" data-pf-download="${a.artifact_id}">${a.kind==='document'?'下载文件':'编制说明'}</button>`).join('')}${i.run_id?`<a class="btn secondary" href="${esc('#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:i.run_id})))}">查看任务</a>`:''}</div></div>`;
-    }).join('')}</section>`).join('')||'<p>暂无文件生成任务。</p>'}</section><footer class="pf-footer"><p id="pf-status" role="status">${esc(this.message)}</p><div><a class="btn secondary" href="${esc(this.filesHref())}">查看项目文件</a><a class="btn primary" href="${esc('#consistency?'+withProjectContext(new URLSearchParams({project:this.id!})))}">检查文件一致性</a></div></footer>`,'generate');
+    }).join('')}</section>`).join('')||'<p>暂无文件生成任务。</p>'}</section><footer class="pf-footer"><p id="pf-status" role="status">${esc(this.message)}</p><div><a class="btn secondary" href="${esc(this.filesHref())}">查看项目文件</a><a class="btn primary" href="${esc('#consistency?'+withProjectContext(new URLSearchParams({project:this.id!})))}">检查文件一致性</a></div></footer>`,this.section);
     this.paintEntryIntent();document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
       if(b.dataset.batchRetry&&!window.confirm('重试仅处理原文件包未完成的文件，沿用原已确认范围与计费规则。是否继续？')){this.status('未重试，原任务状态保留。');return;}
       const state=await this.request<Workspace>('POST','/batches/'+(b.dataset.batchRetry??b.dataset.batchCancel)+'/actions',{action:b.dataset.batchRetry?'retry':'cancel'});if(!this.live())return;this.state=state;this.resultsSettleReads=3;this.status(b.dataset.batchRetry?'已提交重试，请按每份文件的任务状态核对。':'已停止后续生成；已启动任务仍按各自状态处理。');this.paintResults();

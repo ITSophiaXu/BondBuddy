@@ -18,7 +18,7 @@ export class WorkpaperTaskPanel {
   private live(){return !this.abort.signal.aborted&&this.current()&&this.host.isConnected;}
   private get base(){return `/projects/${encodeURIComponent(this.project)}/workpapers`;}
   private read<T>(path:string){return this.api.request<T>('GET',this.base+path,undefined,{},this.abort.signal);}
-  private href(){return '#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'workpapers'}));}
+  private href(){return '#workpapers?'+withProjectContext(new URLSearchParams({project:this.project,step:'workpapers'}));}
   async render(){
     this.host.innerHTML=`<section class="panel wp-task" aria-label="底稿检查任务"><h2>${esc(taskLabel({kind:'generation',operation:this.operation}))}</h2><p id="wp-task-message" role="status">正在读取任务…</p><div id="wp-task-content"></div><div class="wp-action-buttons wp-task-nav"><button class="btn secondary" id="wp-task-refresh">刷新状态</button><a class="btn secondary" href="${esc(this.href())}">返回底稿生成</a></div></section>`;
     this.host.querySelector('#wp-task-refresh')!.addEventListener('click',()=>{if(!this.busy)void this.refresh();});

@@ -28,9 +28,9 @@ async function setup(page:Page){
 test('all choices stay visible; group toggles, clear and reload preserve the saved preparation',async({page})=>{
  const state=await setup(page);
  await expect(page.locator('.fg-choice-group-heading h3')).toHaveText(['尽调与内核','申报文件','定期报告','专项说明']);
- await expect(page.locator('[data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
+ await expect(page.locator('[data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length);
  await expect(page.locator('#fg-more-types')).toHaveCount(0);
- for(const type of ['workpaper',...PROJECT_DOCUMENT_CATALOG.map(t=>t.id)])await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
+ for(const type of PROJECT_DOCUMENT_CATALOG.map(t=>t.id))await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
  await expect(page.locator('#fg-clear-types')).toBeDisabled();
  const diligence=page.locator('#fg-group-toggle-diligence'),filing=page.locator('#fg-group-toggle-filing');
  await diligence.focus();await diligence.press('Enter');
@@ -45,10 +45,10 @@ test('all choices stay visible; group toggles, clear and reload preserve the sav
  await page.reload({waitUntil:'domcontentloaded'});await expect(page.locator('[data-fg-type="init"]')).toBeChecked();await expect(page.locator('[data-fg-type="underwriter"]')).toBeChecked();
  await expect(page.locator('#fg-requirements')).toHaveValue('保留已填编制要求');
  await page.locator('#fg-clear-types').focus();await page.locator('#fg-clear-types').press('Enter');
- await expect(page.locator('[data-fg-type="workpaper"]')).toBeFocused();await expect(page.locator('#fg-confirm')).toBeDisabled();
+ await expect(page.locator('[data-fg-type="init"]')).toBeFocused();await expect(page.locator('#fg-confirm')).toBeDisabled();
  await expect.poll(()=>state.data.preparation.document_types.length).toBe(0);
  expect(state.data.preparation.target_year).toBe('2026');expect(state.data.preparation.requirements).toBe('保留已填编制要求');
- await page.reload({waitUntil:'domcontentloaded'});await expect(page.locator('[data-fg-type]:checked')).toHaveCount(0);await expect(page.locator('[data-fg-type]')).toHaveCount(13);
+ await page.reload({waitUntil:'domcontentloaded'});await expect(page.locator('[data-fg-type]:checked')).toHaveCount(0);await expect(page.locator('[data-fg-type]')).toHaveCount(12);
  expect(state.otherWrites).toEqual([]);expect(state.transport.errors).toEqual([]);
 });
 
@@ -71,12 +71,11 @@ for(const width of [1440,768,390,320])test(`all file types use compact category 
  const dimensions=await page.locator('.fg-file-choices').evaluate(root=>{
   const rect=(el:Element)=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
   const filing=root.querySelector('#fg-group-options-filing')!;
-  return {choices:[...root.querySelectorAll('.fg-type')].map(rect),filing:[...filing.children].map(rect),heading:rect(root.querySelector('#fg-group-title-filing')!),pack:rect(root.querySelector('.fg-workpaper-choice')!),selection:rect(root),scrollWidth:document.documentElement.scrollWidth,innerWidth};
+  return {choices:[...root.querySelectorAll('.fg-type')].map(rect),filing:[...filing.children].map(rect),heading:rect(root.querySelector('#fg-group-title-filing')!),selection:rect(root),scrollWidth:document.documentElement.scrollWidth,innerWidth};
  });
  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth+1);
  for(const choice of dimensions.choices){expect(choice.height).toBeGreaterThanOrEqual(44);expect(choice.x).toBeGreaterThanOrEqual(0);expect(choice.right).toBeLessThanOrEqual(width);}
  if(width>=1200){
-  expect(dimensions.pack.width).toBeGreaterThan(dimensions.filing[0].width);
   expect(new Set(dimensions.filing.map(r=>Math.round(r.y))).size).toBe(1);
   expect(dimensions.heading.right).toBeLessThan(dimensions.filing[0].x);
   expect(dimensions.selection.height).toBeLessThan(700);

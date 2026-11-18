@@ -11,7 +11,9 @@ const mode=(page:Page,value:string)=>page.locator(`[name=generation-source-mode]
 
 for(const width of [1440,390,320])test(`source first with PR787 radio choices, ${width}px`,async({page})=>{
  const s=await sourceFixture(page,true);
- await page.route('**/api/v1/projects/*/file-generation',route=>route.fulfill({json:{revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]}}));
+ const generation={revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]};
+ await page.route('**/api/v1/projects/*/file-generation',route=>route.fulfill({json:generation}));
+ await page.route('**/api/v1/projects/*/file-generation/preparation',route=>{generation.revision++;generation.preparation=route.request().postDataJSON().preparation;return route.fulfill({json:{revision:generation.revision,preparation:generation.preparation}});});
  await page.setViewportSize({width,height:960});await page.goto('/'+href());
  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();await expect(page.locator('[data-flow-step="1"]')).toHaveAttribute('aria-current','step');
  await expect(page.locator('#pf-prospectus')).toBeVisible();await expect(page.locator('.pf-flow-modes,#wp-upload,#pf-template-list')).toHaveCount(0);
@@ -23,12 +25,12 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');
  await expect(page.locator('.fg-choice-group')).toHaveCount(4);
  await expect(page.locator('#fg-more-types')).toHaveCount(0);
- await expect(page.locator('[data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
- for(const type of ['workpaper',...PROJECT_DOCUMENT_CATALOG.map(t=>t.id)])await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
- await expect(page.locator('.fg-source-card')).toHaveCount(2);
+ await expect(page.locator('[data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length);
+ for(const type of PROJECT_DOCUMENT_CATALOG.map(t=>t.id))await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
+ await expect(page.locator('#fg-template-setup')).toBeHidden();
  await capture(page,'file-options-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- await expect(page.locator('#fg-change-templates')).toBeVisible();
- await expect(page.locator('.fg-selected-file strong').filter({hasText:'光大模板'})).toBeVisible();expect(batches(s.state)).toHaveLength(0);
+ await expect(page.locator('#fg-change-templates')).toBeHidden();
+ await expect(page.locator('[data-fg-type="workpaper"]')).toHaveCount(0);expect(batches(s.state)).toHaveLength(0);
  await page.locator('a[data-flow-step="1"]').click();await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
 });
 
