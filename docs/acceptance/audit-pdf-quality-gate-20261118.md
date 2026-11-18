@@ -21,9 +21,15 @@ Windows Codex Node/Python，Linux Node 22 + PostgreSQL 16 + Azurite；全部专�
 | `npm run build`，全部工作区 | 通过；Vite现有大包提示仍在 |
 | `npm run check:contracts` | 72 tests通过，0失败/跳过；179公开+12内部+4生命周期合成样例通过 |
 | `python -X utf8 -B -m unittest python/tests/test_pdf_quality.py -v` | 8通过，0失败 |
-| `node --test apps/web/dist-test/material-processing.test.js` | 11通过，0失败/跳过 |
+| `node --test apps/web/dist-test/material-processing.test.js` | 11通过，0失败/跳过；含已验证测量回执与后台终态中断的一致性 |
 | Linux `node --test packages/contracts/dist/pdf-quality.test.js apps/api/dist/pdf-quality.test.js apps/api/dist/audit-pdf-quality.pg.test.js apps/api/dist/required-audit.pg.test.js apps/worker/dist/material-parser.test.js apps/worker/dist/material-parse-job.test.js` | 29通过，0失败，3旧可选全文解析集成测试跳过（仓库.venv/另行样本开关未配置）；本次实际PDFium、PG/Azurite门禁未跳过 |
 | `playwright test tests/audit-pdf-quality-gate.spec.ts tests/required-audit.spec.ts tests/authoring-source-guide.spec.ts tests/pdf-quality-warning.spec.ts`（Edge） | 19通过，0失败/跳过 |
+
+最终复验：新增门禁5项加上传恢复/重试4项共9项浏览器用例通过；最终API/worker门禁5通过、0失败/跳过。
+
+追加兼容性：`authoring-continuation`、`first-draft-confirmation`、`authoring-onboarding`、`desktop-ux-polish`、`required-reference` 共58项浏览器用例通过。既有合成流程显式提供新检查端点的合格回执，真实检测由独立集成测试验证。
+
+PR [#1605](https://github.com/ITSophiaXu/BondBuddy/pull/1605) 的6项GitHub Actions在启动前失败；已逐项读取原始annotation，均为账号付款失败或spending limit不足。云端CI没有执行，不能计为通过；未修改额度或绕过保护。本地构建与测试结果如上。原型commit与截图已登记[前端#361](https://github.com/ITSophiaXu/BondBuddy/issues/361#issuecomment-6970486657)。
 
 集成覆盖：真实HTTP上传与Azurite原件读取（合成PDF）、自动单检查入队、实际PDFium测量、待检查/低清拦截、外人404、并发幂等、坏附件省略、删除/200 DPI替换恢复、锁定/报价/提交、旧run重放、不新增run/报价/积分预留、partial重试、原件篡改与恢复、旧终态不改写、其他角色/任务不受影响、复制审计材料重新入队。测试中的编制队列为 synthetic；不验证模型生成质量。
 

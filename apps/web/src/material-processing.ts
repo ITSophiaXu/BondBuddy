@@ -62,7 +62,7 @@ export class MaterialProcessing {
     for (const material of materials) {
       if (!this.gated(material)) continue;
       const entry = this.entries.get(materialProcessingKey(material));
-      const incomplete = auditPdfQualityState(entry?.job?.pdf_quality) !== 'low' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && auditPdfQualityState(entry.job.pdf_quality) === 'pending'));
+      const incomplete = auditPdfQualityState(entry?.job?.pdf_quality) === 'pending' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && auditPdfQualityState(entry.job.pdf_quality) === 'pending'));
       const message = incomplete ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(entry?.job?.pdf_quality);
       if (message) return material.filename + '：' + message;
     }
@@ -72,7 +72,7 @@ export class MaterialProcessing {
   private renderAudit(material: Material, entry: Entry | undefined) {
     const quality = entry?.job?.pdf_quality;
     let state = auditPdfQualityState(quality);
-    if (state !== 'low' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && state === 'pending'))) state = 'incomplete';
+    if (state === 'pending' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && state === 'pending'))) state = 'incomplete';
     const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? '清晰度检查完成'
       : state === 'incomplete' ? '清晰度检查未完成' : '正在检查清晰度';
     const tone = state === 'low' || state === 'incomplete' ? 'error' : state === 'ready' ? 'ready' : 'pending';

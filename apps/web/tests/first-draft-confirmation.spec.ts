@@ -1,3 +1,4 @@
+import {serveAuditPdfQuality} from './audit-pdf-quality-fixture';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, schemas } from '@bondbuddy/contracts';
 import '../src/schema-formats';
@@ -64,6 +65,7 @@ async function install(page: Page, state: State) {
   installed.set(page, state); page.on('pageerror', error => state.errors.push(error.message));
   await page.context().route('**/api/v1/**', async route => {
     if (await serveDisabledBillingCatalog(route)) return;
+    if(await serveAuditPdfQuality(route,projectId,state.materials))return;
     const request = route.request(), url = new URL(request.url()), method = request.method(), path = url.pathname.replace('/api/v1', '');
     const body: unknown = request.headers()['content-type']?.includes('application/json') && request.postData() ? fixtureRequest(request) : undefined;
     state.calls.push({ method, path, ...(body === undefined ? {} : { body: structuredClone(body) }) });

@@ -165,6 +165,11 @@ test('update audit PDF blocks pending/low/incomplete, clears only with exact com
  assert.equal(controller.block([next]),'');
  controller.sync([]);assert.equal(controller.block([]),'');
  assert.equal(reads,3);
+ // A validated measurement checkpoint remains authoritative if final bookkeeping was interrupted.
+ for(const state of ['failed','cancelled','paused'] as const){
+  response={...response,state};controller.sync([next]);controller.refresh();await tick();
+  assert.equal(controller.block([next]),'');assert.match(controller.render(next),/清晰度检查完成/);
+ }
 });
 
 test('inconclusive inspection retries explicitly and default modes remain advisory',async t=>{
