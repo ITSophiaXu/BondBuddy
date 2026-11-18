@@ -60,3 +60,29 @@ for(const width of [1440,390])test('material row matches approved scope prototyp
  await page.screenshot({path:resolve(evidence,'implementation-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+for(const width of [1440,390])test('sample success matches prototype and allows next step at '+width+'px',async({page})=>{
+ const samples=[5,8,12,1,25,50,75,100];
+ const s=fixture(),audit=s.materials.find(m=>m.role==='audit')!;
+ s.project.update_details!.source_prospectuses=s.materials.filter(m=>['historical','reference'].includes(m.role)).map(m=>sourceDeclaration(m));
+ const job=qualityJob(audit);job.pdf_quality={version:'pdf-raster-quality-3',status:'complete',page_count:100,checked_pages:8,sampled_pages:samples,low_resolution_pages:[]};
+ await page.setViewportSize({width,height:900});await install(page,s);
+ await page.route('**/pdf-quality',route=>route.fulfill({contentType:'application/json',body:fixtureJson(route,job)}));
+ await page.goto('/#/projects/'+projectId+'?step=materials');
+ await expect(page.getByText('清晰度抽查完成',{exact:true})).toBeVisible();
+ await expect(page.getByText('已抽查 8 页，未发现低分辨率页面。',{exact:true})).toBeVisible();
+ await expect(page.locator('#execute-input')).toBeEnabled();expectNoExecution(s);await assertFixture(page);
+ const dir=resolve(root,'apps/web/test-evidence/audit-pdf-quality-sampling');mkdirSync(dir,{recursive:true});
+ await page.screenshot({path:resolve(dir,'full-page-'+width+'.png'),fullPage:true});
+ await page.setContent(readFileSync(resolve(root,'product-prototype/public/audit-pdf-quality-sampling.html'),'utf8'));
+ const expected=await page.locator('#status').innerText();await page.screenshot({path:resolve(dir,'prototype-'+width+'.png'),fullPage:true});
+ await page.evaluate(async({audit,job})=>{
+  const modulePath='/src/material-processing.ts';const {MaterialProcessing}=await import(modulePath);
+  const c=new MaterialProcessing({material:async()=>audit,materialPdfQuality:async()=>job},job.project_id,()=>{},{auditPdfGate:true});
+  c.sync([audit]);await new Promise(r=>setTimeout(r,10));document.getElementById('status')!.innerHTML=c.render(audit);c.dispose();
+ },{audit,job});
+ await page.addStyleTag({content:readFileSync(resolve(root,'apps/web/src/material-processing.css'),'utf8')});
+ expect((await page.locator('#status').innerText()).replace(/\s/g,'')).toBe(expected.replace(/\s/g,''));
+ await page.screenshot({path:resolve(dir,'implementation-'+width+'.png'),fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
