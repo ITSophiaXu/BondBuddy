@@ -18,4 +18,11 @@ test('file report keeps editor IDs and never invents trusted evidence or automat
 test('missing differential issue is uncompleted, never assumed resolved',()=>{
  const r=fileReviewReport({...input,operation:'differential_review',sourceReportId:'source-report',sourceReportSha256:'b'.repeat(64),findingIds:['R001','R002']},editor);assert.ok(isReviewReport(r));assert.equal(r.follow_up!.findings[0]!.status,'uncompleted','same local R001 does not prove cross-edition identity');assert.equal(r.follow_up!.findings[1]!.status,'uncompleted');assert.equal(r.follow_up!.findings[1]!.outcome,'uncovered');
 });
+test('explicit differential identity maps to current coverage without inventing resolution',()=>{
+ const next=structuredClone(editor);next.issues[0]!.source_finding_id='R009';next.issues[0]!.uncertain=true;
+ const r=fileReviewReport({...input,operation:'differential_review',sourceReportId:'source-report',sourceReportSha256:'b'.repeat(64),findingIds:['R009']},next);
+ assert.ok(isReviewReport(r));assert.equal(r.follow_up!.findings[0]!.status,'rechecked');
+ assert.equal(r.follow_up!.findings[0]!.outcome,'needs_evidence');assert.deepEqual(r.follow_up!.findings[0]!.current_finding_ids,['R001']);
+ assert.deepEqual(r.follow_up!.findings[0]!.coverage_check_ids,['file-0']);
+});
 

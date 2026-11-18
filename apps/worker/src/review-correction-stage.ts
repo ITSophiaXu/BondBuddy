@@ -34,7 +34,9 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
   try{
     const suffix=source.media_type==='application/pdf'?'.pdf':'.docx',path=join(directory,'source'+suffix);
     await writeFile(path,original,{mode:0o600});
-    await writeFile(join(directory,'request.json'),JSON.stringify({pin,filename:source.filename,...(editor?{editor:editor.snapshot,decisions:saved!.decisions,original_report:originalReport}:{markdown:markdown?.toString('utf8')??''})}),{mode:0o600});
+    await writeFile(join(directory,'request.json'),JSON.stringify({pin,filename:source.filename,
+      ...(input.manifest.review.operation==='differential_review'?{review_scope:{finding_ids:input.manifest.review.finding_ids,targets:input.selected_targets??[]}}:{}),
+      ...(editor?{editor:editor.snapshot,decisions:saved!.decisions,original_report:originalReport}:{markdown:markdown?.toString('utf8')??''})}),{mode:0o600});
     const options={cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:300000,signal:ctx.signal,maxBuffer:1024*1024};
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
     await runFile(python,['-m','bondbuddy_file_authoring.review_corrections',path,join(directory,'request.json'),directory],options);

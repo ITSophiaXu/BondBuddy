@@ -126,6 +126,9 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       const diffWorkspace=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
       assert.equal(diffWorkspace.selected_report.run_id,diff.json().run_id);
       assert.equal(diffWorkspace.selected_report.follow_up.source_report_id,workspace.selected_report.report_id);
+      assert.deepEqual(diffWorkspace.selected_report.follow_up.findings.map((f:any)=>[f.source_finding_id,f.status]),[[workspace.selected_report.findings[0].finding_id,'rechecked']]);
+      const diffEditor=await send('GET',`/api/v1/projects/${project}/review-executions/${diff.json().run_id}/editor`);
+      assert.equal(diffEditor.json().snapshot.issues[0].source_finding_id,workspace.selected_report.findings[0].finding_id);
       assert.ok(diffWorkspace.selected_report.follow_up.findings.every((f:any)=>f.outcome!=='pass'));
       for(const item of diffWorkspace.artifacts){const m=await send('GET',`/api/v1/artifacts/${item.artifact_id}`);assert.equal((await send('GET',m.json().download_url)).statusCode,200);}
       const saved = (await pool.query('SELECT result_ref FROM bb_provider_result_refs WHERE run_id=$1', [runId])).rows[0];

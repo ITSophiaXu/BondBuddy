@@ -29,6 +29,13 @@ export function fileReviewReport(input:{reportId:string;projectId:string;runId:s
   if(!input.sourceReportId||!input.sourceReportSha256)throw Error('INPUT_REVISION_CONFLICT');
   report.follow_up={version:'review-follow-up-v1',source_report_id:input.sourceReportId,source_report_sha256:input.sourceReportSha256,
    findings:input.findingIds.map((id,index)=>{
+    const linked=editor.issues.flatMap((issue,i)=>issue.source_finding_id===id?[i]:[]);
+    if(linked.length===1){
+      const current=findings[linked[0]!]!;
+      return {source_finding_id:id,current_finding_ids:[current.finding_id],coverage_check_ids:['file-'+linked[0]],
+        status:'rechecked' as const,outcome:current.conclusion==='needs_evidence'?'needs_evidence' as const:'manual' as const,
+        reason:'本轮意见已明确对应所选原问题；材料和结论的限制保留，不能据此认定问题已解决。'};
+    }
     // R001-style editor IDs are local to an edition, not cross-edition identities.
     // Without an explicit immutable mapping, do not claim a new issue closes an old one.
     const checkId='follow-up-'+index;

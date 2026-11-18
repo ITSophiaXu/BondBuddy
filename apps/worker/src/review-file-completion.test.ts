@@ -54,6 +54,20 @@ test('either saved Markdown or readable Word is sufficient; no extra companion i
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('differential Stop requests one scope correction for missing, extra or duplicated original IDs',async()=>{
+ const root=await fixture();
+ try{
+  await writeFile(join(root,'input.json'),JSON.stringify({version:'review-file-input-v1',scope:{operation:'differential_review',selected_targets:[{source_finding_id:'R005'},{source_finding_id:'R009'}]}}));
+  for(const ids of [[],['R005'],['R005','R009','R010'],['R005','R005'],['R001','R002']]){
+   await writeFile(join(root,'output/report.md'),report+'\n'+ids.map(id=>'原问题编号：'+id).join('\n'));
+   const feedback=await reviewCompletionFeedback(root,false);assert.equal(feedback.decision,'block');assert.match(String(feedback.reason),/DIFFERENTIAL_SCOPE/);
+   assert.deepEqual(await reviewCompletionFeedback(root,true),{});
+  }
+  await writeFile(join(root,'output/report.md'),report+'\n- **原问题编号：** R009\n- 原问题编号：R005\n');
+  assert.deepEqual(await reviewCompletionFeedback(root,false),{});
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('unsafe, linked and oversized files cannot satisfy completion', async () => {
   const root = await fixture(), path = join(root, 'output/report.md');
   try {

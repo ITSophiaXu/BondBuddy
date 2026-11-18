@@ -220,6 +220,36 @@ class ReviewCorrectionTests(unittest.TestCase):
         r['original_report']=report.replace('合成财务报表','另一份财务报表')
         mismatch=build(self.source,r,self.path)
         self.assertFalse(mismatch['issues'][0]['applied']);self.assertIsNone(mismatch['issues'][0]['paragraph_id'])
+
+    def test_differential_scope_rejects_missing_extra_duplicate_and_reused_ids_before_export(self):
+        selected=[{'id':'R007','original':'总资产为12亿元。','original_location':''},
+                  {'id':'R009','original':'收入为5亿元。','original_location':''}]
+        a=issue('资产','总资产为12亿元。','总资产为13亿元。')+'- 原问题编号：R007\n'
+        b=issue('收入','收入为5亿元。','收入为6亿元。')+'- 原问题编号：R009\n'
+        for index,report in enumerate([a,a+b+a,(a+b).replace('R009','R007'),
+                (a+b).replace('原问题编号：R007','原问题编号：R001'),
+                (a+b).replace('原文披露：总资产为12亿元。','原文披露：相同内容')]):
+            with self.subTest(index=index):
+                r=self.request(report);r['review_scope']={'finding_ids':['R007','R009'],'targets':selected}
+                out=self.path/str(index)
+                with self.assertRaisesRegex(ValueError,'REVIEW_DIFFERENTIAL_SCOPE_INVALID'):build(self.source,r,out)
+                self.assertFalse((out/'clean.docx').exists());self.assertFalse((out/'editor.json').exists())
+        r=self.request(a+b);r['review_scope']={'finding_ids':['R007','R009'],'targets':selected}
+        s=build(self.source,r,self.path)
+        self.assertEqual([i['source_finding_id'] for i in s['issues']],['R007','R009'])
+        self.assertTrue(all(i['applied'] for i in s['issues']))
+        self.assertEqual(self.text('clean.docx'),'总资产为13亿元。\n收入为6亿元。\n相同内容\n相同内容')
+        # A free export has the same scope guard and retains the user's decisions.
+        r.update(editor=s,decisions=[dict(id=i['id'],decision='original',manual_text='') for i in s['issues']])
+        exported=build(self.source,r,self.path)
+        self.assertTrue(all(not i['applied'] for i in exported['issues']))
+
+    def test_differential_recheck_without_new_evidence_preserves_each_selected_quote(self):
+        report=issue('资产待核','总资产为12亿元。','','审计原表','仅批注')+'- 原问题编号：R007\n'
+        r=self.request(report);r['review_scope']={'finding_ids':['R007'],'targets':[{'id':'R007','original':'总资产为12亿元。'}]}
+        s=build(self.source,r,self.path)
+        self.assertFalse(s['issues'][0]['applied']);self.assertEqual(s['issues'][0]['missing'],'审计原表')
+        self.assertIn('总资产为12亿元。',self.text('clean.docx'))
     def test_unlocated_findings_do_not_attach_to_first_paragraph(self):
         report=issue('重复','相同内容','更新')+issue('资产','总资产为12亿元。','总资产为13亿元。')
         s=build(self.source,self.request(report),self.path)

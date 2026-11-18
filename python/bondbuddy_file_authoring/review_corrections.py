@@ -80,6 +80,23 @@ def build(source, request, output):
                 issue['original_location'] = old['original_location']
     else:
         issues = findings(request['markdown'])
+    scope = request.get('review_scope')
+    if scope is not None:
+        # A differential review is a closed set of original findings. The host
+        # supplies these targets from its owner/hash-verified immutable editor.
+        # Never silently discard extra suggestions or accept a reused ID over
+        # unrelated source text. Refuse before writing any deliverable.
+        ids = scope.get('finding_ids', [])
+        targets = {i['id']: i for i in scope.get('targets', [])}
+        reported = [i.get('source_finding_id') for i in issues]
+        if (not ids or len(ids) != len(set(ids)) or set(targets) != set(ids)
+            or len(reported) != len(ids) or set(reported) != set(ids)
+            or any(i['original'] != targets[i['source_finding_id']]['original'] for i in issues)):
+            raise ValueError('REVIEW_DIFFERENTIAL_SCOPE_INVALID')
+        # The model cannot move the authorized quote to another occurrence by
+        # supplying a different location label in its new report.
+        for issue in issues:
+            issue['original_location'] = targets[issue['source_finding_id']].get('original_location', '')
     if not issues:
         warnings.append('复核报告未提供可定位的问题条目，本次未自动修改正文。请阅读报告的覆盖范围并人工核对，不能据此认定未发现问题。')
     decisions = {d['id']: d for d in request.get('decisions', [])}
