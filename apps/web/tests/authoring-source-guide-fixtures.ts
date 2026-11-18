@@ -128,5 +128,5 @@ export function qualityJob(m:Material):Dto<'MaterialParseJobResponse'>{return {
   material_id:m.material_id,material_version:m.material_version,material_sha256:m.sha256,
   parser_version:PDF_QUALITY_VERSION,state:'succeeded',stage:'succeeded',completed_stages:[],
   attempts:1,max_attempts:3,error_code:null,outcome:null,parse_status:null,profile_version:null,pending_capabilities:[],updated_at:now,
-  pdf_quality:{version:'pdf-raster-quality-2',status:'complete',page_count:1,checked_pages:1,low_resolution_pages:[]}
+  pdf_quality:{version:'pdf-raster-quality-4',status:'complete',page_count:1,checked_pages:1,sampled_pages:[1],blocking_pages:[],low_resolution_pages:[]}
 };}

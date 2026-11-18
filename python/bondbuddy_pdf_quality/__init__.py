@@ -1,4 +1,4 @@
-"""Bounded representative-page inspection of large raster content, without layout extraction/OCR.
+"""Bounded representative-page inspection of large raster content, without layout extraction/OCR; candidate pages receive a bounded detail probe.
 
 DPI is derived from image pixels and actual placement, including Form transforms.
 Small logos, signatures and stamps cannot trigger a page warning by themselves.
@@ -10,8 +10,9 @@ import sys
 import time
 import pypdfium2 as pdfium
 import pypdfium2.raw as raw
+from .detail import insufficient_detail
 
-VERSION = "pdf-raster-quality-3"
+VERSION = "pdf-raster-quality-4"
 DPI_THRESHOLD = 200
 # PDFium returns float32 placement matrices; this tolerance covers their quantization.
 DPI_EPSILON = 0.0001
@@ -109,11 +110,14 @@ def inspect(path, emit, seconds=3):
             page = document[number-1]
             try:
                 dpi = page_resolution(page, deadline)
+                blocking = False
+                if dpi is not None:
+                    blocking = insufficient_detail(page, dpi, deadline)
             finally:
                 page.close()
-            emit({"page": number, "dpi": dpi})
-            if dpi is not None:
-                # One measured low page is already enough to require replacement.
+            emit({"page": number, "dpi": dpi, "blocking": blocking})
+            if blocking:
+                # DPI alone is only advisory; pixel-detail evidence justifies stopping.
                 emit({"complete": True})
                 return
         emit({"complete": True})
