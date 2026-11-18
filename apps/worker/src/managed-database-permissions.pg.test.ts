@@ -50,7 +50,12 @@ test('captured consumer ACL supports real admission, result persistence and term
     await rm(scratch,{recursive:true,force:true});
   });
   await t.test('existing two-item fix still reproduces both remaining permission gaps',async()=>{
-    await assert.rejects(assertManagedDatabasePrivileges(worker),/evidence_gate_lock,file_check_attempts/);
+    await assert.rejects(assertManagedDatabasePrivileges(worker),(error:unknown)=>{
+      assert.ok(error instanceof Error);
+      const missing=error.message.replace('MANAGED_DATABASE_PRIVILEGES_MISSING:','').split(',');
+      for(const check of ['evidence_gate_lock','file_check_attempts','refund_slice_insert','refund_unit_insert'])assert.ok(missing.includes(check),check);
+      return true;
+    });
     await assert.rejects(transaction(worker,c=>c.query('LOCK TABLE public.bb_evidence_gate_events IN SHARE MODE')),{code:'42501'});
     await assert.rejects(worker.query('SELECT 1 FROM public.bb_project_file_check_attempts'),{code:'42501'});
     await assert.rejects(worker.query('SELECT public.bb_lock_evidence_gate(false)'),{code:'42501'});
@@ -91,6 +96,17 @@ test('captured consumer ACL supports real admission, result persistence and term
       /MANAGED_DATABASE_PRIVILEGES_MISSING:reservation_charged_points_insert,workpaper_execution_insert$/);
     await apply('managed-execution-prerequisites.sql');
     assert.equal((await admin.query("SELECT has_table_privilege($1,'public.bb_m4_executions','INSERT,UPDATE,DELETE,TRUNCATE') AS broad",[role])).rows[0].broad,false);
+  });
+  await t.test('refund capture checks every required column and leaves refund approval unavailable',async()=>{
+    await admin.query(`REVOKE INSERT(evidence) ON public.bb_task_refund_units FROM ${ident(role)}`);
+    await admin.query(`REVOKE INSERT(points) ON public.bb_task_refund_unit_slices FROM ${ident(role)}`);
+    await assert.rejects(assertManagedDatabasePrivileges(worker),
+      /MANAGED_DATABASE_PRIVILEGES_MISSING:refund_slice_insert,refund_unit_insert$/);
+    await apply('managed-execution-prerequisites.sql');
+    await assertManagedDatabasePrivileges(worker);
+    for(const table of ['bb_task_refund_units','bb_task_refund_unit_slices','bb_task_refund_requests','bb_task_refund_decisions','bb_task_refund_credits']){
+      assert.equal((await admin.query('SELECT has_table_privilege($1,$2,$3) AS broad',[role,'public.'+table,'INSERT,UPDATE,DELETE,TRUNCATE'])).rows[0].broad,false,table);
+    }
   });
   await t.test('preflight detects missing individual activity and settlement column grants',async()=>{
     await admin.query(`REVOKE INSERT(lease_token) ON public.bb_run_model_activity FROM ${ident(role)}`);
@@ -189,10 +205,22 @@ test('captured consumer ACL supports real admission, result persistence and term
       await grantCredits(c,{owner,source:'existing_grant',key:randomUUID(),points:100,expiresAt:null,actor:'synthetic',reason:'Synthetic terminal settlement'});
       await c.query("INSERT INTO bb_credit_price_versions(id,prices,effective_at,actor,reason) VALUES($1,'{}',clock_timestamp(),'synthetic','Synthetic terminal settlement')",[version]);
       await c.query("INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason) VALUES($1,$2,$3,1,$4,$5,'annual',60,'Synthetic terminal settlement')",[quote,owner,lease.runId,inputManifestHash({synthetic:true}),version]);
+    });
+    // These are the real on-delivery allocations. Their deferred trigger must
+    // commit as the restricted consumer, not as the administrative fixture.
+    const accept=()=>transaction(worker,async c=>{
       await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,60,'on_delivery')",[reservation,owner,lease.runId,quote]);
       await reserveCreditLots(c,owner,reservation,60n);
-      await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[lease.runId,reservation]);
     });
+    await admin.query(`REVOKE INSERT(evidence) ON public.bb_task_refund_units FROM ${ident(role)}`);
+    await assert.rejects(accept(),{code:'42501'},'deferred capture rejects COMMIT without its precise grant');
+    assert.equal((await admin.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE id=$1',[reservation])).rows[0].n,0,'failed COMMIT rolls back the reservation');
+    assert.equal((await admin.query('SELECT sum(frozen)::int n FROM bb_credit_lots WHERE owner_user_id=$1',[owner])).rows[0].n,0,'failed COMMIT rolls back frozen points');
+    await apply('managed-execution-prerequisites.sql');
+    await accept();
+    assert.equal((await admin.query('SELECT count(*)::int n FROM bb_task_refund_units WHERE reservation_id=$1',[reservation])).rows[0].n,1);
+    assert.equal((await admin.query('SELECT sum(points)::int n FROM bb_task_refund_unit_slices WHERE reservation_id=$1',[reservation])).rows[0].n,60);
+    await admin.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[lease.runId,reservation]);
     assert.equal((await finish(worker,lease,'failed',{errorCode:'DATA_UNAVAILABLE'})).state,'failed');
     const final=(await admin.query("SELECT state,finalized_at IS NOT NULL AS finalized FROM bb_credit_reservations WHERE id=$1",[reservation])).rows[0];
     assert.deepEqual(final,{state:'released',finalized:true});

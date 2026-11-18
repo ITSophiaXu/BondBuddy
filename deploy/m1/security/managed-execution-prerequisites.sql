@@ -17,6 +17,13 @@ GRANT EXECUTE ON FUNCTION public.bb_lock_evidence_gate(boolean) TO :"runtime_rol
 GRANT INSERT(run_id,owner_user_id,topic_id,manifest,input_hash)
  ON public.bb_m4_executions TO :"runtime_role";
 GRANT INSERT(charged_points) ON public.bb_credit_reservations TO :"runtime_role";
+-- Deferred acceptance capture runs at COMMIT under the consumer identity.
+-- It records immutable refund evidence; it does not approve or issue a refund.
+GRANT INSERT(owner_user_id,reservation_id,item_id,run_id,ordinal,source_item_key,
+             label,points,scope_quote_id,evidence_kind,evidence)
+ ON public.bb_task_refund_units TO :"runtime_role";
+GRANT INSERT(reservation_id,item_id,origin_lot_id,points)
+ ON public.bb_task_refund_unit_slices TO :"runtime_role";
 -- Full-source workers also contain the 0182 activity writer.
 GRANT SELECT, DELETE ON public.bb_run_model_activity TO :"runtime_role";
 GRANT INSERT(request_id,owner_user_id,run_id,job_id,lease_token,state),
