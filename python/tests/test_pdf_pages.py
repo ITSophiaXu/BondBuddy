@@ -149,6 +149,28 @@ class PdfPagesTests(unittest.TestCase):
             self.assertIn('FinancialStatement', result['matches'][0]['text'])
             self.assertEqual(result['matches'][0]['text_offset'], 0)
 
+    def test_ocr_label_search_preserves_raw_evidence_and_cursor(self):
+        text = 'x' * 999 + '流动 资产 合计'
+        original = record(text)
+        cached = {'mode': 'ocr', 'records': [original, record('流 动 资 产 合 计', index=2)]}
+        with self.open() as pdf, patch.object(pdf, '_existing_ocr', return_value=cached):
+            first = pdf.search('流动资产合计', limit=1, max_pages=1)
+            self.assertEqual(len(first['matches']), 1)
+            hit = first['matches'][0]
+            self.assertEqual(hit['text'], text)
+            for key in ['bbox', 'record_id', 'page', 'uncertainty', 'eligible_for_manuscript']:
+                self.assertEqual(hit[key], original[key])
+            self.assertEqual(first['next_cursor'], {'page': 1, 'offset': 1})
+            later = pdf.search('流动资产合计', **first['next_cursor'], max_pages=1)
+            self.assertEqual([x['record_id'] for x in later['matches']], ['p1-r2'])
+
+    def test_ocr_label_matching_cannot_join_amounts_cells_or_guess_characters(self):
+        cached = {'mode': 'ocr', 'records': [record('1 234'), record('应收', index=2),
+                  record('账款', index=3), record('流冻 资产 合计', index=4)]}
+        with self.open() as pdf, patch.object(pdf, '_existing_ocr', return_value=cached):
+            for query in ['1234', '应收账款', '流动资产合计']:
+                self.assertEqual(pdf.search(query, max_pages=1)['matches'], [])
+
     def test_dense_multilingual_search_is_bounded_without_losing_matches(self):
         text = '营业收入 Revenue 123,456.78。' * 70
         data = {'page': 1, 'mode': 'native', 'image_count': 0, 'warnings': [],

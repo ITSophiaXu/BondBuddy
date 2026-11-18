@@ -13,6 +13,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import stat
 import tempfile
 
@@ -344,6 +345,11 @@ class PdfPages:
                   "searched_pages": [], "next_cursor": None,
                   "note": "Search does not run OCR. Missing scans are not evidence of absence; use read --ocr auto/force, then search again."}
         end = min(self.page_count, page + max_pages - 1)
+        # Tesseract joins individual Han words with spaces. Match those optional
+        # separators only for Chinese labels, within one OCR record. Do not edit
+        # the evidence or normalize numbers, signs, punctuation or table cells.
+        label = (re.compile(r'[ \t\u3000]?'.join(query))
+                 if re.fullmatch(r'[\u3400-\u4dbf\u4e00-\u9fff]{2,200}', query) else None)
         for number in range(page, end + 1):
             data = self._page(number, "never")
             try:
@@ -374,7 +380,9 @@ class PdfPages:
                 candidate = text[record["text_offset"]:record["text_offset"] + FRAGMENT_CHARS + len(query) * 2]
                 match_at = candidate.casefold().find(query.casefold())
                 if match_at < 0 or match_at >= len(record["text"].casefold()):
-                    continue
+                    match = label.search(candidate) if label and data.get("mode") == "ocr" else None
+                    if not match or match.start() >= len(record["text"]):
+                        continue
                 record = {**record, "text": candidate}
                 result["matches"].append(record)
                 result["next_cursor"] = {"page": number, "offset": index + 1}
