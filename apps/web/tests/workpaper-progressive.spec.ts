@@ -51,7 +51,7 @@ async function setup(page:Page,chapterCount=10,filesPerChapter=2){
   if(path.endsWith('/download')){controls.zipReads++;return route.fulfill({status:202,headers:{'retry-after':'1'},json:{status:'preparing',progress:{phase:'retrieving',completed_files:0,total_files:1}}});}
   return route.fallback();
  });
- return {original,work,fg,entries,calls,controls,createBatch,finish,prepare:`/#generate?project=${ids.api}&step=prepare`,results:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=progressive-batch`};
+ return {original,work,fg,entries,calls,controls,createBatch,finish,prepare:`/#workpapers?project=${ids.api}&step=prepare`,results:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=progressive-batch`};
 }
 async function capture(page:Page,name:string){const dir=resolve('../../work/generation-compact-ui-20261113/screenshots');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,name+'.png'),fullPage:true});}
 const current=(page:Page)=>page.locator('[data-wp-batch-id="progressive-batch"]');

@@ -27,7 +27,7 @@ async function setup(page:Page,automatic=false,configure?:(state:any)=>void,buil
   return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
  });
  await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({json:state.catalogue}));
- await page.goto('/'+href({step:'prepare'}));await expect(page.getByRole('heading',{name:'底稿目录与文件模板'})).toBeVisible();if(!builtinHandler)await expect(page.locator('#fg-confirm')).toBeEnabled();return state;
+ await page.goto('/'+href({step:'prepare'}).replace('#generate?', '#workpapers?'));await expect(page.getByRole('heading',{name:'底稿目录与文件模板'})).toBeVisible();if(!builtinHandler)await expect(page.locator('#fg-confirm')).toBeEnabled();return state;
 }
 async function useWord(page:Page,mode:'builtin'|'custom'='builtin'){
  if(!await page.locator('#fg-builtin-all').isVisible())await page.locator('#fg-change-templates').click();
@@ -35,7 +35,7 @@ async function useWord(page:Page,mode:'builtin'|'custom'='builtin'){
  await expect(page.locator('#fg-confirm')).toBeEnabled();
 }
 
-test('independent catalogue/template cards, safe preview and mixed confirmation use the production component',async({page})=>{
+test('independent catalogue/template cards, safe preview and workpaper confirmation use the production component',async({page})=>{
  await page.setViewportSize({width:1440,height:960});
  const state=await setup(page);await useWord(page);await expect(page.locator('.fg-template-panel')).toContainText('光大证券底稿目录.xlsx');
  await expect(page.locator('#fg-matches select')).toHaveCount(0);
@@ -43,11 +43,9 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await page.getByRole('button',{name:'预览模板',exact:true}).click();await page.locator('[data-record="word-1"]').click();await expect(page.getByRole('dialog')).toContainText('项目名称：【本项信息】');
  await page.getByRole('button',{name:'查看版式预览'}).click();await expect(page.locator('#fg-layout-status')).toContainText('结构预览已保留');await page.getByRole('button',{name:'关闭',exact:true}).click();
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
- await page.locator('[data-fg-general="annual"]').selectOption('builtin-set|annual');
  await expect(page.locator('#fg-requirements')).toBeHidden();await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  await page.locator('#fg-requirements').fill('合成验收要求，保留原 Word 格式');await page.getByRole('button',{name:'保存准备清单'}).click();
- await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('3 份文件 · 13,500 积分');
+ await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('2 份文件 · 9,000 积分');
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');
  await page.getByRole('button',{name:'确认本批并开始试生成'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
  await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
@@ -135,23 +133,22 @@ test('directory loading failure and cancellation leave upload and retry availabl
 });
 
 test('lost submission reply is recovered with the same frozen request after reload',async({page})=>{
- const state=await setup(page);await useWord(page);await page.locator('[data-fg-type="workpaper"]').uncheck();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ const state=await setup(page);await useWord(page);await page.goto('/'+href({step:'prepare'}));await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  state.lost=true;await page.getByRole('button',{name:'核对清单与费用'}).click();await page.getByRole('button',{name:'确认生成 1 份文件'}).click();await expect(page.locator('#fg-submit-status')).not.toBeEmpty();
  await page.reload();await page.getByRole('button',{name:'确认上次提交结果'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(2);expect(state.submissions[1]).toEqual(state.submissions[0]);
 });
-test('automatic mixed package uses server tariffs and starts without an amount confirmation',async({page})=>{
+test('automatic workpaper package uses server tariffs and starts without an amount confirmation',async({page})=>{
  const state=await setup(page,true);
  await useWord(page);
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
- await expect(page.locator('.fg-footer')).toContainText('14,881 积分');
+ await expect(page.locator('.fg-footer')).toContainText('6,916 积分');
  await page.getByRole('button',{name:'开始试生成',exact:true}).click();
  await expect(page.locator('.fg-status')).toContainText('已提交');
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.submissions).toHaveLength(1);
- expect(state.submissions[0]).toMatchObject({expected_points:14881,price_version:AUTOMATIC_PRICE_VERSION,document_quotes:[{document_type:'annual',draft_version:5,scope_quote_id:'scope-annual'}]});
+ expect(state.submissions[0]).toMatchObject({expected_points:6916,price_version:AUTOMATIC_PRICE_VERSION,document_quotes:[]});
 });
 
-test('mixed package funding return replays the exact original request without a second batch or payment',async({page})=>{
+test('workpaper package funding return replays the exact original request without a second batch or payment',async({page})=>{
  const state=await setup(page,true),requests:string[]=[],payments:string[]=[];
  await page.route('**/api/v1/projects/*/file-generation/batches',async route=>{
   requests.push(route.request().postData()!);
@@ -161,13 +158,12 @@ test('mixed package funding return replays the exact original request without a 
  await page.route('**/api/v1/subscriptions',route=>{payments.push(route.request().postData()??'');return route.fulfill({status:500,json:{code:'MUST_NOT_PAY'}});});
  await useWord(page);
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.getByRole('button',{name:'开始试生成',exact:true}).click();
  const link=page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true});await expect(link).toBeVisible();
  expect(requests).toHaveLength(1);expect(state.submissions).toHaveLength(0);
  const resumeId=new URLSearchParams((await link.getAttribute('href'))!.split('?')[1]).get('resume_request')!;
  const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:ids.owner,id:resumeId});
- expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'14881',body:JSON.parse(requests[0])});
+ expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'6916',body:JSON.parse(requests[0])});
  expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);
  await expect.poll(()=>requests.length).toBe(2);await expect.poll(()=>state.submissions.length).toBe(1);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
  await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
@@ -264,6 +260,6 @@ test('legacy pending workpaper request stays on its recovery path and is never r
  const submissions:string[]=[];
  await page.route('**/api/v1/projects/*/workpapers',route=>route.fulfill({json:fixtureBody(route,{catalogues:[catalogue],batches:[],assessments:[]})}));
  await page.route('**/api/v1/projects/*/workpapers/batches',route=>{submissions.push(route.request().postData()!);return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});});
- await page.goto('/'+href({step:'prepare'}));await expect(page).toHaveURL(/step=workpapers/);await expect(page.getByRole('button',{name:'继续确认上次提交',exact:true})).toBeVisible();
+ await page.goto('/'+href({step:'prepare'}).replace('#generate?', '#workpapers?'));await expect(page).toHaveURL(/step=workpapers/);await expect(page.getByRole('button',{name:'继续确认上次提交',exact:true})).toBeVisible();
  expect(submissions).toHaveLength(0);await page.getByRole('button',{name:'继续确认上次提交',exact:true}).click();await expect.poll(()=>submissions.length).toBe(1);expect(JSON.parse(submissions[0])).toEqual(pending);
 });

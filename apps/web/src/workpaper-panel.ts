@@ -103,7 +103,7 @@ export class WorkpaperPanel {
   private paint(){
     if(!this.live())return;
     this.stepChanged(this.view==='prepare'?2:this.view==='confirm'?3:4);
-    const sourceHref='#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'source',mode:'workpapers'}));
+    const sourceHref='#workpapers?'+withProjectContext(new URLSearchParams({project:this.project,step:'source',mode:'workpapers'}));
     this.host.innerHTML=`<div class="wp-source-context ${this.source?'':'wp-source-missing'}" ${this.view!=='prepare'?'hidden':''}><span class="wp-source-icon">${ico('file')}</span><div class="wp-source-info"><small>生成依据 · 募集说明书</small><div class="wp-source-file"><strong>${this.source?esc(this.source.filename):'请先上传并采用募集说明书'}</strong>${this.source?`<span class="wp-source-version">V${this.source.sequence}</span>`:''}</div></div><a class="text-button" href="${esc(sourceHref)}">更换</a></div>
       <section class="panel wp-prepare" aria-label="按底稿目录批量生成" ${this.view!=='prepare'?'hidden':''}><h2>选择要生成的章节</h2>${this.catalogue?`<div class="wp-directory-current">${ico('folder')}<div><strong>${esc(this.catalogue.filename)}</strong><small>${this.catalogue.entries.filter(e=>e.kind==='file').length} 份文件已识别</small></div><button class="text-button" id="wp-change-directory" ${this.pending||this.busy?'disabled':''}>更换目录</button></div><div id="wp-directory-editor" hidden><label>选择项目已有目录<select id="wp-catalogue" ${this.pending||this.busy?'disabled':''}>${this.data.catalogues.map(c=>`<option value="${esc(c.catalogue_id)}" ${this.catalogue?.catalogue_id===c.catalogue_id?'selected':''}>${esc(c.filename)}</option>`).join('')}</select></label><label>上传新目录${uploadPicker(`<input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" ${this.pending||this.busy?'disabled':''}>`,{size:'compact',label:'选择 Excel 文件'})}</label><p class="muted">XLSX · 10 MB 以内</p></div>`:`<div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>添加底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="bb-upload-picker bb-upload-picker--compact wp-upload-picker">${ico('upload')}<span>选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.busy?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div><details class="wp-format-help"><summary>Excel 目录怎么准备？</summary><p>不要求固定表头或列顺序。系统结合内容识别名称、编号和编制要求；没有表头或编号也可在上传后的预览中调整列和行范围，无需修改原表。当前支持 XLSX；旧版 XLS 请先另存为 XLSX。</p></details>`}
       <div id="wp-upload-recovery"></div><p id="wp-status" role="status">${esc(this.status)}</p>
@@ -112,7 +112,7 @@ export class WorkpaperPanel {
       <div class="wp-requirements-block"><label for="wp-requirements">本批编制要求 <span>选填</span></label><p id="wp-requirements-help">统一应用于本批底稿，可补充编制口径、格式或重点关注事项。</p><textarea id="wp-requirements" rows="3" maxlength="12000" placeholder="例如：金额统一使用万元，资料缺失处保留待核实标记。" aria-describedby="wp-requirements-help" ${this.pending||this.busy?'disabled':''}>${esc(this.requirements)}</textarea></div>
       <div id="wp-confirm"></div>`:''}<p class="wp-explanation-note">不生成项将逐份附说明；资料不足或缺少原始证据时标注“暂无法生成”，不直接认定为业务不适用。</p></section><section id="wp-confirmation-page" ${this.view==='confirm'?'':'hidden'}></section><section class="wp-batches" id="wp-batches" aria-label="底稿生成任务" ${this.view==='results'?'':'hidden'}></section><footer class="pf-footer" ${this.view==='confirm'?'hidden':''}><a class="text-button" href="${esc(sourceHref)}">上一步：选择募集说明书</a>${this.view==='results'?'<button class="btn secondary" id="wp-prepare-again">准备下一批</button>':''}</footer>`;
     this.host.querySelector('#wp-change-directory')?.addEventListener('click',()=>{const editor=this.host.querySelector<HTMLElement>('#wp-directory-editor')!;editor.hidden=!editor.hidden;if(!editor.hidden)editor.querySelector('select')?.focus();});
-    this.host.querySelector('#wp-prepare-again')?.addEventListener('click',()=>{const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');query.delete('workpaper_batch');query.set('step','prepare');location.hash='#generate?'+query;});
+    this.host.querySelector('#wp-prepare-again')?.addEventListener('click',()=>{const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');query.delete('workpaper_batch');query.set('step','prepare');location.hash='#workpapers?'+query;});
     this.host.querySelector('#wp-upload')?.addEventListener('change',e=>{const input=e.target as HTMLInputElement,file=input.files?.[0];input.value='';if(file)void this.importFile(file);});
     this.host.querySelector('#wp-catalogue')?.addEventListener('change',e=>{this.catalogue=this.data.catalogues.find(c=>c.catalogue_id===(e.target as HTMLSelectElement).value);this.selected=new Set(defaultWorkpaperIds(this.catalogue?.entries??[]));this.save();this.paint();});
     this.host.querySelector('#wp-filter')?.addEventListener('input',e=>{this.filter=(e.target as HTMLInputElement).value;this.paintEntries();});
@@ -297,7 +297,7 @@ export class WorkpaperPanel {
       if(e instanceof ApiError&&e.status===402&&e.code==='CREDITS_INSUFFICIENT'){this.pending=undefined;this.save();this.view='prepare';this.paint();throw e;}
       if(e instanceof ApiError&&e.code==='PROJECT_FILE_BATCH_INPUT_EXPIRED'){this.pending=undefined;this.save();this.source=null;this.view='prepare';this.paint();throw new UserFacingError('原底稿文件包未提交。募集书依据已变化，请刷新页面后重新核对并提交。');}throw e;
     }
-    this.pending=undefined;this.save();this.data.batches=[batch,...this.data.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='底稿文件包已提交，关闭页面后仍会继续。';this.view='results';this.progressBatch=batch.batch_id;this.expandedBatches.set(batch.batch_id,false);const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);history.replaceState(history.state,'','#generate?'+query);this.paint();this.poll();
+    this.pending=undefined;this.save();this.data.batches=[batch,...this.data.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='底稿文件包已提交，关闭页面后仍会继续。';this.view='results';this.progressBatch=batch.batch_id;this.expandedBatches.set(batch.batch_id,false);const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);history.replaceState(history.state,'','#workpapers?'+query);this.paint();this.poll();
   });}
   private async batchAction(batch:WorkpaperBatch,action:string){await this.act(async()=>{
     const billing=action==='resume'?batch.billing_resume:undefined;
@@ -306,7 +306,7 @@ export class WorkpaperPanel {
       // Pin the payment return to this batch, even when it was selected from a list.
       this.view='results';this.progressBatch=batch.batch_id;
       const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);
-      history.replaceState(history.state,'','#generate?'+query);
+      history.replaceState(history.state,'','#workpapers?'+query);
     }
     const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(batch.batch_id)}/actions`,request);
     this.status=action==='continue_remaining'?'已确认继续，剩余文件将按章节顺序自动生成。':action==='pause'?'已暂停启动新文件，当前文件完成后会保留成果。':action==='cancel'?'已停止启动新文件，当前文件完成后会保留成果。':action==='retry_failed'?'正在重试失败文件，已完成成果保留。':'已继续原文件包。';
@@ -349,7 +349,7 @@ export class WorkpaperPanel {
     try{const result=await this.request<{text:string}>('GET',`/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/preview`);if(dialog.isConnected&&this.live()){dialog.querySelector('[role=status]')?.remove();const content=document.createElement('pre');content.textContent=result.text;dialog.append(content);}}
     catch(e){if(dialog.isConnected)dialog.querySelector('[role=status]')!.textContent=friendlyError(e,'read')+' 可关闭预览后下载原文件。';}
   }
-  private prepareAgain(){const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');query.delete('legacy');query.delete('workpaper_batch');query.delete('other_documents');query.set('step','prepare');location.hash='#generate?'+query;}
+  private prepareAgain(){const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');query.delete('legacy');query.delete('workpaper_batch');query.delete('other_documents');query.set('step','prepare');location.hash='#workpapers?'+query;}
   private poll(){this.poller.start();}
   private async refreshProgress(signal:AbortSignal,force:boolean){
     const progress=await this.request<GenerationProgress>('GET','/progress'+(this.progressBatch?'?batch_id='+encodeURIComponent(this.progressBatch):''),undefined,{},signal);

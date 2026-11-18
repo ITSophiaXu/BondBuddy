@@ -42,7 +42,7 @@ async function setup(page:Page,active=false){
  });
  await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({json:catalogue}));
  if(active)state.data.batches=[{batch_id:'active-poll-batch',created_at:now,points:0,workpapers:null,documents:{batch_id:'active-docs',state:'running',items:[]}}];
- await page.goto('/'+href({step:'prepare'}));
+ await page.goto('/'+href({step:'prepare'}).replace('#generate?', '#workpapers?'));
  await expect(page.locator('#fg-confirm')).toBeEnabled();
  // Advanced template/file mapping remains available; range adjustment now
  // focuses the chapter selector instead of opening this separate editor.
@@ -153,16 +153,17 @@ test('the explicit save action also leaves later range edits available',async({p
 });
 
 test('document type, year, template and requirements join the latest save snapshot',async({page})=>{
- const state=await setup(page);let release!:()=>void,calls=0;
+ const state=await setup(page);await page.goto('/'+href({step:'prepare'}));await expect(page.locator('.fg-file-choices')).toBeVisible();
+ await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
+ const savedBeforeEdits=state.saves.length;let release!:()=>void,calls=0;
  await page.route('**/file-generation/preparation',async route=>{if(++calls===1)await new Promise<void>(r=>release=r);return route.fallback();});
- await first(page).click();await expect.poll(()=>calls).toBe(1);
- await page.locator('[data-fg-type="annual"]').check();
+ await page.locator('[data-fg-type="annual"]').check();await expect.poll(()=>calls).toBe(1);
  await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('private|template-annual');
  await page.locator('#fg-requirements').fill('保留合成年度要求');release();
  await expect(page.locator('#fg-save-state')).toContainText('已保存');
- expect(state.data.preparation).toMatchObject({item_ids:['entry-2'],document_types:['workpaper','annual'],target_year:'2026',requirements:'保留合成年度要求',document_templates:{annual:{private_template:{template_id:'template-annual',template_version:1}}}});
- expect(state.saves).toHaveLength(2);expect(state.quotes).toEqual([]);
+ expect(state.data.preparation).toMatchObject({item_ids:['entry-1','entry-2'],document_types:['annual'],target_year:'2026',requirements:'保留合成年度要求',document_templates:{annual:{private_template:{template_id:'template-annual',template_version:1}}}});
+ expect(state.saves).toHaveLength(savedBeforeEdits+2);expect(state.quotes).toEqual([]);
 });
 
 test('changing the source waits for the full queue and stays put if its final save fails',async({page})=>{

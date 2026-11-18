@@ -15,7 +15,7 @@ export function projectBackLink() {
   return '<a class="back-link" href="#tasks">← 返回任务进度与结果</a>';
 }
 
-export type ProjectWork='files'|'update'|'review'|'generate'|'integrity'|'qa'|'consistency';
+export type ProjectWork='files'|'update'|'review'|'generate'|'workpapers'|'integrity'|'qa'|'consistency';
 export type NavigationProject={projectId:string;work:ProjectWork|null};
 const projectId=(value:string|null)=>value&&value.length<=128&&!/[\u0000-\u001f]/.test(value)?value:null;
 
@@ -27,7 +27,7 @@ export function navigationProjectContext(hash:string):NavigationProject|null {
   if(direct){
     try{executionProject=projectId(decodeURIComponent(direct[1]));}catch{return null;}
     work=direct[2]==='files'?'files':direct[2]==='review'?'review':'update';
-  }else if(/^(?:\/?update|review|generate|integrity|qa|consistency)$/.test(path)){
+  }else if(/^(?:\/?update|review|generate|workpapers|integrity|qa|consistency)$/.test(path)){
     executionProject=projectId(query.get('project'));work=path.replace(/^\//,'') as ProjectWork;
     // A material task is addressed by topic; its return project is navigation only.
     if(!executionProject&&work==='generate'&&projectId(query.get('topic')))executionProject=projectId(query.get('return_project'));
@@ -53,7 +53,7 @@ export function workReturnTo(value:string|null):string|null {
   const [path,search='']=value.slice(1).split('?'),query=new URLSearchParams(search);
   const direct=path.match(/^\/projects\/([^/]+)(?:\/(files|review))?$/),artifact=path.match(/^\/artifacts\/([^/]+)$/);
   if(direct||artifact){try{return projectId(decodeURIComponent((direct??artifact)![1]))?value:null;}catch{return null;}}
-  if(!/^(?:\/?update|review|generate|integrity|qa|consistency)$/.test(path))return null;
+  if(!/^(?:\/?update|review|generate|workpapers|integrity|qa|consistency)$/.test(path))return null;
   return (projectId(query.get('project'))||(path==='generate'&&projectId(query.get('topic'))))?value:null;
 }
 
@@ -63,7 +63,7 @@ export function rechargeHref(executionProjectId?:string,hash=location.hash):stri
   const path=hash.replace(/^#/,'').split('?')[0],direct=path.match(/^\/projects\/([^/]+)(?:\/(?:files|review))?$/);
   let execution=projectId(executionProjectId??null);
   if(!execution&&direct){try{execution=projectId(decodeURIComponent(direct[1]));}catch{/* No order project is inferred from a malformed route. */}}
-  if(!execution&&/^(?:\/?update|review|generate|integrity|qa|consistency|\/account|billing)$/.test(path))execution=projectId(source.get('project'));
+  if(!execution&&/^(?:\/?update|review|generate|workpapers|integrity|qa|consistency|\/account|billing)$/.test(path))execution=projectId(source.get('project'));
   const query=new URLSearchParams();if(execution)query.set('project',execution);
   const context=navigationProjectContext(hash)??(returnTo?navigationProjectContext(returnTo):null);
   if(context)query.set('return_project',context.projectId);

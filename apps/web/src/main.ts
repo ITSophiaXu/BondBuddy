@@ -22,6 +22,7 @@ import { AdminDashboardPage } from './admin-dashboard-page';
 import { ProjectAssistant } from './project-assistant';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
+import {generationEntry,generationRoute} from './file-generation-entry';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
@@ -352,9 +353,9 @@ function shell(content: string, section: string) {
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
+    <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('workpapers','folder','尽调底稿包',section === 'workpapers')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><div class="user account"><a class="account-entry" href="${esc(rechargeHref())}" aria-label="我的账号" title="我的账号" ${section === 'account' ? 'aria-current="page"' : ''}><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong></a><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'workpapers' ? '尽调底稿包' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div></header>
     <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>当前项目</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
   if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
     const owner=identity,expectedProject=context.projectId;
@@ -512,9 +513,13 @@ async function renderRoute() {
   if (/^consistency(\?|$)/.test(requested)) {fileConsistency=new FileConsistency(api,shell,()=>token===epoch,new URLSearchParams(requested.split('?')[1]).get('project')??'',identity);await fileConsistency.render();return;}
   if (/^qa(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');qaWorkspace=new ProjectQaWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity);await qaWorkspace.render();return;}
   if (/^integrity(\?|$)/.test(requested)) {const query=new URLSearchParams(requested.split('?')[1]??'');integrityWorkspace=new IntegrityWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity);await integrityWorkspace.render();return;}
-  if (/^generate(\?|$)/.test(requested)) {
-    const query=new URLSearchParams(requested.split('?')[1]??'');
-    if(!query.get('topic')){fileWorkspace=new FileWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity);await fileWorkspace.render();return;}
+  if (/^(generate|workpapers)(\?|$)/.test(requested)) {
+    const query=new URLSearchParams(location.hash.split('?')[1]??'');
+    if(!query.get('topic')){
+      const entry=generationEntry(requested),route=generationRoute(entry),canonical=route+(query.size?'?'+query:'');
+      if(location.hash!=='#'+canonical){history.replaceState(null,'','#'+canonical);currentRoute=canonical;}
+      fileWorkspace=new FileWorkspace(api,shell,()=>token===epoch,query.get('project')??undefined,identity,entry);await fileWorkspace.render();return;
+    }
     materialWorkspace=new MaterialWorkspace(api,identity,shell,()=>token===epoch,query.get('topic')??undefined,query.get('project')??undefined,query.has('new'),query.get('run')??undefined);
     await materialWorkspace.render(); return;
   }

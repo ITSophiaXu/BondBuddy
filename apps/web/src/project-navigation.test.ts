@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {navigationProjectContext,projectWorkHref,rechargeHref,workReturnTo} from './project-navigation.js';
 
 test('work links keep the original project across execution workspace remapping',()=>{
-  for(const work of ['update','review','generate','integrity','qa','consistency'] as const){
+  for(const work of ['update','review','generate','workpapers','integrity','qa','consistency'] as const){
     const href=projectWorkHref(work,'source project');
     assert.deepEqual(navigationProjectContext(href),{projectId:'source project',work});
     assert.equal(new URLSearchParams(href.split('?')[1]).get('project'),'source project');
@@ -13,7 +13,7 @@ test('work links keep the original project across execution workspace remapping'
 });
 
 test('global and malformed routes do not inherit a stale project',()=>{
-  for(const hash of ['#tasks','#generate','#review?new=1','#/new?return_project=old','#/projects/%E0%A4%A/files','#tasks?return_project=old'])assert.equal(navigationProjectContext(hash),null);
+  for(const hash of ['#tasks','#generate','#workpapers','#review?new=1','#/new?return_project=old','#/projects/%E0%A4%A/files','#tasks?return_project=old'])assert.equal(navigationProjectContext(hash),null);
   assert.equal(navigationProjectContext('#qa?project='+('x'.repeat(129))),null);
   assert.deepEqual(navigationProjectContext('#qa?project=owned&return_project=%00'),{projectId:'owned',work:'qa'});
 });
@@ -50,6 +50,6 @@ test('topic navigation never supplies an inferred order project from its return 
 
 test('recharge return destinations reject external, account, unknown and malformed routes',()=>{
   for(const value of ['https://example.com','#//example.com','#/account?project=old','#unknown?project=p','#qa?project=%0A','#qa?project=%5c','#qa?project=%E0%A4%A','#qa?project=p\n','#qa?project='+'a'.repeat(2049)])assert.equal(workReturnTo(value),null);
-  for(const value of ['#consistency?project=p&run=check-1','#qa?project=p&run=answer-1','#integrity?project=p&run=check-2','#generate?project=p&step=documents','#/projects/p/files?folder=4.2'])assert.equal(workReturnTo(value),value);
+  for(const value of ['#consistency?project=p&run=check-1','#qa?project=p&run=answer-1','#integrity?project=p&run=check-2','#generate?project=p&step=documents','#workpapers?project=p&step=workpapers&view=results&batch=b','#/projects/p/files?folder=4.2'])assert.equal(workReturnTo(value),value);
   assert.equal(new URLSearchParams(rechargeHref(undefined,'#/account?return_to=https%3A%2F%2Fexample.com').split('?')[1]).get('return_to'),null);
 });
