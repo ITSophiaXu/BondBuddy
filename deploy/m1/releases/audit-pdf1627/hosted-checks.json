@@ -1,0 +1,52 @@
+[
+  {
+    "name": "prospectus-quality-mechanical",
+    "conclusion": "failure",
+    "annotations": [
+      {
+        "title": "",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ]
+  },
+  {
+    "name": "core-linux",
+    "conclusion": "failure",
+    "annotations": [
+      {
+        "title": "",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ]
+  },
+  {
+    "name": "desktop-ux",
+    "conclusion": "failure",
+    "annotations": [
+      {
+        "title": "",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ]
+  },
+  {
+    "name": "cli-review-linux",
+    "conclusion": "failure",
+    "annotations": [
+      {
+        "title": "",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ]
+  },
+  {
+    "name": "linux-integration",
+    "conclusion": "failure",
+    "annotations": [
+      {
+        "title": "",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ]
+  }
+]
