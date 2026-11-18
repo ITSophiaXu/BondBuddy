@@ -1,12 +1,12 @@
-import { type MaterialParseJob } from '@bondbuddy/contracts';
+import { isAuditPdf, auditPdfQualityMessage, auditPdfQualityState, AUDIT_PDF_INCOMPLETE_MESSAGE, type MaterialParseJob } from '@bondbuddy/contracts';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { esc } from './ui.js';
 
 type Material = Dto<'MaterialResponse'>;
-type Reader = Pick<ApiClient, 'materialParseJob' | 'material'>;
+type Reader = Pick<ApiClient, 'materialParseJob' | 'material'> & Partial<Pick<ApiClient, 'materialPdfQuality'>>;
 type Entry = {
   material: Material; job?: MaterialParseJob; error?: string; loading: boolean; requested: boolean;
-  controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
+  retryQuality?: boolean; controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
 };
 export const materialProcessingKey = (material: Material) => `${material.material_id}:${material.material_version}:${material.sha256}`;
 
@@ -52,10 +52,43 @@ export class MaterialProcessing {
   private disposed = false;
   private visible = true;
   private running = 0;
-  constructor(private api: Reader, private projectId: string, private changed: () => void) {}
+  constructor(private api: Reader, private projectId: string, private changed: () => void,
+    private options: {auditPdfGate?: boolean; auditOnly?: boolean} = {}) {}
+
+  private gated(material: Material) { return Boolean(this.options.auditPdfGate && isAuditPdf(material)); }
+  private tracks(material: Material) { return !this.options.auditOnly || this.gated(material); }
+
+  block(materials: Material[]): string {
+    for (const material of materials) {
+      if (!this.gated(material)) continue;
+      const entry = this.entries.get(materialProcessingKey(material));
+      const incomplete = auditPdfQualityState(entry?.job?.pdf_quality) !== 'low' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && auditPdfQualityState(entry.job.pdf_quality) === 'pending'));
+      const message = incomplete ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(entry?.job?.pdf_quality);
+      if (message) return material.filename + '：' + message;
+    }
+    return '';
+  }
+
+  private renderAudit(material: Material, entry: Entry | undefined) {
+    const quality = entry?.job?.pdf_quality;
+    let state = auditPdfQualityState(quality);
+    if (state !== 'low' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && state === 'pending'))) state = 'incomplete';
+    const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? '清晰度检查完成'
+      : state === 'incomplete' ? '清晰度检查未完成' : '正在检查清晰度';
+    const tone = state === 'low' || state === 'incomplete' ? 'error' : state === 'ready' ? 'ready' : 'pending';
+    const pages = quality?.low_resolution_pages.slice(0, 8).map(p => p.page).join('、');
+    const pageHint = state === 'low' && pages ? 'PDF 第 ' + pages + (quality!.low_resolution_pages.length > 8 ? ' 等' : '') + ' 页。' : '';
+    const hint = state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
+    const key = esc(materialProcessingKey(material));
+    return '<div class="material-processing" data-material-processing="' + key + '" data-tone="' + tone + '">' +
+      '<p class="processing-title" role="status">' + esc(title) + '</p>' +
+      (hint ? '<p class="processing-hint material-quality-warning" role="' + (state === 'low' ? 'alert' : 'status') + '">' + esc(pageHint + hint) + '</p>' : '') +
+      (state === 'incomplete' ? '<button type="button" class="text-button" data-processing-retry="' + key + '" ' + (entry?.loading ? 'disabled' : '') + '>重试清晰度检查</button>' : '') + '</div>';
+  }
 
   sync(materials: Material[]) {
     if (this.disposed) return;
+    materials = materials.filter(material => this.tracks(material));
     const keys = new Set(materials.map(materialProcessingKey));
     for (const [key, entry] of this.entries) if (!keys.has(key)) {
       clearTimeout(entry.timer); entry.controller?.abort(); this.entries.delete(key);
@@ -67,10 +100,11 @@ export class MaterialProcessing {
     this.pump();
   }
 
-  refresh(key?: string) {
+  refresh(key?: string, retryQuality = false) {
     if (this.disposed) return;
     for (const [id, entry] of this.entries) if (!key || key === id) {
       clearTimeout(entry.timer); entry.polls = 0;
+      if (retryQuality && this.gated(entry.material)) entry.retryQuality = true;
       // A repeated click or reused upload joins the in-flight read.
       if (!entry.controller) { entry.requested = true; entry.loading = true; }
     }
@@ -90,7 +124,9 @@ export class MaterialProcessing {
   }
 
   render(material: Material) {
+    if (!this.tracks(material)) return '';
     const key = materialProcessingKey(material), entry = this.entries.get(key);
+    if (this.gated(material)) return this.renderAudit(material, entry);
     const summary = entry?.job ? jobSummary(entry.job) : ['pending', '正在读取处理状态…', ''];
     const [tone, title, hint] = entry?.error ? ['attention', '处理状态暂不可用', entry.error] : summary;
     const quality = !entry?.error ? entry?.job?.pdf_quality : undefined;
@@ -122,7 +158,10 @@ export class MaterialProcessing {
     const timeout = setTimeout(() => controller.abort(), 15000);
     const material = entry.material;
     try {
-      const job = await this.api.materialParseJob(this.projectId, material.material_id, controller.signal);
+      const retry = Boolean(entry.retryQuality); entry.retryQuality = false;
+      const job = this.gated(material)
+        ? await this.api.materialPdfQuality!(this.projectId, material.material_id, retry, controller.signal)
+        : await this.api.materialParseJob(this.projectId, material.material_id, controller.signal);
       controller.signal.throwIfAborted();
       if (!current()) return;
       if (job.project_id !== this.projectId || job.material_id !== material.material_id || job.material_version !== material.material_version || job.material_sha256 !== material.sha256) {

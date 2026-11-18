@@ -58,7 +58,7 @@ export interface AuthorizedMaterialParseInput {
   version: number;
   requestId: string;
   /** Optional server-selected material partition, checked in the same owner-scoped lookup. */
-  requiredRole?: 'historical';
+  requiredRole?: 'historical' | 'audit';
   options?: { max_pages?: number };
 }
 
@@ -120,7 +120,7 @@ function supportedMediaType(value: string): value is typeof DOCUMENT_PARSER_MEDI
 function validateInput(input: AuthorizedMaterialParseInput): void {
   if (!safeIdentifier(input.ownerUserId) || !safeIdentifier(input.projectId) || !safeIdentifier(input.materialId) ||
       !safeIdentifier(input.requestId) || !Number.isSafeInteger(input.version) || input.version < 1 ||
-      (input.requiredRole !== undefined && input.requiredRole !== 'historical') ||
+      (input.requiredRole !== undefined && !['historical','audit'].includes(input.requiredRole)) ||
       (input.options?.max_pages !== undefined && (!Number.isSafeInteger(input.options.max_pages) ||
         input.options.max_pages < 1 || input.options.max_pages > 1500))) {
     throw bridgeError('INVALID_MATERIAL_PARSE_REQUEST');
@@ -332,4 +332,28 @@ export async function parseAuthorizedMaterial(
       }
     }
   }
+}
+
+
+/** Lightweight inspections share owner/version/hash verified private staging,
+ * but never invoke native extraction, OCR or a model. */
+export async function inspectAuthorizedPdf<T>(
+  dependencies: MaterialParserDependencies, input: AuthorizedMaterialParseInput,
+  inspect: (path: string) => Promise<T>,
+): Promise<T> {
+  validateInput(input);
+  const row = await lookupMaterial(dependencies, input);
+  if (row.media_type !== 'application/pdf') throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
+  let directory: string | undefined, cleanup: (() => Promise<void>) | undefined;
+  try {
+    const stagingRoot = dependencies.tempRoot ?? process.env.BB_PARSE_STAGING_DIR;
+    if (stagingRoot) ({directory, cleanup} = await createParseStaging(stagingRoot));
+    else { directory = await mkdtemp(join(tmpdir(), 'bb-pdf-quality-')); cleanup = () => rm(directory!, {recursive: true, force: true}); }
+    const path = join(directory, 'source.pdf');
+    await stageMaterial(dependencies.blobs, row, path);
+    return await inspect(path);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PARSE_STAGING_CAPACITY') throw bridgeError('MATERIAL_PARSE_CAPACITY_WAIT');
+    throw error;
+  } finally { await cleanup?.(); }
 }
