@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Pool} from 'pg';
 import {executionCapacityControl,executionCloudExpenseLedger,configureExecutionCapacity} from '@bondbuddy/api/execution-capacity';
 import {quoteFixture} from './cloud-quote-refresh.test.mjs';
+import {tariffFixture} from './cloud-tariff-refresh.test.mjs';
 import {createExecutionPoolOpsHandler} from './ops-handler.mjs';
 
 // Only a separately created local database. Cloud responses and clock rollover
@@ -31,6 +32,26 @@ test('real isolated PG closes/reopens admission across midnight and API outage w
     assert.equal((await control.snapshot()).policy.budget_available,false);assert.equal(f.state.calls,calls);
     f.state.at+=60001;t.mock.timers.setTime(f.state.at);await handler.tick();
     assert.equal((await control.snapshot()).policy.budget_available,true);
+    const ledger=await executionCloudExpenseLedger(pool);assert.equal(ledger.nodes.length,0);assert.equal(ledger.operations.length,0);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_model_capacity_holders')).rows[0].n,0);
+  });
+
+test('real isolated PG renews expired tariffs, closes on new-day price drift and reopens after fresh valid evidence',
+  {skip:!process.env.BB1389_TEST_DATABASE_URL},async t=>{
+    const pool=new Pool({connectionString:process.env.BB1389_TEST_DATABASE_URL,max:2,connectionTimeoutMillis:5000,query_timeout:5000});
+    t.after(()=>pool.end());assert.equal((await pool.query('SELECT current_database() AS db')).rows[0].db,'bb1389_quote');
+    const f=await tariffFixture(t,{at:Date.parse('2026-11-15T15:59:00Z')});t.mock.timers.enable({apis:['Date'],now:f.state.at});
+    const control=executionCapacityControl(pool),h=f.config.expense_policy_sha256;
+    await configureExecutionCapacity(pool,(await control.snapshot()).policy.revision,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:false,expense_policy_sha256:h});
+    const handler=createExecutionPoolOpsHandler({control,configPath:f.configPath,expenseLedger:async()=>({
+      ...await executionCloudExpenseLedger(pool),captured_at:new Date(f.state.at).toISOString()}),
+      dependencies:{now:()=>f.state.at,tariffFetch:f.fetchImpl,cloud:{transport:f.transport,inventory:async()=>[]}}});
+    await handler.tick();assert.equal((await control.snapshot()).policy.budget_available,true);
+    f.state.at+=61000;t.mock.timers.setTime(f.state.at);f.compute.InstanceTypeQuotaSet[0].Price.UnitPrice=.81;
+    await handler.tick();assert.equal((await control.snapshot()).policy.budget_available,false);
+    f.compute.InstanceTypeQuotaSet[0].Price.UnitPrice=.8;f.state.at+=61000;t.mock.timers.setTime(f.state.at);
+    await handler.tick();assert.equal((await control.snapshot()).policy.budget_available,true);
+    assert.deepEqual(f.counts,{prices:9,documents:12});
     const ledger=await executionCloudExpenseLedger(pool);assert.equal(ledger.nodes.length,0);assert.equal(ledger.operations.length,0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_model_capacity_holders')).rows[0].n,0);
   });
