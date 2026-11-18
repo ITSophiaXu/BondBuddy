@@ -432,7 +432,7 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
-  await page.getByLabel('最新报告期年份').selectOption('2026');
+  await page.getByLabel('目标报告期年份').selectOption('2026');
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await expect(page.locator('#project-message')).toHaveCount(0);
   await capture('create');
@@ -465,7 +465,7 @@ test('latest period derives source-independent windows; supplementary notes are 
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('最新报告期年份').selectOption('2026');
+  await page.getByLabel('目标报告期年份').selectOption('2026');
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await expect(page.locator('#reporting-window')).toHaveText('报告期：2024年、2025年、2026年1—6月');
   await expect(page.locator('.cowork-context,.cowork-prompts, input[type=date]')).toHaveCount(0);
