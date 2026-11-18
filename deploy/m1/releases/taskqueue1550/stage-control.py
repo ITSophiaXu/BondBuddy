@@ -34,10 +34,10 @@ def main():
  bootstrap_js="""import {bootstrapUserData}from './deploy/tencent-elasticity/bootstrap.mjs';import {createHash}from 'node:crypto';let s='';for await(const b of process.stdin)s+=b;const c=JSON.parse(s);const r={account_id:c.account_id,region:c.region,source_sha256:c.source_sha256,image_sha256:c.image_sha256,services:c.services};const slots=[0,1].map(slot=>{const data=bootstrapUserData(c,r,slot),bytes=Buffer.byteLength(data);if(bytes>16384)throw Error('cloud_bootstrap_size_limit');return{slot,bytes,sha256:createHash('sha256').update(data).digest('hex')};});process.stdout.write(JSON.stringify(slots));"""
  bootstrap_args=['docker','run','--rm','-i','--network','none','--read-only','--memory','256m','--pids-limit','64','-w','/app','--entrypoint','node']
  for name in BOOTSTRAP_HASHES:
-  source=public/'business-overlay.mjs' if name=='deploy/tencent-elasticity/business-overlay.mjs' else app_root/name
-  stable=public/'bootstrap-fixture'/name;stable.parent.mkdir(mode=0o700,parents=True,exist_ok=True);write(stable,source.read_bytes(),0o644)
-  source=stable
-  bootstrap_args+=['--mount','type=bind,src='+str(source)+',dst=/app/'+name+',readonly']
+  bootstrap_source=public/'business-overlay.mjs' if name=='deploy/tencent-elasticity/business-overlay.mjs' else app_root/name
+  stable=public/'bootstrap-fixture'/name;stable.parent.mkdir(mode=0o700,parents=True,exist_ok=True);write(stable,bootstrap_source.read_bytes(),0o644)
+  bootstrap_source=stable
+  bootstrap_args+=['--mount','type=bind,src='+str(bootstrap_source)+',dst=/app/'+name+',readonly']
  bootstrap_args += [c['Image'],'--input-type=module','-e',bootstrap_js]
  bootstrap_slots=json.loads(run(bootstrap_args,json.dumps({**pool,'business_overlay_sha256':NEW_PIN}).encode()))
 
