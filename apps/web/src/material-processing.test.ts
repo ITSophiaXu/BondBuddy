@@ -186,3 +186,13 @@ test('inconclusive inspection retries explicitly and default modes remain adviso
  const advisory=setup(t,{materialParseJob:async()=>({...job,pdf_quality:{...incomplete,low_resolution_pages:[{page:1,dpi:96}]}})});
  advisory.sync([audit]);await tick();assert.equal(advisory.block([audit]),'');
 });
+
+test('sample result is labelled as sampling and releases the gate without claiming full coverage',async t=>{
+ const audit={...material,role:'audit' as const,media_type:'application/pdf' as const};
+ const quality={version:'pdf-raster-quality-3' as const,status:'complete' as const,page_count:100,checked_pages:8,sampled_pages:[5,8,12,1,25,50,75,100],low_resolution_pages:[]};
+ const controller=new MaterialProcessing({material:async()=>audit,materialParseJob:async()=>job,
+  materialPdfQuality:async()=>({...job,pdf_quality:quality})},'project-a',()=>{},{auditPdfGate:true});
+ t.after(()=>controller.dispose());controller.sync([audit]);await tick();
+ assert.equal(controller.block([audit]),'');assert.match(controller.render(audit),/清晰度抽查完成/);
+ assert.match(controller.render(audit),/已抽查 8 页/);assert.doesNotMatch(controller.render(audit),/全文|全部页面/);
+});

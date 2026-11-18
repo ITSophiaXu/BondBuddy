@@ -73,12 +73,13 @@ export class MaterialProcessing {
     const quality = entry?.job?.pdf_quality;
     let state = auditPdfQualityState(quality);
     if (state === 'pending' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && state === 'pending'))) state = 'incomplete';
-    const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? '清晰度检查完成'
+    const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? (quality?.sampled_pages ? '清晰度抽查完成' : '清晰度检查完成')
       : state === 'incomplete' ? '清晰度检查未完成' : '正在检查清晰度';
     const tone = state === 'low' || state === 'incomplete' ? 'error' : state === 'ready' ? 'ready' : 'pending';
     const pages = quality?.low_resolution_pages.slice(0, 8).map(p => p.page).join('、');
     const pageHint = state === 'low' && pages ? 'PDF 第 ' + pages + (quality!.low_resolution_pages.length > 8 ? ' 等' : '') + ' 页。' : '';
-    const hint = state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
+    const hint = state === 'ready' && quality?.sampled_pages ? '已抽查 ' + quality.checked_pages + ' 页，未发现低分辨率页面。'
+      : state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
     const key = esc(materialProcessingKey(material));
     return '<div class="material-processing" data-material-processing="' + key + '" data-tone="' + tone + '">' +
       '<p class="processing-title" role="status">' + esc(title) + '</p>' +
@@ -184,7 +185,7 @@ export class MaterialProcessing {
         entry.controller = undefined; entry.loading = false; this.changed();
         // Paused, terminal and read-error states require explicit refresh. No fake percentages or unbounded error retries.
         if (this.visible && !entry.error && (entry.job?.state === 'queued' || entry.job?.state === 'running')) {
-          entry.timer = setTimeout(() => { entry.requested = true; this.pump(); }, Math.min(3000 * 2 ** Math.min(entry.polls++, 3), 15000));
+          entry.timer = setTimeout(() => { entry.requested = true; this.pump(); }, this.gated(material) ? Math.min(1000 * 2 ** Math.min(entry.polls++, 2), 3000) : Math.min(3000 * 2 ** Math.min(entry.polls++, 3), 15000));
         }
       }
     }
