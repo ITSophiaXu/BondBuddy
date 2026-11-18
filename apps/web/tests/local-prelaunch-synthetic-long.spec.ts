@@ -32,7 +32,7 @@ test('purely invented long prospectus is updated by the actual model with scoped
     fixtureDirectory:fixture.directory,manifestHash:fixture.manifestHash,modelResultsFabricated:false,industrySignoff:false},null,2));
   await page.goto('/#/new');await page.getByLabel('发行人全称',{exact:true}).fill(fixture.manifest.issuer);
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2026');await page.locator('[name="reporting_quarter"][value="09-30"]').check();
+  await page.getByLabel('目标报告期年份',{exact:true}).selectOption('2026');await page.locator('[name="reporting_quarter"][value="09-30"]').check();
   const creating=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/projects'&&r.request().method()==='POST');
   await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();const created=await creating;expect(created.status()).toBe(201);
   const project=await created.json();await openProject(page,project.project_id);

@@ -41,7 +41,7 @@ const projectFile=(input:M4DraftInput,metadata:MaterialDraftComparisonMetadata):
   return [{text:'绑定项目：'+(project||'项目名称暂不可核实')+'\n募集书依据：已固定版本（名称与序号暂不可核实）\n募集书选择修订：'+binding.source_selection_revision+'\n预期关联文件：'+(!hasExpected?'未提供版本条件':binding.expected_file_version_id===null?'无既有版本':'已固定版本（名称与序号暂不可核实）'),unverified:true,
     reference:[{label:'绑定项目',value:binding.project_id},{label:'募集书依据版本',value:binding.source_version_id},{label:'募集书选择修订',value:String(binding.source_selection_revision)},{label:'预期关联文件版本',value:!hasExpected?'未提供':binding.expected_file_version_id===null?'无既有版本':binding.expected_file_version_id!}]}];
 };
-const fieldLabels:Record<string,string>={market:'发行市场',offering:'债券品种',broker:'立项券商全称',source_mode:'募集书来源方式',case_template_id:'案例版式',issuer_name:'发行人名称',project_name:'项目名称',reporting_cutoff:'最新报告期',amount:'发行规模',term:'发行期限'};
+const fieldLabels:Record<string,string>={market:'发行市场',offering:'债券品种',broker:'立项券商全称',source_mode:'募集书来源方式',case_template_id:'案例版式',issuer_name:'发行人名称',project_name:'项目名称',reporting_cutoff:'目标报告期',amount:'发行规模',term:'发行期限'};
 const markets:Record<string,string>={sse:'上海证券交易所',szse:'深圳证券交易所',nafmii:'中国银行间市场交易商协会'};
 const offerings:Record<string,string>={private:'普通私募',public_all:'大公募',public_qualified:'小公募',ppn:'PPN · 定向债务融资工具',mtn:'MTN · 中期票据',cp:'CP · 短期融资券',scp:'SCP · 超短期融资券',dfi:'DFI · 债务融资工具注册发行'};
 const fieldValue=(key:string,value:string|undefined):MaterialDraftComparisonBlock[]=>{

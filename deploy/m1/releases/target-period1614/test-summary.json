@@ -1,0 +1,46 @@
+{
+  "browser": {
+    "stats": {
+      "startTime": "2026-11-18T14:03:24.730Z",
+      "duration": 296316.498,
+      "expected": 12,
+      "skipped": 0,
+      "unexpected": 2,
+      "flaky": 0
+    },
+    "evidence_sha256": "5a2daad736c70e9e77af2085d434656a684653246153967d7c024a6cbfaadb6e"
+  },
+  "baseline-mobile": {
+    "stats": {
+      "startTime": "2026-11-18T14:08:36.011Z",
+      "duration": 102314.826,
+      "expected": 0,
+      "skipped": 0,
+      "unexpected": 1,
+      "flaky": 0
+    },
+    "evidence_sha256": "a38ec4b3abc4a1b600460b9ea90dc7141d7c7791bd607d7d0fc782a7d6a85fd7"
+  },
+  "candidate-dev": {
+    "stats": {
+      "startTime": "2026-11-18T14:09:18.605Z",
+      "duration": 92093.62999999999,
+      "expected": 0,
+      "skipped": 0,
+      "unexpected": 1,
+      "flaky": 0
+    },
+    "evidence_sha256": "156e829e01562fbdbf1751500da67e30275751fe75fb61ce2ee9250462a996c9"
+  },
+  "candidate-dev-recheck": {
+    "stats": {
+      "startTime": "2026-11-18T14:12:34.626Z",
+      "duration": 79268.292,
+      "expected": 0,
+      "skipped": 0,
+      "unexpected": 1,
+      "flaky": 0
+    },
+    "evidence_sha256": "5ab2483225455a4a32163cebcd6708118cd87413cb74e81d57cd22200d1f2c3e"
+  }
+}
