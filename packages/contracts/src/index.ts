@@ -1,4 +1,6 @@
 export * from './recovery-capture.js';
+import { PdfQualitySchema } from './pdf-quality.js';
+export * from './pdf-quality.js';
 import { FirstDraftConfirmationRequestSchema, FirstDraftExclusionsResponseSchema } from './none-baseline.js';
 export * from './none-baseline.js';
 import {fileGenerationOpenApiPaths} from './file-generation.js';
@@ -194,7 +196,7 @@ const jobKind = enumOf(JOB_KINDS);
 const jobStatus = enumOf(JOB_STATUSES);
 const errorCategory = enumOf(ERROR_CATEGORIES);
 const observabilityEventKind = enumOf(OBSERVABILITY_EVENT_KINDS);
-const MaterialParseJobSchema = obj({ job_id: id, job_type: Type.Literal(MATERIAL_PARSE_JOB_TYPE), subtype: Type.Literal(MATERIAL_PARSE_JOB_SUBTYPE), project_id: id, material_id: id, material_version: revision, material_sha256: hash, parser_version: Type.String({ minLength: 1, maxLength: 128 }), state: enumOf(MATERIAL_PARSE_JOB_STATES), stage: nullable(Type.String()), completed_stages: Type.Array(enumOf(MATERIAL_PARSE_STAGES)), attempts: Type.Integer({ minimum: 0 }), max_attempts: Type.Integer({ minimum: 1 }), error_code: nullable(errorCode), outcome: nullable(enumOf(MATERIAL_PARSE_OUTCOMES)), parse_status: nullable(enumOf(['parsed', 'needs_confirmation', 'failed'] as const)), profile_version: nullable(revision), pending_capabilities: Type.Array(enumOf(MATERIAL_PARSE_PENDING_CAPABILITIES)), updated_at: utc });
+const MaterialParseJobSchema = obj({ pdf_quality: Type.Optional(PdfQualitySchema), job_id: id, job_type: Type.Literal(MATERIAL_PARSE_JOB_TYPE), subtype: Type.Literal(MATERIAL_PARSE_JOB_SUBTYPE), project_id: id, material_id: id, material_version: revision, material_sha256: hash, parser_version: Type.String({ minLength: 1, maxLength: 128 }), state: enumOf(MATERIAL_PARSE_JOB_STATES), stage: nullable(Type.String()), completed_stages: Type.Array(enumOf(MATERIAL_PARSE_STAGES)), attempts: Type.Integer({ minimum: 0 }), max_attempts: Type.Integer({ minimum: 1 }), error_code: nullable(errorCode), outcome: nullable(enumOf(MATERIAL_PARSE_OUTCOMES)), parse_status: nullable(enumOf(['parsed', 'needs_confirmation', 'failed'] as const)), profile_version: nullable(revision), pending_capabilities: Type.Array(enumOf(MATERIAL_PARSE_PENDING_CAPABILITIES)), updated_at: utc });
 const PageSchema = obj({ next_cursor: cursor, has_more: Type.Boolean() });
 // Old tabs validate nested task DTOs strictly; added counters require an explicit capability.
 export const PROJECT_TASK_COUNTS_CAPABILITY = {header:'x-bb-task-counts',value:'batch-counts-v1'} as const;
