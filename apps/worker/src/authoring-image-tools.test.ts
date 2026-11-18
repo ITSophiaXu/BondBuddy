@@ -14,6 +14,19 @@ async function fixture(fn:(root:string)=>Promise<void>){const root=await mkdtemp
   try{for(const dir of ['materials','scratch','output'])await mkdir(join(root,dir));await fn(root);}
   finally{await rm(root,{recursive:true,force:true});}}
 
+test('a replaced PDF crop cannot be shown with a previous record digest',()=>fixture(async root=>{
+  const path='scratch/pdf-crops/current.png',bytes=Buffer.from('synthetic cell 1'),digest=createHash('sha256').update(bytes).digest('hex');
+  await mkdir(join(root,'scratch/pdf-crops'));await writeFile(join(root,path),bytes);
+  const budget=createAuthoringImageBudget(),render=async()=>fakePreview;
+  const first=await callAuthoringImageTool(root,'view_image',{path,expected_sha256:digest},render,budget);
+  assert.equal(first.content[1].type,'image');const remaining=budget.remaining();
+  await writeFile(join(root,path),'synthetic cell 2');
+  const forbidden=async()=>{throw Error('wrong crop reached renderer');};
+  await assert.rejects(callAuthoringImageTool(root,'view_image',{path,expected_sha256:digest},forbidden,budget),/IMAGE_SOURCE_CHANGED/);
+  await assert.rejects(callAuthoringImageTool(root,'view_image',{path},forbidden,budget),/IMAGE_SOURCE_HASH_REQUIRED/);
+  assert.equal(budget.remaining(),remaining);
+}));
+
 test('bounded image tool exposes one read-only method and passes bytes/crop without changing the source',()=>fixture(async root=>{
   const bytes=Buffer.from('synthetic image bytes');await writeFile(join(root,'scratch','a.png'),bytes);
   let calls=0;
