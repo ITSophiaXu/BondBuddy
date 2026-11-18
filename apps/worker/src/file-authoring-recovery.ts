@@ -18,7 +18,7 @@ export type FileAuthoringRecovery = {
 type Limits = { files: number; fileBytes: number; totalBytes: number };
 const id = /^[A-Za-z0-9_-]{1,128}$/;
 const hash = /^[a-f0-9]{64}$/;
-const logical = /^file-authoring-(?:v1|size-repair-[1-9][0-9]*)$/;
+const logical = /^(?:file-authoring-(?:v1|size-repair-[1-9][0-9]*)|m4-document-v1|workpaper-shared-plan-v1|workpaper-progressive-item-v1|workpaper-group-[a-f0-9]{40})$/;
 class CaptureError extends Error {
   constructor(readonly captureFailure:FileAuthoringCaptureFailure,message:string){super(message);}
 }
@@ -117,6 +117,7 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
   checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string;
+  persist?: (snapshot:FileAuthoringRecovery)=>Promise<void>;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
@@ -163,6 +164,7 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
     snapshot.files.push({ path, key, sha256, byte_size: bytes.length });
   }
   validate(ctx, snapshot, intent.logical_call_id); ctx.signal.throwIfAborted();
+  if(options.persist){await options.persist(snapshot);return snapshot;}
   await (options.checkpoint ?? checkpointStage)(ctx.pool, ctx.lease, FILE_AUTHORING_RECOVERY_STAGE, { ...snapshot }, false);
   ctx.checkpoint[FILE_AUTHORING_RECOVERY_STAGE] = { ...snapshot };
   await recordFileAuthoringCapture(ctx,intent,{state:'saved',failure_code:null},options.capture);

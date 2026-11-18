@@ -1,3 +1,4 @@
+import {recoverableM4Workspace} from './m4-workspace-recovery.js';
 import {withPerformanceSpan,startPerformanceSpan,type PerformanceSpanHandle} from '@bondbuddy/api/performance-trace';
 import {workpaperChapters} from '@bondbuddy/contracts';
 import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
@@ -250,21 +251,21 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
         const outcome=await withModelStagePerformance('workpaper.plan_prepare',{batch_id:batch,work_item_id:task.entry.id,author_run_id:ctx.run.id,logical_call_id:logicalCallId},()=>model({name:progressive?'workpaper_progressive_plan_v1':'workpaper_shared_plan_v1',logicalCallId,config:{...config,max_schema_reasks:0,max_output_bytes:MAX_SNAPSHOT},
           schema:WorkpaperSharedPlanSchema,validate:v=>checkedSharedPlan(v,source,plannedManifests),resultSchemaVersion:'workpaper-shared-plan-v1',templateVersion:method,
           buildPrompt:async()=>skill.content,onActivity:e=>observer.onEvent(e),
-          fileWorkspace:{prepare:cwd=>preparePlan(cwd,batchInput),collect:async cwd=>{
+          fileWorkspace:recoverableM4Workspace(ctx,logicalCallId,{prepare:cwd=>preparePlan(cwd,batchInput),collect:async cwd=>{
             let plan:unknown;
             try{plan=JSON.parse((await checkedM4File(join(cwd,'output'),'batch-plan.json',MAX_SNAPSHOT)).toString('utf8'));}
-            catch(error){if(error instanceof SyntaxError||(error as {code?:string}).code==='ENOENT')throw new CodexOutputValidationError('WORKPAPER_PLAN_INVALID');throw error;}
+            catch(error){if(error instanceof SyntaxError||(error as {code?:string}).code==='ENOENT')throw new CodexOutputValidationError('WORKPAPER_PLAN_INVALID',{code:'WORKPAPER_PLAN_INVALID',file:'batch-plan.json',rule:'WorkpaperSharedPlanSchema_and_scope'});throw error;}
             if(plan&&typeof plan==='object'&&'source_sha256'in plan&&plan.source_sha256!==source.source.sha256)throw Error('INPUT_REVISION_CONFLICT');
-            if(!checkedSharedPlan(plan,source,plannedManifests))throw new CodexOutputValidationError('WORKPAPER_PLAN_INVALID');
+            if(!checkedSharedPlan(plan,source,plannedManifests))throw new CodexOutputValidationError('WORKPAPER_PLAN_INVALID',{code:'WORKPAPER_PLAN_INVALID',file:'batch-plan.json',rule:'WorkpaperSharedPlanSchema_and_scope'});
             // Validate against host-owned inputs, never agent-modified files.
             await jsonFile(dir,'batch-plan.json',plan);
             try{await python(ctx,['validate',join(dir,'source-data.json'),join(dir,'batch-input.json'),join(dir,'batch-plan.json')]);}
             catch(error){
-              if(!progressive||isWorkpaperItemError(error))throw new CodexOutputValidationError('WORKPAPER_PLAN_CONTENT_INVALID');
+              if(!progressive||isWorkpaperItemError(error))throw new CodexOutputValidationError('WORKPAPER_PLAN_CONTENT_INVALID',{code:'WORKPAPER_PLAN_CONTENT_INVALID',file:'batch-plan.json',rule:'host_source_coverage_and_content'});
               throw error;
             }
             return plan;
-          }}
+          }})
         }).run(ctx));
         if(outcome.kind!=='done'){
           return handleModelOutcome(outcome,logicalCallId);

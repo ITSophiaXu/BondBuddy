@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { renewModelCapacity } from './model-capacity-renewal.js';
 import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
 import { randomUUID, createHash } from 'node:crypto';
 import { hostname } from 'node:os';
@@ -85,7 +86,7 @@ async function groupOrHomeAlive(group: number | null, home: string | null) {
 /** Durable bounded semaphore in the sole PG, shared by authoring/review/assistants.
  * Scope rotation prevents a large batch from monopolizing permits. Waiters hold
  * no checked-out connection/transaction, and at most the configured per-process bound can register.
- * Active holders have NO TTL: loss of renewal aborts the process, and its row is
+ * Active holders have NO TTL: confirmed loss or bounded confirmation failure aborts the process; its row is
  * retained until actual process exit. Historical unknown billing stays in the
  * existing journal, independently of active capacity. */
 export class PgModelCallBudget implements ModelCallBudget {
@@ -169,12 +170,15 @@ export class PgModelCallBudget implements ModelCallBudget {
     if (signal?.aborted) abort();
     let timer: ReturnType<typeof setInterval> | undefined;
     let released = false, granted = false;
+    let renewal: Promise<void> | undefined;
     const release = async () => {
       if (released) return;
       released = true;
       this.exitedTokens.add(token);
       if (timer) clearInterval(timer);
       signal?.removeEventListener('abort', abort);
+      // A caller releases only after process exit. Do not race an in-flight check.
+      await renewal?.catch(()=>{});
       try {
         await this.sessions.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[token]);
         await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2',[token,this.host]);
@@ -248,23 +252,28 @@ export class PgModelCallBudget implements ModelCallBudget {
       }
       } catch (error) { if (controller.signal.aborted) span.end('cancelled'); throw error; }
       });
-      const renew = async () => {
-        if (released || controller.signal.aborted) throw new Error('Model capacity holder lost');
-        try {
-          const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET renewed_at=now() WHERE token=$1 AND host_id=$2',[token,this.host]);
-          if (!result.rowCount) throw new Error('Model capacity holder lost');
-        } catch (error) {
-          const diagnostic = modelCancellationDiagnostic(error, 'capacity_renewal', 'renewal', scope);
-          reportModelCancellation(diagnostic);
-          const lost = Object.assign(new Error('Model capacity holder lost'), { cancellation: diagnostic });
-          controller.abort(lost); throw lost;
-        }
+      let lastConfirmed = Date.now(), nextTick = Date.now()+5000;
+      const renew = (eventLoopLagMs = 0): Promise<void> => {
+        if (released || controller.signal.aborted) return Promise.reject(new Error('Model capacity holder lost'));
+        if (renewal) return renewal;
+        renewal = (async () => {
+          try {
+            await renewModelCapacity({sessions:this.sessions,token,host:this.host,admission,
+              signal:controller.signal,scope,lastConfirmed,eventLoopLagMs});
+            controller.signal.throwIfAborted();
+            lastConfirmed=Date.now();
+          } catch (error) {
+            const diagnostic = modelCancellationDiagnostic(error, 'capacity_renewal', 'renewal', scope);
+            reportModelCancellation(diagnostic);
+            const lost = Object.assign(new Error('Model capacity holder lost'), { cancellation: diagnostic });
+            controller.abort(lost); throw lost;
+          }
+        })().finally(()=>{renewal=undefined;});
+        return renewal;
       };
-      let renewing = false;
       timer = setInterval(() => {
-        if (renewing) return;
-        renewing = true;
-        void renew().catch(()=>{}).finally(()=>{renewing=false;});
+        const lag=Math.max(0,Date.now()-nextTick);nextTick=Date.now()+5000;
+        void renew(lag).catch(()=>{});
       },5000);
       timer.unref();
       const bindProcess = async (pid: number, codexHome?: string) => {
@@ -274,7 +283,7 @@ export class PgModelCallBudget implements ModelCallBudget {
         if (!result.rowCount) throw new Error('Model capacity holder lost');
       };
       controller.signal.throwIfAborted();
-      return { signal:controller.signal,bindProcess,renew,release };
+      return { signal:controller.signal,bindProcess,renew:()=>renew(),release };
     } catch (error) { await release(); throw error; }
   }
 }

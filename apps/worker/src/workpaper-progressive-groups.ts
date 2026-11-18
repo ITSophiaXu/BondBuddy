@@ -1,3 +1,4 @@
+import {recoverableM4Workspace} from './m4-workspace-recovery.js';
 import {Type,type Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive,workpaperPlanGroupIds,WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
@@ -135,7 +136,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
       let outcome:StageOutcome;
       try{outcome=await withModelStagePerformance('group.plan_prepare',{...performanceAttributes,author_run_id:ctx.run.id},()=>options.model({name:'workpaper_progressive_group_v1',logicalCallId,config:{...options.config,max_schema_reasks:0,max_output_bytes:MAX_PLAN},
         schema:WorkpaperProgressiveGroupResultSchema,validate:validResult,resultSchemaVersion:version,templateVersion:method,buildPrompt:async()=>options.skill.content,onActivity:e=>observer.onEvent(e),
-        fileWorkspace:{prepare:cwd=>options.prepare(cwd,options.input),collect:async cwd=>{
+        fileWorkspace:recoverableM4Workspace(ctx,logicalCallId,{prepare:cwd=>options.prepare(cwd,options.input),collect:async cwd=>{
           let plan:unknown;
           try{plan=JSON.parse((await checkedM4File(join(cwd,'output'),'batch-plan.json',MAX_PLAN)).toString('utf8'));}
           catch(error){if(error instanceof SyntaxError||(error as {code?:string}).code==='ENOENT')return fallback;throw error;}
@@ -148,7 +149,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
           const result=JSON.parse(await readFile(join(dir,'group-validation.json'),'utf8'));
           if(!validResult(result))throw Error('WORKPAPER_GROUP_VALIDATION_UNSAFE');
           return result;
-        }}
+        }},{repair:false})
       }).run(ctx));}finally{await observer.drain();}
       if(outcome.kind!=='done')return {kind:'outcome',outcome,logicalCallId};
       if(!validResult(outcome.value))throw Error('WORKPAPER_GROUP_VALIDATION_UNSAFE');

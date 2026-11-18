@@ -27,8 +27,8 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
  const observation=(action:string,requestId:string)=>({instance_state:action==='stop'?'STOPPED':'RUNNING',latest_operation:action==='stop'?'StopInstances':action==='start'?'StartInstances':'RunInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:requestId,stop_charging_mode:action==='stop'?'STOP_CHARGING':null,observed_at:new Date().toISOString(),evidence_ref:'synthetic-describe.json',evidence_sha256:hash});
  const finish=async(op:ExecutionCloudOperation,i:ExecutionNodeIdentity)=>{
   const requestId='request-'+op.operation_id;
-  op=await control.recordCloudResult(op.operation_id,op.revision,{state:'submitted',identity:i,provider_request_id:requestId,observation:null});
-  return control.recordCloudResult(op.operation_id,op.revision,{state:'completed',identity:i,provider_request_id:requestId,observation:observation(op.action,requestId)});
+  op=await control.recordCloudResult(op.operation_id,op.revision,{state:'submitted',identity:i,provider_request_id:requestId,observation:null,...(op.action==='run'?{run_acceptance:{operation_id:op.operation_id,identity:i,provider_request_id:requestId,instance_ids:[i.instance_id],client_token:op.client_token,launch_manifest_sha256:hash,launch_binding_sha256:hash,evidence_ref:'synthetic-run-ack',evidence_sha256:hash}}:{})});
+  return control.recordCloudResult(op.operation_id,op.revision,{state:'completed',identity:i,provider_request_id:requestId,observation:{...observation(op.action,requestId),...(op.action==='run'?{run_creation:{operation_id:op.operation_id,identity:i,launch_manifest_sha256:hash,launch_binding_sha256:hash,created_at:op.dispatched_at!,instance_status:'RUNNING',status_request_id:'synthetic-status'}}:{})}});
  };
  await t.test('legacy holder must positively drain before managed policy activation',async()=>{
   const old=await new PgModelCallBudget(pool).acquire(undefined,'legacy:before');
@@ -51,7 +51,7 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
   await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$1,1,$3,$1,'generation',$3,'queued')",[id,owner,h]);
   await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state) VALUES($1,$2,$1,'generation','default','queued')",[id,owner]);return id;
  };
- const claimJob=async(p:Pool,id:string)=>{const lease=randomUUID();await transaction(p,async client=>{await executionClaimGate(client,p);await client.query("UPDATE bb_jobs SET state='running',lease_token=$2,lease_until=now()+interval '120 seconds' WHERE id=$1",[id,lease]);});return {kind:'job' as const,id,token:lease};};
+ const claimJob=async(p:Pool,id:string)=>{const lease=randomUUID();await transaction(p,async client=>{await executionClaimGate(client,p);await client.query("UPDATE bb_jobs SET state='running',lease_token=$2,lease_until=now()+interval '120 seconds' WHERE id=$1",[id,lease]);});await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1",[id]);return {kind:'job' as const,id,token:lease};};
  await t.test('unknown Run binds ACK before node registration; first service alone is not ready',async()=>{
   await create(a);const one=await enroll(a,'one');assert.equal((await control.snapshot()).nodes[0]!.state,'starting');
   await assert.rejects(claimJob(one,await addJob()),/not ready/);
@@ -72,6 +72,7 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
  const budgetA1=new PgModelCallBudget(a1),budgetA2=new PgModelCallBudget(a2),budgetB=new PgModelCallBudget(b1);
  await t.test('node four is shared across processes, and default global four blocks another node',async()=>{
   for(let k=0;k<4;k++)permits.push(await(k%2?budgetA2:budgetA1).acquire(undefined,'a:'+k,leasesA[k]));
+  await permits[0]!.renew();assert.equal(permits[0]!.signal.aborted,false);
   await assert.rejects(claimJob(a1,await addJob()),/claim slots full/);
   const leaseB=await claimJob(b1,await addJob()),cancel=new AbortController();cancels.push(cancel);
   let granted=false;const waiting=budgetB.acquire(cancel.signal,'b:default',leaseB).then(async p=>{granted=true;await p.release();},()=>{});
@@ -135,6 +136,7 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
   const attempt=randomUUID();await pool.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status) VALUES($1,'synthetic-owner',$2,'synthetic-call',1,'pending_reconcile')",[attempt,lease.id]);
   const before=(await pool.query('SELECT row_to_json(a) value FROM bb_model_call_attempts a WHERE id=$1',[attempt])).rows[0].value;
   const n=(await control.snapshot()).nodes.find(n=>n.identity.instance_id===b.instance_id)!;const lost=await markExecutionNodeLost(pool,b,n.revision);
+  await assert.rejects(p.renew(),/Model capacity holder lost/);assert.equal(p.signal.aborted,true);
   let op=await submitFencedExecutionStop(pool,b,'lost-stop',lost.revision,'stop');op=await control.claimCloudDispatch(op.operation_id,op.revision);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,1);
   await finish(op,b);assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,0);

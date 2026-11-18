@@ -40,7 +40,9 @@ const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MA
 const MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES = 512 * 1024;
 const modelGatewayExecLogReserve = (maxBytes: number) => maxBytes >= 4 * 1024 * 1024 ? MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES : 0;
 /** A completed turn produced a known-invalid file, not an unknown provider outcome. */
-export class CodexOutputValidationError extends Error {}
+export class CodexOutputValidationError extends Error {
+  constructor(message:string,readonly collectionDiagnostic?:{code:string;file?:string;field?:string;rule?:string}){super(message);}
+}
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
 
 export type CodexCredential = { kind: 'env'; name: string } | { kind: 'auth_file'; path: string } | { kind: 'command'; path: string; oauth_file: string };
@@ -763,7 +765,12 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: {
+    onExited?: (cwd:string,intent:ProviderCallIntent,evidence:import('./model-workspace-evidence.js').WorkspaceExit)=>Promise<void>;
+    onCollectionFailure?: (cwd:string,intent:ProviderCallIntent,error:unknown)=>Promise<string|null>;
+    prepareCollectionRepair?: (prior:PriorAttempt)=>Promise<string|null>;
+    recoverCollection?: (prior:PriorAttempt)=>Promise<{value:unknown;evidence:import('./model-workspace-evidence.js').WorkspaceExit}|null>;
+    completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -854,6 +861,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
 
   const prior = await withPerformanceSpan('model.attempt.lookup', {}, () => journal.latestAttempt(input.logical_call_id));
   let attemptNo = 1;
+  let collectionFeedback:string|null=null;
   if (prior) {
     if (prior.status === 'completed') {
       const done = await withPerformanceSpan('model.result.replay', { call_id: prior.call_id, attempt_no: prior.attempt_no }, async span => {
@@ -870,6 +878,21 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       if (done && !input.reviewTools && !input.materialToolsTrace) return { status: 'reused', value: done.value, error_code: null, attempts, thread_id: null, codex_home: null };
       return { status: 'needs_reconcile', value: null, error_code: 'MODEL_PRIOR_ATTEMPT_UNRESOLVED', attempts, thread_id: null, codex_home: null };
     }
+    if(prior.status==='pending_reconcile'&&input.fileWorkspace?.recoverCollection){
+      const recovered=await input.fileWorkspace.recoverCollection(prior);
+      if(recovered){
+        const {observation,runtime}=recovered.evidence;
+        if(observation.call_id!==prior.call_id||observation.attempt_no!==prior.attempt_no||!recovered.evidence.completed
+          ||runtime.exit_code!==0||observation.finish_reason!=='stop')throw Error('WORKSPACE_RECOVERY_CONFLICT');
+        const ref=await journal.storeResult(observation,Buffer.from(JSON.stringify(recovered.value)),input.result_schema_version);
+        const obs:ProviderCallObservation={...observation,...ref,outcome:observation.usage.status==='measured'?'completed':'pending_reconcile',
+          error_code:observation.usage.status==='measured'?null:'MODEL_USAGE_PENDING'};
+        // Runtime is append-only. Preserve the original invocation's timing and exit.
+        await journal.recordObservation(obs);
+        return {status:obs.outcome==='completed'?'reused':'needs_reconcile',value:recovered.value,error_code:obs.error_code as ModelAdapterErrorCode|null,
+          attempts,thread_id:null,codex_home:null};
+      }
+    }
     if (prior.status === 'pending_reconcile') {
       // Intent committed but the worker died before any observation: the call may have been
       // sent. Record that fact once and hand the job to reconciliation; never resend blindly.
@@ -879,11 +902,12 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       }
       return { status: 'needs_reconcile', value: null, error_code: 'MODEL_PRIOR_ATTEMPT_UNRESOLVED', attempts, thread_id: null, codex_home: null };
     }
+    if(prior.status==='failed'&&prior.attempt_no===1)collectionFeedback=await input.fileWorkspace?.prepareCollectionRepair?.(prior)??null;
     attemptNo = prior.attempt_no + 1;
   }
   // An explicit disposition permits exactly one further send beyond the normal re-ask budget.
   const maxAttempts = (prior?.operator_retry && prior.status === 'failed' ? attemptNo : 1) +
-    (input.output.kind === 'json' ? c.max_schema_reasks : 0);
+    (input.output.kind === 'json' ? c.max_schema_reasks : input.fileWorkspace?.prepareCollectionRepair&&(!prior||collectionFeedback)?1:0);
   if (attemptNo > maxAttempts) return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: null, codex_home: null };
 
   await mkdir(c.work_root, { recursive: true, mode: 0o700 });
@@ -892,7 +916,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
   const persistent = session.mode !== 'ephemeral';
   const cancelledResult = (): ContainedCallResult => ({ status:'needs_reconcile',value:null,error_code:'MODEL_CANCELLED',attempts,thread_id:threadId,codex_home:persistent?codexHome:null });
   if (!codexHome && persistent) codexHome = await mkdtemp(join(c.work_root, 'session-'));
-  let prompt = input.prompt;
+  let prompt = input.prompt+(collectionFeedback?'\n'+collectionFeedback:'');
   const initialAttemptNo = attemptNo;
   try {
     for (; attemptNo <= maxAttempts; attemptNo++) {
@@ -900,6 +924,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
       const attemptResult = await withPerformanceSpan<ContainedCallResult | null>('model.attempt',
         { logical_call_id: input.logical_call_id, call_id: intent.call_id, attempt_no: attemptNo, schema_reask: attemptNo > initialAttemptNo }, async attemptSpan => {
+      let retainAttemptWorkspace=false;
       let attemptStatus: Parameters<typeof attemptSpan.end>[0];
       let attemptAttributes: Record<string, unknown> = {};
       const cancelAttempt = () => { attemptStatus = 'cancelled'; return cancelledResult(); };
@@ -1030,6 +1055,21 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
         }
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
+        const exitRuntime:ModelAttemptRuntime={adapter:'codex_exec',adapter_version:'codex-file-authoring-1',model_provider:c.model_provider,
+          model_config_version:c.model_config_version,provider_request_id_status:'unknown',framework_thread_id:raw.thread_id,
+          started_at:raw.started_at,duration_ms:raw.duration_ms,exit_code:raw.exit_code,exit_signal:raw.exit_signal,
+          finish_reason:obs.finish_reason,error_code:obs.error_code,tool_attempts:raw.tool_attempts,pricing_status:'unknown'};
+        if(input.fileWorkspace?.onExited&&(raw.exit_code!==null||['SIGTERM','SIGKILL'].includes(raw.exit_signal??''))){
+          try{await input.fileWorkspace.onExited(cwd,intent,{observation:obs,runtime:exitRuntime,
+            completed:cls.outcome==='completed'&&!input.signal?.aborted&&!executionSignal?.aborted&&raw.exit_code===0});}
+          catch{
+            // Preserve a local last copy if private storage itself is unavailable.
+            // It is evidence only and must never authorize a model send.
+            retainAttemptWorkspace=true;
+            await writeFile(join(cwd,'workspace-recovery-failure.json'),JSON.stringify({intent,reason:'capture_failed'}),{mode:0o600,flag:'wx'}).catch(()=>{});
+          }
+        }
+
         if (cls.outcome === 'completed') {
           try {
             if(input.fileWorkspace)cls.value=await withPerformanceSpan('model.output.collect', {}, () => input.fileWorkspace!.collect(cwd,intent,{text:raw.last_message??'',diagnostics:raw.file_diagnostics}));
@@ -1038,6 +1078,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
             obs = { ...obs, ...await withPerformanceSpan('model.result.persist', {}, () => journal.storeResult(intent, Buffer.from(JSON.stringify(persisted)), input.result_schema_version)) };
           }
           catch (error) {
+            try{collectionFeedback=await input.fileWorkspace?.onCollectionFailure?.(cwd,intent,error)??null;}catch{/* Preserve the original collector outcome. */}
             obs = error instanceof CodexOutputValidationError
               ? { ...obs, outcome:'failed',error_code:'MODEL_OUTPUT_SCHEMA_INVALID' }
               : { ...obs, outcome:'pending_reconcile',error_code:'MODEL_RESULT_STORE_FAILED' };
@@ -1046,7 +1087,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         }
         if (input.signal?.aborted || executionSignal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.reviewCompletionCheck ? 'codex-review-file-2' : input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
-        const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
+        const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts && (!input.fileWorkspace||!!collectionFeedback);
         await withPerformanceSpan('model.runtime.persist', {}, () => journal.recordRuntime(intent, runtime));
         await withPerformanceSpan('model.observation.persist', {}, () => journal.recordObservation(obs, { retryable }));
         attempts.push(attemptRecord(intent, c, runtime, obs));
@@ -1055,7 +1096,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           let feedback='Your previous reply failed output validation. Reply again with only the complete JSON value required by the schema.';
           if(['json_parse','missing_message'].includes(invalidCategory))feedback='Your previous reply was not a single valid JSON value. Reply again with only the complete JSON value required by the schema.';
           else if(output.kind==='json'&&output.validationFeedback)try{feedback=output.validationFeedback(parsedOutput)?.slice(0,2000)||feedback;}catch{ /* Diagnostics cannot weaken validation or stop durable retry. */ }
-          prompt = `${input.prompt}\n\n${REASK_MARKER} ${feedback}`;
+          prompt = `${input.prompt}\n\n${REASK_MARKER} ${collectionFeedback??feedback}`;
           attemptStatus = 'failed'; attemptAttributes = { error_code: obs.error_code, result_status: 'schema_reask_requested' };
           return null;
         }
@@ -1065,7 +1106,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         return { status, value: status === 'completed' ? cls.value : null, ...(status==='completed' && reviewToolTrace?{reviewToolTrace}:{}), error_code: obs.error_code as ModelAdapterErrorCode | null, attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
       } finally {
         await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
-        if (attemptDir) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
+        if (attemptDir&&!retainAttemptWorkspace) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
         if (attemptStatus) attemptSpan.end(attemptStatus, attemptAttributes);
         else if (executionSignal?.aborted) attemptSpan.end('cancelled');
       }

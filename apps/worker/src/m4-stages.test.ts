@@ -68,6 +68,7 @@ async function fixture(kind:'document'|'qa'='document') {
     persisted.push({sql,args});
     if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
     if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
+    if(sql.includes('FROM bb_run_model_activity'))return {rows:[{waiting:0,active:0}]};
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
     if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
@@ -156,7 +157,9 @@ test('workpaper CLI verifies source, coverage, template and links; the private n
       assert.equal(input.materials[0].purpose,'source_prospectus');await outputWords(f.directory);
       assert.equal(JSON.parse(await readFile(join(f.directory,'source-spans.json'),'utf8')).spans[0].text,text);
       assert.ok(input.knowledge.template_path);assert.ok((await readFile(join(f.directory,input.knowledge.template_path))).length>1000);
-      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),/WORKPAPER_COVERAGE_REQUIRED|ENOENT|M4_OUTPUT_MISSING/);
+      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),error=>{
+        assert.deepEqual((error as {collectionDiagnostic?:unknown}).collectionDiagnostic,{code:'workpaper_coverage_missing_or_invalid',file:'workpaper-coverage.json',rule:'safe_json_file'});return true;
+      });
       await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(f.directory)})/'output/document.docx'\nd=Document(p);d.paragraphs[0].text=${JSON.stringify(text)};d.save(p)`],{cwd:root,timeout:30000});
       await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
       await writeFile(join(f.directory,'output/workpaper-coverage.json'),JSON.stringify({reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]}));
@@ -218,9 +221,11 @@ test('M4 missing output is honest, readonly input tampering fails and changed pi
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};
       }})});
       if(action==='tamper')await assert.rejects(stage.run(f.ctx),/INPUT_REVISION_CONFLICT/);
-      else {const result=await stage.run(f.ctx);if(action==='method'){assert.equal(result.kind,'pause');assert.equal(calls,0);}
-        else{assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();f.ctx.values.set('model_generation',result.value);
-          assert.deepEqual(await m4DocumentDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});}}
+      else if(action==='missing')await assert.rejects(stage.run(f.ctx),error=>{
+        assert.ok(error instanceof Error);assert.equal(error.message,'m4_document_missing_or_unsafe');
+        assert.equal((error as {collectionDiagnostic?:{file:string}}).collectionDiagnostic?.file,'document.docx');return true;
+      });
+      else {const result=await stage.run(f.ctx);assert.equal(result.kind,'pause');assert.equal(calls,0);}
     }finally{await f.clean();}
   }
 });
