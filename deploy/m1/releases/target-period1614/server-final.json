@@ -1,0 +1,39 @@
+{
+  "registry_sha256": "63194cb1022acf167c27fe30fd981dc38dc582f0153180b0c03fdb3f83483122",
+  "pending": false,
+  "locks": {
+    "config.lock": "free",
+    "deploy.lock": "free"
+  },
+  "containers": [
+    {
+      "name": "bb-main-web-1",
+      "id": "eab5eda48513bd8dbed7c64c41c84ff184b51a20a4cf35065caef9f97ccd9dea",
+      "running": true,
+      "health": "healthy",
+      "restarts": 0
+    },
+    {
+      "name": "bb-main-api-1",
+      "id": "f8d26aab984d8bbf6188f1970469d76e7123e216fc96512f91b085289007bc38",
+      "running": true,
+      "health": "healthy",
+      "restarts": 0
+    },
+    {
+      "name": "bb-main-ops-1",
+      "id": "fa0d6516da6f9c762804dc5aec143c5ff0d7391996c25de28b2427ab17b5d406",
+      "running": true,
+      "health": null,
+      "restarts": 0
+    },
+    {
+      "name": "bb-main-postgres-1",
+      "id": "4d58b1af9c3bb0f2fc4fae50be6ce1eaf04dd4d323cdada64cfee6b38a4e786e",
+      "running": true,
+      "health": "healthy",
+      "restarts": 0
+    }
+  ],
+  "rollback_retained": true
+}

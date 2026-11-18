@@ -1,0 +1,57 @@
+{
+  "owner": "target1614-web",
+  "phase": "deployed_and_verified",
+  "at": "2026-11-18T14:19:17.563778+00:00",
+  "source_commit": "9d88608a68cbdf437512683bb3eea7bc19da4877",
+  "source_pr": 1614,
+  "scope": "web labels only",
+  "manifest_sha256": "ce762b83771595d3f90967736594074725b7e2308c42ca73a4a1daec3843ba22",
+  "web_container": "eab5eda48513bd8dbed7c64c41c84ff184b51a20a4cf35065caef9f97ccd9dea",
+  "web_image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be",
+  "files": [
+    {
+      "bytes": 360438,
+      "path": "assets/api-BvmZwZII.js",
+      "sha256": "4c430161aabec0e0ec4ab2cbfb685195c9c4a28fbbb4e1dacba2ebb96b0f7360"
+    },
+    {
+      "bytes": 1773500,
+      "path": "assets/main-CkDxpGTE.js",
+      "sha256": "ef2deee5152f361ac4d022b2664bfa20deab331646f4fda1be7d64a07a05c593"
+    },
+    {
+      "bytes": 482656,
+      "path": "assets/main-Coj1xGwZ.css",
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e"
+    },
+    {
+      "bytes": 670,
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f"
+    },
+    {
+      "bytes": 557,
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161"
+    },
+    {
+      "bytes": 716,
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021"
+    },
+    {
+      "bytes": 1106,
+      "path": "index.html",
+      "sha256": "1ab887a56e1ae378bcaeedb9179491fc52e094cf36593e208d534fee0db1cb27"
+    }
+  ],
+  "other_services_preserved": true,
+  "migrations": 0,
+  "new_dependencies": 0,
+  "real_model_calls": 0,
+  "full_quality_gate_passed": false,
+  "user_acceptance_recorded": false,
+  "scoped_browser_tests_passed": 12,
+  "rollback_config": "/var/lib/bondbuddy/target1614-20261118/private/web.before.compose.private.json",
+  "registry_after_sha256": "63194cb1022acf167c27fe30fd981dc38dc582f0153180b0c03fdb3f83483122"
+}
