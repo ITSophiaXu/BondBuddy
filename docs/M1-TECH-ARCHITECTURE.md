@@ -982,3 +982,9 @@ The explicit standalone four-lane profile sets `BB_UPLOAD_CONFIRMATION_CONCURREN
 ## 细粒度性能追踪（#1415）
 
 运行性能使用独立 span/session 存储和有界异步写入器，沿用 `log_reader` 与日志保留策略；业务阶段事件和模型强制证据语义不变。字段、时间口径、采集边界、管理 API 和发布顺序见 [细粒度任务性能追踪](FINE-STEP-PERFORMANCE.md)。
+
+### PDF material resolution advisory (2026-11-18)
+
+Per [the user decision](product-decisions/2026-11-18-pdf-quality-warning.md), uploaded PDFs receive a bounded raster-resolution probe after owner/version/SHA verification and before native parsing. `python/bondbuddy_pdf_quality` uses existing PDFium; the worker enforces a 20-second subprocess deadline and 128 KiB protocol budget. A `pdf_quality` checkpoint is retained across parser failures/retries and exposed as optional `MaterialParseJobResponse.pdf_quality`, validated by the single contract schema. Missing/partial/unavailable inspection is never a quality pass. No database migration or paid/model call is introduced. Existing jobs without a checkpoint remain valid; no production job is backfilled or rewritten.
+
+The material row displays affected page numbers and recommends electronic originals or 300 DPI rescanning. It does not change run admission, parsing/OCR outcomes, billing or error recovery. Only large low-resolution raster areas trigger the advisory, including tiled scans and Form transforms; vector text and small low-resolution logos do not. This does not certify focus, compression quality, OCR accuracy or completeness, and does not resolve the existing PDFMiner timeout in #1567.

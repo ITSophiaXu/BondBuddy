@@ -128,3 +128,16 @@ test('PATCH sends the contract profile version as a decimal If-Match header', as
   assert.equal(new Headers(request?.init.headers).get('If-Match'), '12');
   assert.equal(request?.init.method, 'PATCH');
 });
+
+
+test('low raster quality warns with page and replacement advice, preserving processing state', async t => {
+  const pdf_quality = {version:'pdf-raster-quality-1' as const,status:'partial' as const,page_count:107,checked_pages:7,low_resolution_pages:[{page:7,dpi:144}]};
+  for(const state of ['running','failed','succeeded'] as const){
+    const controller=setup(t,{materialParseJob:async()=>({...job,state,pdf_quality,error_code:state==='failed'?'MATERIAL_PARSE_TIMEOUT':null})});
+    controller.sync([material]);await tick();const html=controller.render(material);
+    assert.match(html,/第 7 页扫描图片清晰度可能不足/);assert.match(html,/电子原版/);assert.match(html,/300 DPI/);assert.match(html,/尚未覆盖全文/);
+    assert.doesNotMatch(html,/材料已核验|清晰度通过/);
+    if(state==='failed') assert.match(html,/文件处理超时/);
+    if(state==='running') assert.match(html,/处理中/);
+  }
+});

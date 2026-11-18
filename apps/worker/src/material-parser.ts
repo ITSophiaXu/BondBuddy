@@ -71,6 +71,8 @@ export interface MaterialParserDependencies {
   blobs: MaterialParserBlobStore;
   /** Defaults to the worker's versioned Python parser bridge. */
   parser?: AuthorizedMaterialParser;
+  /** Internal advisory hook, after immutable bytes are verified and before native parsing. */
+  onStagedPdf?: (path: string) => Promise<void>;
   /** Optional private cache. Callers must supply deployment-controlled parser/OCR/basis versions. */
   parseCache?: { dependencies: ParseCacheDependencies; versions: ParseCacheVersions };
   /** Private staging directory; defaults to BB_PARSE_STAGING_DIR, then the OS temporary directory. */
@@ -225,6 +227,7 @@ export async function parseAuthorizedMaterialToStream(
     const authorizedPath=join(directory,'source');
     await stageMaterial(dependencies.blobs,row,authorizedPath);
     request.material.authorized_local_path=authorizedPath;
+    if (row.media_type === 'application/pdf') await dependencies.onStagedPdf?.(authorizedPath);
     const stream=await runDocumentParserToFile(request,join(directory,'records.ndjson'),{
       maxOutputBytes:envBytes('BB_PARSE_STREAM_MAX_OUTPUT_BYTES',M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES),
     });
@@ -270,6 +273,7 @@ export async function parseAuthorizedMaterial(
     const authorizedPath = join(directory, row.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       ? 'source.xlsx' : 'source');
     await stageMaterial(dependencies.blobs, row, authorizedPath);
+    if (row.media_type === 'application/pdf') await dependencies.onStagedPdf?.(authorizedPath);
     // Bytes are verified before a cache hit is trusted, as before streaming.
     if (cacheContext !== undefined) {
       try {

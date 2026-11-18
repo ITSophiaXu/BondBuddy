@@ -93,9 +93,14 @@ export class MaterialProcessing {
     const key = materialProcessingKey(material), entry = this.entries.get(key);
     const summary = entry?.job ? jobSummary(entry.job) : ['pending', '正在读取处理状态…', ''];
     const [tone, title, hint] = entry?.error ? ['attention', '处理状态暂不可用', entry.error] : summary;
+    const quality = !entry?.error ? entry?.job?.pdf_quality : undefined;
+    const affected = quality?.low_resolution_pages ?? [];
+    const pageList = affected.slice(0, 8).map(item => item.page).join('、');
+    const qualityHint = affected.length ? `第 ${pageList}${affected.length > 8 ? ' 等' : ''} 页扫描图片清晰度可能不足，可能影响文字和金额识别。建议更换电子原版，或使用 300 DPI 重新扫描；仅放大或重新保存不能恢复细节。${quality?.status === 'partial' ? '清晰度检查尚未覆盖全文。' : ''}` : '';
     const canRefresh = entry?.error || entry?.job && ['paused', 'failed', 'cancelled'].includes(entry.job.state);
     return `<div class="material-processing" data-material-processing="${esc(key)}" data-tone="${tone}">
       <p class="processing-title" role="status">${esc(title)}</p>${hint ? `<p class="processing-hint">${esc(hint)}</p>` : ''}
+      ${qualityHint ? `<p class="processing-hint material-quality-warning" role="note">${esc(qualityHint)}</p>` : ''}
       ${canRefresh ? `<button type="button" class="text-button" data-processing-retry="${esc(key)}" ${entry.loading ? 'disabled' : ''}>${entry.loading ? '正在刷新…' : '刷新状态'}</button>` : ''}
     </div>`;
   }
