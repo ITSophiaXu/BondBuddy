@@ -75,6 +75,7 @@ def findings(markdown):
         result.append(dict(id=f'R{len(result)+1:03d}', category=category_label(fields.get('复核类别')),
                            title=re.sub(r'^R\d+\s*[·.、:]\s*', '', title), original=original,
                            replacement=fields.get('替换文本', ''), reason=fields.get('问题说明', title),
+                           original_location=fields.get('原文位置', ''),
                            evidence=evidence, missing=missing,
                            uncertain=fields.get('处理方式') != '直接修改' or bool(missing) or not evidence,
                            paragraph_id=None, decision='suggested', manual_text='', applied=False, limitation=''))

@@ -122,6 +122,104 @@ class ReviewCorrectionTests(unittest.TestCase):
         s=build(self.source,self.request(issue('重复','相同内容','更新')+issue('资产1','总资产为12亿元。','更新1')+issue('资产2','12亿元','13亿元')),self.path)
         self.assertTrue(all(not i['applied'] and i['limitation'] for i in s['issues']))
         self.assertIn('总资产为12亿元。',self.text('clean.docx'))
+
+    def location_document(self, repeated_cell=False, repeated_caption=False):
+        d=Document()
+        d.add_paragraph('第五节 发行人主要财务情况\t9')  # TOC, not a scope boundary
+        d.add_paragraph('第四节 发行人基本情况')
+        d.add_paragraph('期间费用为11.12万元。')
+        d.add_paragraph('第五节 发行人主要财务情况')
+        d.add_paragraph('期间费用为11.12万元。')
+        for _ in range(2 if repeated_caption else 1):
+            d.add_paragraph('期间费用明细情况')
+            d.add_paragraph('单位：万元、%')
+            t=d.add_table(rows=2,cols=3)
+            for c,v in zip(t.rows[0].cells,['项目','2026年度','2025年度']):c.text=v
+            for c,v in zip(t.rows[1].cells,['合计','11.12','11.12' if repeated_cell else '10.00']):c.text=v
+        d.add_paragraph('第六节 资信状况')
+        d.add_paragraph('期间费用为11.12万元。')
+        d.save(self.source)
+
+    def located_issue(self, original='11.12', location='第五节「发行人主要财务情况」—「期间费用明细情况」，合计行2026年度金额列'):
+        return issue('期间费用',original,original.replace('11.12','11.11'))+'- 原文位置：'+location+'\n'
+
+    def test_exact_table_caption_disambiguates_numeric_quote_and_preserves_pair(self):
+        from bondbuddy_file_authoring.check import package, stories
+        self.location_document();before=self.source.read_bytes()
+        s=build(self.source,self.request(self.located_issue()),self.path)
+        self.assertTrue(s['issues'][0]['applied'])
+        self.assertIn('期间费用明细情况',s['issues'][0]['original_location'])
+        self.assertEqual(Document(self.path/'clean.docx').tables[0].cell(1,1).text,'11.11')
+        self.assertEqual(self.text('clean.docx').count('期间费用为11.12万元。'),3)
+        self.assertEqual(stories(package(self.path/'revision.docx'),True),stories(package(self.path/'clean.docx')))
+        self.assertEqual(stories(package(self.path/'revision.docx'),False),stories(package(self.path/'baseline.docx')))
+        self.assertEqual(before,self.source.read_bytes())
+        # A saved snapshot keeps its source-verifiable location for free export.
+        r=self.request('');r.update(editor=s,decisions=[dict(id='R001',decision='suggested',manual_text='')])
+        exported=build(self.source,r,self.path)
+        self.assertEqual(exported['issues'],s['issues'])
+
+    def test_repeated_numeric_cells_or_captions_remain_ambiguous(self):
+        for cells,captions in [(True,False),(False,True)]:
+            with self.subTest(cells=cells,captions=captions):
+                self.location_document(cells,captions)
+                s=build(self.source,self.request(self.located_issue()),self.path)
+                self.assertFalse(s['issues'][0]['applied']);self.assertIsNone(s['issues'][0]['paragraph_id'])
+                self.assertEqual(Document(self.path/'clean.docx').tables[0].cell(1,1).text,'11.12')
+
+    def test_caption_inside_full_width_first_row_is_verified_without_changing_grid(self):
+        d=Document();d.add_paragraph('第五节 发行人主要财务情况');d.add_paragraph('期间费用为11.12万元。')
+        t=d.add_table(rows=3,cols=3)
+        caption=t.cell(0,0).merge(t.cell(0,2));caption.text='期间费用明细情况';caption.add_paragraph('单位：万元、%')
+        for c,v in zip(t.rows[1].cells,['项目','2026年度','2025年度']):c.text=v
+        for c,v in zip(t.rows[2].cells,['合计','11.12','10.00']):c.text=v
+        d.save(self.source)
+        s=build(self.source,self.request(self.located_issue()),self.path)
+        self.assertTrue(s['issues'][0]['applied'])
+        out=Document(self.path/'clean.docx').tables[0]
+        self.assertEqual(out.cell(2,1).text,'11.11');self.assertEqual(out.cell(0,0).text,caption.text)
+        self.assertEqual(len(out.rows),3);self.assertEqual(out.cell(0,0)._tc.tcPr.gridSpan.val,3)
+        # A partial-width / unverified first-row cell is not a trusted caption.
+        t.cell(0,0)._tc.tcPr.gridSpan.val=2;d.save(self.source)
+        rejected=build(self.source,self.request(self.located_issue()),self.path)
+        self.assertFalse(rejected['issues'][0]['applied'])
+
+    def test_wrong_or_missing_location_never_prefers_a_cell_over_prose(self):
+        self.location_document()
+        for location in ['', '物理第9页', '第四节「发行人基本情况」—「期间费用明细情况」',
+                         '第五节「发行人主要财务情况」—「不存在的表格」',
+                         '第五节「发行人主要财务情况」—「期间费用明细情况」—「不存在的列」']:
+            with self.subTest(location=location):
+                s=build(self.source,self.request(self.located_issue(location=location)),self.path)
+                self.assertFalse(s['issues'][0]['applied']);self.assertIsNone(s['issues'][0]['paragraph_id'])
+
+    def test_full_section_title_disambiguates_prose_but_old_snapshot_stays_safe(self):
+        self.location_document()
+        s=build(self.source,self.request(self.located_issue('期间费用为11.12万元。','第五节「发行人主要财务情况」')),self.path)
+        self.assertTrue(s['issues'][0]['applied'])
+        self.assertEqual(self.text('clean.docx').count('期间费用为11.11万元。'),1)
+        self.assertEqual(self.text('clean.docx').count('期间费用为11.12万元。'),2)
+        del s['issues'][0]['original_location']
+        r=self.request('');r.update(editor=s,decisions=[dict(id='R001',decision='suggested',manual_text='')])
+        old=build(self.source,r,self.path)
+        self.assertFalse(old['issues'][0]['applied']);self.assertIsNone(old['issues'][0]['paragraph_id'])
+
+    def test_legacy_location_recovery_requires_matching_original_report_and_keeps_decisions(self):
+        self.location_document();report=self.located_issue()
+        s=build(self.source,self.request(report),self.path)
+        del s['issues'][0]['original_location']
+        r=self.request('');r.update(editor=s,original_report=report,decisions=[dict(id='R001',decision='suggested',manual_text='')])
+        restored=build(self.source,r,self.path)
+        self.assertTrue(restored['issues'][0]['applied'])
+        self.assertNotIn('original_location',s['issues'][0])
+        r['decisions'][0]['decision']='original'
+        retained=build(self.source,r,self.path)
+        self.assertFalse(retained['issues'][0]['applied'])
+        self.assertEqual(Document(self.path/'clean.docx').tables[0].cell(1,1).text,'11.12')
+        r['decisions'][0]['decision']='suggested'
+        r['original_report']=report.replace('合成财务报表','另一份财务报表')
+        mismatch=build(self.source,r,self.path)
+        self.assertFalse(mismatch['issues'][0]['applied']);self.assertIsNone(mismatch['issues'][0]['paragraph_id'])
     def test_unlocated_findings_do_not_attach_to_first_paragraph(self):
         report=issue('重复','相同内容','更新')+issue('资产','总资产为12亿元。','总资产为13亿元。')
         s=build(self.source,self.request(report),self.path)

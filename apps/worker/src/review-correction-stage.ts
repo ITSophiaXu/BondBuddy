@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { reviewEditor } from '@bondbuddy/api/review-editor';
+import { readReviewMarkdown } from '@bondbuddy/api/review-readable';
 import type { StageContext, StageOutcome } from './run-pipeline.js';
 import type { ReviewFileInput,ReviewFileResult } from './review-file-stage.js';
 
@@ -20,11 +21,20 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
   const saved=input.manifest.review.file_delivery!.export;
   const editor=saved?await reviewEditor(ctx.pool,ctx.run.owner_user_id,ctx.run.project_id,saved.source_run_id):undefined;
   if(saved&&editor?.sha256!==saved.editor_sha256)throw Error('INPUT_REVISION_CONFLICT');
+  let originalReport:string|undefined;
+  if(saved&&editor?.snapshot.issues.some(i=>!i.original_location)){
+    const rows=(await ctx.pool.query(`SELECT p.owner_user_id,p.project_id,p.run_id,p.call_id,p.result_ref,p.result_sha256,p.byte_size,r.input_hash
+      FROM bb_provider_result_refs p JOIN bb_runs r ON r.id=p.run_id AND r.owner_user_id=p.owner_user_id AND r.project_id=p.project_id
+      WHERE p.owner_user_id=$1 AND p.project_id=$2 AND p.run_id=$3 AND r.state IN ('succeeded','test_completed')
+      AND p.logical_call_id='review-file-v1' AND p.result_schema_version='codex-review-file-v1'`,
+      [ctx.run.owner_user_id,ctx.run.project_id,saved.source_run_id])).rows;
+    if(rows.length===1)originalReport=(await readReviewMarkdown(ctx.blobs,rows[0]))?.markdown;
+  }
   const directory=await mkdtemp(join(tmpdir(),'bb-review-export-'));
   try{
     const suffix=source.media_type==='application/pdf'?'.pdf':'.docx',path=join(directory,'source'+suffix);
     await writeFile(path,original,{mode:0o600});
-    await writeFile(join(directory,'request.json'),JSON.stringify({pin,filename:source.filename,...(editor?{editor:editor.snapshot,decisions:saved!.decisions}:{markdown:markdown?.toString('utf8')??''})}),{mode:0o600});
+    await writeFile(join(directory,'request.json'),JSON.stringify({pin,filename:source.filename,...(editor?{editor:editor.snapshot,decisions:saved!.decisions,original_report:originalReport}:{markdown:markdown?.toString('utf8')??''})}),{mode:0o600});
     const options={cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:300000,signal:ctx.signal,maxBuffer:1024*1024};
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
     await runFile(python,['-m','bondbuddy_file_authoring.review_corrections',path,join(directory,'request.json'),directory],options);

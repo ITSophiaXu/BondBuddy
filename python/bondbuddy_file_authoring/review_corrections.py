@@ -9,6 +9,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from .word_patch import Patcher, xml, serialized, paragraph_text, q, add_layout_comments
 from .correction_findings import category_label, findings
 from .correction_rounding import rounded_sum_limitation
+from .correction_locator import CorrectionLocator
 from bondbuddy_word_delivery.writer import normalize_old_revisions
 
 
@@ -66,6 +67,17 @@ def build(source, request, output):
         if previous['source_sha256'] != sha or previous['paragraphs'] != paragraphs:
             raise ValueError('INPUT_REVISION_CONFLICT')
         issues = copy.deepcopy(previous['issues'])
+        # Legacy snapshots discarded location. Recover only from the host's
+        # hash-verified original report, with every original finding field equal.
+        # Neither the old snapshot nor the user's saved decisions are rewritten.
+        recovered = {i['id']: i for i in findings(request.get('original_report', ''))}
+        for issue in issues:
+            old = recovered.get(issue['id'])
+            if not issue.get('original_location') and old and all(
+                issue.get(key) == old.get(key) for key in
+                ('title', 'category', 'original', 'replacement', 'reason', 'evidence', 'missing')
+            ):
+                issue['original_location'] = old['original_location']
     else:
         issues = findings(request['markdown'])
     if not issues:
@@ -73,6 +85,7 @@ def build(source, request, output):
     decisions = {d['id']: d for d in request.get('decisions', [])}
     if decisions and (len(decisions) != len(issues) or set(decisions) != {i['id'] for i in issues}):
         raise ValueError('REVIEW_DECISIONS_INVALID')
+    locator = CorrectionLocator(baseline)
     for issue in issues:
         issue.update(decisions.get(issue['id'], {}))
         issue.update(applied=False, limitation='', paragraph_id=None)
@@ -82,10 +95,8 @@ def build(source, request, output):
             limitation = rounded_sum_limitation(issue['original'], issue['replacement'], issue['evidence'])
             if limitation:
                 issue.update(uncertain=True, limitation=limitation)
-        matches = [p for p in paragraphs if issue['original'] and p['text'].count(issue['original']) == 1]
-        if len(matches) == 1 and sum(p['text'].count(issue['original']) for p in paragraphs) == 1:
-            issue['paragraph_id'] = matches[0]['id']
-        else:
+        issue['paragraph_id'] = locator.locate(issue['original'], issue.get('original_location', ''))
+        if not issue['paragraph_id']:
             issue['limitation'] = '原文无法唯一定位，保留原文；请下载后人工核对。'
     revised, clean = copy.deepcopy(baseline), copy.deepcopy(baseline)
     maps = [{f'p{i}': p for i, p in enumerate(r.iter(q('p')))} for r in (revised, clean)]
