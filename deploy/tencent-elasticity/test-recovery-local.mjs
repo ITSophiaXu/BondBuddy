@@ -15,6 +15,14 @@ function docker(args,{input,allowFailure=false,timeout=240000}={}){
 }
 const endpoint=docker(['context','inspect','--format','{{.Endpoints.docker.Host}}']).stdout.trim();
 if(!/^(?:npipe:|unix:\/\/\/var\/run\/docker.sock$)/.test(endpoint))throw Error('Local Docker required');
+// Snapshot built modules once, so Windows bind-mount metadata latency does not
+// consume test timeouts. Source/assets stay read-only; only these compiled paths
+// and dependencies are overlaid by private Linux tmpfs mounts.
+const runtimeDirs=['apps/api/dist','apps/worker/dist',...['contracts','domain','rule-pack-registry','rule-applicability-context'].map(p=>'packages/'+p+'/dist')];
+const packed=spawnSync('tar',['-cf',resolve(evidence,'compiled-runtime.tar'),...runtimeDirs],{cwd:root,encoding:'utf8',timeout:120000});
+if(packed.error||packed.status)throw Error('Compiled test snapshot failed: '+(packed.error?.message??packed.stderr));
+const selection=process.argv[2]??'all';
+if(!['all','m4','managed'].includes(selection))throw Error('Use all, m4 or managed');
 const created=[];let net=false;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 try{
@@ -27,19 +35,25 @@ try{
  console.log('PASS isolated PG16 migrations: '+migrations.length);
  const key=randomBytes(32).toString('base64');
  docker(['run','-d','--name',blob,'--network',network,'--network-alias','blob','-e',`AZURITE_ACCOUNTS=test:${key}`,'mcr.microsoft.com/azure-storage/azurite:3.35.0','azurite-blob','--blobHost','0.0.0.0','--skipApiVersionCheck']);created.push(blob);
- const setup='cp -a /deps/node_modules/. /code/node_modules/\nfor p in contracts domain rule-pack-registry rule-applicability-context; do ln -sfn /code/packages/$p /code/node_modules/@bondbuddy/$p; done\nln -sfn /code/apps/api /code/node_modules/@bondbuddy/api\nln -sfn /code/apps/worker /code/node_modules/@bondbuddy/worker\n';
+ const setup='set -eu\ntar --no-same-owner --no-overwrite-dir -xf /code/work/pool-recovery/compiled-runtime.tar -C /code\ncp -a /deps/node_modules/. /code/node_modules/\nfor p in contracts domain rule-pack-registry rule-applicability-context; do ln -sfn /code/packages/$p /code/node_modules/@bondbuddy/$p; done\nln -sfn /code/apps/api /code/node_modules/@bondbuddy/api\nln -sfn /code/apps/worker /code/node_modules/@bondbuddy/worker\n';
  const files=[
  'deploy/tencent-elasticity/controller.pg.test.mjs','deploy/tencent-elasticity/fenced-stop.pg.test.mjs','deploy/tencent-elasticity/run-completion.pg.test.mjs','deploy/tencent-elasticity/secret-retirement.test.mjs',
  'deploy/tencent-elasticity/enrollment.test.mjs','deploy/tencent-elasticity/controller.test.mjs','deploy/tencent-elasticity/bootstrap-warm-entry.test.mjs',
- 'apps/worker/dist/managed-run-recovery.pg.test.js','apps/worker/dist/model-capacity-billing.pg.test.js','apps/worker/dist/m4-pipeline.pg.test.js',
+ 'apps/worker/dist/model-capacity-billing.pg.test.js','apps/worker/dist/m4-pipeline.pg.test.js',
  'apps/api/dist/outcome-billing.pg.test.js'];
- const result=docker(['run','--rm','--name',name+'-tests','--network',network,'--tmpfs','/code/node_modules',
+ // Runtime recovery inspects the actual PID namespace; other test children must not look like live model processes.
+ const managed=['managed-recovery',['apps/worker/dist/managed-run-recovery.pg.test.js']];
+ const suites=selection==='m4'?[['m4-pipeline',['apps/worker/dist/m4-pipeline.pg.test.js']]]:selection==='managed'?[managed]:[['integration',files],managed];
+ for(const [suite,suiteFiles] of suites){
+ const result=docker(['run','--rm','--name',name+'-tests','--network',network,'--tmpfs','/code/node_modules:rw,exec,nosuid,nodev,size=512m',
+ ...runtimeDirs.flatMap(path=>['--tmpfs','/code/'+path+':rw,exec,nosuid,nodev,size=128m']),
  '--mount',`type=bind,source=${root},target=/code,readonly`,'-w','/code','-e','BB_TEST_DATABASE_URL=postgresql://postgres@pg/pool_test',
  '-e',`BB_TEST_AZURITE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=test;AccountKey=${key};BlobEndpoint=http://blob:10000/test;`,
- 'bb-pool-recovery-test:20261118','sh','-c',setup+'exec node --test --test-concurrency=2 '+files.join(' ')],{allowFailure:true,timeout:600000});
- writeFileSync(resolve(evidence,'integration.tap'),result.stdout+result.stderr);
+ 'bb-pool-recovery-test:20261118','sh','-c',setup+'exec node --test --test-concurrency=2 '+suiteFiles.join(' ')],{allowFailure:true,timeout:600000});
+ writeFileSync(resolve(evidence,suite+'.tap'),result.stdout+result.stderr);
  console.log(result.stdout.slice(-10000));if(result.stderr)console.log(result.stderr.slice(-3000));
- if(result.status)throw Error('Integration tests failed; see work/pool-recovery/integration.tap');
+ if(result.status||!/^# tests [1-9][0-9]*$/m.test(result.stdout)||!/^# fail 0$/m.test(result.stdout)||!/^# skipped 0$/m.test(result.stdout)||!/^# cancelled 0$/m.test(result.stdout))throw Error(suite+' tests failed or skipped; see work/pool-recovery/'+suite+'.tap');
+ }
 }finally{
  for(const c of [name+'-tests',...created.reverse()])docker(['rm','-f',c],{allowFailure:true});
  if(net)docker(['network','rm',network],{allowFailure:true});

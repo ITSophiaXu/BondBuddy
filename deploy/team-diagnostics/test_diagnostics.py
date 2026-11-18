@@ -305,11 +305,36 @@ class RecoveryTests(unittest.TestCase):
     def test_command_error_is_classified_without_echoing_arguments_or_stderr(self):
         with tempfile.TemporaryDirectory() as directory:
             executable=pathlib.Path(directory)/'ssh'
-            executable.write_text('#!/bin/sh\necho "Permission denied secret=never-print-this" >&2\nexit 255\n')
+            executable.write_text('#!/bin/sh\necho "Permission denied (publickey). secret=never-print-this" >&2\nexit 255\n')
             executable.chmod(0o700)
             with self.assertRaises(common.DiagnosticFailure) as result: common.command([str(executable),'private-argument'])
             self.assertEqual(common.failure_details(result.exception),{'stage':'archive_upload','code':'SSH_AUTH_DENIED','exit_status':255})
             self.assertNotIn('secret',str(result.exception))
+
+    def test_remote_command_denial_is_not_mislabeled_as_ssh_authentication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            executable=pathlib.Path(directory)/'ssh'
+            executable.write_text('#!/bin/sh\necho "archive: Permission denied" >&2\nexit 2\n')
+            executable.chmod(0o700)
+            with self.assertRaises(common.DiagnosticFailure) as result: common.command([str(executable)])
+            self.assertEqual(common.failure_details(result.exception),{'stage':'archive_upload','code':'COMMAND_EXIT','exit_status':2})
+
+    def test_invalid_ack_has_a_specific_reason_and_never_advances_cursor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db=archive.connect(pathlib.Path(directory)/'archive.sqlite3',write=True)
+            try:
+                with db: archive.record(db,'synthetic','a'*64,'worker',STAMP,1,'saved progress')
+                for reply,code in [(b'broken-secret','ACK_INVALID_JSON'),(b'[]','ACK_MISMATCH'),
+                                   (b'{"source":"synthetic","acknowledged":true}','ACK_MISMATCH'),
+                                   (b'{"source":"different","acknowledged":1}','ACK_MISMATCH')]:
+                    with self.subTest(reply=reply),self.assertRaises(common.DiagnosticFailure) as result:
+                        collector.sync(db,{'node':'synthetic'},lambda *args:reply)
+                    self.assertEqual(common.failure_details(result.exception),{'stage':'archive_ack','code':code})
+                    self.assertEqual(archive.checkpoint(db,'uploaded',0),0)
+                    self.assertNotIn('secret',str(result.exception))
+                self.assertTrue(collector.sync(db,{'node':'synthetic'},lambda *args:b'{"source":"synthetic","acknowledged":1}'))
+                self.assertEqual(archive.checkpoint(db,'uploaded',0),1)
+            finally: db.close()
 
     def test_preflight_returns_retry_only_before_exec(self):
         import execution_preflight

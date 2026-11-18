@@ -178,10 +178,12 @@ def ssh(config, operation, payload=None):
 def sync(db, config, send=ssh):
     after = archive.checkpoint(db, 'uploaded', 0)
     batch = archive.export_batch(db, config['node'], after)
-    reply = json.loads(send(config, 'ingest', canonical(batch).encode()))
+    response = send(config, 'ingest', canonical(batch).encode())
+    try: reply = json.loads(response)
+    except (ValueError, UnicodeError): raise DiagnosticFailure('archive_ack', 'ACK_INVALID_JSON') from None
     end = batch['records'][-1]['source_id'] if batch['records'] else after
-    if reply.get('source') != config['node'] or reply.get('acknowledged') != end:
-        raise ValueError('Central archive acknowledgement differs from batch')
+    if not isinstance(reply, dict) or reply.get('source') != config['node'] or type(reply.get('acknowledged')) is not int or reply['acknowledged'] != end:
+        raise DiagnosticFailure('archive_ack', 'ACK_MISMATCH')
     with db: archive.set_checkpoint(db, 'uploaded', end)
     return end == archive.checkpoint(db, 'sequence:' + config['node'], 0)
 

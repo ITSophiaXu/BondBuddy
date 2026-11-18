@@ -4,7 +4,7 @@
 
 ## 1. 为什么发生：可复核的因果链
 
-北京时间。shuoling 的任务 `f63c7a40-7ba3-46f7-975a-f880f2f064b3`、`9ca72455-8c3a-41da-ab55-9d55a7269d80` 分别17:17:28和17:23:05提交。18:48:23只读复核仍为queued、attempts=0、未绑定执行节点；holder和active session均0。并发配置为全局8、节点8，没有证据支持“账号并发额度不足”或“模型运行慢”。
+北京时间。shuoling 的任务 `f63c7a40-7ba3-46f7-975a-f880f2f064b3`、`9ca72455-8c3a-41da-ab55-9d55a7269d80` 分别17:17:28和17:23:05提交。19:47:09只读复核仍为queued、attempts=0、未绑定执行节点；holder和active session均0。并发配置为全局8、节点8，没有证据支持“账号并发额度不足”或“模型运行慢”。
 
 | 时间 | 原始证据 | 含义 |
 | --- | --- | --- |
@@ -21,7 +21,7 @@
 - `common.py::command` 抛出通用异常，`entry.py`只保留异常类，`collector.py`在上传前保存`source_status`。因此原SSH/同步失败的具体类别已经丢失。现存证据不能确定当时是网络、认证、远端命令还是ACK问题；本次不猜测。
 - `enrollment.mjs::issueNodeEnrollment` 复用原vault，`expires_at > now()+60000`不满足便抛错；`ops-handler.mjs` 遇到starting便重试原凭证并return。该异常又进入关闭`budget_available`的总catch。`budget_available=false`在此不能解释成现金预算耗尽。
 
-原始主机、SQL、TAT回执和脱敏分析保存在本机 `work/shuoling-queue-diagnosis-20261118`，不提交凭证、私有vault或客户原件。
+最新状态回执为`final-delivery-readonly-db.json`。原始主机、SQL、TAT回执和脱敏分析保存在本机 `work/shuoling-queue-diagnosis-20261118`，不提交凭证、私有vault或客户原件。
 
 ## 2. 为什么旧测试没有发现
 
@@ -29,11 +29,15 @@
 
 本次启动缺口是：lost ACK用例由测试手动再次调用sync；warm-bootstrap用例主要核对不可变启动字节和身份绑定。缺少真实systemd依赖失败→独立采集→连接恢复→一次执行启动的验收，也缺少超过注册TTL后仍有排队需求、双starting节点和第二节点调度的组合。
 
+本次实际执行还发现旧M4集成夹具未跟随成果计费升级：仅充值1积分并期待边生成边补款，当前完整报价为7,965积分，提交即402，下载断言未运行。已改为验证不足额提交被拒、完整报价预留、Word落库后崩溃重放、双文件实际下载/hash/归属、报价金额唯一结算；同范围重复提交拒绝并指向原任务，新范围独立报价验证，未知供应商用量仍保留为unknown。没有用旧固定4,500积分覆盖当前报价，也没有修改产品计费来迁就测试。
+
+CI配置确实存在：`.github/workflows/m4-core-pr.yml`配置PG/Blob并要求0 skip；但2026-11-18读取最近6次运行全部failure。最新[运行44289408037](https://github.com/ITSophiaXu/BondBuddy/actions/runs/44289408037)的core-linux没有任何step，GitHub check-run `134750397815`官方annotation为：`The job was not started because recent account payments have failed or your spending limit needs to be increased.` 因而不能将这些检查视为已执行通过。本chat没有修改账户付款或支出上限。develop保护读取另返回403（私有库套餐能力限制），不能从此次读取声称已经核实有效合并门禁。
+
 新增回归在真实systemd中首先复现旧依赖死锁，再应用实际installer与dropin；不以静态文本断言代替服务行为。测试中归档传输和模型命令为synthetic，重试间隔从30秒加速为1秒；systemd、安装/回滚和依赖关系是真实的。真实云启停与模型质量不属于本次本地测试结论。
 
 ## 3. 为什么不能让局部故障丢掉整项任务
 
-本次两个用户任务从未开始执行，没有已经生成的正文被启动故障删除。18:48快照积分为held，分别8,864和20,341，charged_points均NULL；预留不能称为已扣款，也不能称为已经退还。本补丁不改任务状态、用户余额、结算或租约。
+本次两个用户任务从未开始执行，没有已经生成的正文被启动故障删除。19:47快照积分为held，分别8,864和20,341，charged_points均NULL；预留不能称为已扣款，也不能称为已经退还。本补丁不改任务状态、用户余额、结算或租约。
 
 修复策略：
 
@@ -50,14 +54,28 @@
 | M4文件收集失败 #1592 | `workpaper-direct-output.ts`依次读`workpaper-result.json`、`workpaper-coverage.json`，校验schema/item_id/全文coverage；`codex-adapter.ts`将该类收集异常映射为MODEL_OUTPUT_SCHEMA_INVALID，随后finally清理工作区。M4没有接入fileWorkspace.onFailure | 不能从通用错误码或模型自述反推具体失败字段。该批历史记录已缺少完整收集拒绝证据，本次未宣称定位或修复该单；应独立补收集故障证据、保全及阶段恢复 |
 | 模型续租确认 #1540 | 当前`model-call-budget.ts`仍把续租确认异常视作取消信号；原缺陷已有真实PG延迟回包3/3注入证据，非腾讯特有 | 原Issue继续跟踪，不用提高并发或改启动脚本冒充已解决；本次保留其现有租约安全边界 |
 | 募集书恢复快照 #1341/#1343 | develop已具备file_authoring_recovery_captures支持/结果记录与相关测试；是否可续跑仍取决于完整且匹配的已保存快照 | 不把“字段存在”当作所有文种均可恢复；容量取消、M4收集异常等分支不能自动套用该保证 |
-| 已持久化成果后的交付/结算 | `m4-pipeline.pg.test.ts`核对崩溃后复用结果、实际下载、冻结积分归零、唯一收费、未知用量与reconciliation | 复用现有定向集成测试；synthetic模型，不证明真实DeepSeek内容质量，也不证明收集前损坏文件已获保全 |
+| 已持久化成果后的交付/结算 | `m4-pipeline.pg.test.ts`核对崩溃后复用结果、实际下载、冻结积分归零、唯一收费、未知用量与成果计费；模型容量集成另覆盖等待/暂停与租约切换 | 复用现有定向集成测试；synthetic模型，不证明真实DeepSeek内容质量，也不证明收集前损坏文件已获保全 |
 
 ## 5. 验证记录
 
 - `npm run build`：全仓构建通过，只有既有前端bundle大小提示。
-- Python诊断归档测试：37项通过，涵盖安全分类、上传状态持久化、未确认记录保留和前置等待边界。
+- Python诊断归档测试：40项通过，涵盖安全分类、远端命令/SSH认证区分、ACK格式及身份校验、上传状态持久化、未确认记录保留和前置等待边界。
 - 真实Linux/systemd：旧依赖死锁复现；恢复后只启动一次；运行失败不重启；installer回滚还原原依赖，4项通过。
-- Node/PG/Blob集成最终结果：见同批PR测试回执及本地 `work/pool-recovery/integration.tap`。提交前补齐准确计数，不把启动成功当作全链路通过。
+- Node/PG/Blob：其余87项通过；M4旧夹具修正后单独复验1/1通过、0 fail/skip/cancel，实际API/PG/Blob/双Word下载、崩溃复用、未知用量与唯一结算均运行。核心整轮`integration.tap`保留修正前M4失败，修正后的回执为`m4-pipeline.tap`，不改写旧失败记录。托管任务恢复在独立PID容器10/10通过、0 fail/skip/cancel，回执`managed-recovery.tap`。按上述分批最终结果，共98个唯一Node用例通过；不是一次整体绿灯回执。
+
+本地可复现命令（项目根目录；Docker必须为本机Linux引擎）：
+
+```powershell
+npm run build
+docker build -f deploy/team-diagnostics/Dockerfile.recovery-test -t bb-pool-recovery-test:20261118 .
+docker run --rm --network none --mount "type=bind,source=${PWD},target=/code,readonly" -e PYTHONDONTWRITEBYTECODE=1 -w /code/deploy/team-diagnostics --entrypoint python3 bb-pool-recovery-test:20261118 -m unittest -q test_diagnostics.py
+node deploy/tencent-elasticity/test-recovery-local.mjs
+# 定向复验可追加 m4 或 managed；每次都创建独立数据库与存储。
+```
+
+真实systemd回归需一次性容器，以`--network none --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock --tmpfs /tmp`启动上述镜像，源码只读挂载到`/code`，在其中运行`python3 /code/deploy/team-diagnostics/test_systemd_recovery.py`，完成后删除该专用容器。不要在工作主机或生产节点直接运行此测试；它会安装并回滚测试服务。
+
+本机npm安装遇到环境错误后，最终测试镜像只复用了已有Linux镜像的node_modules：已将该镜像和当前分支的package-lock逐包JSON比较，差异为0（文件SHA因格式不同而不同）。应用源码及dist均来自本分支的最终构建，没有复用旧应用代码。测试夹具另补OpenSSL，并为原生依赖挂载显式设置exec；最初noexec引发的argon2加载失败未计为通过。
 
 ## 6. 统一发布接续（本chat未执行）
 

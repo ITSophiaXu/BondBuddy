@@ -136,8 +136,8 @@ def command(args, timeout=30, input_bytes=None, max_bytes=8 * 1024 * 1024):
             if proc.returncode:
                 errors.seek(0); diagnostic = errors.read(65536).lower()
                 code = 'COMMAND_EXIT'
-                if stage == 'archive_upload':
-                    for phrase, category in [(b'permission denied', 'SSH_AUTH_DENIED'), (b'host key verification failed', 'SSH_HOST_KEY'),
+                if stage == 'archive_upload' and proc.returncode == 255:
+                    for phrase, category in [(b'permission denied (', 'SSH_AUTH_DENIED'), (b'host key verification failed', 'SSH_HOST_KEY'),
                                              (b'connection refused', 'SSH_REFUSED'), (b'connection timed out', 'SSH_TIMEOUT'),
                                              (b'no route to host', 'SSH_ROUTE'), (b'could not resolve hostname', 'SSH_DNS')]:
                         if phrase in diagnostic: code = category; break
