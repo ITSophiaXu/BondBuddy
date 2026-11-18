@@ -189,6 +189,7 @@ def build_manifest(source: Path):
             'sections': [{'part': part, 'properties': property_xml(section)}
                          for part, root in roots.items() for section in root.iter(q('sectPr'))],
             'resources': [{'part': part, 'sha256': sha(raw), 'byte_size': len(raw)} for part, raw in parts.items()],
-            'supported_operations': ['replace_text', 'replace_cell_text', 'insert_paragraph', 'insert_row', 'insert_column', 'add_comment'],
+            'supported_operations': ['replace_text', 'replace_cell_text', 'insert_paragraph', 'insert_row', 'insert_column',
+                                     'insert_table', 'delete_table', 'add_comment'],
             'unsupported_operations': ['change_cell_merges', 'move_section', 'edit_field'],
             'visual_review': 'not_run'}

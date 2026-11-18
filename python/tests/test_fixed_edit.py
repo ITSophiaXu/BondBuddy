@@ -371,6 +371,36 @@ class FixedEditTests(unittest.TestCase):
         restore_absent_property_shells(rejected, plan, 'word/document.xml')
         self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
 
+    def test_insert_table_creates_a_tracked_table_and_restores_on_reject(self):
+        anchor = self.node('项目\n2024年度\n净资产\n100', 'table')
+        output, receipt = self.generate([{'id': 'newtable', 'kind': 'insert_table', 'node_id': anchor['node_id'],
+                                          'before': anchor['text'], 'position': 'after',
+                                          'rows': [['项目', '2026年6月末'], ['净资产', '120']]}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        clean = Document(output / 'clean.docx')
+        self.assertEqual(len(clean.tables), 2)
+        self.assertEqual([[cell.text for cell in row.cells] for row in clean.tables[1].rows],
+                         [['项目', '2026年6月末'], ['净资产', '120']])
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        self.assertTrue(tracked.findall('.//' + q('trPr') + '/' + q('ins')))
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
+
+    def test_delete_table_marks_rows_deleted_and_reject_restores_the_table(self):
+        table = self.node('项目\n2024年度\n净资产\n100', 'table')
+        output, receipt = self.generate([{'id': 'droptable', 'kind': 'delete_table', 'node_id': table['node_id'],
+                                          'before': table['text']}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(Document(output / 'clean.docx').tables), 0)
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        self.assertTrue(tracked.findall('.//' + q('trPr') + '/' + q('del')))
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
+
     def test_style_and_paragraph_drift_reported_without_failing_delivery_command(self):
         self.log['no_changes_reason'] = '合成测试保留原稿，验证独立诊断。'
         output, receipt = self.generate([], skip_report=True)
