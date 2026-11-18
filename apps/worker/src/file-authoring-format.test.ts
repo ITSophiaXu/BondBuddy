@@ -14,7 +14,7 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
-import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES } from './file-authoring-instructions.js';
+import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FILE_AUTHORING_OUTPUT_LIMIT_RETRY } from './file-authoring-instructions.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
 function fixture(controlled = true) {
@@ -43,17 +43,25 @@ function fixture(controlled = true) {
 test('real first, repair and recovery prompts retain full instructions within the byte budget', async () => {
   const task = await readFile(new URL('../../../python/bondbuddy_file_authoring/task.md', import.meta.url), 'utf8');
   const fixed = await readFile(new URL('../../../python/bondbuddy_file_authoring/fixed-edit.md', import.meta.url), 'utf8');
-  for (const controlled of [false, true]) for (const repairing of [false, true]) for (const recovering of [false, true]) {
+  for (const controlled of [false, true]) for (const repairing of [false, true])
+    for (const resume of ['first', 'rotation', 'provider-output', 'later-rotation', 'unrelated-limit']) {
+    const recovering=resume!=='first', smallBatches=['provider-output','later-rotation'].includes(resume);
     const f = fixture(controlled), logicalCallId = repairing ? 'file-authoring-size-repair-2' : 'file-authoring-v1';
     const deadline = '2030-01-01T00:00:00.000Z';
     if (recovering) {
       const attempt = 'saved-attempt', hash = 'b'.repeat(64);
+      const limitAudit=(attemptId:string,logical=logicalCallId)=>({actor:'worker_file_authoring_recovery',decision:'retry_unknown_usage',
+        reason_code:'file_authoring_output_limit_auto_retry',error_code:'MODEL_PROVIDER_OUTPUT_LIMIT',attempt_id:attemptId,logical_call_id:logical,deadline_at:deadline});
       f.ctx.lease.checkpoint = {
         stages: { file_authoring_recovery: { version: 'file-authoring-recovery-v1', input_hash: f.ctx.run.input_hash,
           attempt_id: attempt, logical_call_id: logicalCallId, deadline_at: deadline,
           files: [{ path: 'input.json', key: `owners/owner/projects/project/runs/run/file-authoring/recovery/${attempt}/${hash}/input.json`, sha256: hash, byte_size: 2 }] } },
-        operator_reconciliations: { [attempt]: { decision: 'retry_unknown_usage', reason_code: 'file_authoring_context_rotation',
-          attempt_id: attempt, logical_call_id: logicalCallId, deadline_at: deadline } },
+        operator_reconciliations: {
+          [attempt]: resume==='provider-output'?limitAudit(attempt):{ decision: 'retry_unknown_usage', reason_code: 'file_authoring_context_rotation',
+            attempt_id: attempt, logical_call_id: logicalCallId, deadline_at: deadline },
+          ...(resume==='later-rotation'?{'old-limit':limitAudit('old-limit')}:
+            resume==='unrelated-limit'?{'old-limit':limitAudit('old-limit',repairing?'file-authoring-v1':'file-authoring-size-repair-2')}:{}),
+        },
       };
     }
     let inspected = false;
@@ -74,6 +82,8 @@ test('real first, repair and recovery prompts retain full instructions within th
         assert.equal(prompt.includes(FILE_AUTHORING_HOST_RENDER_HANDOFF), controlled);
         assert.equal(preamble.includes('quality-feedback.json'), repairing);
         assert.equal(preamble.includes('本次为执行中断后的已授权续跑'), recovering);
+        assert.equal(prompt.includes(FILE_AUTHORING_OUTPUT_LIMIT_RETRY), smallBatches);
+        assert.equal(prompt.includes('遇到 WORD_EDIT_BATCH_LIMIT'), controlled&&smallBatches);
         assert.equal(options.fileWorkspace!.recovery, recovering);
         assert.equal(options.fileWorkspace!.deadlineAt, recovering ? deadline : undefined);
         const modelConfig = typeof options.config === 'function' ? options.config() : options.config;

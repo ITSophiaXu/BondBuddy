@@ -94,6 +94,12 @@ export const DEFAULT_DISABLED_FEATURES = ['shell_tool', 'unified_exec', 'shell_s
 // Items that carry model text only. Everything else is a tool surface.
 const TEXT_ITEM_TYPES = new Set(['agent_message', 'reasoning', 'todo_list', 'error']);
 const REASK_MARKER = '[bb-reask]';
+// Pinned Codex 0.169.0 exec JSONL turn.failed.error.message. This literal is
+// corroboration of the gateway terminal event, never a free-text fallback.
+const CODEX_MAX_OUTPUT_TOKENS_MESSAGE = 'Incomplete response returned, reason: max_output_tokens';
+function isCodexOutputLimitError(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && (error as Record<string, unknown>).message === CODEX_MAX_OUTPUT_TOKENS_MESSAGE;
+}
 
 // Prepare the provider's supported schema dialect without changing the caller's local validator.
 // Mixed primitive types are rejected instead of silently narrowing their union.
@@ -414,6 +420,8 @@ export type CodexProcessResult = {
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
   tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
+  /** Set only after the snapshot-capable CLI and its last gateway stream agree. */
+  provider_output_limit?: 'max_output_tokens';
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed' | 'payload_rejected' | 'gateway_failed' | 'context_rotation' | 'deadline_exceeded';
 };
 
@@ -497,14 +505,16 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
         error: error instanceof Error && /^[A-Z0-9_]{1,64}$/.test(error.message) ? error.message : 'MODEL_GATEWAY_START_FAILED' });
     }
   }
-  const closeGateway = async (): Promise<Buffer | undefined> => {
+  const closeGateway = async () => {
     if (!gateway) return undefined;
     const g = gateway; gateway = null;
-    await g.close().catch(() => undefined);
+    const cleanClose = await g.close().then(() => true, () => false);
     const summary = g.summary();
     gatewayLog({ ...summary, kind: 'model_gateway', event: 'summary', ...(o.trace ?? {}) });
     const reserve = modelGatewayExecLogReserve(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES);
-    return reserve ? formatModelGatewayExecLogSection(summary, g.records(), reserve) : undefined;
+    const outputLimit = cleanClose ? g.latestOutputLimit() : null;
+    return { appendix: reserve ? formatModelGatewayExecLogSection(summary, g.records(), reserve) : undefined,
+      outputLimitSeq: outputLimit?.transport_completed ? outputLimit.seq : null };
   };
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
@@ -519,6 +529,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch { r.stop = 'spawn_failed'; performance.finish('failed', { result_status: r.stop }); void closeGateway().finally(() => resolveResult(r)); return; }
     let bytes = 0, buffer = '', bufferBytes = 0, stderrPrefix = '', stderrTail = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
+    const eligibleOutputLimit = o.fileAuthoring === true && o.contextRotation === true;
+    let outputLimitSeq: number | null = null, conflictingOutputLimitSeq: number | null = null;
     const fileLimits = o.fileAuthoring ? c.file_output_limits ?? DEFAULT_FILE_AUTHORING_OUTPUT_LIMITS : null;
     const execLogMaxBytes = c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES;
     const capture = o.captureExecLog ? createCodexExecLogCapture(execLogMaxBytes, gateway ? modelGatewayExecLogReserve(execLogMaxBytes) : 0) : null;
@@ -572,8 +584,19 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       switch (ev.type) {
         case 'thread.started': if (safeId(ev.thread_id)) r.thread_id = ev.thread_id; break;
         case 'turn.completed': r.turn_completed = true; r.usage = normalizeCodexUsage(ev.usage); break;
-        case 'turn.failed': r.turn_failed = true; noteProviderError(ev.error); break;
-        case 'error': r.saw_error = true; noteProviderError(ev.error ?? ev); break;
+        case 'turn.failed': {
+          const evidence = eligibleOutputLimit && !r.turn_failed && isCodexOutputLimitError(ev.error) ? gateway?.latestOutputLimit() : null;
+          outputLimitSeq = evidence && evidence.seq !== conflictingOutputLimitSeq ? evidence.seq : null;
+          r.turn_failed = true; noteProviderError(ev.error); break;
+        }
+        case 'error': {
+          const error = ev.error ?? ev;
+          if (eligibleOutputLimit && !isCodexOutputLimitError(error)) {
+            conflictingOutputLimitSeq = gateway?.latestOutputLimit()?.seq ?? conflictingOutputLimitSeq;
+            outputLimitSeq = null;
+          }
+          r.saw_error = true; noteProviderError(error); break;
+        }
         case 'item.started': case 'item.updated': case 'item.completed': {
           const item = ev.item as Record<string, unknown> | undefined;
           const type = typeof item?.type === 'string' ? item.type : 'unknown';
@@ -662,8 +685,11 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       r.exit_code = code; r.exit_signal = sig;
       r.duration_ms = Number((process.hrtime.bigint() - t0) / 1000000n);
       // The child has exited, so every gateway request has finished or is being torn down.
-      void closeGateway().catch(() => undefined).then(appendix => {
-        if (capture) r.exec_log = capture.finish(appendix);
+      void closeGateway().catch(() => undefined).then(closed => {
+        if (code === 1 && sig === null && !r.stop && !r.turn_completed && !r.provider_error_code && !o.signal?.aborted &&
+            outputLimitSeq !== null && outputLimitSeq === closed?.outputLimitSeq)
+          r.provider_output_limit = 'max_output_tokens';
+        if (capture) r.exec_log = capture.finish(closed?.appendix);
         resolveResult(r);
       });
     });
@@ -688,6 +714,7 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   if (r.stop === 'timeout') return { outcome: 'pending_reconcile', error_code: 'MODEL_TIMEOUT', finish_reason: 'timeout', usage };
   if (r.stop === 'too_large') return { outcome: 'pending_reconcile', error_code: 'MODEL_OUTPUT_TOO_LARGE', finish_reason: null, usage };
   if (r.stop === 'broken') return { outcome: 'pending_reconcile', error_code: 'MODEL_STREAM_BROKEN', finish_reason: null, usage };
+  if (r.provider_output_limit) return { outcome: 'pending_reconcile', error_code: 'MODEL_PROVIDER_OUTPUT_LIMIT', finish_reason: r.provider_output_limit, usage: unknown };
   if (r.provider_error_code && !r.turn_completed && usage.status === 'unknown' && (r.turn_failed || r.saw_error || r.exit_code !== 0))
     return { outcome: 'failed', error_code: r.provider_error_code, finish_reason: 'turn_failed', usage };
   if (r.turn_failed || (r.saw_error && !r.turn_completed)) return { outcome: 'failed', error_code: 'MODEL_TURN_FAILED', finish_reason: 'turn_failed', usage };
@@ -950,7 +977,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           } catch { return { ok: false }; }
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
-        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
+        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_OUTPUT_LIMIT','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
             !input.signal?.aborted && !executionSignal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
         }

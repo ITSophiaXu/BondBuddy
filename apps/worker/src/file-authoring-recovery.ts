@@ -86,6 +86,16 @@ export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId
   return saved;
 }
 
+/** Keep the smaller-batch policy after further rotations in this same logical
+ * call. Only a host-authored, authorized retry with the pinned deadline enables it. */
+export function fileAuthoringUsesSmallBatches(ctx: StageContext, recovery: FileAuthoringRecovery | null): boolean {
+  if(!recovery?.deadline_at)return false;
+  const audits=(ctx.lease.checkpoint.operator_reconciliations??{}) as Record<string,Record<string,unknown>>;
+  return Object.entries(audits).some(([attempt,audit])=>audit?.actor==='worker_file_authoring_recovery'&&
+    audit.attempt_id===attempt&&audit.logical_call_id===recovery.logical_call_id&&audit.deadline_at===recovery.deadline_at&&
+    audit.decision==='retry_unknown_usage'&&audit.reason_code==='file_authoring_output_limit_auto_retry'&&audit.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT');
+}
+
 async function regularBytes(root: string, path: string, max: number, signal: AbortSignal): Promise<Buffer> {
   signal.throwIfAborted();
   const absolute = join(root, path), before = await lstat(absolute, { bigint: true });

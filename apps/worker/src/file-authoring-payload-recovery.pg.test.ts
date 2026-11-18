@@ -14,8 +14,11 @@ import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const configured=!!process.env.BB_TEST_DATABASE_URL;
-for(const [localFailure,localPrefix] of [['MODEL_OUTPUT_TOO_LARGE','file_authoring_output_limit'],['MODEL_TIMEOUT','file_authoring_timeout']] as const)
-test(`${localFailure} recovery preserves work, unknown usage and the original reservation while bounding retries`,
+const providerOutputLimit='MODEL_PROVIDER_OUTPUT_LIMIT';
+for(const [localFailure,localPrefix] of [[providerOutputLimit,'file_authoring_output_limit'],
+  ['MODEL_OUTPUT_TOO_LARGE','file_authoring_output_limit'],['MODEL_TIMEOUT','file_authoring_timeout']] as const)
+test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only resumes a current saved authoring capture with the original deadline':
+  `${localFailure} recovery preserves work, unknown usage and the original reservation while bounding retries`,
   {skip:!configured,timeout:600000},async t=>{
   const connection=await isolatedTestDatabase(undefined,`file-authoring-${localFailure}`);
   const pool=new Pool({connectionString:connection}),owner=`payload-${uid()}`,objects=new Map<string,Buffer>();
@@ -25,12 +28,15 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
   const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
-    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean;deadline?:string;
+    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;
+    result?:boolean;deadline?:string;runtimeFinishReason?:string|null;observationFinishReason?:string|null;conflictingTerminal?:boolean;
     capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure};
   type Lease=NonNullable<Awaited<ReturnType<typeof claim>>>;
   async function observe(lease:Lease,project:string,inputHash:string,n:number,options:Options={}){
     const logical=options.logical??'file-authoring-v1',content=Buffer.from('synthetic file authoring prompt');
-    const error=options.error??'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',outputLimit=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(error);
+    const error=options.error??'MODEL_PROVIDER_PAYLOAD_TOO_LARGE';
+    const signaled=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(error)||options.termination==='signal';
+    const finishReason=error===providerOutputLimit?'max_output_tokens':error==='MODEL_TIMEOUT'?'timeout':'turn_failed';
     const objectKey=`users/${owner}/projects/${project}/snapshots/${uid()}`;await blobs.put(objectKey,content,'text/plain');
     const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
     if(options.snapshot==='none'&&logical==='file-authoring-v1'&&n===1)
@@ -50,8 +56,9 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
       logical_call_id:logical,attempt_no:n,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt};
     if(options.runtime!==false)await recordModelAttemptRuntime(pool,lease,intent,{adapter:'codex_exec',adapter_version:options.adapter??'codex-file-authoring-2',
       model_provider:'deepseek',model_config_version:'synthetic-v1',provider_request_id_status:'unknown',framework_thread_id:null,
-      started_at:new Date().toISOString(),duration_ms:1000,exit_code:options.exit===false||outputLimit?null:1,
-      exit_signal:options.exit===false||!outputLimit?null:error==='MODEL_TIMEOUT'?'SIGTERM':'SIGKILL',finish_reason:error==='MODEL_TIMEOUT'?'timeout':'turn_failed',
+      started_at:new Date().toISOString(),duration_ms:1000,exit_code:options.exit===false||signaled?null:options.termination==='zero'?0:1,
+      exit_signal:options.exit===false||!signaled?null:error==='MODEL_TIMEOUT'?'SIGTERM':'SIGKILL',
+      finish_reason:options.runtimeFinishReason===undefined?finishReason:options.runtimeFinishReason,
       error_code:error,tool_attempts:3,pricing_status:'unknown'});
     if(options.snapshot!=='none'){
       const bytes=Buffer.from(JSON.stringify({input_hash:inputHash})),sha256=digest(bytes),path='input.json';
@@ -68,8 +75,9 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
         finally{await pool.query('ALTER TABLE bb_jobs DROP CONSTRAINT capture_outcome_failure');}
       }else await recordFileAuthoringCaptureOutcome(pool,lease,attempt,logical,options.capture==='saved'?{state:'saved',failure_code:null}:{state:'failed',failure_code:options.capture});
     }
-    const observation:ProviderCallObservation={...intent,provider_request_id:null,finish_reason:error==='MODEL_TIMEOUT'?'timeout':'turn_failed',
-      outcome:options.observationOutcome??(outputLimit?'pending_reconcile':'failed'),
+    const observation:ProviderCallObservation={...intent,provider_request_id:null,
+      finish_reason:options.observationFinishReason===undefined?finishReason:options.observationFinishReason,
+      outcome:options.observationOutcome??(signaled||error===providerOutputLimit?'pending_reconcile':'failed'),
       usage:{status:'unknown',input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null,total_tokens:null},
       error_code:options.observationError??error,result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
     if(options.result){
@@ -79,6 +87,7 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     }
     await recordProviderCallObservation(pool,blobs,observation,()=>true,{lease,source:'provider'});
     if(options.conflict)await recordProviderCallObservation(pool,blobs,{...observation,outcome:'pending_reconcile',error_code:'MODEL_STREAM_BROKEN'},()=>true,{source:'provider'});
+    if(options.conflictingTerminal)await recordProviderCallObservation(pool,blobs,{...observation,finish_reason:'turn_failed'},()=>true,{source:'provider'});
     return {lease,project,inputHash,attempt,logical,recover:()=>recoverFileAuthoringPayload(pool,owner,lease.runId,lease.jobId)};
   }
   async function prepareFixture(options:Options={}){
@@ -104,6 +113,129 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
   const end=async(run:string)=>{await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[run]);};
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'payload_'+uid().slice(0,8)]);
+    if(localFailure===providerOutputLimit){
+      const deadline=new Date(Date.now()+3600_000).toISOString();
+      const recoverable={error:providerOutputLimit,capture:'saved',deadline} satisfies Options;
+      const cp=async(jobId:string)=>(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[jobId])).rows[0].checkpoint;
+      const latestEvent=async(runId:string)=>(await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND type=$2 ORDER BY seq DESC LIMIT 1',[runId,'run.state_changed'])).rows[0]?.payload;
+      const attempts=async(jobId:string)=>(await pool.query('SELECT attempt_no,status,usage_status FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY attempt_no',[jobId])).rows;
+      const resultCount=async(jobId:string)=>(await pool.query(`SELECT count(*)::int AS n FROM bb_provider_result_refs r
+        JOIN bb_model_call_attempts a ON a.id=r.attempt_id WHERE a.job_id=$1`,[jobId])).rows[0].n;
+      const runIdentity=async(runId:string)=>(await pool.query('SELECT id,project_id,input_revision,input_hash,reservation_id,artifact_id FROM bb_runs WHERE id=$1',[runId])).rows[0];
+      const reservations=async(runId:string)=>(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[runId])).rows;
+      const providerEvidence=async(attempt:string)=>(await pool.query('SELECT * FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY id',[attempt])).rows;
+      const usageEvidence=async(attempt:string)=>(await pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id',[attempt])).rows;
+      const usage=async(attempt:string)=>(await pool.query('SELECT usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[attempt])).rows;
+      const sweep=()=>new WorkerRuntime({pool,blobs,runKinds:['update']}).sweep();
+
+      await publishPrices(pool,{id:'synthetic-provider-output-limit-prices',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'#1604 billing regression'});
+      await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1000000,expiresAt:null,actor:'synthetic',reason:'Synthetic recovery credits'}));
+      const first=await fixture({...recoverable,paid:true}),{runId,jobId}=first.lease;
+      const identity=await runIdentity(runId),held=await reservations(runId),before=await cp(jobId);
+      const observed=await providerEvidence(first.attempt),usageObserved=await usageEvidence(first.attempt),usageBefore=await usage(first.attempt);
+      assert.deepEqual(await row(runId),{state:'paused',stage:'provider_reconcile'});
+      assert.equal((await latestEvent(runId))?.reason,'file_authoring_output_limit_recovery_pending');
+      assert.deepEqual(await attempts(jobId),[{attempt_no:1,status:'pending_reconcile',usage_status:'unknown'}]);
+      assert.deepEqual((await pool.query('SELECT exit_code,exit_signal,finish_reason,error_code FROM bb_model_call_attempt_runtime WHERE attempt_id=$1',[first.attempt])).rows,
+        [{exit_code:1,exit_signal:null,finish_reason:'max_output_tokens',error_code:providerOutputLimit}]);
+      assert.equal(observed.length,1);
+      assert.deepEqual([observed[0].finish_reason,observed[0].error_code,observed[0].outcome,observed[0].usage_status,observed[0].result_id],
+        ['max_output_tokens',providerOutputLimit,'pending_reconcile','unknown',null]);
+      assert.deepEqual(usageBefore,[{usage_status:'unknown',input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null,conflicting_measurements:0}]);
+      assert.equal(before.file_authoring_recovery_captures[first.attempt].state,'saved');
+      assert.equal(before.stages.file_authoring_recovery.attempt_id,first.attempt);
+      assert.equal(before.stages.file_authoring_recovery.deadline_at,deadline);
+      assert.equal(held.length,1);assert.equal(held[0].state,'held');assert.equal(held[0].id,identity.reservation_id);
+      assert.equal(identity.artifact_id,null);
+
+      await Promise.all([sweep(),sweep()]);
+      assert.deepEqual(await row(runId),{state:'queued',stage:'queued'});
+      assert.equal((await latestEvent(runId))?.reason,'file_authoring_output_limit_retry_scheduled');
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='file_authoring_output_limit_retry_scheduled'`,[runId])).rows[0].n,1);
+      const after=await cp(jobId);
+      assert.deepEqual(after.stages,before.stages);
+      assert.deepEqual(after.file_authoring_recovery_captures,before.file_authoring_recovery_captures);
+      assert.deepEqual(Object.keys(after.operator_reconciliations),[first.attempt]);
+      const disposition=after.operator_reconciliations[first.attempt];
+      assert.deepEqual([disposition.reason_code,disposition.attempt_id,disposition.logical_call_id,disposition.decision,disposition.recovery_state,disposition.deadline_at],
+        ['file_authoring_output_limit_auto_retry',first.attempt,first.logical,'retry_unknown_usage','queued',deadline]);
+      assert.deepEqual(await runIdentity(runId),identity);
+      assert.deepEqual(await reservations(runId),held,'requeue neither replaces nor charges the existing reservation');
+      assert.deepEqual(await attempts(jobId),[{attempt_no:1,status:'failed',usage_status:'unknown'}]);
+      assert.equal(await resultCount(jobId),0);assert.equal(after.provider_results?.length??0,0);
+
+      // Real dispositions, rather than fabricated retry counters: a 413 and an
+      // upstream output-limit recovery share the same two fault retries.
+      const secondLease=await claim(pool,300);assert.ok(secondLease);assert.equal(secondLease.runId,runId);assert.equal(secondLease.jobId,jobId);
+      assert.equal((await latestProviderAttempt(pool,secondLease,first.logical))?.operator_retry,true);
+      await assert.rejects(recordPotentialCall(pool,secondLease,first.logical,2,{modelId:'synthetic',fileAuthoringRecoveryCapture:true,
+        fileAuthoringDeadlineAt:new Date(Date.parse(deadline)+1000).toISOString()}),/deadline changed/);
+      const second=await observe(secondLease,first.project,first.inputHash,2,{capture:'saved',deadline});
+      assert.equal(await second.recover(),true);
+      assert.equal((await cp(jobId)).operator_reconciliations[second.attempt].reason_code,'file_authoring_payload_auto_retry');
+      const thirdLease=await claim(pool,300);assert.ok(thirdLease);assert.equal(thirdLease.runId,runId);
+      const third=await observe(thirdLease,first.project,first.inputHash,3,recoverable);
+      assert.equal(await third.recover(),true);
+      assert.deepEqual(await row(runId),{state:'failed',stage:'failed'});
+      assert.equal((await latestEvent(runId))?.reason,'file_authoring_output_limit_retries_exhausted');
+      assert.equal(await claim(pool,30),null,'exhaustion cannot admit a fourth call');
+      assert.deepEqual(await attempts(jobId),[1,2,3].map(attempt_no=>({attempt_no,status:'failed',usage_status:'unknown'})));
+      assert.deepEqual(await providerEvidence(first.attempt),observed);
+      assert.deepEqual(await usageEvidence(first.attempt),usageObserved);
+      assert.deepEqual(await usage(first.attempt),usageBefore);
+      assert.equal(await resultCount(jobId),0);
+
+      const assertBlocked=async(stopped:Awaited<ReturnType<typeof fixture>>,label:string,expectedAttempts=1)=>{
+        const {runId,jobId}=stopped.lease;
+        assert.ok(['paused','failed'].includes((await row(runId)).state),label);
+        assert.equal(await claim(pool,30),null,label);
+        assert.equal((await attempts(jobId)).length,expectedAttempts,label);
+        assert.ok(!(await cp(jobId)).operator_reconciliations?.[stopped.attempt]?.decision?.startsWith('retry'),label);
+        assert.equal(await resultCount(jobId),0,label);
+        await end(runId);
+      };
+      const sized=await fixture({...recoverable,logical:'file-authoring-size-repair-2'});
+      assert.equal(await sized.recover(),true,'size repair uses the same narrowly scoped output-limit policy');
+      const sizedLease=await claim(pool,300);assert.ok(sizedLease);assert.equal(sizedLease.runId,sized.lease.runId);
+      const stale=await observe(sizedLease,sized.project,sized.inputHash,2,{...recoverable,logical:sized.logical,capture:'prepared',snapshot:'none'});
+      assert.equal((await cp(sizedLease.jobId)).stages.file_authoring_recovery.attempt_id,sized.attempt,'the only saved snapshot belongs to the prior attempt');
+      await sweep();
+      assert.match((await latestEvent(sizedLease.runId))?.reason??'',/^file_authoring_output_limit_/,'do not replace a known output-limit cause with generic reconciliation');
+      await assertBlocked(stale,'a previous attempt’s snapshot does not recover the current incomplete execution',2);
+
+      const uncaptured=await fixture({...recoverable,capture:undefined,deadline:undefined,snapshot:'none'});
+      await sweep();
+      assert.equal((await latestEvent(uncaptured.lease.runId))?.error_code,providerOutputLimit,'no capture still preserves the known cause after the sweep');
+      await assertBlocked(uncaptured,'no historical snapshot does not authorize another model attempt');
+
+      for(const [label,options] of [
+        ['generic turn failure', {error:'MODEL_TURN_FAILED',observationOutcome:'pending_reconcile'}],
+        ['not a pending-reconcile observation', {observationOutcome:'failed'}],
+        ['missing runtime finish reason', {runtimeFinishReason:null}],
+        ['missing observation finish reason', {observationFinishReason:null}],
+        ['no exit evidence', {exit:false}],
+        ['signal termination', {termination:'signal'}],
+        ['zero exit', {termination:'zero'}],
+        ['conflicting terminal observations', {conflictingTerminal:true}],
+        ['legacy adapter', {adapter:'codex-file-authoring-1'}],
+        ['other logical call', {logical:'review-v1',capture:undefined,deadline:undefined}],
+        ['no modern capture', {capture:undefined,deadline:undefined}],
+        ['failed capture despite saved files', {capture:'storage_failed'}],
+        ['saved capture without a deadline', {deadline:undefined}],
+        ['snapshot and intent deadlines disagree', {}],
+      ] satisfies [string,Options][]){
+        const stopped=await fixture({...recoverable,...options});
+        if(label==='snapshot and intent deadlines disagree')await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,file_authoring_recovery,deadline_at}',$2::jsonb) WHERE id=$1",
+          [stopped.lease.jobId,JSON.stringify(new Date(Date.parse(deadline)+1000).toISOString())]);
+        await stopped.recover();
+        if(label==='no modern capture'||label==='failed capture despite saved files'||label==='saved capture without a deadline'){
+          assert.match((await latestEvent(stopped.lease.runId))?.reason??'',/^file_authoring_output_limit_/,`${label}: explicit cause remains visible`);
+          assert.equal((await providerEvidence(stopped.attempt))[0]?.error_code,providerOutputLimit);
+        }
+        await assertBlocked(stopped,label);
+      }
+      return;
+    }
     const f=await fixture({capture:'saved'});
     assert.deepEqual(await row(f.lease.runId),{state:'paused',stage:'provider_reconcile'});
     assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[f.lease.runId])).rows[0].payload.reason,'file_authoring_payload_recovery_pending');

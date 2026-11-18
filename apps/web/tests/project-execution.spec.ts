@@ -1198,6 +1198,34 @@ test('provider timeout explains service recovery and keeps the same task after a
   await expect(page.locator('#prepare-next-version')).toBeVisible();
 });
 
+test('output exhaustion retains the original task and shows a known reason if it cannot continue', async ({page}) => {
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_output_limit_recovery_pending';
+  await setup(page,state);await page.locator('#execute-input').click();
+  const summary=page.locator('.execution-summary');
+  await expect(summary).toContainText('单步输出达到上限');
+  await expect(summary).toContainText('将继续原任务');
+  const run=[...state.runs.values()][0], input=run.input_hash;
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  if(process.env.BB_OUTPUT_LIMIT_UX_DIR){
+    const dir=process.env.BB_OUTPUT_LIMIT_UX_DIR;
+    await mkdir(dir,{recursive:true});
+    for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});await page.screenshot({path:join(dir,`output-limit-${name}.png`)});
+    }
+  }
+  state.runReason='file_authoring_output_limit_recovery_unavailable';state.eventSeq++;
+  await page.reload();await expect(summary).toContainText('无法核实可接续的进度');
+  await expect(summary).toContainText('联系支持');
+  await expect(summary).not.toContainText('原因尚未确认');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  run.state='running';run.stage='provider_call';state.runReason='provider_call_may_be_sent';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
+  await expect(summary).toHaveCount(0);
+  expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(input);
+  run.state='failed';run.stage='failed';state.runReason='file_authoring_output_limit_retries_exhausted';state.eventSeq++;
+  await page.reload();await expect(summary).toContainText('已停止自动重试');
+});
+
 for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', 'missing_operations', 'unreadable_source', 'unreadable_material', undefined]) {
   test(`processor failure explains ${stage ?? 'unavailable history'} without inventing missing materials`, async ({ page }) => {
     const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='word_delivery';state.runReason='stage_started';
