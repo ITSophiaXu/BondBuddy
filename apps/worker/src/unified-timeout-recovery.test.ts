@@ -159,7 +159,7 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       assert.deepEqual(await creditBalanceExact(pool,owner),balanceBefore);
       // A legacy (non-unified) unknown call has no timeout recovery path. Bound
       // the sweep so it records evidence once and then stops re-querying forever.
-      const unknown = await fixture({unified:false});
+      const unknown = await fixture({unified:false,exited:false});
       const unknownStart = Date.now();
       assert.equal(await recordProviderReconcileUnknown(pool, owner, unknown.lease.runId, unknown.lease.jobId, 'codex_no_lookup', unknownStart), false);
       assert.equal((await pausedRuns(pool, 'provider_reconcile', 100)).some(r => r.run_id === unknown.lease.runId), true);

@@ -49,3 +49,12 @@ test('malformed prior state is replaced rather than extending an unbounded loop'
     assert.equal(next.state.exhausted, false);
   }
 });
+
+
+test('a delayed first sweep uses the original pause deadline instead of granting another hour',()=>{
+  const delayed=nextProviderReconcileUnknown(undefined,start+2*PROVIDER_RECONCILE_UNKNOWN_GRACE_MS,'codex_no_lookup',PROVIDER_RECONCILE_UNKNOWN_GRACE_MS,start);
+  assert.equal(delayed.exhausted,true);
+  assert.equal(delayed.state.first_at,new Date(start).toISOString());
+  const next=nextProviderReconcileUnknown(undefined,start,'codex_no_lookup');
+  assert.equal(next.state.next_check_ms,start+60_000);
+});

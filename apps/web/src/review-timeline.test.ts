@@ -88,3 +88,14 @@ test('paused unknown reason and provider code use a safe fallback in current and
   assert.match(reviewTaskNotice(current)??'',/本轮已暂停/);
   assert.doesNotMatch(reviewTaskHtml(current,'2026-10-04T09:00:00Z'),/raw_secret_stage|raw_secret_failure|PRIVATE_PROVIDER_VALUE/);
 });
+
+
+test('terminal reconciliation failure does not ask the user to keep waiting',()=>{
+  const current=task('failed',1);current.run.stage='failed';
+  for(const reason of ['provider_reconcile_unrecoverable','provider_reconcile_unknown_exhausted','provider_reconcile_project_inactive']){
+    current.events=[{event_id:'terminal',schema_version:1,trace_id:'trace',run_id:current.run.run_id,seq:1,occurred_at:'2026-11-18T10:00:00Z',
+      stage:'failed',type:'run.state_changed',state:'failed',payload:{reason,error_code:'MODEL_PRIOR_ATTEMPT_UNRESOLVED'}}];
+    assert.match(reviewTaskNotice(current)??'',/任务已失败/);assert.doesNotMatch(reviewTaskNotice(current)??'',/等待核对/);
+    assert.equal(isActiveRun(current.run),false);
+  }
+});
