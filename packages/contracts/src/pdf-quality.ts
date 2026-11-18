@@ -1,9 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-export const PDF_QUALITY_VERSION = 'pdf-raster-quality-3' as const;
-/** v2 used the same DPI rule with full-page coverage; reuse its immutable receipts. */
-export const PDF_QUALITY_JOB_VERSIONS = [PDF_QUALITY_VERSION, 'pdf-raster-quality-2'] as const;
+export const PDF_QUALITY_VERSION = 'pdf-raster-quality-4' as const;
+/** Earlier DPI-only receipts cannot decide readiness under the detail-aware policy. */
+export const PDF_QUALITY_JOB_VERSIONS = [PDF_QUALITY_VERSION] as const;
 export const PDF_QUALITY_SAMPLE_LIMIT = 8;
 /** One-based representative pages, front body first, then distributed across the report. */
 export function pdfQualitySamplePages(count: number): number[] {
@@ -13,11 +13,12 @@ export function pdfQualitySamplePages(count: number): number[] {
 }
 /** Measured raster resolution, not an OCR/readability verdict. v1 remains readable for old jobs. */
 export const PdfQualitySchema = Type.Object({
-  version: Type.Union([Type.Literal('pdf-raster-quality-1'), Type.Literal('pdf-raster-quality-2'), Type.Literal(PDF_QUALITY_VERSION)]),
+  version: Type.Union([Type.Literal('pdf-raster-quality-1'), Type.Literal('pdf-raster-quality-2'), Type.Literal('pdf-raster-quality-3'), Type.Literal(PDF_QUALITY_VERSION)]),
   status: Type.Union([Type.Literal('complete'), Type.Literal('partial'), Type.Literal('unavailable')]),
   page_count: Type.Union([Type.Integer({minimum: 1}), Type.Null()]),
   checked_pages: Type.Integer({minimum: 0, maximum: 1500}),
   sampled_pages: Type.Optional(Type.Array(Type.Integer({minimum: 1}), {maxItems: PDF_QUALITY_SAMPLE_LIMIT, uniqueItems: true})),
+  blocking_pages: Type.Optional(Type.Array(Type.Integer({minimum: 1}), {maxItems: 1, uniqueItems: true})),
   low_resolution_pages: Type.Array(Type.Object({
     page: Type.Integer({minimum: 1}),
     dpi: Type.Integer({minimum: 1, maximum: 199}),
@@ -29,18 +30,25 @@ export function readPdfQuality(value: unknown): PdfQuality | undefined {
   if (!Value.Check(PdfQualitySchema, value)) return undefined;
   if (value.page_count === null && (value.checked_pages || value.low_resolution_pages.length || value.status !== 'unavailable')) return undefined;
   if (value.page_count !== null && value.checked_pages > value.page_count) return undefined;
-  if (value.version === PDF_QUALITY_VERSION) {
+  const sampledVersion = value.version === PDF_QUALITY_VERSION || value.version === 'pdf-raster-quality-3';
+  if (sampledVersion) {
     const sampled = value.sampled_pages, plan = pdfQualitySamplePages(value.page_count ?? 0);
     if (!sampled || sampled.length !== value.checked_pages || sampled.some((page, i) => page !== plan[i])) return undefined;
-    // Completion covers the sample plan, or ends on the first measured low page.
-    if (value.low_resolution_pages.length > 1 || value.low_resolution_pages.some(p => p.page !== sampled.at(-1))) return undefined;
-    if (value.status === 'complete' && (!sampled.length || !value.low_resolution_pages.length && sampled.length !== plan.length)) return undefined;
-  } else if (value.sampled_pages !== undefined || value.status === 'complete' && value.checked_pages !== value.page_count) return undefined;
+    if (value.version === PDF_QUALITY_VERSION) {
+      if (!value.blocking_pages || value.blocking_pages.some(page => page !== sampled.at(-1) || !value.low_resolution_pages.some(p => p.page === page))) return undefined;
+      if (value.low_resolution_pages.length > PDF_QUALITY_SAMPLE_LIMIT) return undefined;
+      if (value.status === 'complete' && (!sampled.length || !value.blocking_pages.length && sampled.length !== plan.length)) return undefined;
+    } else {
+      if (value.blocking_pages !== undefined || value.low_resolution_pages.length > 1 || value.low_resolution_pages.some(p => p.page !== sampled.at(-1))) return undefined;
+      if (value.status === 'complete' && (!sampled.length || !value.low_resolution_pages.length && sampled.length !== plan.length)) return undefined;
+    }
+  } else if (value.sampled_pages !== undefined || value.blocking_pages !== undefined || value.status === 'complete' && value.checked_pages !== value.page_count) return undefined;
   if (value.status === 'unavailable' && (value.checked_pages || value.low_resolution_pages.length)) return undefined;
-  let previous = 0;
+  let previous = -1;
   for (const page of value.low_resolution_pages) {
-    if (page.page <= previous || page.page > (value.version === PDF_QUALITY_VERSION ? value.page_count! : value.checked_pages)) return undefined;
-    previous = page.page;
+    const position = sampledVersion ? value.sampled_pages!.indexOf(page.page) : page.page - 1;
+    if (position <= previous || position < 0 || !sampledVersion && page.page > value.checked_pages) return undefined;
+    previous = position;
   }
   return value;
 }
@@ -58,7 +66,7 @@ export const AUDIT_PDF_INCOMPLETE_MESSAGE = '审计报告 PDF 的清晰度检查
 export function auditPdfQualityState(value: unknown): 'pending' | 'low' | 'incomplete' | 'ready' {
   const quality = readPdfQuality(value);
   if (!quality || !PDF_QUALITY_JOB_VERSIONS.some(version => version === quality.version)) return 'pending';
-  if (quality.low_resolution_pages.length) return 'low';
+  if (quality.blocking_pages?.length) return 'low';
   return quality.status === 'complete' ? 'ready' : 'incomplete';
 }
 export function auditPdfQualityMessage(value: unknown): string {
@@ -67,4 +75,5 @@ export function auditPdfQualityMessage(value: unknown): string {
     : state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : AUDIT_PDF_PENDING_MESSAGE;
 }
 
-export const isPdfQualityJobVersion = (version: string) => PDF_QUALITY_JOB_VERSIONS.some(current => version === current || version.startsWith(current + ':retry:'));
+// Old queued quality jobs must remain lightweight; they must never fall into full parsing/OCR.
+export const isPdfQualityJobVersion = (version: string) => [PDF_QUALITY_VERSION, 'pdf-raster-quality-3', 'pdf-raster-quality-2'].some(current => version === current || version.startsWith(current + ':retry:'));

@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {randomUUID} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {deflateSync} from 'node:zlib';
 import {Pool} from 'pg';
 import {BlobServiceClient} from '@azure/storage-blob';
 import {emptyUpdateDetails, INITIAL_FIXED_PRICES, PDF_QUALITY_VERSION} from '@bondbuddy/contracts';
+import {assertAuditPdfQuality} from './audit-pdf-quality.js';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {azureBlobs,digest,transaction} from './data.js';
@@ -13,8 +16,14 @@ import {grantCredits,publishPrices} from './billing.js';
 import {enqueueMaterialParse,claimMaterialParse,completeMaterialParseStage,releaseMaterialParse} from './material-jobs.js';
 
 // Synthetic image pixels, actual PDF bytes, HTTP upload, PostgreSQL, Azurite and PDFium.
-function rasterPdf(dpi:number,tag='sample',pageCount=1) {
-  const width=1200,height=1600, image=deflateSync(Buffer.alloc(width*height,255));
+const pixels = new Map<boolean,Buffer>();
+function rasterPdf(dpi:number,tag='sample',pageCount=1, degraded=dpi<200) {
+  const width=1200,height=1600;
+  if(!pixels.has(degraded)){
+    const r=spawnSync(process.env.BONDBUDDY_TEST_PYTHON??'python3',[fileURLToPath(new URL('../../../python/tests/pdf_quality_fixture.py',import.meta.url)),...(degraded?['--degraded']:[])],{maxBuffer:4*1024*1024});
+    assert.equal(r.status,0,r.stderr?.toString());assert.equal(r.stdout.length,width*height);pixels.set(degraded,r.stdout);
+  }
+  const image=deflateSync(pixels.get(degraded)!);
   const content=Buffer.from('q '+width*72/dpi+' 0 0 '+height*72/dpi+' 0 0 cm /Im0 Do Q');
   const kids=Array.from({length:pageCount},(_,i)=>(4+i*2)+' 0 R').join(' ');
   const objects=[Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),Buffer.from('<< /Type /Pages /Kids ['+kids+'] /Count '+pageCount+' >>'),
@@ -86,7 +95,7 @@ test('audit PDF gate: actual upload, isolated inspection, no-charge rejection, r
     });
     await t.test('incomplete and failed inspections preserve receipts; explicit concurrent retry creates one new attempt',async()=>{
       const uncertain=await upload(id,rasterPdf(300,'retry')),route=path+'/materials/'+uncertain.material_id+'/pdf-quality';
-      assert.equal(await worker.runMaterialParseOnce({...deps,pdfQualityInspector:async()=>({version:PDF_QUALITY_VERSION,status:'partial',page_count:2,checked_pages:1,sampled_pages:[1],low_resolution_pages:[]})}),'succeeded');
+      assert.equal(await worker.runMaterialParseOnce({...deps,pdfQualityInspector:async()=>({version:PDF_QUALITY_VERSION,status:'partial',page_count:2,checked_pages:1,sampled_pages:[1],blocking_pages:[],low_resolution_pages:[]})}),'succeeded');
       const old=await ok('POST',route,{});reject(await lock(),/检查未完成/);
       const retries=await Promise.all(Array.from({length:4},()=>ok('POST',route,{retry:true})));assert.equal(new Set(retries.map(v=>v.job_id)).size,1);assert.notEqual(retries[0].job_id,old.job_id);
       assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[old.job_id])).rows[0].checkpoint.stages.pdf_quality,old.pdf_quality);
@@ -99,22 +108,26 @@ test('audit PDF gate: actual upload, isolated inspection, no-charge rejection, r
       assert.equal((await pool.query('SELECT state FROM bb_jobs WHERE id=$1',[failed.job_id])).rows[0].state,'failed');
       const successful=await lock();assert.equal(successful.statusCode,201,successful.body);
     });
-    await t.test('v2 checkpoint is reused without downloading or inspecting the same file again',async()=>{
-      const legacy=await upload(id,rasterPdf(200,'legacy')),route=path+'/materials/'+legacy.material_id+'/pdf-quality';
-      // Finish the current producer's auto-job and create a legacy fixture through its original enqueue contract.
-      // Immutable parser bindings must never be edited, including in tests.
-      assert.equal(await worker.runMaterialParseOnce(deps),'succeeded');
-      const {jobId:prior}=await transaction(pool,c=>enqueueMaterialParse(c,{owner:user,projectId:id,materialId:legacy.material_id,materialVersion:1,sha256:legacy.sha256,traceId:randomUUID(),parserVersion:'pdf-raster-quality-2'}));
-      const quality={version:'pdf-raster-quality-2',status:'complete',page_count:1,checked_pages:1,low_resolution_pages:[]};
-      const lease=await claimMaterialParse(pool);assert.equal(lease!.jobId,prior);
-      await completeMaterialParseStage(pool,lease!,'pdf_quality',quality);
-      await releaseMaterialParse(pool,lease!);
-      const before=await ok('POST',route,{});assert.equal(before.job_id,prior);assert.deepEqual(before.pdf_quality,quality);
-      assert.equal(await worker.runMaterialParseOnce({...deps,pdfQualityInspector:async()=>{throw Error('must reuse v2');}}),'succeeded');
-      assert.equal((await ok('POST',route,{})).job_id,prior);
-      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE material_id=$1',[legacy.material_id])).rows[0].n,2);
-      const locked=await lock();assert.equal(locked.statusCode,201,locked.body);
-      await ok('DELETE',path+'/materials/'+legacy.material_id);
+    await t.test('legacy DPI-only rejection is retained while a new v4 inspection admits readable scans',async()=>{
+      for(const version of ['pdf-raster-quality-2','pdf-raster-quality-3']){
+        const project=await create('review'), legacy=await upload(project.project_id,rasterPdf(150,version,1,false));
+        const route='/api/v1/projects/'+project.project_id+'/materials/'+legacy.material_id+'/pdf-quality';
+        const {jobId:prior}=await transaction(pool,c=>enqueueMaterialParse(c,{owner:user,projectId:project.project_id,materialId:legacy.material_id,materialVersion:1,sha256:legacy.sha256,traceId:randomUUID(),parserVersion:version}));
+        const quality={version,status:'complete',page_count:1,checked_pages:1,low_resolution_pages:[{page:1,dpi:150}],...(version.endsWith('-3')?{sampled_pages:[1]}:{})};
+        const lease=await claimMaterialParse(pool);assert.equal(lease!.jobId,prior);
+        await completeMaterialParseStage(pool,lease!,'pdf_quality',quality);await releaseMaterialParse(pool,lease!);
+        assert.equal(await worker.runMaterialParseOnce({...deps,pdfQualityInspector:async()=>{throw Error('must preserve legacy receipt');}}),'succeeded');
+        // Seed a pre-v4 update project without changing any immutable job/input/receipt.
+        await pool.query("UPDATE bb_projects SET kind='update' WHERE id=$1",[project.project_id]);
+        const current=await ok('POST',route,{});assert.notEqual(current.job_id,prior);assert.equal(current.parser_version,PDF_QUALITY_VERSION);
+        assert.equal((await ok('POST',route,{})).job_id,current.job_id);
+        await assert.rejects(transaction(pool,c=>assertAuditPdfQuality(c,user,project.project_id,[])),/正在检查/);
+        assert.equal(await worker.runMaterialParseOnce(deps),'succeeded');
+        const view=await ok('POST',route,{});assert.equal(view.job_id,current.job_id);
+        assert.deepEqual(view.pdf_quality.low_resolution_pages,[{page:1,dpi:150}]);assert.deepEqual(view.pdf_quality.blocking_pages,[]);
+        assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[prior])).rows[0].checkpoint.stages.pdf_quality,quality);
+        await transaction(pool,c=>assertAuditPdfQuality(c,user,project.project_id,[]));
+      }
     });
     await t.test('other task/role scope remains unchanged and copied audits receive their own inspection',async()=>{
       const review=await create('review'),m=await upload(review.project_id,rasterPdf(96,'review'));
