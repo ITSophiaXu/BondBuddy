@@ -5,7 +5,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from common import canonical, load_config
+from common import canonical, load_config, failure_details
 
 
 def main(args):
@@ -28,5 +28,5 @@ if __name__ == '__main__':
         print(canonical(main(sys.argv[1:])))
     except Exception as error:
         # Do not echo provider exception text or user-controlled secrets.
-        print(canonical({'error': 'DIAGNOSTIC_REQUEST_FAILED', 'type': type(error).__name__}), file=sys.stderr)
+        print(canonical({'error': 'DIAGNOSTIC_REQUEST_FAILED', 'type': type(error).__name__, **failure_details(error)}), file=sys.stderr)
         sys.exit(2)

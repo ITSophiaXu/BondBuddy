@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, chmod, symlink, rm, readFile} from 'node:fs/promises';
+import {mkdtemp, chmod, symlink, rm, readFile, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {ExecutionPoolController} from './controller.mjs';
@@ -314,4 +314,50 @@ test('fixed secret and snapshot commitments are reserved in full and survive the
  assert.equal(produceExpenseSnapshot({ledger:next,inventory:[],quote:q,config:c}).fixed_commitments_upper_bound_cny,10.4);
  const missing={...q,fixed_commitments:q.fixed_commitments.filter(c=>c.kind!=='snapshot')};
  assert.throws(()=>produceExpenseSnapshot({ledger,inventory:[],quote:missing,config:{...c,quote_sha256:sha256(canonical(missing))}}),/EXPENSE_FIXED_COMMITMENTS_REQUIRED/);
+});
+
+
+test('only explicit enrollment waiting can request bootstrap retry; no runtime effect has occurred',async()=>{
+ for(const code of ['NODE_ENROLLMENT_PENDING','NODE_ENROLLMENT_DEADLINE','NODE_ROLE_MISMATCH','CLOUD_HTTP_UNCERTAIN']){
+   let effects=0;
+   await assert.rejects(bootstrapNode({publicManifest:{version:'execution-bootstrap-v1'},metadata:identity,
+     broker:{enroll:async()=>{throw Error(code);}},runtime:{verifyArtifacts:async()=>effects++},writeEnvelope:async()=>effects++}),error=>{
+       assert.equal(error.bootstrapRetrySafe===true,['NODE_ENROLLMENT_PENDING','NODE_ENROLLMENT_DEADLINE'].includes(code));return true;
+     });assert.equal(effects,0);
+ }
+});
+
+
+test('delayed starting node permits only an affordable demanded spare and both starting enrollments advance',async()=>{
+ const {issueNodeEnrollment}=await import('./enrollment.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'bb-delayed-node-')),secrets=new Map();let at=Date.now(),reserved=0,closed=0;
+ const cfg={...config,registration_directory:dir,node_secrets:config.node_secrets.map((x,i)=>({...x,service_template_file:join(dir,`service-${i}.json`)}))};
+ for(const d of cfg.node_secrets)await writeFile(d.service_template_file,'{}',{mode:0o600});
+ const op={operation_id:'delayed-start',action:'start',state:'completed',identity,provider_request_id:'start-ack',request:request(),cloud_observation:{...observation(),instance_state:'RUNNING',latest_operation:'StartInstances',latest_operation_request_id:'start-ack'}};
+ const transport={call:async(_,action,p)=>{
+   const key=p.SecretName+':'+p.VersionId;
+   if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...secrets.keys()].filter(k=>k.startsWith(p.SecretName+':')).map(k=>({VersionId:k.split(':')[1]}))};
+   if(action==='GetSecretValue'){if(!secrets.has(key)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:secrets.get(key)};}
+   if(action==='PutSecretValue'){assert(!secrets.has(key));secrets.set(key,p.SecretString);return {};}
+   throw Error('unexpected cloud mutation');
+ }};
+ const operations=new Map([[op.operation_id,op]]);
+ let inventory=safeInventory(),allowed=true;
+ const s={...snapshot(),nodes:[{identity,state:'starting',cloud_start_operation_id:op.operation_id}],effective_queued_work:1,groups:[{capability:'authoring',effective_queued_work:1,oldest_wait_seconds:600,available_run_slots:0}]};
+ const control={snapshot:async()=>s,listPendingOperations:async()=>[],loadOperation:async id=>operations.get(id),
+   setAdmissionBudget:async(_r,v)=>{s.policy.budget_available=v;closed++;},reserveStart:async r=>{reserved++;return {state:'submitted',request:r};}};
+ const handler=createExecutionPoolOpsHandler({control,configPath:'synthetic',enrollmentBinder:async()=>{},expenseLedger:async()=>({operations:[],nodes:[]}),dependencies:{now:()=>at,readConfig:async()=>cfg,clientToken:async id=>sha256(id),
+   cloud:{transport,describe:async id=>inventory.find(n=>n.instance_id===id),inventory:async()=>inventory},costSnapshot:async i=>({...expense(i),...(allowed?{}:{spent_upper_bound_cny:1000})})}});
+ try{
+   await issueNodeEnrollment({operation:op,slot:0,config:cfg,transport,serviceTemplate:{},bind:async()=>{},now:()=>at});
+   await handler.tick();assert.equal(reserved,0);
+   at+=600001;await handler.tick();assert.equal(reserved,1);assert.equal(closed,0);assert.equal(s.nodes[0].state,'starting');
+   inventory=[...safeInventory(),{...safeInventory()[0],instance_id:'ins-b2',role_name:'node-b'}];
+   const second={...op,operation_id:'second-delayed-start',identity:{...identity,instance_id:'ins-b2'}};operations.set(second.operation_id,second);
+   s.nodes.push({identity:second.identity,state:'starting',cloud_start_operation_id:second.operation_id});
+   await issueNodeEnrollment({operation:second,slot:1,config:cfg,transport,serviceTemplate:{},bind:async()=>{},now:()=>at-600001});
+   await handler.tick();assert.equal(reserved,1);
+   assert([...secrets.values()].map(v=>JSON.parse(v)).some(v=>v.operation_id===second.operation_id&&v.enrollment_generation===1));
+   allowed=false;await handler.tick();assert.equal(reserved,1);assert.equal(s.policy.budget_available,false);
+ }finally{await rm(dir,{recursive:true});}
 });

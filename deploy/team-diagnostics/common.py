@@ -107,7 +107,20 @@ def cursor_decode(value, scope):
     return decoded
 
 
+class DiagnosticFailure(RuntimeError):
+    """Only fixed categories and numeric exit status may cross the broker boundary."""
+    def __init__(self, stage, code, exit_status=None):
+        super().__init__('Diagnostic operation failed')
+        self.details = {'stage': stage, 'code': code}
+        if isinstance(exit_status, int): self.details['exit_status'] = exit_status
+
+
+def failure_details(error):
+    return error.details if isinstance(error, DiagnosticFailure) else {'code': 'UNCLASSIFIED_FAILURE'}
+
+
 def command(args, timeout=30, input_bytes=None, max_bytes=8 * 1024 * 1024):
+    stage = {'ssh': 'archive_upload', 'docker': 'container_read', 'journalctl': 'journal_read'}.get(pathlib.Path(args[0]).name, 'local_command')
     # Call sites construct argv from fixed programs and validated fields; never shell=True.
     with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors, tempfile.TemporaryFile() as supplied:
         if input_bytes: supplied.write(input_bytes)
@@ -117,11 +130,19 @@ def command(args, timeout=30, input_bytes=None, max_bytes=8 * 1024 * 1024):
         try:
             while proc.poll() is None:
                 if os.fstat(output.fileno()).st_size > max_bytes or os.fstat(errors.fileno()).st_size > 65536:
-                    raise RuntimeError('Diagnostic source output exceeds the batch limit')
-                if time.monotonic() >= deadline: raise TimeoutError('Diagnostic source timeout')
+                    raise DiagnosticFailure(stage, 'OUTPUT_LIMIT')
+                if time.monotonic() >= deadline: raise DiagnosticFailure(stage, 'COMMAND_TIMEOUT')
                 time.sleep(.05)
-            if proc.returncode: raise RuntimeError('Diagnostic source command failed')
-            if os.fstat(output.fileno()).st_size > max_bytes: raise RuntimeError('Diagnostic source output exceeds the batch limit')
+            if proc.returncode:
+                errors.seek(0); diagnostic = errors.read(65536).lower()
+                code = 'COMMAND_EXIT'
+                if stage == 'archive_upload':
+                    for phrase, category in [(b'permission denied', 'SSH_AUTH_DENIED'), (b'host key verification failed', 'SSH_HOST_KEY'),
+                                             (b'connection refused', 'SSH_REFUSED'), (b'connection timed out', 'SSH_TIMEOUT'),
+                                             (b'no route to host', 'SSH_ROUTE'), (b'could not resolve hostname', 'SSH_DNS')]:
+                        if phrase in diagnostic: code = category; break
+                raise DiagnosticFailure(stage, code, proc.returncode)
+            if os.fstat(output.fileno()).st_size > max_bytes: raise DiagnosticFailure(stage, 'OUTPUT_LIMIT')
             output.seek(0); return output.read(max_bytes)
         finally:
             if proc.poll() is None:

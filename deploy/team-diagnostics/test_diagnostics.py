@@ -269,4 +269,58 @@ class ExportTests(unittest.TestCase):
             self.assertTrue(path.with_name('logs.jsonl.partial').exists())
 
 
+
+class RecoveryTests(unittest.TestCase):
+    def test_readiness_waits_for_independent_collector_lock(self):
+        import fcntl
+        import threading
+        with tempfile.TemporaryDirectory() as directory:
+            cfg={'node':'synthetic','state_directory':directory,'actors':{},'journal_units':[]}
+            results=[]
+            with open(pathlib.Path(directory)/'collector.lock','a') as lock, mock.patch.object(collector,'discover',return_value=[]):
+                fcntl.flock(lock,fcntl.LOCK_EX)
+                thread=threading.Thread(target=lambda:results.append(collector.collect(cfg,True)))
+                thread.start();time.sleep(.1)
+                self.assertTrue(thread.is_alive());self.assertEqual(results,[])
+                fcntl.flock(lock,fcntl.LOCK_UN);thread.join(3)
+                self.assertFalse(thread.is_alive());self.assertEqual(len(results),1)
+
+    def test_upload_error_persists_stage_and_keeps_unacknowledged_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg={'node':'synthetic','state_directory':directory,'upload':{'target':'synthetic'},'actors':{},'journal_units':[]}
+            db=archive.connect(pathlib.Path(directory)/'archive.sqlite3',write=True)
+            with db: archive.record(db,'synthetic','a'*64,'worker',STAMP,1,'saved progress')
+            db.close()
+            failure=common.DiagnosticFailure('archive_upload','SSH_REFUSED',255)
+            with mock.patch.object(collector,'discover',return_value=[]), mock.patch.object(collector,'sync',side_effect=failure):
+                with self.assertRaises(common.DiagnosticFailure): collector.collect(cfg,True)
+            db=archive.connect(pathlib.Path(directory)/'archive.sqlite3')
+            status=json.loads(db.execute('SELECT body FROM source_status').fetchone()[0])
+            self.assertTrue(status['upload_backlog'])
+            self.assertEqual(status['errors'],[{'source':'upload','stage':'archive_upload','code':'SSH_REFUSED','exit_status':255}])
+            self.assertEqual(archive.checkpoint(db,'uploaded',0),0)
+            self.assertEqual(len(archive.page(db,{},100)['items']),1)
+            db.close()
+
+    def test_command_error_is_classified_without_echoing_arguments_or_stderr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            executable=pathlib.Path(directory)/'ssh'
+            executable.write_text('#!/bin/sh\necho "Permission denied secret=never-print-this" >&2\nexit 255\n')
+            executable.chmod(0o700)
+            with self.assertRaises(common.DiagnosticFailure) as result: common.command([str(executable),'private-argument'])
+            self.assertEqual(common.failure_details(result.exception),{'stage':'archive_upload','code':'SSH_AUTH_DENIED','exit_status':255})
+            self.assertNotIn('secret',str(result.exception))
+
+    def test_preflight_returns_retry_only_before_exec(self):
+        import execution_preflight
+        calls=[]
+        with mock.patch('os.geteuid',return_value=0):
+            clock=[0]
+            result=execution_preflight.start_execution(run=lambda *a,**k:type('Result',(),{'returncode':1})(),execute=lambda *a:calls.append(a),now=lambda:clock[0],wait=lambda _:clock.__setitem__(0,1800))
+            self.assertEqual(result,1);self.assertEqual(calls,[])
+            def execute(*args): calls.append(args);raise SystemExit(1)
+            with self.assertRaises(SystemExit) as result:
+                execution_preflight.start_execution(run=lambda *a,**k:type('Result',(),{'returncode':0})(),execute=execute)
+            self.assertEqual(result.exception.code,1);self.assertEqual(len(calls),1)
+
 if __name__=='__main__': unittest.main()

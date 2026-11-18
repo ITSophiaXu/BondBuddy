@@ -10,7 +10,7 @@ import subprocess
 import time
 
 import archive
-from common import ENV, canonical, command, digest, identifier, scrub, trusted_file, SECRET_NAME
+from common import ENV, canonical, command, digest, identifier, scrub, trusted_file, SECRET_NAME, DiagnosticFailure, failure_details
 
 DOCKER = ['/usr/bin/docker', '--config', '/etc/bondbuddy-diagnostics/docker']
 
@@ -171,6 +171,7 @@ def ssh(config, operation, payload=None):
     # Dedicated machine key and pinned known-hosts live in administrator-owned SSH config.
     return command(['/usr/bin/ssh', '-F', ssh_config, '-T', '-o', 'BatchMode=yes',
                     '-o', 'StrictHostKeyChecking=yes', '-o', 'ClearAllForwardings=yes',
+                    '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-o', 'ControlPersist=no',
                     '-o', 'ConnectTimeout=10', target, operation], timeout=30, input_bytes=payload)
 
 
@@ -189,7 +190,10 @@ def collect(config, require_synced=False):
     import fcntl
     directory = pathlib.Path(config['state_directory'])
     with open(directory / 'collector.lock', 'a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # The independent timer can already hold the collector lock at boot.
+        # Readiness waits for that bounded service instead of failing in phase
+        # with every timer run; its systemd TimeoutStartSec bounds this wait.
+        fcntl.flock(lock, fcntl.LOCK_EX | (0 if require_synced else fcntl.LOCK_NB))
         db = archive.connect(directory / 'archive.sqlite3', write=True)
         status = {'checked_at': time.time(), 'node': config['node'], 'errors': [], 'containers': [], 'backlog': False}
         try:
@@ -219,12 +223,21 @@ def collect(config, require_synced=False):
             if config.get('upload'):
                 caught_up = False
                 for _ in range(20):
-                    caught_up = sync(db, config)
+                    try: caught_up = sync(db, config)
+                    except Exception as error:
+                        status['upload_backlog'] = True
+                        status['errors'].append({'source': 'upload', **failure_details(error)})
+                        raise
                     if caught_up: break
                 status['upload_backlog'] = not caught_up
-                if not caught_up and require_synced: raise RuntimeError('Central archive still has an upload backlog')
+                if not caught_up and require_synced: raise DiagnosticFailure('archive_upload', 'UPLOAD_BACKLOG')
             if require_synced and (status['errors'] or status['backlog']):
-                raise RuntimeError('Log capture is not complete')
+                raise DiagnosticFailure('archive_capture', 'CAPTURE_INCOMPLETE')
             return status
         finally:
-            db.close()
+            # Persist the upload outcome as well as capture status. The previous
+            # implementation saved only the pre-upload status, hiding SSH failures.
+            try:
+                with db:
+                    db.execute('INSERT INTO source_status VALUES(?,?) ON CONFLICT(source) DO UPDATE SET body=excluded.body', (config['node'], canonical(status)))
+            finally: db.close()
