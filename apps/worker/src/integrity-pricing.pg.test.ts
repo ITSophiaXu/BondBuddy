@@ -24,6 +24,7 @@ import {taskRefundEligibility} from '../../api/dist/task-refunds.js';
 import {action,claim} from '@bondbuddy/api/queue';
 import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
 import {CodexDurableJournal} from './durable-probe-journal.js';
+import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
 import {integrityQueryEvidenceReady} from '@bondbuddy/api/integrity-billing-evidence';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {isolatedTestDatabase} from './test-database.js';
@@ -97,8 +98,9 @@ async function setup(mode:Mode,splitFunding=false,interpretationScenario?:'inval
  }};
  return{pool,owner,project,blobs,draft,post,start,startHistoricalScope,quote,publishManaged,failSites:(ids:string[])=>{for(const id of ids)failedSites.add(id);},get collections(){return collections;},set unavailable(v:boolean){unavailable=v;},set pauseNext(v:boolean){pauseNext=v;},
   read:async(id:string)=>{const run=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[id])).rows[0];const input=(await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[project,run.input_revision])).rows[0];return{run,input};},
-  execute:()=>runPipelineOnce({pool,blobs,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,guarded,integrityDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))}),
-  close:async()=>{await app.close();await pool.end();if(modelRoot)await rm(modelRoot,{recursive:true,force:true});}};
+  // Drain the previous tick's asynchronous trace writes before claiming again; SKIP LOCKED may otherwise legitimately return idle.
+  execute:async()=>{await flushPerformanceTraces(pool,5000);return runPipelineOnce({pool,blobs,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,guarded,integrityDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});},
+  close:async()=>{await flushPerformanceTraces(pool,5000);await app.close();await pool.end();if(modelRoot)await rm(modelRoot,{recursive:true,force:true});}};
 }
 
 for(const mode of ['legacy','reviewed','automatic','automatic-v2','automatic-v3','managed','coverage'] as const)test(`integrity ${mode}: accepted quote reaches actual Word delivery, settles once, and exports free`,{skip:!database||!python,timeout:120000},async()=>{
