@@ -2,6 +2,7 @@
 import base64,copy,datetime,hashlib,json,os,pathlib,re,subprocess,sys,urllib.parse
 ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118')
 OLD_PIN='c9449fc3294e0a1590ddc5081d99cb9387ea439acf4d096db4ea41e790391770'
+BOOTSTRAP_HASHES={'deploy/m1/security/codex-seccomp.json': '4ec7b3837baee01df32a894ad7ac1eeaf8bbf1eb812df8fc3f0b3793f7569a24', 'deploy/m1/security/integrity-browser-seccomp.json': 'b6b702deb98325db37b881ac92e8891ffaded3fcd711359d51dcde15fcf00ac1', 'deploy/tencent-elasticity/bootstrap.mjs': '4f649698add7f404ab3af60a96bf2b2afa57bc9949305e233c8d5791125fbaa9', 'deploy/tencent-elasticity/business-overlay.mjs': '61d183f3391da82578ed7cdb875509feb9668e61bfc1b80909050958012b0bbd', 'deploy/tencent-elasticity/compose.yaml': '3c604483ef133e97c6edd3b2b1b222490b269906129b9ec2debf98e677ec4ed4', 'deploy/tencent-elasticity/node-adapter.mjs': '432e7a88730d65c3497b9f027a5f49d240d53491bbe43e5071445f8d078e228b', 'deploy/tencent-elasticity/policy.mjs': '0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c', 'deploy/tencent-elasticity/private-egress.mjs': '690e49ef8ae15f1ac93a4ec6e7e4a963702ff8d9881fcb95b23bda232b8392cb'}
 NEW_PIN='eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
@@ -27,6 +28,11 @@ def main():
  c=json.loads(run(['docker','inspect','bb-main-ops-1']))[0];need(c['State']['Running'],'ops_running')
  env=dict(v.split('=',1) for v in c['Config']['Env']);pool_target=env['BB_EXECUTION_POOL_CONFIG'];effective=pathlib.Path('/proc')/str(c['State']['Pid'])/'root'/pool_target.lstrip('/');pool_raw=effective.read_bytes();pool=json.loads(pool_raw)
  authority_path=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/authority.json');authority_raw=authority_path.read_bytes();authority=json.loads(authority_raw)
+ app_root=pathlib.Path('/proc')/str(c['State']['Pid'])/'root/app'
+ for name,digest in BOOTSTRAP_HASHES.items():need(sha((app_root/name).read_bytes())==digest,'live_bootstrap_code_drift:'+name)
+ bootstrap_js="""import {bootstrapUserData}from './deploy/tencent-elasticity/bootstrap.mjs';import {createHash}from 'node:crypto';let s='';for await(const b of process.stdin)s+=b;const c=JSON.parse(s);const r={account_id:c.account_id,region:c.region,source_sha256:c.source_sha256,image_sha256:c.image_sha256,services:c.services};const slots=[0,1].map(slot=>{const data=bootstrapUserData(c,r,slot),bytes=Buffer.byteLength(data);if(bytes>16384)throw Error('cloud_bootstrap_size_limit');return{slot,bytes,sha256:createHash('sha256').update(data).digest('hex')};});process.stdout.write(JSON.stringify(slots));"""
+ bootstrap_slots=json.loads(run(['docker','exec','-i','bb-main-ops-1','node','--input-type=module','-e',bootstrap_js],json.dumps({**pool,'business_overlay_sha256':NEW_PIN}).encode()))
+
  need(pool['business_overlay_sha256']==authority['pool']['business_overlay_sha256']==OLD_PIN,'pool_preimage')
  need([pool[k] for k in ['node_model_limit','global_model_limit','max_owned','min_running','idle_seconds']]==[8,8,2,0,300],'capacity_drift')
  templates=[]
@@ -60,7 +66,7 @@ const url=await client.generateSasUrl({permissions:BlobSASPermissions.parse('r')
  volumes=[{'type':'bind','source':str(private/'pool.private.json'),'target':pool_target,'read_only':True}]
  volumes += [{'type':'bind','source':r['after_path'],'target':r['after_path'],'read_only':True} for r in template_records]
  overlay={'services':{'ops':{'volumes':volumes}}};write(private/'ops.compose.private.json',(json.dumps(overlay)+'\n').encode())
- plan={'manifest_before_sha256':sha(pathlib.Path('/var/lib/bondbuddy/migration-908/state-main/current-components.json').read_bytes()),'source_commit':source,'archive_sha256':NEW_PIN,'ops_id':c['Id'],'ops_image':c['Image'],'pool_target':pool_target,'pool_before_sha256':sha(pool_raw),'pool_after_sha256':sha(new_pool_bytes),'authority_before_sha256':sha(authority_raw),'authority_after_sha256':sha(new_authority_bytes),'templates':template_records,'compose_files':c['Config']['Labels']['com.docker.compose.project.config_files'].split(','),'working_directory':c['Config']['Labels']['com.docker.compose.project.working_dir'],'control_lock':pool['registration_directory']+'/control-tick.lock','retained_warm_bootstraps_unchanged':new_pool.get('retained_warm_bootstraps')==pool.get('retained_warm_bootstraps'),'blob_verified':True,'sas_expiry_preserved':expiry,'activated':False}
+ plan={'manifest_before_sha256':sha(pathlib.Path('/var/lib/bondbuddy/migration-908/state-main/current-components.json').read_bytes()),'source_commit':source,'archive_sha256':NEW_PIN,'ops_id':c['Id'],'ops_image':c['Image'],'pool_target':pool_target,'pool_before_sha256':sha(pool_raw),'pool_after_sha256':sha(new_pool_bytes),'authority_before_sha256':sha(authority_raw),'authority_after_sha256':sha(new_authority_bytes),'templates':template_records,'compose_files':c['Config']['Labels']['com.docker.compose.project.config_files'].split(','),'working_directory':c['Config']['Labels']['com.docker.compose.project.working_dir'],'control_lock':pool['registration_directory']+'/control-tick.lock','retained_warm_bootstraps_unchanged':new_pool.get('retained_warm_bootstraps')==pool.get('retained_warm_bootstraps'),'blob_verified':True,'sas_expiry_preserved':expiry,'activated':False,'bootstrap_code_sha256':BOOTSTRAP_HASHES,'bootstrap_slots':bootstrap_slots}
  write(private/'plan.safe.json',(json.dumps(plan,sort_keys=True,indent=2)+'\n').encode());print(json.dumps(plan))
 if __name__=='__main__':
  try:main()

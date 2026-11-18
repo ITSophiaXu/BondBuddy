@@ -60,6 +60,10 @@ def main():
   if not rollback:
    need(state is None,'prior_attempt_reconcile_required');need(not PENDING.exists(),'other_release_pending');need(c['Id']==plan['ops_id'] and healthy(c),'ops_preimage')
    check_config(old,c,[]);need(pool_hash(c,plan['pool_target'])==plan['pool_before_sha256'],'pool_preimage')
+   need(len(plan['bootstrap_code_sha256'])==8 and len(plan['bootstrap_slots'])==2 and all(x['bytes']<=16384 for x in plan['bootstrap_slots']),'bootstrap_evidence')
+   app_root=pathlib.Path('/proc')/str(c['State']['Pid'])/'root/app'
+   for name,h in plan['bootstrap_code_sha256'].items():need(sha((app_root/name).read_bytes())==h,'live_bootstrap_code_drift:'+name)
+
    need(sha(AUTH.read_bytes())==plan['authority_before_sha256'],'authority_preimage');need(sha((STATE/'current-components.json').read_bytes())==plan['manifest_before_sha256'],'manifest_preimage')
    for name,h in OLD.items():need(sha((CODE/name).read_bytes())==h,'authority_code_preimage')
    for item in plan['templates']:
