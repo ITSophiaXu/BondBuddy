@@ -1,0 +1,39 @@
+{
+  "code_commit": "f9d27841",
+  "migrations": 196,
+  "compilation": [
+    "contracts",
+    "domain",
+    "rule-pack-registry",
+    "rule-applicability-context",
+    "api",
+    "worker"
+  ],
+  "runs": [
+    {
+      "path": "work/stage-recovery/full-regression.tap",
+      "sha256": "2f0ff1229ddc514454308db40d846f0e15dd127f97c62636a3e28ce02054774f",
+      "tests": 92,
+      "passed": 90,
+      "failed": 2,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    {
+      "path": "work/stage-recovery/stage-recovery.tap",
+      "sha256": "4349e069fb62a7f1968e07f72b9a644d98b1dc0b7549386c5b1872ab2c1c3bec",
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    }
+  ],
+  "coverage": {
+    "unaffected_passed": 64,
+    "affected_rerun_passed": 28
+  },
+  "provider": "synthetic",
+  "production_changed": false,
+  "user_accepted": false
+}

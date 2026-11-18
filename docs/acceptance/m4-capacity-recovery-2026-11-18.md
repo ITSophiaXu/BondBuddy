@@ -1,6 +1,6 @@
 # M4 收集恢复与模型容量续租确认（2026-11-18）
 
-开发范围：#1592、#1540，以及回归发现的 [#1624](https://github.com/ITSophiaXu/BondBuddy/issues/1624) 受限预约权限。基于 develop `933844bbb39bc62dc21380e6fd863bd6d8b7e551`，与先前池启动修复 PR #1622 分开交付。本记录不代表生产部署或用户验收。
+开发范围：#1592、#1540，以及回归发现的 [#1624](https://github.com/ITSophiaXu/BondBuddy/issues/1624) 受限预约权限。最初基于 develop `933844bbb39bc62dc21380e6fd863bd6d8b7e551`，已同步 `303ea69aa90bda75ef8f06354b0b1440c115fe84`（新增部分仅网页文案，不改变本次后端源码），与先前池启动修复 PR #1622 分开交付。本记录不代表生产部署或用户验收。
 
 ## 为什么发生：可复核证据
 
@@ -32,7 +32,14 @@ Issue #1540 的本地真实 Copilot 运行 `083a4e2e-4fe7-4ad3-8e37-e8f16192fa84
 
 ## 验证
 
-待最终固定版本回归完成后更新结果。使用隔离 PostgreSQL 16、Azurite 3.35、Node 22、Python 3.11、Codex 0.169.0 的真实文件沙箱；模型响应和云回执为 synthetic，没有重新执行生产任务或修改生产账务。
+开发和自测完成；尚未准备统一本地用户验收版，未获用户验收，未部署。
+
+- 196 个迁移在隔离 PostgreSQL 16 全部执行成功；四个共享包、API、worker 从当前源码重新编译通过；`git diff --check` 通过。
+- 完整轮 92 项：90 通过、2 失败（新增多任务夹具重复使用 prompt version=1；旧覆盖文件断言仍期待旧错误）。之后修正夹具/精确诊断断言，并补上审查发现的“分组收集恢复成功后正常进入下一阶段”授权。最终对全部受影响 M4 用例定向复验 28/28 通过、0 fail/skip/cancel；其余 64 项在完整轮通过，未修改对应逻辑后重复空跑。不能把两轮合称一次 92/92 运行。
+- 真实 PG TCP 注入：已提交但丢回包/断连均通过新 backend 继续原许可；holder/lease/节点失权或取消停止；确认不可用约 10 秒结束且实际退出前不删除 holder。共享容量、公平性、drain、活进程/Stop fencing 均通过。
+- 实际 PG + Azurite + Word + API 下载/账务：收集前中断、快照恢复、三类共享规划、缺失 runtime 补写、原调用禁止重发、成功后正常下一阶段、并发恢复去重、用户暂停、跨账号/hash、唯一结算均通过。
+- 原生 Codex 0.169.0 沙箱预检为真实；模型行为和云回执为 synthetic。没有调用真实供应商，没有重新执行生产任务或修改生产账务。不能据此称真实模型输出质量或腾讯 CVM 线上全链路已验收。
+- 完整 TAP 保存在 `work/stage-recovery/full-regression.tap`，最终定向 TAP 在 `work/stage-recovery/stage-recovery.tap`；SHA-256 与准确计数见本报告旁的 validation JSON。
 
 可复现入口（项目根目录，已安装锁定 npm 依赖）：
 
