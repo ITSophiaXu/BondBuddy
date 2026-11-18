@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-18T08:11:28.858023+00:00",
+  "role": "confirmation",
+  "image": "sha256:bd8b15bdf589f26da4a6f11d17fe38271e309ee0c1484569ba4ce2da830e11f7",
+  "digest": "f50e741b01130784ddacc8ed246361945fff3ec7f841a8e6c8cbb35fdd32934e",
+  "exit": 0,
+  "stdout": "TAP version 13\n# Subtest: new contract is v3 and samples at most eight pages\nok 1 - new contract is v3 and samples at most eight pages\n  ---\n  duration_ms: 85.42642\n  type: 'test'\n  ...\n# Subtest: independent upload confirmer imports new enqueue path\nok 2 - independent upload confirmer imports new enqueue path\n  ---\n  duration_ms: 0.237244\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 733.029093\n",
+  "stderr": "",
+  "network": "none",
+  "production_service_changed": false,
+  "root": "/var/tmp/bb-audit1610-canary-f50e741b01130784"
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "path": "usr/share/nginx/html/index.html",
+    "expected": "f0b3ae8035f975fa4c7a4a2dd1876b81e6e464c56033e038fcd8f004f31403ea",
+    "actual": "f0b3ae8035f975fa4c7a4a2dd1876b81e6e464c56033e038fcd8f004f31403ea"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/main-D-doT12l.js",
+    "expected": "deb46aa48695d714268a5a52e691d0a2a5a4592785b700050a093242a7832428",
+    "actual": "deb46aa48695d714268a5a52e691d0a2a5a4592785b700050a093242a7832428"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/rolldown-runtime-hePW80VL.js",
+    "expected": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+    "actual": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/modulepreload-polyfill-P2Xu9kJm.js",
+    "expected": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+    "actual": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/payment-return-route-CCr2l9xi.js",
+    "expected": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+    "actual": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/api-BzM-KiTM.js",
+    "expected": "60cdacd9b916159c29705e242a0d3e1e6afde62d70c884a24fa220bdfed6d011",
+    "actual": "60cdacd9b916159c29705e242a0d3e1e6afde62d70c884a24fa220bdfed6d011"
+  },
+  {
+    "path": "usr/share/nginx/html/assets/main-BQuY8FPo.css",
+    "expected": "2e7ef262a43a680117dbc1fef9fd51cfb8e1a5f359e27e13c1c97278227fb933",
+    "actual": "2e7ef262a43a680117dbc1fef9fd51cfb8e1a5f359e27e13c1c97278227fb933"
+  }
+]

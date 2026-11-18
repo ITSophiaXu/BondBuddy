@@ -1,0 +1,363 @@
+{
+  "schema": "component-scoped-audit-pdf1610-v1",
+  "source_commits": [
+    "79c7b3678d729788831d9d669a0e005f4fea26f0",
+    "5d7c3e5f2212cd504562bb75eaed17ec57a65de6",
+    "25de37d1d1e8efc82edafa163d437dc89eb7b122"
+  ],
+  "source_prs": [
+    1591,
+    1605,
+    1610
+  ],
+  "release_base": "c03084e0aac4a105b22a1ed5466d5ae4b3c50121",
+  "archive_sha256": "19430979b0fa4af00e1feb9da0849993fff4a107b961621f7775abdc4618690e",
+  "archive_bytes": 820963,
+  "files": [
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/audit-pdf-quality.js",
+      "archive_path": "api/app/apps/api/dist/audit-pdf-quality.js",
+      "before_sha256": null,
+      "sha256": "d191a4f9cfe509657a2a52669adc8ff99ba7c981bde2fcb3a943b767ed2122a9",
+      "bytes": 2535
+    },
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/billing.js",
+      "archive_path": "api/app/apps/api/dist/billing.js",
+      "before_sha256": "66c3e6a4833d2573183595c0c76874d898d14a1241c3d3c93afa3eada1a6a88e",
+      "sha256": "62cc2aba7052caf5bcbe90ef9d9f7b5be06e51a234ecd8a5cfce6eeaec5ad258",
+      "bytes": 18305
+    },
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/complete-upload.js",
+      "archive_path": "api/app/apps/api/dist/complete-upload.js",
+      "before_sha256": "8d5a971e8f9a7fcd40cc6820b771c6b31f938ab24ef35ec4d771c89e016792a5",
+      "sha256": "fdf42a0f6996cab4e2f561ef8a1fc5ea7896e1adbc80988392fa6f9268840d47",
+      "bytes": 16977
+    },
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/material-jobs.js",
+      "archive_path": "api/app/apps/api/dist/material-jobs.js",
+      "before_sha256": "f6339d58807a8f40fb2dcbbe14f915a7c0ed058204a4565c97684827d60e3489",
+      "sha256": "452b6785cc58b073258b04974bb0ae8e22c4993698cf9c448152924df47c0d57",
+      "bytes": 22556
+    },
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/server.js",
+      "archive_path": "api/app/apps/api/dist/server.js",
+      "before_sha256": "3d8f4b59d0fcf2929320663a5f898b9f9c2e49d305c9216537ac09c84101128d",
+      "sha256": "1aff1c7a5ca1f16e201068a41d0a2bce67df722830e92467dbef8a985884dadf",
+      "bytes": 194044
+    },
+    {
+      "role": "api",
+      "path": "/app/apps/api/dist/update-workspace.js",
+      "archive_path": "api/app/apps/api/dist/update-workspace.js",
+      "before_sha256": "f84155727212e8d7676222ff2412c1462a8d9f98d2e09c0cffb43b2ca388d7bc",
+      "sha256": "5eeb1ef9803b2cd1c3d0075a0da24412f7a5268a48b94fc17ef7a695166faf9d",
+      "bytes": 12687
+    },
+    {
+      "role": "api",
+      "path": "/app/packages/contracts/dist/index.js",
+      "archive_path": "api/app/packages/contracts/dist/index.js",
+      "before_sha256": "85499ab282eb7e87c187b1dc75ad1133dda96b033d8994be7cbde97cc8506578",
+      "sha256": "10e1f0bb5be8e591524297a5433441e44f6a23735629f9f63ec132bce93c569e",
+      "bytes": 99217
+    },
+    {
+      "role": "api",
+      "path": "/app/packages/contracts/dist/pdf-quality.js",
+      "archive_path": "api/app/packages/contracts/dist/pdf-quality.js",
+      "before_sha256": null,
+      "sha256": "751b9a0e3e5750deaad1383c636543753482eb944b9f0a969bbb4a970e83567e",
+      "bytes": 5023
+    },
+    {
+      "role": "parser",
+      "path": "/app/apps/api/dist/material-jobs.js",
+      "archive_path": "parser/app/apps/api/dist/material-jobs.js",
+      "before_sha256": "27a7b12dc8e3b34437f8910fd131428c25eee4e7cc71666e8abb9f1663299f98",
+      "sha256": "4da7a256811e57801ab8de38cc63ddf055b87fc368c6b261672742ccbe1cb683",
+      "bytes": 21274
+    },
+    {
+      "role": "parser",
+      "path": "/app/apps/worker/dist/material-parse-job.js",
+      "archive_path": "parser/app/apps/worker/dist/material-parse-job.js",
+      "before_sha256": "e643125a4d30b37c7a57adca81da4690cab1bc9b601010f982a82d9c16810e9e",
+      "sha256": "23f7412214fc9658ec13599886b0628177abd4629a8572d6c89c0443f05e0349",
+      "bytes": 21010
+    },
+    {
+      "role": "parser",
+      "path": "/app/apps/worker/dist/material-parser.js",
+      "archive_path": "parser/app/apps/worker/dist/material-parser.js",
+      "before_sha256": "b6f376ef76c3f4d70e3b433f8df17624809bf2f7affb520aeb5154db4869ca72",
+      "sha256": "e1ea58fabf3f64b250b5e7d3793a616bdc5414437c4d8223bd57e6ef773bfa06",
+      "bytes": 15935
+    },
+    {
+      "role": "parser",
+      "path": "/app/apps/worker/dist/pdf-quality.js",
+      "archive_path": "parser/app/apps/worker/dist/pdf-quality.js",
+      "before_sha256": null,
+      "sha256": "617ab59c9db8e9f4abee99c0ea7742d9c1571d147806da507b823ad161542a29",
+      "bytes": 3341
+    },
+    {
+      "role": "parser",
+      "path": "/app/packages/contracts/dist/index.js",
+      "archive_path": "parser/app/packages/contracts/dist/index.js",
+      "before_sha256": "550d196f8c477c5f6404c6738692748ba4bc1a929fe94a08c23967c0a5c911f6",
+      "sha256": "ea1af3cc3a19182498f5e82612f15e9296dc71f4da76b739e43bf59096fae143",
+      "bytes": 99016
+    },
+    {
+      "role": "parser",
+      "path": "/app/packages/contracts/dist/pdf-quality.js",
+      "archive_path": "parser/app/packages/contracts/dist/pdf-quality.js",
+      "before_sha256": null,
+      "sha256": "751b9a0e3e5750deaad1383c636543753482eb944b9f0a969bbb4a970e83567e",
+      "bytes": 5023
+    },
+    {
+      "role": "parser",
+      "path": "/app/python/bondbuddy_pdf_quality/__init__.py",
+      "archive_path": "parser/app/python/bondbuddy_pdf_quality/__init__.py",
+      "before_sha256": null,
+      "sha256": "9fe3d665bd3e72c00f04258966dbe20ec05ceaddc070698b2c893460407a8bef",
+      "bytes": 5018
+    },
+    {
+      "role": "parser",
+      "path": "/app/python/bondbuddy_pdf_quality/__main__.py",
+      "archive_path": "parser/app/python/bondbuddy_pdf_quality/__main__.py",
+      "before_sha256": null,
+      "sha256": "22f4e34d886f54eea1f49a5ae398be15fce370a709cb58f0900658fc292089b4",
+      "bytes": 26
+    },
+    {
+      "role": "confirmation",
+      "path": "/app/apps/api/dist/complete-upload.js",
+      "archive_path": "confirmation/app/apps/api/dist/complete-upload.js",
+      "before_sha256": "8d5a971e8f9a7fcd40cc6820b771c6b31f938ab24ef35ec4d771c89e016792a5",
+      "sha256": "fdf42a0f6996cab4e2f561ef8a1fc5ea7896e1adbc80988392fa6f9268840d47",
+      "bytes": 16977
+    },
+    {
+      "role": "confirmation",
+      "path": "/app/apps/api/dist/material-jobs.js",
+      "archive_path": "confirmation/app/apps/api/dist/material-jobs.js",
+      "before_sha256": "27a7b12dc8e3b34437f8910fd131428c25eee4e7cc71666e8abb9f1663299f98",
+      "sha256": "4da7a256811e57801ab8de38cc63ddf055b87fc368c6b261672742ccbe1cb683",
+      "bytes": 21274
+    },
+    {
+      "role": "confirmation",
+      "path": "/app/packages/contracts/dist/index.js",
+      "archive_path": "confirmation/app/packages/contracts/dist/index.js",
+      "before_sha256": "550d196f8c477c5f6404c6738692748ba4bc1a929fe94a08c23967c0a5c911f6",
+      "sha256": "ea1af3cc3a19182498f5e82612f15e9296dc71f4da76b739e43bf59096fae143",
+      "bytes": 99016
+    },
+    {
+      "role": "confirmation",
+      "path": "/app/packages/contracts/dist/pdf-quality.js",
+      "archive_path": "confirmation/app/packages/contracts/dist/pdf-quality.js",
+      "before_sha256": null,
+      "sha256": "751b9a0e3e5750deaad1383c636543753482eb944b9f0a969bbb4a970e83567e",
+      "bytes": 5023
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/index.html",
+      "archive_path": "web/usr/share/nginx/html/index.html",
+      "before_sha256": "f0b3ae8035f975fa4c7a4a2dd1876b81e6e464c56033e038fcd8f004f31403ea",
+      "sha256": "6071ebad2c41242d02e6d339dd31a58f892b2a0b91c7679704036030289544a8",
+      "bytes": 1106
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/main-DQgv5ynC.js",
+      "archive_path": "web/usr/share/nginx/html/assets/main-DQgv5ynC.js",
+      "before_sha256": null,
+      "sha256": "26fcb7bf3ee41626b3d21cb15f22f06cc671996cda1d9667e2d23ff5ab3d48b7",
+      "bytes": 1773500
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/rolldown-runtime-hePW80VL.js",
+      "archive_path": "web/usr/share/nginx/html/assets/rolldown-runtime-hePW80VL.js",
+      "before_sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "bytes": 716
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "archive_path": "web/usr/share/nginx/html/assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "before_sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "bytes": 670
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/payment-return-route-CCr2l9xi.js",
+      "archive_path": "web/usr/share/nginx/html/assets/payment-return-route-CCr2l9xi.js",
+      "before_sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "bytes": 557
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/api-BvmZwZII.js",
+      "archive_path": "web/usr/share/nginx/html/assets/api-BvmZwZII.js",
+      "before_sha256": null,
+      "sha256": "4c430161aabec0e0ec4ab2cbfb685195c9c4a28fbbb4e1dacba2ebb96b0f7360",
+      "bytes": 360438
+    },
+    {
+      "role": "web",
+      "path": "/usr/share/nginx/html/assets/main-Coj1xGwZ.css",
+      "archive_path": "web/usr/share/nginx/html/assets/main-Coj1xGwZ.css",
+      "before_sha256": null,
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e",
+      "bytes": 482656
+    }
+  ],
+  "before": {
+    "api": {
+      "id": "06a25bbb5a011f7b6a0d030e573fe2df6775f6b54ded6f65a377e60b08ef656c",
+      "image": "sha256:e995a4928f4ec16048ac6b5c5cc136bf9582baf758bc71361cb08e20f4a9eb85",
+      "configuration_files": "/var/lib/bondbuddy/taskqueue1550-api-20261118/private/api.candidate.compose.json",
+      "files": [
+        {
+          "path": "/app/packages/contracts/dist/index.js",
+          "sha256": "85499ab282eb7e87c187b1dc75ad1133dda96b033d8994be7cbde97cc8506578"
+        },
+        {
+          "path": "/app/packages/contracts/package.json",
+          "sha256": "5d14a63cf7ae7c8549e0591eba1d44b2e52276ee1106f5dd0385685b0bf0fe59"
+        },
+        {
+          "path": "/app/apps/api/dist/material-jobs.js",
+          "sha256": "f6339d58807a8f40fb2dcbbe14f915a7c0ed058204a4565c97684827d60e3489"
+        },
+        {
+          "path": "/app/apps/api/dist/billing.js",
+          "sha256": "66c3e6a4833d2573183595c0c76874d898d14a1241c3d3c93afa3eada1a6a88e"
+        },
+        {
+          "path": "/app/apps/api/dist/complete-upload.js",
+          "sha256": "8d5a971e8f9a7fcd40cc6820b771c6b31f938ab24ef35ec4d771c89e016792a5"
+        },
+        {
+          "path": "/app/apps/api/dist/server.js",
+          "sha256": "3d8f4b59d0fcf2929320663a5f898b9f9c2e49d305c9216537ac09c84101128d"
+        },
+        {
+          "path": "/app/apps/api/dist/update-workspace.js",
+          "sha256": "f84155727212e8d7676222ff2412c1462a8d9f98d2e09c0cffb43b2ca388d7bc"
+        }
+      ]
+    },
+    "web": {
+      "id": "8180272a268e94a47c508b79929296af1c5718e8491cad059cfa40c7407b1735",
+      "image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be",
+      "configuration_files": "/var/lib/bondbuddy/integrity1531-final-20261117/private/web.candidate.compose.json",
+      "files": [
+        {
+          "path": "/usr/share/nginx/html/index.html",
+          "sha256": "f0b3ae8035f975fa4c7a4a2dd1876b81e6e464c56033e038fcd8f004f31403ea"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/main-D-doT12l.js",
+          "sha256": "deb46aa48695d714268a5a52e691d0a2a5a4592785b700050a093242a7832428"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/rolldown-runtime-hePW80VL.js",
+          "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/modulepreload-polyfill-P2Xu9kJm.js",
+          "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/payment-return-route-CCr2l9xi.js",
+          "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/api-BzM-KiTM.js",
+          "sha256": "60cdacd9b916159c29705e242a0d3e1e6afde62d70c884a24fa220bdfed6d011"
+        },
+        {
+          "path": "/usr/share/nginx/html/assets/main-BQuY8FPo.css",
+          "sha256": "2e7ef262a43a680117dbc1fef9fd51cfb8e1a5f359e27e13c1c97278227fb933"
+        }
+      ]
+    },
+    "parser": {
+      "id": "4efdd17b1ed3e987bfb7c1fecf88b5854de201f45bd939697a6201372ba6d8f8",
+      "image": "sha256:bd8b15bdf589f26da4a6f11d17fe38271e309ee0c1484569ba4ce2da830e11f7",
+      "configuration_files": "/var/lib/bondbuddy/parser-relocation-20261116/candidate.cache-versions.compose.private.json",
+      "files": [
+        {
+          "path": "/app/packages/contracts/dist/index.js",
+          "sha256": "550d196f8c477c5f6404c6738692748ba4bc1a929fe94a08c23967c0a5c911f6"
+        },
+        {
+          "path": "/app/packages/contracts/package.json",
+          "sha256": "5d14a63cf7ae7c8549e0591eba1d44b2e52276ee1106f5dd0385685b0bf0fe59"
+        },
+        {
+          "path": "/app/apps/api/dist/material-jobs.js",
+          "sha256": "27a7b12dc8e3b34437f8910fd131428c25eee4e7cc71666e8abb9f1663299f98"
+        },
+        {
+          "path": "/app/apps/worker/dist/material-parse-job.js",
+          "sha256": "e643125a4d30b37c7a57adca81da4690cab1bc9b601010f982a82d9c16810e9e"
+        },
+        {
+          "path": "/app/apps/worker/dist/material-parser.js",
+          "sha256": "b6f376ef76c3f4d70e3b433f8df17624809bf2f7affb520aeb5154db4869ca72"
+        }
+      ]
+    },
+    "confirmation": {
+      "id": "c15479c92cd69ff947cc0d55c07430ee459173873626dbb2a67408d190b27ab0",
+      "image": "sha256:bd8b15bdf589f26da4a6f11d17fe38271e309ee0c1484569ba4ce2da830e11f7",
+      "configuration_files": "/mnt/bondbuddy-review-capacity-1303/deploy-source/deploy/m1/compose.execution.yaml,/mnt/bondbuddy-review-capacity-1303/deploy-source/deploy/m1/compose.integrity-beijing.yaml,/home/azureuser/.local/share/bondbuddy/pg-forward-908/compose.execution-preserve-volumes.json",
+      "files": [
+        {
+          "path": "/app/packages/contracts/dist/index.js",
+          "sha256": "550d196f8c477c5f6404c6738692748ba4bc1a929fe94a08c23967c0a5c911f6"
+        },
+        {
+          "path": "/app/packages/contracts/package.json",
+          "sha256": "5d14a63cf7ae7c8549e0591eba1d44b2e52276ee1106f5dd0385685b0bf0fe59"
+        },
+        {
+          "path": "/app/apps/api/dist/material-jobs.js",
+          "sha256": "27a7b12dc8e3b34437f8910fd131428c25eee4e7cc71666e8abb9f1663299f98"
+        },
+        {
+          "path": "/app/apps/api/dist/complete-upload.js",
+          "sha256": "8d5a971e8f9a7fcd40cc6820b771c6b31f938ab24ef35ec4d771c89e016792a5"
+        }
+      ]
+    }
+  },
+  "parser_path": "/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "migrations": 0,
+  "new_dependencies": 0,
+  "real_model_calls": 0,
+  "full_quality_gate_passed": false,
+  "independent_human_document_acceptance": false,
+  "production_activated": false
+}
