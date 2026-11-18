@@ -132,6 +132,10 @@
 
 /* Quoted prospectus tables retain their columns on narrow screens. */
 .qa-answer-body{min-width:0;line-height:1.75;overflow-wrap:anywhere}
+.qa-citations{margin-top:12px;border:1px solid #e2e9e3;border-radius:8px;padding:10px 12px;background:#fafcf8}
+.qa-citations summary{cursor:pointer;font-weight:600;color:#285d48}
+.qa-citations ul{margin:8px 0 0 18px;padding:0}
+.qa-citations li{margin:4px 0;line-height:1.7;overflow-wrap:anywhere}
 .qa-answer-body .readable-table{max-width:100%;overflow-x:auto;margin:16px 0}
 .qa-answer-body table{width:100%;border-collapse:collapse;font:inherit}
 .qa-answer-body th,.qa-answer-body td{padding:10px 12px;border:1px solid var(--line,#dce2d5);text-align:left;min-width:96px;vertical-align:top}

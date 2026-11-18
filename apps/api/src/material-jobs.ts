@@ -28,6 +28,8 @@ export type MaterialParseResult = {
   parse_status: 'parsed' | 'needs_confirmation' | 'failed' | null;
   profile_version: number | null;
   pending_capabilities: 'ocr'[];
+  /** Advisory raster-quality evidence persisted with this parse attempt. */
+  pdf_quality?: PdfQuality;
 };
 
 export type MaterialParseCostStage = 'ocr' | 'parse';

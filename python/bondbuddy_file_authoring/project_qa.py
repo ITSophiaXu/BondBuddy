@@ -221,7 +221,8 @@ def fill(source, request, output):
     if len(answers) != len(request['questions']):
         raise ValueError('QA_ANSWER_COVERAGE')
     last = -1
-    for question in request['questions']:
+    citation_lines = []
+    for question_index, question in enumerate(request['questions'], start=1):
         start, end = question['start'], question['end']
         if not (last < start <= end < len(nodes)) or '\n'.join(paragraph_text(p) for p in nodes[start:end+1]).strip() != question['question']:
             raise ValueError('QA_QUESTION_ANCHOR_CHANGED')
@@ -234,13 +235,18 @@ def fill(source, request, output):
             unplaced = unplaced_missing_materials(answer)
             if unplaced:
                 content.append(('待补材料或待确认事项\n' + '\n'.join('• ' + m for m in unplaced), True))
-        # Citations remain in the result for grounding/audit, not in the reply.
-        # Keep validating them even though their metadata is not rendered.
+        # Citations stay structured for audit and are also exported in a
+        # separate appendix so a reader can verify the answer without reading
+        # the JSON result. They are never folded into the answer prose.
         for cite in answer['citations']:
             evidence = request['evidence'][cite['asset_index']]
             span = next(s for s in evidence['snapshot']['spans'] if s['id'] == cite['span_id'])
             if cite['quote'] not in span['text']:
                 raise ValueError('QA_CITATION_CHANGED')
+            version = (evidence.get('snapshot') or {}).get('sha256') or ''
+            citation_lines.append(
+                f"问题 {question_index} · 《{evidence['filename']}》 · {span['location']}：{cite['quote']}"
+                + (f"（材料 SHA-256 {version[:12]}…）" if version else ''))
         if answer['approach']:
             content.append(('回答思路：' + answer['approach'], False))
         for case_id in answer['case_ids']:
@@ -259,6 +265,15 @@ def fill(source, request, output):
         # A Word cell must end in a paragraph, including when its last answer is a table.
         if anchor.tag == q('tbl') and anchor.getparent().tag == q('tc'):
             anchor.addnext(paragraph(''))
+    if citation_lines:
+        body = root.find(q('body'))
+        section = body.find(q('sectPr'))
+        for note in ['回答依据'] + citation_lines:
+            element = paragraph(note)
+            if section is not None:
+                section.addprevious(element)
+            else:
+                body.append(element)
     if request.get('warnings'):
         body = root.find(q('body'))
         section = body.find(q('sectPr'))

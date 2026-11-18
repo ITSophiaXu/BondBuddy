@@ -191,8 +191,10 @@ class ProjectQaTests(unittest.TestCase):
                 self.assertEqual(a.read('word/styles.xml'),b.read('word/styles.xml'))
                 xml=b.read('word/document.xml').decode();self.assertIn('往来占款明细',xml);self.assertNotIn('w:hRule="exact"',xml)
                 self.assertIn(answer['answer'],xml)
-                for internal in ['回答依据：','合成材料.docx','段落 2',facts['spans'][1]['text'],'参考公开案例','合成案例标题','https://example.test/audit-only']:
-                    self.assertNotIn(internal,xml)
+                for rendered in ['回答依据','合成材料.docx','段落 2',facts['spans'][1]['text']]:
+                    self.assertIn(rendered,xml)
+                for audit_only in ['参考公开案例','合成案例标题','https://example.test/audit-only']:
+                    self.assertNotIn(audit_only,xml)
             self.assertEqual(req,before,'rendering must retain structured citation/case audit data')
             result=Document(output);self.assertEqual(len(result.tables),1);self.assertIn('待补材料',result.tables[0].cell(0,0).text)
             self.assertEqual(hashlib.sha256(prepared.read_bytes()).hexdigest(),req['source_sha256'])
