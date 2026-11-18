@@ -3,12 +3,12 @@ No database, billing, cloud operation, worker image, API/web/parser changes.
 Unknown outcomes retain owned pending state for explicit reconciliation.
 """
 import copy,datetime,fcntl,hashlib,json,os,pathlib,stat,subprocess,sys,time
-ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118');P=ROOT/'private'
+ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118-r2');P=ROOT/'private'
 STATE=pathlib.Path('/var/lib/bondbuddy/migration-908/state-main');PENDING=STATE/'pending-release.json'
 AUTH=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/authority.json');CODE=pathlib.Path('/opt/bondbuddy-elastic-control/deploy/tencent-elasticity')
 OLD={}
 NEW={}
-OWNER='workpaper1551-control'
+OWNER='workpaper1551-control-r2'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def sha(b):return hashlib.sha256(b).hexdigest()

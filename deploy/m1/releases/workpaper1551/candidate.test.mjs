@@ -14,13 +14,13 @@ test('fixed runtime archive changes only the two preflight leaves and retains ev
  assert.equal(sha(await file('main-cutover-adapter.py')),'59818258171123633d3c4d5a7cc8037e4ec2082a997bf18e7bfefd7a54849a4c');
  const desc=JSON.parse(await file('descriptor.json')),candidate=await file('overlay.tar.gz'),old=await file('../encrypted-source1482/overlay.tar.gz');
  assert.equal(sha(old),'c9449fc3294e0a1590ddc5081d99cb9387ea439acf4d096db4ea41e790391770');
- assert.equal(sha(candidate),'eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c');
+ assert.equal(sha(candidate),'b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9');
  assert.equal(businessOverlayFiles(candidate,desc).size,78);
  const a=members(old),b=members(candidate);assert.deepEqual([...a.keys()],[...b.keys()]);assert.equal(a.size,83);
  const changed=[...a.keys()].filter(k=>!a.get(k).equals(b.get(k)));
  assert.deepEqual(changed,['authoring/apps/worker/dist/managed-database-preflight.js','review/apps/worker/dist/managed-database-preflight.js']);
  const compiled=await file('managed-database-preflight.mjs');for(const k of changed)assert.deepEqual(b.get(k),compiled);
- assert.equal(sha(compiled),'0d37fa38b0fc141b14ed790ff2e9dfc953d3106893c7fde13f784eddb1d80df3');
+ assert.equal(sha(compiled),'258f33e9842279db61cb6c4abd03ce530e71cd6eb363126f84e77faa688878d9');
 });
 test('archive descriptor rejects corruption or an unreviewed runtime addition',async()=>{
  const desc=JSON.parse(await file('descriptor.json')),a=await file('overlay.tar.gz'),broken=Buffer.from(a);broken[100]^=1;
@@ -32,7 +32,7 @@ test('archive descriptor rejects corruption or an unreviewed runtime addition',a
  try {
  for(const [path,f] of Object.entries(fixture.files)){const bytes=Buffer.from(f.base64,'base64');assert.equal(bytes.length,f.bytes);assert.equal(sha(bytes),f.sha256);const p=join(root,path);await mkdir(dirname(p),{recursive:true});await writeFile(p,bytes);}
  const {bootstrapUserData}=await import(pathToFileURL(join(root,'deploy/tencent-elasticity/bootstrap.mjs')));
- const config={...JSON.parse(await file('../fine-step1420/managed-node-eight/boot-public-config.json')),business_overlay_sha256:'eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c'};
+ const config={...JSON.parse(await file('../fine-step1420/managed-node-eight/boot-public-config.json')),business_overlay_sha256:'b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9'};
  const prior=JSON.parse(await file('../fine-step1420/managed-node-eight/package-summary.json'));
  const request={account_id:config.account_id,region:config.region,source_sha256:prior.source_sha256,image_sha256:config.image_sha256,services:config.services};
  for(const slot of [0,1]){const data=bootstrapUserData(config,request,slot);assert.ok(Buffer.byteLength(data)<=16384);t.diagnostic(JSON.stringify({slot,bytes:Buffer.byteLength(data),sha256:sha(data)}));}

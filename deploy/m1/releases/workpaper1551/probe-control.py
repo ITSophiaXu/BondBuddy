@@ -1,6 +1,6 @@
 """Create-only probe for the exact existing ops service plus three descriptor mounts."""
 import copy,hashlib,importlib.util,json,os,pathlib,subprocess,sys
-ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118');PRIVATE=ROOT/'private'
+ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118-r2');PRIVATE=ROOT/'private'
 SUPPORT=ROOT/'public/main-cutover-adapter.py'
 SUPPORT_SHA='59818258171123633d3c4d5a7cc8037e4ec2082a997bf18e7bfefd7a54849a4c'
 def need(ok,code):

@@ -1,9 +1,9 @@
 """Stage #1551 node/control files and private descriptors; do not activate them."""
 import base64,copy,datetime,hashlib,json,os,pathlib,re,subprocess,sys,urllib.parse
-ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118')
+ROOT=pathlib.Path('/var/lib/bondbuddy/workpaper1551-20261118-r2')
 OLD_PIN='c9449fc3294e0a1590ddc5081d99cb9387ea439acf4d096db4ea41e790391770'
 BOOTSTRAP_HASHES={'deploy/m1/security/codex-seccomp.json': '4ec7b3837baee01df32a894ad7ac1eeaf8bbf1eb812df8fc3f0b3793f7569a24', 'deploy/m1/security/integrity-browser-seccomp.json': 'b6b702deb98325db37b881ac92e8891ffaded3fcd711359d51dcde15fcf00ac1', 'deploy/tencent-elasticity/bootstrap.mjs': '4f649698add7f404ab3af60a96bf2b2afa57bc9949305e233c8d5791125fbaa9', 'deploy/tencent-elasticity/business-overlay.mjs': '61d183f3391da82578ed7cdb875509feb9668e61bfc1b80909050958012b0bbd', 'deploy/tencent-elasticity/compose.yaml': '3c604483ef133e97c6edd3b2b1b222490b269906129b9ec2debf98e677ec4ed4', 'deploy/tencent-elasticity/node-adapter.mjs': '432e7a88730d65c3497b9f027a5f49d240d53491bbe43e5071445f8d078e228b', 'deploy/tencent-elasticity/policy.mjs': '0d10b87f4cabd06381eb638f9d47df7b9ce3a04449bb1a4555e7cf15d6498b5c', 'deploy/tencent-elasticity/private-egress.mjs': '690e49ef8ae15f1ac93a4ec6e7e4a963702ff8d9881fcb95b23bda232b8392cb'}
-NEW_PIN='eb3e2a9a8000ed61e7516d8ae98d1f9074e07ca76be400ca9ca72a7e3956d64c'
+NEW_PIN='b0080b09ab87f97f1e1533902b671757fa8b44a207c79dfb28b0a667791bb0b9'
 def need(ok,code):
  if not ok:raise RuntimeError(code)
 def sha(b):return hashlib.sha256(b).hexdigest()
@@ -24,7 +24,7 @@ def main():
  expected={'main-cutover-adapter.py':'59818258171123633d3c4d5a7cc8037e4ec2082a997bf18e7bfefd7a54849a4c','overlay.tar.gz':NEW_PIN}
  for name,digest in expected.items():
   b=base64.b64decode(payload['files'][name]);need(sha(b)==digest,'public_hash');write(public/name,b,0o644)
- desc=payload['descriptor'];need(desc['sha256']==NEW_PIN and desc['bytes']==461990 and len(desc['files'])==78,'descriptor_scope')
+ desc=payload['descriptor'];need(desc['sha256']==NEW_PIN and desc['bytes']==462195 and len(desc['files'])==78,'descriptor_scope')
  c=json.loads(run(['docker','inspect','bb-main-ops-1']))[0];need(c['State']['Running'],'ops_running')
  env=dict(v.split('=',1) for v in c['Config']['Env']);pool_target=env['BB_EXECUTION_POOL_CONFIG'];effective=pathlib.Path('/proc')/str(c['State']['Pid'])/'root'/pool_target.lstrip('/');pool_raw=effective.read_bytes();pool=json.loads(pool_raw)
  authority_path=pathlib.Path('/var/lib/bondbuddy/elastic-pg-mtls/authority.json');authority_raw=authority_path.read_bytes();authority=json.loads(authority_raw)
