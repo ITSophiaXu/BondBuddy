@@ -1,0 +1,10 @@
+{
+  "progressive-both-billing.tap": {
+    "sha256": "8b66b7ccc92b4bef7cb593c43143099224a5850089c6e4d9538743106b5ad3d9",
+    "bytes": 4472
+  },
+  "browser-final.log": {
+    "sha256": "61d5585625de55ec8e9d2cbbdac228e66b72f174aeac2e67ecbccc133eed8f2f",
+    "bytes": 1205
+  }
+}

@@ -358,6 +358,9 @@ for(const automatic of [false,true])test(`restricted workpaper consumer creates 
   const grants=await readFile(new URL('../../../deploy/m1/security/managed-execution-prerequisites.sql',import.meta.url),'utf8');
   const apply=()=>f.pool.query(grants.replaceAll(':"runtime_role"',quote(role)));
   await apply();
+  // The recorded ACL predates 0192. Include the narrow scope-reservation grant
+  // from #1624 before testing the independent shared-consumer dependencies.
+  await f.pool.query(`GRANT INSERT(owner_user_id,scope_quote_id,reservation_id) ON public.bb_authoring_scope_reservations TO ${quote(role)}`);
   // Isolate the first production failure; the other new grants are checked separately.
   await f.pool.query(`REVOKE SELECT ON public.bb_workpaper_paid_check_items FROM ${quote(role)}`);
   const url=new URL(f.pool.options.connectionString!);url.username=role;url.password=password;
@@ -447,4 +450,67 @@ for(const automatic of [false,true])test(`restricted workpaper consumer creates 
   }finally{
     await flushPerformanceTraces(worker,5000);await worker.end();await f.pool.query(`DROP OWNED BY ${quote(role)}`);await f.pool.query(`DROP ROLE ${quote(role)}`);await f.close();
   }
+});
+
+
+for(const automatic of [false,true])test(`direct shared failure retries two settled failures and delivers all four without cancellation (${automatic?'on_delivery':'dynamic'})`,{skip:!configured,timeout:180000},async()=>{
+ const f=await fixture('direct-shared-recovery-'+automatic,2,automatic);
+ try{
+  if(automatic){const pricing=(await f.ok('GET',f.path+'/file-generation')).pricing;f.request.price_version=pricing.price_version;f.request.expected_points=f.request.item_ids.length*Number(pricing.workpaper_points);}
+  let batch=await f.ok('POST',f.base+'/batches',{...f.request,progressive:undefined}) as WorkpaperBatch;
+  assert.equal(batch.progressive,undefined);
+  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+  const originals=batch.items.filter(i=>i.run_id),untouched=batch.items.filter(i=>!i.run_id).map(i=>i.entry.id);
+  assert.equal(originals.length,2);assert.equal(untouched.length,2);
+  const manifests=(await f.pool.query('SELECT item_id,manifest FROM bb_workpaper_items WHERE batch_id=$1 ORDER BY item_id',[batch.batch_id])).rows;
+  for(const item of originals){const lease=await claim(f.pool,60,{runKinds:['generation']});assert.equal(lease?.runId,item.run_id);assert.equal((await finish(f.pool,lease!,'failed',{errorCode:'MODEL_PROVIDER_REQUEST_REJECTED'})).state,'failed');}
+  await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+  assert.equal(batch.state,'paused');assert.equal(batch.pause_reason,'shared_blocked');
+  const actionPath=f.base+'/batches/'+batch.batch_id+'/actions';
+  const resume=await f.send('POST',actionPath,{action:'resume',expected_revision:batch.revision});assert.equal(resume.statusCode,409);assert.match(resume.body,/重试受阻文件/);
+  const job=(await f.pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[originals[0]!.run_id])).rows[0];
+  await f.pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '60 seconds' WHERE id=$1",[job.id,randomUUID()]);
+  assert.equal((await f.send('POST',actionPath,{action:'retry_failed',expected_revision:batch.revision})).statusCode,409,'terminal run with a live job lease cannot be retried');
+  await f.pool.query('UPDATE bb_jobs SET lease_token=NULL,lease_until=NULL WHERE id=$1',[job.id]);
+  const pendingId=randomUUID();
+  await f.pool.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id) VALUES($1,$2,$3,$4,1,'pending_reconcile','synthetic-model')",[pendingId,f.user,job.id,randomUUID()]);
+  const pending=await f.send('POST',actionPath,{action:'retry_failed',expected_revision:batch.revision});assert.equal(pending.statusCode,409);assert.match(pending.body,/对账/);
+  await f.pool.query("UPDATE bb_model_call_attempts SET status='confirmed_not_sent' WHERE id=$1",[pendingId]);
+  const retry={action:'retry_failed',expected_revision:batch.revision};
+  const replies=await Promise.all([f.send('POST',actionPath,retry),f.send('POST',actionPath,retry)]);
+  assert.deepEqual(replies.map(r=>r.statusCode).sort(),[200,409]);batch=await f.read(batch.batch_id);
+  assert.equal(batch.state,'queued');assert.equal(batch.pause_reason,null);
+  assert.ok(batch.items.filter(i=>untouched.includes(i.entry.id)).every(i=>i.run_id===null&&i.attempt===1));
+  assert.ok(batch.items.filter(i=>!untouched.includes(i.entry.id)).every(i=>i.run_id===null&&i.attempt===2));
+  for(let turn=0;turn<8;turn++){
+   await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+   for(const item of batch.items.filter(i=>i.run_id&&i.state==='queued'))await f.succeed(item.run_id!);
+   if(batch.state==='complete')break;
+  }
+  assert.equal(batch.state,'complete');assert.equal(batch.items.filter(i=>i.state==='succeeded').length,4);
+  assert.deepEqual((await f.pool.query('SELECT item_id,manifest FROM bb_workpaper_items WHERE batch_id=$1 ORDER BY item_id',[batch.batch_id])).rows,manifests);
+  const reservations=(await f.pool.query("SELECT state,billing_policy,charged_points,(SELECT count(*)::int FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle') settle_events,(SELECT count(*)::int FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='release') release_events,(SELECT coalesce(sum(points),0)::text FROM bb_credit_events e WHERE e.reservation_id=r.id AND e.kind='settle') settled_points FROM bb_credit_reservations r WHERE owner_user_id=$1",[f.user])).rows;
+  assert.equal(reservations.length,6);assert.equal(reservations.filter(r=>r.state==='settled').length,4);assert.equal(reservations.filter(r=>r.state==='released'&&Number(r.charged_points)===0).length,2);
+  assert.ok(reservations.every(r=>r.settle_events===(r.state==='settled'?1:0)&&r.release_events<2&&Number(r.settled_points)===Number(r.charged_points)),JSON.stringify(reservations));
+  assert.ok(reservations.filter(r=>r.state==='released').every(r=>r.release_events===(r.billing_policy==='on_delivery'?1:0)));
+  assert.equal(Number((await f.pool.query('SELECT coalesce(sum(frozen),0) n FROM bb_credit_lots WHERE owner_user_id=$1',[f.user])).rows[0].n),0);
+ }finally{await f.close();}
+});
+
+test('direct paused batches retain completed siblings and reject child recovery bypass',{skip:!configured,timeout:180000},async()=>{
+ const f=await fixture('direct-preserve',2);
+ try{
+  let batch=await f.ok('POST',f.base+'/batches',{...f.request,progressive:undefined}) as WorkpaperBatch;
+  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+  const [complete,blocked]=batch.items.filter(i=>i.run_id);await f.succeed(complete!.run_id!);
+  await f.pool.query("UPDATE bb_jobs SET state='paused' WHERE run_id=$1",[blocked!.run_id]);await f.pool.query("UPDATE bb_runs SET state='paused' WHERE id=$1",[blocked!.run_id]);
+  await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);assert.equal(batch.pause_reason,'shared_blocked');
+  const preserved=structuredClone(batch.items.find(i=>i.entry.id===complete!.entry.id)!);
+  for(const action of ['resume','retry_failed'])assert.equal((await f.send('POST',f.base+'/batches/'+batch.batch_id+'/actions',{action,expected_revision:batch.revision})).statusCode,409);
+  await f.fail(blocked!.run_id!,'WORKPAPER_SOURCE_BLOCKED');
+  assert.equal(await advanceWorkpaperBatch(f.pool),true,'paused direct batches must collect a finished child');
+  batch=await f.read(batch.batch_id);batch=await f.action(batch,{action:'retry_failed'});
+  assert.deepEqual(batch.items.find(i=>i.entry.id===complete!.entry.id),preserved);
+  assert.equal(batch.items.find(i=>i.entry.id===blocked!.entry.id)!.attempt,2);
+ }finally{await f.close();}
 });

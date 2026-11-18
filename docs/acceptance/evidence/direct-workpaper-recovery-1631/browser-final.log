@@ -1,0 +1,16 @@
+
+Running 7 tests using 1 worker
+
+(node:27408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:27408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\workpaper-batch.spec.ts:34:1 › asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause (5.9s)
+  ok 2 tests\workpaper-batch.spec.ts:188:31 › direct shared failure exposes retry and preserves manual resume 1440 (3.8s)
+  ok 3 tests\workpaper-batch.spec.ts:188:31 › direct shared failure exposes retry and preserves manual resume 390 (3.7s)
+  ok 4 tests\workpaper-batch.spec.ts:202:76 › direct blocked retry waits for child running (2.2s)
+  ok 5 tests\workpaper-batch.spec.ts:202:76 › direct blocked retry waits for child queued (2.0s)
+  ok 6 tests\workpaper-batch.spec.ts:202:76 › direct blocked retry waits for child paused (2.1s)
+  ok 7 tests\workpaper-batch.spec.ts:202:76 › direct blocked retry waits for child awaiting_input (2.2s)
+
+  7 passed (52.2s)
