@@ -568,4 +568,3 @@ test('a gateway start failure falls back to the direct provider route and is log
   assert.ok(!failing.exec_log!.bytes.toString().includes('[bondbuddy-model-gateway]'), 'no appendix without a gateway');
   assert.match(failing.exec_log!.bytes.toString(), /base=http:\/\/127\.0\.0\.1:\d+\/\?bad=query/, 'child used the configured provider URL directly');
 });
-

@@ -657,4 +657,3 @@ export function modelGatewayRequestLog(record: ModelGatewayRecord, trace?: Model
     image_data_url_bytes: r?.image_data_url_bytes ?? null, max_image_data_url_bytes: r?.max_image_data_url_bytes ?? null,
     largest_item: r?.largest_item ?? null, upstream_request_id: record.response?.upstream_request_id ?? null, duration_ms: record.duration_ms };
 }
-
