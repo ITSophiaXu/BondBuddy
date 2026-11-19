@@ -1,0 +1,35 @@
+{
+  "code_commit": "6c4f5f90",
+  "integration_commit": "4b22f6a169458631f1678d81a7eadbe84e638757",
+  "isolated_regression": {
+    "tests": 94,
+    "pass": 94,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "tap_sha256": "a5fa8fce7e781672eead37b89f97b1d7167a4d89f3e1813e2994ab7b8d3ee8b9"
+  },
+  "additional_integrated_node": {
+    "tests": 113,
+    "pass": 109,
+    "fail": 0,
+    "skipped": 4
+  },
+  "additional_targeted_python_enabled_node": {
+    "tests": 4,
+    "pass": 4,
+    "fail": 0,
+    "skipped": 0
+  },
+  "python_tests": 7,
+  "real_provider_probe": {
+    "account": "yingx_microsoft",
+    "provider": "copilot_enterprise",
+    "model": "gpt-6-sol",
+    "http_status": 200,
+    "output": "OK"
+  },
+  "real_task_delivery": "in_progress",
+  "user_acceptance": false,
+  "production_deployment": false
+}
