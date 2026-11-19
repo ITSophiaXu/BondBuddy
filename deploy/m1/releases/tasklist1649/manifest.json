@@ -1,0 +1,123 @@
+{
+  "schema": "component-scoped-tasklist1649-v1",
+  "source_pr": 1649,
+  "source_commit": "df595072a71f027b7d378859315af54f58429e5f",
+  "release_base": "66ae6ed9815f2e02a5576056c515480b24df17ff",
+  "scope": "Progressive project-list pagination; web only",
+  "api_changed": false,
+  "migrations": 0,
+  "new_dependencies": 0,
+  "real_model_calls": 0,
+  "full_quality_gate_passed": false,
+  "user_acceptance_recorded": false,
+  "authorization": "User explicitly requested the task-page loading optimization deploy first, excluding 413; earlier explicitly skipped this batch gold-sample acceptance.",
+  "candidate_browser_tests_passed": 20,
+  "unit_tests_passed": 12,
+  "compiled_scope": {
+    "live_main_sha256": "c454d17f066a1ec496493a43878390cc16c0f52688b870c94bf33c24afee2785",
+    "only_five_ast_edits": true,
+    "index_only_main_reference_changed": true
+  },
+  "registry_before_sha256": "7c1f60522fa11d9814910035a06bb167070b4a1051e1073ac44bde15ca005607",
+  "web_before": {
+    "id": "abf0b88dd73759d103b3394299c5ce8d75c589c7a10ea93fd1a72bbb326eab6a",
+    "image": "sha256:1f49ae4d66c277e023901b2ec7b28b4f4a97e048d5110e35ad805ff9b80129be"
+  },
+  "protected_ids": {
+    "bb-main-api-1": "0ff364b7def411b4860576df9954b7e1016d975b6787a25c80beeadd6ad8bb13",
+    "bb-main-postgres-1": "4d58b1af9c3bb0f2fc4fae50be6ce1eaf04dd4d323cdada64cfee6b38a4e786e",
+    "bb-main-ops-1": "f36181b18d5f9383d7168246a48e417b35cbfe6b0aeecc2d64bc8d34a36f4fbf"
+  },
+  "source_configs": {
+    "/var/lib/bondbuddy/audit-pdf1627-20261118/private/web.candidate.compose.json": "3fa7ae27b8c55cee72e911d8877fa69233a139b79e483fe2d482901c956a446f"
+  },
+  "prior_web_files": [
+    {
+      "path": "index.html",
+      "sha256": "596a2b1125034799178685f879f8fd9f58260b540b4baf8bc7d76d1313726b99",
+      "bytes": 1106
+    },
+    {
+      "path": "assets/main-lH0AuHk5.js",
+      "sha256": "c454d17f066a1ec496493a43878390cc16c0f52688b870c94bf33c24afee2785",
+      "bytes": 1773678
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "bytes": 716
+    },
+    {
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "bytes": 670
+    },
+    {
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "bytes": 557
+    },
+    {
+      "path": "assets/api-B5NXEviW.js",
+      "sha256": "ed440b30f2bf5b8fcad36ad565b1ed4c9313cfda3e8cbe8abe8d263aea3f4691",
+      "bytes": 360910
+    },
+    {
+      "path": "assets/main-Coj1xGwZ.css",
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e",
+      "bytes": 482656
+    }
+  ],
+  "candidate_web_files": [
+    {
+      "path": "index.html",
+      "sha256": "1f17e164230e89692ce9e70b839771570baaa54090586d555390bf728c0732dc",
+      "bytes": 1119
+    },
+    {
+      "path": "assets/main-tasklist1649-ea0f12e0.js",
+      "sha256": "ea0f12e0b3f63947b92b8bb367aeabadee2e59e29fda3e5e65b610dbb0dbc0f5",
+      "bytes": 1774424
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "sha256": "580ad8c58061a4dde99bde0a56905e382f0568516ee2f5b84dbfb52085709021",
+      "bytes": 716
+    },
+    {
+      "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+      "sha256": "418c206484b89b68ef5f067277831e583fc9193a62aadf4de269acaaeb12a85f",
+      "bytes": 670
+    },
+    {
+      "path": "assets/payment-return-route-CCr2l9xi.js",
+      "sha256": "714020e071ed763b4aad09aafafbf5f395dd74f5b1ab61d5e054e4dc806ef161",
+      "bytes": 557
+    },
+    {
+      "path": "assets/api-B5NXEviW.js",
+      "sha256": "ed440b30f2bf5b8fcad36ad565b1ed4c9313cfda3e8cbe8abe8d263aea3f4691",
+      "bytes": 360910
+    },
+    {
+      "path": "assets/main-Coj1xGwZ.css",
+      "sha256": "b25da2df35a80617a47253c9fc1d7f5a450372f2d03a1bd51a98dfedd6dc4d1e",
+      "bytes": 482656
+    }
+  ],
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "1f17e164230e89692ce9e70b839771570baaa54090586d555390bf728c0732dc",
+      "bytes": 1119
+    },
+    {
+      "path": "assets/main-tasklist1649-ea0f12e0.js",
+      "sha256": "ea0f12e0b3f63947b92b8bb367aeabadee2e59e29fda3e5e65b610dbb0dbc0f5",
+      "bytes": 1774424
+    }
+  ],
+  "archive_sha256": "6b58e4354ade48e2ce637b53ba95e23236a86912247aeb645d49cb4ae208e601",
+  "adapter_sha256": "00e5291ed4b70aa21dfab3f616cea10b427952aeee8f17cd8e974e323255ef67",
+  "activation_script_sha256": "9851debc14a0bb9ec0c715b463da4cc3481213d9306c5799446ce8c0a8029bf1"
+}
