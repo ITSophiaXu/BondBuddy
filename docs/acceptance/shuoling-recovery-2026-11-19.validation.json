@@ -421,7 +421,7 @@
       "formal_delivery": false
     }
   },
-  "m1_commit": "87d60ab9936dea7a4b20e0eb927fe82e5cd4718a",
+  "m1_commit": "f25c2114d896ca94bc5e511d301731b9a57cda10",
   "real_third_m4_replay": {
     "request_status": 200,
     "expected_revision": 13,
@@ -574,12 +574,111 @@
     "user_acceptance": false
   },
   "production_pool_latest_readonly_receipt": {
-    "comment_url": "https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7006077170",
-    "receipt_at": "2026-11-19T10:11:05Z",
-    "one_node_ready": true,
-    "model_holders_renewing": 2,
-    "another_node_artifact_verification_failed": true,
-    "natural_business_first_claim_acceptance": "pending",
-    "production_changed_by_this_chat": false
+    "url": "https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7008512587",
+    "at": "2026-11-19T12:01:00Z",
+    "claimed": 2,
+    "queue_candidates": 0,
+    "source": "muhualing receipt; no production mutation by this chat"
+  },
+  "current_acceptance": {
+    "recorded_at": "2026-11-19T14:12:33.010Z",
+    "m1_run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+    "m1_state": "running",
+    "m1_commit": "f25c2114d896ca94bc5e511d301731b9a57cda10",
+    "api_commit": "865c8037d40067834b74a475c4806e71ba112ce9",
+    "m4_commit": "77310bdb2304ee395406e990b5432afded46daaf",
+    "db_migrations": 196,
+    "m1_focused": {
+      "commit": "f25c2114d896ca94bc5e511d301731b9a57cda10",
+      "api_commit": "865c8037d40067834b74a475c4806e71ba112ce9",
+      "migrations": 196,
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "cancelled": 0,
+      "tap_sha256": "36c9a41bed40dbdaa014b2cd8d3a058879165ec4d9145335171234b46aa6cc90",
+      "scope": "focused seed unit and MODEL_TIMEOUT PG recovery; other suites not included",
+      "active_runtime_changed": false,
+      "broad": {
+        "pass": 41,
+        "fail": 0,
+        "skip": 0,
+        "cancelled": 0,
+        "tap_sha256": "23def840ff8733706702c82f44a3cc2e11e1a00855e05dbde2e977957f9ac7b2",
+        "scope": "eight related suites; historical native SessionStart compact protocol suite excluded and remains a known failure"
+      }
+    },
+    "m1_original_preserved": {
+      "at": "2026-11-19T13:44:44.366Z",
+      "all_unchanged": true,
+      "checks": [
+        {
+          "table": "bb_runs",
+          "count": 1,
+          "hash": "586b76e5dc179e54715760d0a3f98a1c"
+        },
+        {
+          "table": "bb_jobs",
+          "count": 1,
+          "hash": "6836e66aebb0950e5c7a3d688de79789"
+        },
+        {
+          "table": "bb_credit_reservations",
+          "count": 1,
+          "hash": "e923845bc0305cf516f3896736ea6fac"
+        },
+        {
+          "table": "bb_credit_events",
+          "count": 2,
+          "hash": "43d3be6968aa9699f373bb1ce8cd28e1"
+        },
+        {
+          "table": "bb_run_events",
+          "count": 2942,
+          "hash": "7278fdb113de388636b69dfbb0254a03"
+        },
+        {
+          "table": "bb_model_call_attempts",
+          "count": 13,
+          "hash": "dbdbdb9d13cd67961689e7ca1ba0d444"
+        },
+        {
+          "table": "bb_model_call_attempt_runtime",
+          "count": 13,
+          "hash": "fb688d11d64176fdb95860da9c1928d7"
+        },
+        {
+          "table": "bb_usage_observations",
+          "count": 13,
+          "hash": "615de33f030d87bf9efd008d4e9d33ad"
+        },
+        {
+          "table": "bb_provider_call_observations",
+          "count": 13,
+          "hash": "db38681cb444cda103e0396f292b4a4f"
+        }
+      ]
+    },
+    "m4_numeric_cells": {
+      "1-5-8-1": 352,
+      "1-5-8-4": 1625,
+      "1-5-9-2": 594
+    },
+    "m4_archive_sha256": "ebac72d4ffac2f396c85b6ed243f7940a02beb0311374deba801de361384a27b",
+    "m4_layout_acceptance": "failed_1662_open",
+    "m4_reflow_candidate": "f135490e2d91b60618bee5de6bededd7860a299b",
+    "m4_reflow_tests": [
+      {
+        "pass": 51,
+        "fail": 0,
+        "skip": 2
+      },
+      {
+        "pass": 2,
+        "fail": 0,
+        "skip": 0
+      }
+    ],
+    "formal_repair_published": false
   }
 }
