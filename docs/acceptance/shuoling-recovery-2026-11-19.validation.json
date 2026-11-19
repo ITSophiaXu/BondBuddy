@@ -46,5 +46,13 @@
     }
   },
   "prompt_followup_commit": "21ff3b38",
-  "prompt_followup_regression": "running"
+  "prompt_followup_regression": {
+    "tests": 39,
+    "pass": 39,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "migrations": 196,
+    "tap_sha256": "1ce8cf05b5a9f758aadfb336e5fcb32865ccc8d40f30f8f18ae65103928b5822"
+  }
 }
