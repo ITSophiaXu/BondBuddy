@@ -44,13 +44,13 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
    return {run_id:target.id,source_run_id:prior.source_run_id,files:prior.snapshot.files.length,deadline_at:prior.deadline_at,idempotent:true};
   }
   if(target.task_kind!=='update'||target.state!=='queued'||target.stage!=='queued'||target.artifact_id||target.billing_mode!=='fixed_credits'
-   ||job.job_type!=='run'||job.subtype!=='update_pipeline_v1'||job.state!=='queued'||job.lease_token||job.lease_until
+   ||job.job_type!=='update'||job.subtype!=='update_pipeline_v1'||job.state!=='queued'||job.lease_token||job.lease_until
    ||job.user_pause_requested||job.credit_pause_requested||job.billing_cancel_requested_at||Object.keys(job.checkpoint??{}).length)throw conflict();
   const source=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 FOR UPDATE',[input.sourceRunId,scope.owner,scope.project])).rows[0];
   const old=source&&(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[source.id,scope.owner])).rows[0];
   if(!source||!old||source.task_kind!=='update'||source.state!=='failed'||source.stage!=='failed'||source.artifact_id||source.channel!==target.channel
    ||source.billing_mode!=='fixed_credits'||Number(source.input_revision)!==scope.revision||String(source.input_hash).trim()!==scope.inputHash
-   ||new Date(source.created_at).getTime()>=new Date(target.created_at).getTime()||old.job_type!=='run'||old.subtype!=='update_pipeline_v1'||old.state!=='failed'||old.lease_token||old.lease_until||old.billing_cancel_requested_at)throw conflict();
+   ||new Date(source.created_at).getTime()>=new Date(target.created_at).getTime()||old.job_type!=='update'||old.subtype!=='update_pipeline_v1'||old.state!=='failed'||old.lease_token||old.lease_until||old.billing_cancel_requested_at)throw conflict();
   const project=(await client.query('SELECT archived_at,deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2',[scope.project,scope.owner])).rows[0];
   if(!project||project.archived_at||project.deleted_at)throw conflict();
   const reservations=(await client.query('SELECT * FROM bb_credit_reservations WHERE id=ANY($1::text[]) AND owner_user_id=$2 FOR UPDATE',[[source.reservation_id,target.reservation_id],scope.owner])).rows;
