@@ -92,9 +92,18 @@ export async function runBootstrapEntry({
   }
 }
 
+/** Repeat only a positively pre-runtime, read-only enrollment wait. */
+export async function awaitBootstrapEnrollment({run=runBootstrapEntry,now=Date.now,wait=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
+  const deadline=now()+1800000;
+  for(;;)try{return await run();}catch(error){
+    if(error.bootstrapRetrySafe!==true||now()+60000>=deadline)throw error;
+    await wait(30000);
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await runBootstrapEntry(); }
-  catch {
+  try { await awaitBootstrapEnrollment(); }
+  catch (error) {
     process.stderr.write('Execution bootstrap failed closed; node is not ready.\n');
     process.exitCode = 1;
   }

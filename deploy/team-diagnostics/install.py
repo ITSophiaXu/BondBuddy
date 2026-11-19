@@ -15,7 +15,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ETC = pathlib.Path('/etc/bondbuddy-diagnostics')
 STATE = pathlib.Path('/var/lib/bondbuddy-diagnostics')
 GROUP = 'bb-diagnostics'
-SOURCES = ['common.py','archive.py','collector.py','database.py','broker.py','entry.py','console.py','read-content.mjs']
+SOURCES = ['common.py','archive.py','collector.py','database.py','broker.py','entry.py','console.py','read-content.mjs','execution_preflight.py']
 
 
 def run(args):
@@ -68,6 +68,12 @@ def install(config_path):
     }
     for name in ('bondbuddy-diagnostics-collect.service','bondbuddy-diagnostics-collect.timer','bondbuddy-diagnostics-ready.service'):
         files[pathlib.Path('/etc/systemd/system')/name] = ((HERE/name).read_bytes(), 0o644)
+    if config.get('execution_bootstrap') is True:
+        files[pathlib.Path('/usr/local/sbin/bb-execution-preflight')] = (f'#!/bin/sh\nexec /usr/bin/python3 -I {destination}/execution_preflight.py "$@"\n'.encode(), 0o755)
+        files[pathlib.Path('/etc/systemd/system/bondbuddy-execution-bootstrap.service.d/diagnostics.conf')] = ((HERE/'execution-bootstrap.drop-in.conf').read_bytes(), 0o644)
+        # Override the exact old ready.conf files installed on November 16.
+        for unit in ('bondbuddy-diagnostics-collect.service', 'bondbuddy-diagnostics-collect.timer'):
+            files[pathlib.Path('/etc/systemd/system')/(unit+'.d')/'ready.conf'] = (b'[Unit]\n# Collection must remain independent of successful remote sync.\n', 0o644)
     backup = STATE/'install-backups'/datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup.mkdir(parents=True,mode=0o700)
     manifest = []
@@ -100,6 +106,10 @@ def restore(backup):
     for item in json.loads(trusted_file(backup/'manifest.json').read_text()):
         path=pathlib.Path(item['path'])
         allowed = path in (ETC/'config.json',pathlib.Path('/usr/local/sbin/bb-diagnostics'),pathlib.Path('/usr/local/bin/bb-diagnostics-console'),pathlib.Path('/etc/sudoers.d/bondbuddy-diagnostics'),pathlib.Path('/etc/ssh/sshd_config.d/90-bondbuddy-diagnostics.conf')) or path.parent==pathlib.Path('/etc/systemd/system') and path.name in ('bondbuddy-diagnostics-collect.service','bondbuddy-diagnostics-collect.timer','bondbuddy-diagnostics-ready.service')
+        allowed = allowed or path == pathlib.Path('/usr/local/sbin/bb-execution-preflight') or path in (
+            pathlib.Path('/etc/systemd/system/bondbuddy-execution-bootstrap.service.d/diagnostics.conf'),
+            pathlib.Path('/etc/systemd/system/bondbuddy-diagnostics-collect.service.d/ready.conf'),
+            pathlib.Path('/etc/systemd/system/bondbuddy-diagnostics-collect.timer.d/ready.conf'))
         if not allowed or not re.fullmatch(r'\d+',item['backup']): raise ValueError('Invalid managed backup')
         if item['existed']:
             original=trusted_file(backup/item['backup']); atomic(path,original.read_bytes(),original.stat().st_mode & 0o777)
