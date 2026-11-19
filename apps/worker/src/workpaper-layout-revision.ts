@@ -41,8 +41,11 @@ export async function repairDeliveredWorkpaperLayout(pool:Pool,blobs:PrivateBlob
    const before=await inspectProjectFile(ctx,path,true),source=await inspectProjectFile(ctx,sourcePath,true);
    const layout=await normalizeWorkpaperLayout(ctx,dir);if(!layout) return {revision_id:null,version_id:row.id,sha256:input.expectedSha256,reused:true};
    const candidate=await readFile(path),after=await inspectProjectFile(ctx,path,true),inspection=inspectDocx(candidate);
-   if(inspection.quality_status!=='passed'||inspection.sha256!==layout.output_sha256||before.coverage!=='complete'||after.coverage!=='complete'||source.coverage!=='complete'||!isDeepStrictEqual(before.spans,after.spans)||!isDeepStrictEqual(before.warnings,after.warnings))throw fail();
+   if(inspection.quality_status!=='passed'||inspection.sha256!==layout.output_sha256||before.coverage!=='complete'||after.coverage!=='complete'||!isDeepStrictEqual(before.spans,after.spans)||!isDeepStrictEqual(before.warnings,after.warnings))throw fail();
    if(!Array.isArray(row.links)||!row.links.length||row.links.some((l:any)=>l.source_sha256!==source.sha256||l.target_sha256!==before.sha256))throw fail();
+   // Image-bearing source files remain partial in the text reader. This
+   // action changes no text and makes no new completeness judgment: retain
+   // that limitation and reverify EVERY original exact-hash anchor.
    const links=verifiedFileLinks(source,after,row.links,100000);
    if(links.length!==row.links.length||!isDeepStrictEqual(links,row.links.map((l:any)=>({...l,target_sha256:after.sha256}))))throw fail();
    const identity=inputManifestHash({owner:input.owner,parent:row.id,method:WORKPAPER_LAYOUT_REPAIR_METHOD,sha256:after.sha256});
@@ -56,7 +59,7 @@ export async function repairDeliveredWorkpaperLayout(pool:Pool,blobs:PrivateBlob
    const asset={kind:'artifact' as const,pin:{source_project_id:row.run_project_id,artifact_id:artifactId,artifact_version:1,sha256:after.sha256}};
    const version=await appendProjectFile(c,input.owner,{id:row.file_id,project_id:row.project_id},{filename:row.filename,asset,source_version_id:row.source_version_id,template_id:row.template_id,template_version:row.template_version,links});
    const receipt={...layout,method:WORKPAPER_LAYOUT_REPAIR_METHOD,actor:input.actor,owner_user_id:input.owner,file_id:row.file_id,parent_version_id:row.id,new_version_id:version.id,
-    batch_id:row.batch_id,item_id:row.item_id,run_id:row.run_id,artifact:asset.pin,links_sha256:inputManifestHash(links),inspection_sha256:inputManifestHash(inspection),billing_action:'none',model_action:'none'};
+    batch_id:row.batch_id,item_id:row.item_id,run_id:row.run_id,artifact:asset.pin,source_coverage:source.coverage,source_warnings:source.warnings,source_spans:source.spans.length,links_sha256:inputManifestHash(links),inspection_sha256:inputManifestHash(inspection),billing_action:'none',model_action:'none'};
    const revisionId='layout-revision-'+identity;
    await c.query(`INSERT INTO bb_workpaper_layout_revisions(id,owner_user_id,file_id,parent_version_id,new_version_id,batch_id,item_id,run_id,method,actor,input_sha256,output_sha256,receipt,receipt_sha256)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,[revisionId,input.owner,row.file_id,row.id,version.id,row.batch_id,row.item_id,row.run_id,WORKPAPER_LAYOUT_REPAIR_METHOD,input.actor,input.expectedSha256,after.sha256,receipt,inputManifestHash(receipt)]);

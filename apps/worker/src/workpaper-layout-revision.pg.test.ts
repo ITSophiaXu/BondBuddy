@@ -73,7 +73,7 @@ test('host layout revision: real paid batch, atomic readback failure, original p
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'paid_wp_'+user.slice(0,8)]);await fund(WORKPAPER_PRICE.points*2+2*AUTOMATIC_TASK_TARIFF.check.points-1);
     const p=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic paid workpapers',issuer_name:'Synthetic issuer',market:'sse',offering:'public'}),id=p.project_id,base='/api/v1/projects/'+id,wp=base+'/workpapers';
-    const original=await upload(id,'synthetic-v1.docx',document,docx,'historical');
+    const original=await upload(id,'synthetic-v1.docx',await withHeader(makeSyntheticDocxFixture({text}),true),docx,'historical');
     let versions=await ok('GET',base+'/prospectus-versions'),source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:0,version_id:versions.versions[0].version_id});
     const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(3),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),cat=await ok('POST',wp+'/catalogues',{request_id:randomUUID(),material});
     const request={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision,requirements:'Synthetic only'};
@@ -113,6 +113,7 @@ test('host layout revision: real paid batch, atomic readback failure, original p
     assert.equal(new Set(repaired.map(r=>r.version_id)).size,1);assert.equal(repaired.filter(r=>!r.reused).length,1);assert.equal(await count('bb_workpaper_layout_revisions'),1);
     assert.equal(await count('bb_project_file_versions'),baseline+1);assert.equal(await count('bb_artifact_versions'),artifactCount+1);assert.equal(await count('bb_word_delivery_evidence'),evidenceCount+1);assert.deepEqual(await unchanged(),snapshot);
     const receipt=(await pool.query('SELECT * FROM bb_workpaper_layout_revisions WHERE owner_user_id=$1',[user])).rows[0];
+    assert.equal(receipt.receipt.source_coverage,'partial');assert.equal(receipt.receipt.source_warnings.length,1);assert.match(receipt.receipt.source_warnings[0],/图片/);
     assert.equal(receipt.receipt.billing_action,'none');assert.equal(receipt.receipt.model_action,'none');
     await assert.rejects(pool.query("UPDATE bb_workpaper_layout_revisions SET actor='forged' WHERE id=$1",[receipt.id]),/immutable/);
     await assert.rejects(pool.query('DELETE FROM bb_workpaper_layout_revisions WHERE id=$1',[receipt.id]),/immutable/);
