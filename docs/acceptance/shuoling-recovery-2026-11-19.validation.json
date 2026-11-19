@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "M4_formal_verified_M1_v4_running",
+  "real_task_delivery": "M4_formal_verified_M1_v4_official_pair_succeeded_content_acceptance_failed_1667",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -1128,5 +1128,89 @@
       "container_timestamps_differ": true
     },
     "user_acceptance": false
+  },
+  "latest_20261120_0120": {
+    "at": "2026-11-19T17:16:11.927Z",
+    "m1_acceptance": {
+      "at": "2026-11-19T17:00:55.755296+00:00",
+      "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+      "official_delivery": "succeeded_both_words_downloaded_hash_verified",
+      "financial_primary_checks": 55,
+      "financial_primary_pass": 55,
+      "owner_isolation_checks": 41,
+      "owner_isolation_pass": 41,
+      "content_acceptance": "failed_old_embedded_logo_and_issuer_diagrams_need_controlled_repair",
+      "all_pages_reviewed": false,
+      "user_acceptance": false,
+      "production_deployment": false
+    },
+    "v4_gateway": {
+      "captured_at": "2026-11-19T16:51:29.408Z",
+      "summary": {
+        "at": "2026-11-19T16:48:21.388Z",
+        "kind": "model_gateway",
+        "v": "model-gateway-measure-v1",
+        "mode": "enforce",
+        "upstream_host": "api.enterprise.githubcopilot.com",
+        "proxied": false,
+        "requests": 190,
+        "completed": 64,
+        "client_closed": 126,
+        "upstream_errors": 0,
+        "gateway_rejected": 0,
+        "status_counts": {
+          "200": 190
+        },
+        "total_request_bytes": 188653951,
+        "max_request_bytes": 1884529,
+        "max_request_seq": 172,
+        "last_request_bytes": 453272,
+        "max_image_count": 0,
+        "max_image_data_url_bytes": 0,
+        "first_413_seq": null,
+        "first_413_request_bytes": null,
+        "usage": {
+          "input_tokens": 14911768,
+          "cached_input_tokens": 14607222,
+          "output_tokens": 62580,
+          "reasoning_tokens": 24435,
+          "responses_with_usage": 190
+        },
+        "records_retained": 190,
+        "records_dropped": 0,
+        "event": "summary",
+        "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+        "call_id": "call-90072e5b-2f0a-48eb-a8ea-0c5302909842",
+        "logical_call_id": "file-authoring-v1",
+        "attempt_no": 1
+      },
+      "interpretation": "One actual completed call; request guard did not trigger in v4. Do not claim real request-budget rotation was exercised. Guard rotation remains covered by targeted synthetic subprocess/gateway regressions."
+    },
+    "financial": {
+      "checks": 55,
+      "pass": 55,
+      "scope": "selected main-statement figures, correct owner/period/unit; not all financial numbers"
+    },
+    "structural": {
+      "original_chapters": 7,
+      "original_slots": 18,
+      "all_nonempty": true,
+      "accepted_revision_text_equals_clean": true
+    },
+    "local_candidate_1667": {
+      "committed": false,
+      "active": false,
+      "python_specialized_pass": 6,
+      "instructions_transpilation_pass": 7,
+      "related_python_pass": 68,
+      "fixed_initial": {
+        "tests": 59,
+        "pass": 58,
+        "fail": 1
+      },
+      "full_worker_typecheck": "pending"
+    },
+    "user_acceptance": false,
+    "production_deployment": false
   }
 }
