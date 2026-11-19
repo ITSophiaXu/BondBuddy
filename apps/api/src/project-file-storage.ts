@@ -112,9 +112,16 @@ export async function workpaperFileVersions(db:Db,owner:string,id:string,include
     WHERE b.owner_user_id=$1 AND f.project_id=$2
     UNION
     SELECT d.batch_id,d.item_id,d.original_version_id,v.id,d.file_id FROM descendants d
-    JOIN bb_project_file_operations o ON o.owner_user_id=$1 AND o.operation='patch' AND o.manifest->>'file_version_id'=d.version_id
-    JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id AND r.state='succeeded'
-    JOIN bb_project_file_versions v ON v.owner_user_id=o.owner_user_id AND v.run_id=o.run_id AND v.file_id=d.file_id
+    JOIN (
+      SELECT o.owner_user_id,o.manifest->>'file_version_id' AS parent_id,v.id AS child_id,v.file_id
+      FROM bb_project_file_operations o
+      JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id AND r.state='succeeded'
+      JOIN bb_project_file_versions v ON v.owner_user_id=o.owner_user_id AND v.run_id=o.run_id
+      WHERE o.operation='patch'
+      UNION ALL
+      SELECT owner_user_id,parent_version_id,new_version_id,file_id FROM bb_workpaper_layout_revisions
+    ) edge ON edge.owner_user_id=$1 AND edge.parent_id=d.version_id AND edge.file_id=d.file_id
+    JOIN bb_project_file_versions v ON v.owner_user_id=$1 AND v.id=edge.child_id AND v.file_id=d.file_id
   ) SELECT DISTINCT ON(d.batch_id,d.item_id) d.* FROM descendants d JOIN bb_project_file_versions v ON v.owner_user_id=$1 AND v.id=d.version_id
   JOIN bb_project_files family ON family.owner_user_id=v.owner_user_id AND family.id=v.file_id
   ORDER BY d.batch_id,d.item_id,(v.id=family.latest_version_id) DESC,v.sequence DESC`,[owner,id])).rows;

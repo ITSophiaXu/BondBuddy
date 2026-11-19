@@ -42,7 +42,8 @@ export function validM4DocumentResult(value: unknown, ctx: StageContext): value 
       &&v.workpaper_layout.output_sha256===v.files['document.docx']?.sha256&&/^[a-f0-9]{64}$/.test(v.workpaper_layout.input_sha256)
       &&Number.isSafeInteger(v.workpaper_layout.changed_paragraphs)&&v.workpaper_layout.changed_paragraphs>=0
       &&Number.isSafeInteger(v.workpaper_layout.changed_header_rows)&&v.workpaper_layout.changed_header_rows>=0
-      &&v.workpaper_layout.changed_paragraphs+v.workpaper_layout.changed_header_rows>0
+      &&(v.workpaper_layout.changed_split_rows===undefined||Number.isSafeInteger(v.workpaper_layout.changed_split_rows)&&v.workpaper_layout.changed_split_rows>=0)
+      &&v.workpaper_layout.changed_paragraphs+v.workpaper_layout.changed_header_rows+(v.workpaper_layout.changed_split_rows??0)>0
       &&v.workpaper_layout.original?.sha256===v.workpaper_layout.input_sha256&&Number.isSafeInteger(v.workpaper_layout.original.byte_size)
       &&v.workpaper_layout.original.byte_size>0&&v.workpaper_layout.original.byte_size<=M4_FILE_MAX
       &&v.workpaper_layout.original.key===`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-layout-preimages/${v.workpaper_layout.input_sha256}/document.docx`)

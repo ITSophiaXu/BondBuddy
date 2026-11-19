@@ -26,7 +26,7 @@ def _caption(node):
     align=node.find('./'+W+'pPr/'+W+'jc')
     return text.startswith(('单位：','单位:')) or (style is not None and style.get(W+'val','').lower() in ('caption','题注')) or (align is not None and align.get(W+'val')=='center')
 
-def _ignore_allowed(root, allowed_paragraphs, allowed_rows):
+def _ignore_allowed(root, allowed_paragraphs, allowed_rows, allowed_splits):
     root=copy.deepcopy(root)
     for i,paragraph in enumerate(root.iter(W+'p')):
         if i not in allowed_paragraphs:continue
@@ -40,10 +40,12 @@ def _ignore_allowed(root, allowed_paragraphs, allowed_rows):
     if body is not None:
         for ti,table in enumerate(body.findall(W+'tbl')):
             for ri,row in enumerate(table.findall(W+'tr')):
-                if (ti,ri) not in allowed_rows:continue
+                if (ti,ri) not in allowed_rows and (ti,ri) not in allowed_splits:continue
                 props=row.find(W+'trPr')
                 if props is not None:
-                    for node in list(props.findall(W+'trHeight')):props.remove(node)
+                    for name,allowed in [('trHeight',allowed_rows),('cantSplit',allowed_splits)]:
+                        if (ti,ri) in allowed:
+                            for node in list(props.findall(W+name)):props.remove(node)
                     if not len(props) and not props.attrib and not (props.text or '').strip():row.remove(props)
     return E.tostring(root,method='c14n')
 
@@ -120,7 +122,7 @@ def normalize_workpaper_layout(source, output):
     original=copy.deepcopy(root)
     paragraphs=list(root.iter(W+'p'))
     indices={p:i for i,p in enumerate(paragraphs)}
-    changes=[];row_changes=[]
+    changes=[];row_changes=[];split_changes=[]
     def keep(paragraph,kind):
         props=paragraph.find(W+'pPr')
         if props is None:
@@ -151,14 +153,21 @@ def normalize_workpaper_layout(source, output):
                     row_changes.append({'table':list(body.findall(W+'tbl')).index(table),'row':rows.index(row),'before_twips':old,'minimum_twips':minimum})
                 for cell in row.findall(W+'tc'):
                     for p in cell.findall(W+'p'):keep(p,'header')
+            # Permit plain body rows to flow at the page boundary. Explicit
+            # cantSplit clips in some renderers. Merged/nested rows are excluded.
+            for row in rows[len(headers):]:
+                flag=row.find('./'+W+'trPr/'+W+'cantSplit')
+                if not _enabled(flag) or next(row.iter(W+'vMerge'),None) is not None or next(row.iter(W+'hMerge'),None) is not None or next(row.iter(W+'tbl'),None) is not None:continue
+                flag.set(W+'val','0')
+                split_changes.append({'table':list(body.findall(W+'tbl')).index(table),'row':rows.index(row)})
             previous=table.getprevious()
             for _ in range(3):
                 if previous is None or not _caption(previous):break
                 keep(previous,'caption');previous=previous.getprevious()
-    allowed_paragraphs={c['paragraph'] for c in changes};allowed_rows={(c['table'],c['row']) for c in row_changes}
-    if _ignore_allowed(root,allowed_paragraphs,allowed_rows)!=_ignore_allowed(original,allowed_paragraphs,allowed_rows):
+    allowed_paragraphs={c['paragraph'] for c in changes};allowed_rows={(c['table'],c['row']) for c in row_changes};allowed_splits={(c['table'],c['row']) for c in split_changes}
+    if _ignore_allowed(root,allowed_paragraphs,allowed_rows,allowed_splits)!=_ignore_allowed(original,allowed_paragraphs,allowed_rows,allowed_splits):
         raise ValueError('WORKPAPER_LAYOUT_CONTENT_CHANGED')
-    if changes or row_changes:
+    if changes or row_changes or split_changes:
         parts['word/document.xml']=E.tostring(root,encoding='UTF-8',xml_declaration=True,standalone=True)
         with ZipFile(output,'w') as z:
             z.comment=archive_comment
@@ -167,7 +176,7 @@ def normalize_workpaper_layout(source, output):
         output.write_bytes(before)
     after=output.read_bytes()
     return {'version':METHOD,'input_sha256':hashlib.sha256(before).hexdigest(),'output_sha256':hashlib.sha256(after).hexdigest(),
-            'changed_paragraphs':len(changes),'changes':changes,'changed_header_rows':len(row_changes),'row_height_changes':row_changes,'content_unchanged':True}
+            'changed_paragraphs':len(changes),'changes':changes,'changed_header_rows':len(row_changes),'row_height_changes':row_changes,'changed_split_rows':len(split_changes),'row_split_changes':split_changes,'content_unchanged':True}
 
 if __name__=='__main__':
     import sys

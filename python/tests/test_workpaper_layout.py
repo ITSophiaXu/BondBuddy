@@ -43,6 +43,18 @@ class WorkpaperPaginationTest(unittest.TestCase):
             self.assertEqual(rows[2].find('./'+W+'trPr/'+W+'trHeight').get(W+'val'),'500')
             self.assertEqual(normalize_workpaper_layout(b,c)['changed_header_rows'],0);self.assertEqual(b.read_bytes(),c.read_bytes())
 
+    def test_only_plain_explicit_unsplittable_body_rows_allow_page_flow(self):
+        with tempfile.TemporaryDirectory() as d:
+            a,b,c=[Path(d)/x for x in ('a','b','c')]
+            table=self.table().replace('<w:tr><w:tc>', '<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc>')
+            table=table.replace('<w:tc><w:p><w:r><w:t>2', '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p><w:r><w:t>2')
+            self.package(a,table);r=normalize_workpaper_layout(a,b)
+            self.assertEqual(r['changed_split_rows'],1);self.assertEqual(r['row_split_changes'],[{'table':0,'row':1}])
+            with ZipFile(b) as z:rows=list(E.fromstring(z.read('word/document.xml')).iter(W+'tr'))
+            self.assertEqual(rows[1].find('./'+W+'trPr/'+W+'cantSplit').get(W+'val'),'0')
+            self.assertIsNone(rows[2].find('./'+W+'trPr/'+W+'cantSplit').get(W+'val'))
+            self.assertEqual(normalize_workpaper_layout(b,c)['changed_split_rows'],0);self.assertEqual(b.read_bytes(),c.read_bytes())
+
     def test_explicit_page_break_stops_caption_chaining(self):
         with tempfile.TemporaryDirectory() as d:
             a,b=Path(d)/'a',Path(d)/'b';self.package(a,'<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:br w:type="page"/><w:t>标题</w:t></w:r></w:p>'+self.table())

@@ -1,11 +1,16 @@
+import {repairDeliveredWorkpaperLayout} from './workpaper-layout-revision.js';
 import {seedFileAuthoringRun} from './file-authoring-seed.js';
 import { Pool } from 'pg';
 import { listOperatorReconciliations, resolveOperatorReconciliation, repairUnifiedTimeoutRetry, requeueGeneratedWordDelivery, requeueFailedReviewAssembly, type OperatorReconcileDecision } from '@bondbuddy/api/queue';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 
-const usage = 'usage: reconcile-run seed-authoring-new-run <source_run_id> <target_run_id> <budget_minutes:1..90> | list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id> | deliver-generated-pair <run_id> | reassemble-review <run_id> <attempt_id> <result_sha256>';
+const usage = 'usage: reconcile-run repair-workpaper-layout <owner> <original_version_id> <sha256> | seed-authoring-new-run <source_run_id> <target_run_id> <budget_minutes:1..90> | list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id> | deliver-generated-pair <run_id> | reassemble-review <run_id> <attempt_id> <result_sha256>';
 
 export async function runReconcileCommand(pool:Pool,args:string[],actor:string,blobs?:PrivateBlobs) {
+  if(args.length===4 && args[0]==='repair-workpaper-layout'){
+    if(!blobs)throw new Error(usage);
+    return repairDeliveredWorkpaperLayout(pool,blobs,{owner:args[1]!,versionId:args[2]!,expectedSha256:args[3]!,actor});
+  }
   if(args.length===4 && args[0]==='seed-authoring-new-run'){
     if(!blobs||!/^([1-9]|[1-8][0-9]|90)$/.test(args[3]!))throw new Error(usage);
     return seedFileAuthoringRun(pool,blobs,{sourceRunId:args[1]!,targetRunId:args[2]!,budgetMs:Number(args[3])*60000,actor});
@@ -26,7 +31,7 @@ export async function runReconcileCommand(pool:Pool,args:string[],actor:string,b
 
 if(process.argv[1]?.endsWith('/reconcile-run.js')){
   const pool=new Pool({connectionString:process.env.DATABASE_URL});
-  const blobs=['reassemble-review','seed-authoring-new-run'].includes(process.argv[2]??'')&&process.env.AZURE_STORAGE_CONNECTION_STRING?azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING):undefined;
+  const blobs=['reassemble-review','seed-authoring-new-run','repair-workpaper-layout'].includes(process.argv[2]??'')&&process.env.AZURE_STORAGE_CONNECTION_STRING?azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING):undefined;
   runReconcileCommand(pool,process.argv.slice(2),process.env.BB_RECONCILE_ACTOR??'',blobs).then(result=>{
     process.stdout.write(JSON.stringify(result)+'\n');
   }).catch(error=>{process.stderr.write(`${error instanceof Error?error.message:'reconciliation failed'}\n`);process.exitCode=1;})

@@ -80,7 +80,7 @@ export async function publishProjectFileLinks(db:Pool|PoolClient,owner:string,ru
   if(old.result_hash.trim()!==hash)throw Error('INPUT_REVISION_CONFLICT');
 }
 
-export type WorkpaperLayoutReceipt={version:'workpaper-pagination-v1';input_sha256:string;output_sha256:string;changed_paragraphs:number;changed_header_rows:number;content_unchanged:true;
+export type WorkpaperLayoutReceipt={version:'workpaper-pagination-v1';input_sha256:string;output_sha256:string;changed_paragraphs:number;changed_header_rows:number;changed_split_rows?:number;content_unchanged:true;
  original:{key:string;sha256:string;byte_size:number}};
 /** Reflow only host-recognized table headings. Persist the original bytes before
  * changing the output, then run all original link/coverage gates on the new SHA. */
@@ -93,12 +93,12 @@ export async function normalizeWorkpaperLayout(ctx:StageContext,cwd:string):Prom
   await writeFile(input,original,{mode:0o400});await projectFilePython(ctx,['normalize-workpaper-layout',input,output,report]);
   const candidate=await checkedM4File(dir,'output.docx'),bytes=await checkedM4File(dir,'receipt.json',4*1024*1024),r=JSON.parse(bytes.toString('utf8'));
   if(r.version!=='workpaper-pagination-v1'||r.content_unchanged!==true||r.input_sha256!==digest(original)||r.output_sha256!==digest(candidate)
-   ||!Number.isSafeInteger(r.changed_paragraphs)||r.changed_paragraphs<0||!Array.isArray(r.changes)||r.changes.length!==r.changed_paragraphs||!Number.isSafeInteger(r.changed_header_rows)||r.changed_header_rows<0||!Array.isArray(r.row_height_changes)||r.row_height_changes.length!==r.changed_header_rows)throw Error('WORKPAPER_LAYOUT_INVALID');
-  if(!r.changed_paragraphs&&!r.changed_header_rows){if(!original.equals(candidate))throw Error('WORKPAPER_LAYOUT_INVALID');return;}
+   ||!Number.isSafeInteger(r.changed_paragraphs)||r.changed_paragraphs<0||!Array.isArray(r.changes)||r.changes.length!==r.changed_paragraphs||!Number.isSafeInteger(r.changed_header_rows)||r.changed_header_rows<0||!Array.isArray(r.row_height_changes)||r.row_height_changes.length!==r.changed_header_rows||!Number.isSafeInteger(r.changed_split_rows)||r.changed_split_rows<0||!Array.isArray(r.row_split_changes)||r.row_split_changes.length!==r.changed_split_rows)throw Error('WORKPAPER_LAYOUT_INVALID');
+  if(!r.changed_paragraphs&&!r.changed_header_rows&&!r.changed_split_rows){if(!original.equals(candidate))throw Error('WORKPAPER_LAYOUT_INVALID');return;}
   const key=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-layout-preimages/${r.input_sha256}/document.docx`;
   await ctx.blobs.put(key,original,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   const stored=await ctx.blobs.getIfExistsBounded(key,M4_FILE_MAX);if(!stored||stored.length!==original.length||digest(stored)!==r.input_sha256)throw Error('M4_OUTPUT_STORE_FAILED');
   await writeFile(join(cwd,'output/document.docx'),candidate,{mode:0o600});
-  return {version:r.version,input_sha256:r.input_sha256,output_sha256:r.output_sha256,changed_paragraphs:r.changed_paragraphs,changed_header_rows:r.changed_header_rows,content_unchanged:true,original:{key,sha256:r.input_sha256,byte_size:original.length}};
+  return {version:r.version,input_sha256:r.input_sha256,output_sha256:r.output_sha256,changed_paragraphs:r.changed_paragraphs,changed_header_rows:r.changed_header_rows,changed_split_rows:r.changed_split_rows,content_unchanged:true,original:{key,sha256:r.input_sha256,byte_size:original.length}};
  }finally{await rm(dir,{recursive:true,force:true});}
 }
