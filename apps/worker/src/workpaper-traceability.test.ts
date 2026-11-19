@@ -45,10 +45,10 @@ test('full table coverage and nonempty output are enforced',()=>{
 });
 
 
-test('a stale final-document quotation identifies missing sources and is never rebound or excluded automatically',()=>{
+test('final layout line breaks invalidate stale quotations until the actual final text is linked',()=>{
  const source=snapshot(['营业收入100万元','负债50万元']);
- const target=snapshot(['财务分析与口径说明。'.repeat(20),'营业收入100万元','负债50万元']);
- const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:i?s.text:'旧版收入100万元'}));
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'营业收入\n100万元','负债50万元']);
+ const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:s.text}));
  const coverage={reviewed_span_ids:['p0','p1'],used_span_ids:['p0','p1'],excluded:[]};
  const partial=verifiedFileLinks(source,target,proposals);assert.equal(partial.length,1);
  assert.throws(()=>validateWorkpaperCoverage(source,target,partial,coverage),error=>{
@@ -56,6 +56,6 @@ test('a stale final-document quotation identifies missing sources and is never r
   assert.deepEqual(error.missingSourceSpanIds,['p0']);return true;
  });
  assert.deepEqual(coverage.used_span_ids,['p0','p1']);assert.deepEqual(coverage.excluded,[]);
- proposals[0]!.target_quote=source.spans[0]!.text;
+ proposals[0]!.target_quote=target.spans[1]!.text;
  assert.equal(validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage).used,2);
 });
