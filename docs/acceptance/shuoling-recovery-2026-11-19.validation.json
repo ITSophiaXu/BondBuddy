@@ -680,5 +680,98 @@
       }
     ],
     "formal_repair_published": false
+  },
+  "latest_2340": {
+    "at": "2026-11-19T15:40:40.935424+00:00",
+    "M4": {
+      "at": "2026-11-19T15:39:43.839Z",
+      "state": "M4_local_formal_deliveries_verified",
+      "batch_id": "7b8650e7-7f93-4961-99e0-6e8b93fccab6",
+      "batch_revision": 19,
+      "items": [
+        {
+          "code": "1-5-8-1",
+          "run_id": "77fe3fce-ba2b-4de8-b2b7-89509f22a9e5",
+          "sha256": "da208a1cc1b07927babeaa0b7082568aa0bcd77423656d48dc3dffde2cd9ef39",
+          "revised": true
+        },
+        {
+          "code": "1-5-8-4",
+          "run_id": "7845441a-4632-4e5f-bdbc-1c7772e5cbf7",
+          "sha256": "508114775515fae11ab9817ee03ca20c6a69cb9b59f34e1609ee1cf5f7f94862",
+          "revised": true
+        },
+        {
+          "code": "1-5-9-1",
+          "run_id": "84e9a410-6947-45be-b2c9-ed17e20b6017",
+          "sha256": "fa49d8960d0271e30696d487d9bd6a7760004fb9dba34adb52388d94f0d9bec2",
+          "revised": false
+        },
+        {
+          "code": "1-5-9-2",
+          "run_id": "0e404446-df0b-4813-b2f1-14014eeda232",
+          "sha256": "7b9754b08ac1662e58f6eac23e7aecb0fb8661cd8bf5f9ed3e0bd76e743104b6",
+          "revised": false
+        }
+      ],
+      "zip_sha256": "f57265bbe5853e1c4c99108c11bf647ebb1e3a0f91489bf4d90837b665baafb1",
+      "zip_crc": "passed",
+      "download_hashes_match": true,
+      "ownership_tests": 33,
+      "ownership_pass": 33,
+      "existing_task_and_billing_records_unchanged": true,
+      "original_failed_M1_preserved": true,
+      "M1_v3": "failed_no_official_artifact",
+      "user_acceptance": false,
+      "production_deployed": false
+    },
+    "layout_v30": {
+      "at": "2026-11-19T15:13:49.481Z",
+      "integration_commit": "a931bf450fe02977e1f996b0ae5627d429ab3176",
+      "tests": 66,
+      "pass": 66,
+      "fail": 0,
+      "skip": 0,
+      "cancel": 0,
+      "isolated_pg_migrations": 199,
+      "python_tests": 5,
+      "python_failures": 0,
+      "worker_typecheck": "passed",
+      "api_compile": "passed",
+      "typescript_production_modules_compiled_from": "bc399d945b3b32fef5820597ed866cdf6becb814",
+      "change_since_compilation": "test file only; transpiled as ESM",
+      "tap_sha256": "c8738d6b30161fb493cc4a4ec04d4f97425233d4f25ec24a097942e4e150b38d"
+    },
+    "layout_v31": {
+      "at": "2026-11-19T15:32:06.549703+00:00",
+      "integration_commit": "1ee73b248b0c6da2449f67b0887e912eb5e8dffc",
+      "pass": 12,
+      "fail": 0,
+      "skip": 0,
+      "cancel": 0,
+      "migrations": 199,
+      "tap_sha256": "bc9abd1bcf81d65ad61a1b9771552b87c815427f092427ce1fe196d5f715a083",
+      "scope": "Only private revision source-image compatibility changed since complete v30 66/66; full worker compile passed."
+    },
+    "M1": {
+      "run_id": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+      "state": "failed",
+      "artifact": null,
+      "errors": [
+        "MODEL_PROVIDER_PAYLOAD_TOO_LARGE",
+        "MODEL_PROVIDER_PAYLOAD_TOO_LARGE"
+      ],
+      "local_budget_marker": "MODEL_REQUEST_BUDGET_EXCEEDED",
+      "latest_snapshot_files": 1103,
+      "latest_snapshot_bytes": 68354844,
+      "all_hashes_match": true,
+      "credits_charged": 0,
+      "usage_status": [
+        "unknown",
+        "unknown"
+      ]
+    },
+    "user_acceptance": false,
+    "production_deployed": false
   }
 }

@@ -2,21 +2,22 @@
 
 2026-11-19 接手“排查shuoling任务重复排队”。本记录区分已合并、实际线上运行、自动回归和原输入交付验收；不代表用户验收或生产发布。
 
-## 当前验收状态（2026-11-19，以下旧记录为历史）
+## 当前验收状态（2026-11-19 23:40，旧记录仅作历史）
 
-muhualing 20:01 的 [#1361 真实回执](https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7008512587) 确认备用节点实际领取两项排队任务，原排空节点继续续约，全池三条有效租约、两项续约模型许可、候选队列为零。支持排队领取恢复；本 chat 未操作生产，业务文书仍单独验收。
+muhualing 20:01 的 [真实生产回执](https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7008512587) 确认两项排队实际被领取、候选为零，支持排队领取恢复。本 chat 没有生产变更。
 
-- 本地实际：API 865c8037、M4 worker 77310bdb、M1 worker f25c2114；DB 196 迁移；http://localhost:5518。Copilot Enterprise / gpt-6-sol / max，yingx_microsoft。独立测试数据库及存储，无生产连接。
-- M4 四项均正式 succeeded，batch complete / revision19；各 reserve1 / settle1 / release0、3458分。正式 ZIP CRC 及四份独立下载哈希一致，ZIP SHA256 ebac72d4ffac2f396c85b6ed243f7940a02beb0311374deba801de361384a27b。
-- 内容：1-5-9-1 已完成14页及204数字格复核。另三份全部发布关联已重新核验，已用数字/横线单元格分别352、1625、594，均在实际数据格原值保留；这不替代语义及算术复核。
-- 版式：1-5-9-2 已查看全部16页，无裁切；1-5-8-4 原41页失败，两表表体裁掉；1-5-8-1 目前仅查看前10页，重复合并表头裁切，后20页仍待看。#1662 保持打开，不能称全批已验收。
-- 表体分页补丁 faeb22c7 已实现原稿私有保全、宿主分页及原始来源门禁复验。固定组合候选 f135490e：51项通过、2项因包装器漏传Python环境而跳过；补齐后仅补跑这2项，2/2通过。不是一次53/53。私有1-5-8-4副本43页已全部查看，恢复两表且标题/单位保持；不是正式新交付版本。合并表头行高及正式修订发布路径仍在处理，没有替换原artifact或再次收费。
-- 原M1 6a9af7f5-824f-46fd-bb81-b1d18eb8b396 固定五小时耗尽后正式failed，984文件/40,644,701字节完整保全；预留86799分 released、净扣费0；13次旧调用用量unknown不改。
-- 新私有CLI仅允许导入到正常API新建、同owner/project/input/hash/channel且未执行的新run。源必须明确超时退出、完整快照、预算耗尽failed；使用固定1..90分钟新预算，重复幂等不延时。动态旧政策累计扣款保留，只接受与原账本精确匹配的完整平台故障退款；其他收费和冲突继续拒绝。代码 b0cb1f54。
-- M1最小旧运行时回移 f25c2114 仅5个worker源码变化，旧API/196组合 focused4/4；扩展8个相关测试文件41/41，均无失败/跳过/取消。旧测试镜像native SessionStart自动compact协议失败仍单独未解决，未计入41项通过。
-- 新M1 run 1b5d5601-279c-4a9e-9c05-c3525310513a 已经正常报价/预留/execute，再完整复制984文件并逐一hash，截止2026-11-19T15:14:03.905Z。452运行文件hash全通过，其他API/M4/parser/web/PG容器不变。旧任务9组状态/事件/账务/观察摘要前后完全一致。新run真实Copilot正在处理，尚无正式双Word。
+- 本地入口 http://localhost:5518。API 以865c8037为底，仅覆盖project-file-storage.js以解析受信分页后继；DB旧196仅加0195，现197。M4 worker仍77310bdb，M1仍f25c2114；没有把最新开发组合称为全部活动运行时。
+- M4四项真实Copilot原输入生成均succeeded / batch complete revision19。两份发现分页缺陷的文书经受限宿主变换，已通过新的append-only正式修订路径交付；原run、artifact及原版本保留。两个正式修订Word与完整逐页检查过的30页、43页候选字节完全相同。
+- 四份正式Word/新版ZIP已实际下载，CRC及逐文件hash通过。新版ZIP SHA256 `f57265bbe5853e1c4c99108c11bf647ebb1e3a0f91489bf4d90837b665baafb1`。新旧全部成果与项目归属33项检查通过；M1仍无双Word，因此不把整体验收标成完成。
+- M4原四项各3458分，reserve1/settle1/release0，布局修订无模型调用、无新预留、无重复收费。修订后实际原run/全部相关调用与账务字段对比不变。
+- 已用数字格/横线原格重核：352、1625、204、594。三份补充简单合计分别15精确/15、42精确+2源0.01差异/44、11精确+2源0.01差异/13；11项新比例/差额/单位换算通过。来源差异保留，不强改合计。1-5-9-1原14页及10项勾稽（9精确+1原舍入差异）仍有效；1-5-9-2全部16页已检查。
+- 受限分页规范化仅改识别出的表题/表头keepNext、明确合并表头的保守最小高度及可证明单行放下的普通行分页属性；数据、字体、列宽和其他包部件不改，按精确白名单后的全文XML等价核验。多行名称和合并/未知行仍保持原整行设置。
+- 新私有CLI `reconcile-run repair-workpaper-layout <owner> <original_version_id> <sha256>`，只从原正式Word导出候选。新artifact、Word inspection/readback证据、新project-file-version和不可变修订收据同事务发布；批次按受信后继下载。原来源含图片的partial警告保留在收据；纯版式修复不对来源完整性作新结论，原全部精确来源关联均在新hash重新核验。
+- 代码b76a8b70、7168701a、67ebeef0及aef544ae；组合最终1ee73b248b0c6da2449f67b0887e912eb5e8dffc。Python 5/5，API/worker编译及完整worker类型检查通过。a931候选完整66/66，0fail/skip/cancel，199个全新隔离迁移；其后仅私有修订的图片来源兼容修正，新增真实带图片source/纯文字target场景12/12，0fail/skip/cancel。两轮分别记录，不相加冒充一轮78项。
+- M1旧6a9af...仍failed，原13个unknown及86799 released保留，9组原记录重新核对不变。新1b5d5601-279c-4a9e-9c05-c3525310513a也已failed，无artifact：两次187/259工具调用后均MODEL_PROVIDER_PAYLOAD_TOO_LARGE，真实日志出现本地MODEL_REQUEST_BUDGET_EXCEEDED。86799 reserve1/release1/settle0、净扣费0，两个usage unknown保留；不是额度429，也不能当成成功交付。
+- M1最新1103文件/68,354,844字节全部私有回读hash通过，原生进程已退出；不复活终态、不延长旧deadline。尚需修复本地请求预算与长任务上下文续跑，再完成真实双Word、7章18处、财务数据、接受修订与清洁稿等价及全页验收。旧native SessionStart自动compact协议失败在旧测试镜像仍单独未解决，不能说native通过。
 
-用户尚未验收；代码及本地验收工作仍在继续，尚未部署，待统一发布。下文保留分阶段历史，不代表上述当前状态。
+M4分页代码和本地技术验收已完成；M1交付阻断仍在修复。用户尚未验收，尚未生产部署，待统一发布。下文保留分阶段历史，不代表当前状态。
 
 ## 原排队问题的现状
 
