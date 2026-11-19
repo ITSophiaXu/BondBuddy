@@ -78,7 +78,7 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   if(automaticZero&&ready.length>0&&
     (snapshot.effective_queued_work===0||!snapshot.policy.budget_available)){
     const idle=ready.find(n=>inventory.some(i=>i.instance_id===n.identity.instance_id&&i.instance_state==='RUNNING')&&
-      (!snapshot.policy.budget_available||(n.active_leases===0&&n.active_model_calls===0&&
+      (!snapshot.policy.budget_available||(n.ready_slots>0&&n.active_leases===0&&n.active_model_calls===0&&
         Number.isFinite(Date.parse(n.idle_since))&&now-Date.parse(n.idle_since)>=config.idle_seconds*1000)));
     if(idle)return {kind:'drain',identity:idle.identity,revision:idle.revision};
   }
@@ -89,17 +89,16 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
       ready.some(other => other.identity.instance_id === config.resident_instance_id &&
         (other.ready_slots > 0 || !snapshot.policy.budget_available) &&
         n.capabilities.every(cap => other.capabilities.includes(cap))) &&
-      (!snapshot.policy.budget_available || (n.active_leases === 0 && n.active_model_calls === 0 &&
+      (!snapshot.policy.budget_available || (n.ready_slots > 0 && n.active_leases === 0 && n.active_model_calls === 0 &&
       Number.isFinite(Date.parse(n.idle_since)) && now - Date.parse(n.idle_since) >= config.idle_seconds * 1000)));
     if (spare) return {kind: 'drain', identity: spare.identity, revision: spare.revision};
   }
   if (snapshot.policy.launch_blocked_by_operation_id) return hold('authorization_denial');
   if (!snapshot.policy.budget_available) return hold('budget');
   if (snapshot.policy.cooldown_until && now < Date.parse(snapshot.policy.cooldown_until)) return hold('policy_cooldown');
-  const demand = snapshot.groups.filter(g => g.effective_queued_work > 0 &&
+  const unsupplied = snapshot.groups.filter(g => g.effective_queued_work > 0 &&
     g.oldest_wait_seconds >= config.scale_up_wait_seconds &&
     g.available_run_slots === 0);
-  const unsupplied = demand.filter(g => !ready.some(n => n.capabilities.includes(g.capability) && n.ready_slots > 0));
   const hasBudgetSlots = snapshot.active_model_calls < snapshot.policy.global_model_limit;
   if (live.length < config.min_running || ((live.length===0||config.phase !== 'single_node_validation') && unsupplied.length && hasBudgetSlots)) {
     const spare = inventory.find(x => x.instance_state === 'STOPPED');

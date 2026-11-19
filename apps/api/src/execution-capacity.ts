@@ -25,11 +25,16 @@ async function node(client:PoolClient|Pool,i:ExecutionNodeIdentity,lock=false){
  const row=(await client.query(`SELECT * FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 ${lock?'FOR UPDATE':''}`,[i.account_id,i.region,i.instance_id])).rows[0];
  if(!row||row.epoch!==i.epoch)throw Error('EXECUTION_NODE_EPOCH_MISMATCH');return row;
 }
-async function dto(client:PoolClient|Pool,row:any):Promise<ExecutionNode>{
+async function freshExecutionServices(client:PoolClient|Pool,row:any):Promise<ExecutionNode['expected_services']>{
+ const {rows}=await client.query("SELECT service_id FROM bb_execution_node_sessions WHERE node_id=$1 AND epoch=$2 AND state='active' AND ready AND heartbeat_at>clock_timestamp()-interval '30 seconds'",[row.id,row.epoch]);
+ const fresh=new Set(rows.map(s=>s.service_id));
+ return (row.expected_services as ExecutionNode['expected_services']).filter(service=>fresh.has(service.service_id));
+}
+async function dto(client:PoolClient|Pool,row:any,freshServices?:ExecutionNode['expected_services']):Promise<ExecutionNode>{
  const active=(await client.query(`SELECT (SELECT count(*) FROM bb_jobs WHERE execution_node_id=$1 AND lease_token IS NOT NULL)+(SELECT count(*) FROM bb_review_messages WHERE execution_node_id=$1 AND lease_token IS NOT NULL) AS leases,
  (SELECT count(*) FROM bb_model_capacity_holders WHERE execution_node_id=$1) AS calls`,[row.id])).rows[0];
- const sessions=(await client.query("SELECT service_id,state,ready,heartbeat_at FROM bb_execution_node_sessions WHERE node_id=$1 AND epoch=$2",[row.id,row.epoch])).rows;
- const allReady=row.expected_services.length>0&&row.expected_services.every((service:any)=>sessions.some(s=>s.service_id===service.service_id&&s.state==='active'&&s.ready&&new Date(s.heartbeat_at).getTime()>Date.now()-30000));
+ const readyServices=freshServices??await freshExecutionServices(client,row);
+ const allReady=readyServices.length>0&&readyServices.length===row.expected_services.length;
  return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,Number((await client.query('SELECT node_model_limit FROM bb_execution_capacity_policy WHERE singleton')).rows[0].node_model_limit)-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id};
 }
 function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:['run','start'].includes(row.action)?row.request:null,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,...(row.action==='stop'?{stop_authorization:row.request??(row.legacy_drain_proof?{kind:'graceful-drain',proof:row.legacy_drain_proof}:null)}:{}),run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null,authorization_denial:row.authorization_denial??null};}
@@ -344,7 +349,17 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
  return transaction(pool,async client=>{
   await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
   const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton')).rows[0];
-  const nodes:ExecutionNode[]=[];for(const n of (await client.query('SELECT * FROM bb_execution_nodes WHERE destroyed_at IS NULL ORDER BY account_id,region,instance_id')).rows)nodes.push(await dto(client,n));
+  const nodes:ExecutionNode[]=[];
+  const availableRunSlots=new Map<ExecutionNode['capabilities'][number],number>();
+  for(const row of (await client.query('SELECT * FROM bb_execution_nodes WHERE destroyed_at IS NULL ORDER BY account_id,region,instance_id')).rows){
+   const services=await freshExecutionServices(client,row);
+   const current=await dto(client,row,services);
+   nodes.push(current);
+   if(current.state!=='ready')continue;
+   const free=Math.max(0,Number(p.node_model_limit)-current.active_leases);
+   for(const capability of new Set(services.flatMap(service=>service.capabilities)))
+    availableRunSlots.set(capability,(availableRunSlots.get(capability)??0)+free);
+  }
   const holders=Number((await client.query('SELECT count(*) AS n FROM bb_model_capacity_holders')).rows[0].n);
   // Already-admitted jobs only. Expiry alone does not turn an owned job into
   // demand, and unknown call/journal state is excluded before group de-dup.
@@ -410,7 +425,7 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
   const oldest=(w:typeof work)=>w.length?Math.max(0,Math.floor((Date.now()-Math.min(...w.map(x=>x.created.getTime())))/1000)):null;
   const capabilities=['authoring','review','assistant','probe'] as const;
   return {version:'execution-capacity-v1',observed_at:new Date().toISOString(),policy:policyDto(p),nodes,
-   pending_cloud_reservations:Number((await client.query("SELECT count(*) AS n FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown')")).rows[0].n),active_model_calls:holders,available_model_slots:p.budget_available?Math.max(0,p.global_model_limit-holders):0,effective_queued_work:work.length,oldest_wait_seconds:oldest(work),groups:capabilities.map(capability=>({capability,effective_queued_work:work.filter(w=>w.capability===capability).length,oldest_wait_seconds:oldest(work.filter(w=>w.capability===capability)),occupied_run_slots:nodes.filter(n=>n.capabilities.includes(capability)).reduce((s,n)=>s+n.active_leases,0),available_run_slots:nodes.filter(n=>n.capabilities.includes(capability)).reduce((s,n)=>s+n.ready_slots,0)})),excluded};
+   pending_cloud_reservations:Number((await client.query("SELECT count(*) AS n FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown')")).rows[0].n),active_model_calls:holders,available_model_slots:p.budget_available?Math.max(0,p.global_model_limit-holders):0,effective_queued_work:work.length,oldest_wait_seconds:oldest(work),groups:capabilities.map(capability=>({capability,effective_queued_work:work.filter(w=>w.capability===capability).length,oldest_wait_seconds:oldest(work.filter(w=>w.capability===capability)),occupied_run_slots:nodes.filter(n=>n.capabilities.includes(capability)).reduce((s,n)=>s+n.active_leases,0),available_run_slots:availableRunSlots.get(capability)??0})),excluded};
  });
 }
 
