@@ -5,6 +5,8 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Pool} from 'pg';
+import {Value} from '@sinclair/typebox/value';
+import {ExecutionCapacitySnapshotSchema} from '@bondbuddy/contracts';
 import {executionCapacityControl,executionCloudExpenseLedger,configureExecutionCapacity,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime,executionClaimGate} from '@bondbuddy/api/execution-capacity';
 import {transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
@@ -30,7 +32,13 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
  const quote={version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.02,stopped_cny_per_node_hour:kind==='compute'?0:.02,evidence_ref:'synthetic/price',evidence_sha256:h,enforced_bound_sha256:h}))};
  config.quote_sha256=sha256(canonical(quote));
  for(const descriptor of config.node_secrets)await writeFile(descriptor.service_template_file,canonical({service_environments:{authoring:{DATABASE_URL:connection},review:{DATABASE_URL:connection}}}),{mode:0o600});
- await configureExecutionCapacity(pool,0,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:true,expense_policy_sha256:h});
+ Object.assign(config,{node_model_limit:8,global_model_limit:8});
+ const setCapacity=async(limit,quota=limit,review=h)=>configureExecutionCapacity(pool,(await snap()).policy.revision,{
+  managed_nodes:true,global_model_limit:limit,node_model_limit:8,max_nodes:2,budget_available:true,
+  provider_concurrency_limit:quota,provider_policy_sha256:review,expense_policy_sha256:h
+ });
+ await configureExecutionCapacity(pool,0,{managed_nodes:true,global_model_limit:8,node_model_limit:8,max_nodes:2,
+  budget_available:true,provider_concurrency_limit:8,provider_policy_sha256:h,expense_policy_sha256:h});
  const authority=executionCapacityControl(pool),instances=new Map(),secrets=new Map(),calls=[];let failExpense=false,failDispatch=false;
  const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...secrets.keys()].filter(k=>k.startsWith(p.SecretName+':')).map(k=>({VersionId:k.slice(p.SecretName.length+1)}))};if(action==='GetSecretValue'){const value=secrets.get(p.SecretName+':'+p.VersionId);if(!value){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:value};}
  if(action==='PutSecretValue'){secrets.set(p.SecretName+':'+p.VersionId,p.SecretString);return {RequestId:'synthetic-secret'};}if(action==='ModifyResourceTags')return {RequestId:'synthetic-tag'};throw Error('unexpected synthetic action');}};
@@ -54,11 +62,11 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
    await heartbeatExecutionRuntime(p,{native_processes:0,unpersisted_results:0,ready:true});sessions.push(p);
   }return sessions;
  };
- const addJob=async()=>{const id=randomUUID(),owner='synthetic-cloud-owner',manifest={synthetic:true},hash=inputManifestHash(manifest);
-  await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'synthetic cloud demand','generation')",[id,owner]);
+ const addJob=async(kind='generation')=>{const id=randomUUID(),owner='synthetic-cloud-owner',manifest={synthetic:true},hash=inputManifestHash(manifest);
+  await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'synthetic cloud demand',$3)",[id,owner,kind]);
   await pool.query("INSERT INTO bb_input_revisions(project_id,owner_user_id,revision,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,1,1,$3,$4,'[]','[]')",[id,owner,hash,manifest]);
-  await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$1,1,$3,$1,'generation',$3,'queued')",[id,owner,hash]);
-  await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state) VALUES($1,$2,$1,'generation','default','queued')",[id,owner]);return id;};
+  await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$1,1,$3,$1,$4,$3,'queued')",[id,owner,hash,kind]);
+  await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state) VALUES($1,$2,$1,$3,'default','queued')",[id,owner,kind]);return id;};
  const claimJob=async(p,id)=>{const token=randomUUID();await transaction(p,async c=>{await executionClaimGate(c,p);await c.query("UPDATE bb_jobs SET state='running',lease_token=$2,lease_until=now()+interval '120 seconds' WHERE id=$1",[id,token]);});return {kind:'job',id,token};};
  await t.test('startup records one exact Run; unready node is no capacity and no second Run',async()=>{await handler.tick();assert.equal(calls.length,1);await handler.tick();assert.equal((await snap()).nodes[0].state,'starting');await handler.tick();assert.equal(calls.length,1);assert.equal((await snap()).nodes[0].ready_slots,0);});
  await t.test('expired confirmed enrollment preserves PG token/epoch and does not create sessions or replay cloud Start',async()=>{
@@ -69,14 +77,68 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
   assert.equal(calls.length,1);assert.equal(secrets.size,2);assert.equal((await snap()).policy.budget_available,true);
  });
  const a=await enroll('ins-a1');config.resident_instance_id='ins-a1';config.phase='two_node_validation';
- const leasesA=[];for(let i=0;i<4;i++)leasesA.push(await claimJob(a[0],await addJob()));await addJob();await snap();await pool.query("UPDATE bb_execution_work_readiness SET ready_since=clock_timestamp()-interval '60 seconds'");
- await t.test('only admitted unsupplied demand triggers second Run, still hard max two',async()=>{await handler.tick();assert.equal(calls.length,2);await handler.tick();assert.equal((await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2').state,'starting');});
+ const aBudget=new PgModelCallBudget(a[0]);
+ for(let i=0;i<8;i++){
+  const lease=await claimJob(a[0],await addJob());
+  permits.push(await aBudget.acquire(undefined,'cloud-a:'+i,lease));
+ }
+ const queuedReview=await addJob('review');
+ await assert.rejects(claimJob(a[1],queuedReview),/claim slots full/);
+ await snap();await pool.query("UPDATE bb_execution_work_readiness SET ready_since=clock_timestamp()-interval '60 seconds'");
+ await t.test('one full node cannot add capacity at the upstream ceiling; reviewed demand can start a second',async()=>{
+  assert.equal((await snap()).nodes[0].active_model_calls,8);
+  await handler.tick();assert.equal(calls.length,1);
+  await assert.rejects(setCapacity(67,66),{code:'23514'});
+  await assert.rejects(setCapacity(67,67,null),{code:'23514'});
+  await setCapacity(67);
+  delete config.global_model_limit;
+  const approved=await snap();
+  assert.ok(Value.Check(ExecutionCapacitySnapshotSchema,approved),JSON.stringify([...Value.Errors(ExecutionCapacitySnapshotSchema,approved)]));
+  assert.equal(approved.available_model_slots,59);
+  await handler.tick();assert.equal(calls.length,2);await handler.tick();
+  assert.equal((await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2').state,'starting');
+ });
  const b=await enroll('ins-b2');await handler.tick();assert.equal((await snap()).policy.budget_available,true);
- await t.test('global four then approved eight, with cross-node five real holders and cloud cap two',async()=>{
-  for(let i=0;i<4;i++)permits.push(await new PgModelCallBudget(a[0]).acquire(undefined,'cloud-a:'+i,leasesA[i]));
-  const lease=await claimJob(b[0],await addJob()),abort=new AbortController();const wait=new PgModelCallBudget(b[0]).acquire(abort.signal,'cloud-b:blocked',lease);setTimeout(()=>abort.abort(),120);await assert.rejects(wait);
-  await configureExecutionCapacity(pool,(await snap()).policy.revision,{managed_nodes:true,global_model_limit:8,max_nodes:2,budget_available:true,provider_concurrency_limit:8,provider_policy_sha256:h,expense_policy_sha256:h});config.global_model_limit=8;
-  permits.push(await new PgModelCallBudget(b[0]).acquire(undefined,'cloud-b:allowed',lease));assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,5);assert.equal(instances.size,2);
+ await t.test('review shares global slots across nodes; high occupied IDs survive lowering the quota',async()=>{
+  const lease=await claimJob(b[1],queuedReview),bBudget=new PgModelCallBudget(b[1]);
+  const review=await bBudget.acquire(undefined,'cloud-b:review',lease);
+  permits.push(review);
+  assert.deepEqual((await pool.query('SELECT slot FROM bb_model_capacity_holders ORDER BY slot')).rows.map(r=>r.slot),[1,2,3,4,5,6,7,8,9]);
+  const high=await transaction(pool,async c=>{
+   await c.query("SELECT set_config('bb.execution_lease_token',$1,true)",[lease.token]);
+   const token=randomUUID();
+   // Node limits preserve a maximum of 16 simultaneous holders. Exercise the
+   // former 64-ID constraint with a sparse holder that still has a real lease.
+   await c.query(`INSERT INTO bb_model_capacity_holders
+    SELECT (jsonb_populate_record(NULL::bb_model_capacity_holders,
+      to_jsonb(h)||jsonb_build_object('token',$2::text,'slot',65,'node_slot',2))).*
+    FROM bb_model_capacity_holders h WHERE scope=$1`,['cloud-b:review',token]);
+   return token;
+  });
+  try{
+   await setCapacity(2147483647);
+   const extraLease=await claimJob(b[0],await addJob()),extraBudget=new PgModelCallBudget(b[0]);
+   const extra=await extraBudget.acquire(AbortSignal.timeout(2500),'cloud-b:extra',extraLease);
+   assert.equal((await pool.query("SELECT slot FROM bb_model_capacity_holders WHERE scope='cloud-b:extra'")).rows[0].slot,10);
+   await extra.release();
+   await setCapacity(8);
+   assert.equal((await snap()).available_model_slots,0);
+   await review.renew();
+   assert.equal((await pool.query('UPDATE bb_model_capacity_holders SET renewed_at=now() WHERE token=$1 AND slot=65',[high])).rowCount,1);
+   const timeout=AbortSignal.timeout(250);
+   await assert.rejects(extraBudget.acquire(timeout,'cloud-b:blocked',extraLease),
+    error=>error===timeout.reason||error.cause===timeout.reason);
+   assert.equal((await snap()).active_model_calls,10);
+   await review.release();
+   await permits[0].release();
+   await permits[1].release();
+   // Admission is by the total active count, with occupied IDs above the
+   // lowered limit included. The first low hole is usable again.
+   permits.push(await extraBudget.acquire(AbortSignal.timeout(2500),'cloud-b:allowed',extraLease));
+   assert.equal((await pool.query("SELECT slot FROM bb_model_capacity_holders WHERE scope='cloud-b:allowed'")).rows[0].slot,1);
+   assert.equal((await snap()).active_model_calls,8);
+   assert.equal(instances.size,2);
+  }finally{await pool.query('DELETE FROM bb_model_capacity_holders WHERE token=$1',[high]);}
  });
  await Promise.all(permits.map(p=>p.release()));await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE owner_user_id='synthetic-cloud-owner'");
  await t.test('missing fee source closes claims but preserves lease drain proof until all services finish',async()=>{
@@ -84,7 +146,7 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
   await heartbeatExecutionRuntime(b[0],{native_processes:0,unpersisted_results:0,ready:false,finished:true});await handler.tick();assert.equal(calls.length,2);
   await heartbeatExecutionRuntime(b[1],{native_processes:0,unpersisted_results:0,ready:false,finished:true});await handler.tick();assert.equal(calls.at(-1).action,'stop');await handler.tick();assert.equal((await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2').state,'stopped');
  });
- const old=(await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2');failExpense=false;await authority.setAdmissionBudget((await snap()).policy.revision,true,h);for(let i=0;i<4;i++)await claimJob(a[0],await addJob());await addJob();await snap();await pool.query("UPDATE bb_execution_work_readiness SET ready_since=clock_timestamp()-interval '60 seconds'");
+ const old=(await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2');failExpense=false;await authority.setAdmissionBudget((await snap()).policy.revision,true,h);for(let i=0;i<8;i++)await claimJob(a[0],await addJob());await addJob();await snap();await pool.query("UPDATE bb_execution_work_readiness SET ready_since=clock_timestamp()-interval '60 seconds'");
  await t.test('warm intent before dispatch survives budget revisions/restart with same token and original manifest',async()=>{
   // Restore expense admission before submitting a new warm intent.
   await authority.setAdmissionBudget((await snap()).policy.revision,true,h);failDispatch=true;await handler.tick();const op=(await authority.listPendingOperations())[0];assert.equal(op.state,'intent');assert.equal(op.request.launch_manifest_sha256,old.launch_manifest_sha256);const count=calls.length;

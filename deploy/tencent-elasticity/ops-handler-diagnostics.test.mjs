@@ -7,7 +7,7 @@ import {validateConfig} from './policy.mjs';
 const config=JSON.parse(await readFile(new URL('./pool.example.json',import.meta.url),'utf8'));
 const operationId='aac1586d-6381-47b7-8ba2-6355449f9037',epoch='6f195681-f1aa-48ce-a1a7-2d587b873b91';
 const identity={account_id:'123456',region:config.region,instance_id:'ins-test1',epoch};
-const state=()=>({policy:{revision:1,managed_nodes:true,budget_available:true,node_model_limit:4,global_model_limit:4,max_nodes:2,expense_policy_sha256:config.expense_policy_sha256},nodes:[],groups:[],pending_cloud_reservations:0,active_model_calls:0,effective_queued_work:0});
+const state=()=>({policy:{revision:1,managed_nodes:true,budget_available:true,node_model_limit:4,global_model_limit:4,provider_concurrency_limit:4,max_nodes:2,expense_policy_sha256:config.expense_policy_sha256},nodes:[],groups:[],pending_cloud_reservations:0,active_model_calls:0,effective_queued_work:0});
 const configured=()=>({...config,account_id:'123456',enabled:true,cloud_quote_refresh:undefined});
 validateConfig(configured());
 

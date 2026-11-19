@@ -37,7 +37,7 @@ test('one shared image launches both role slots with distinct public bindings an
   }
   assert.equal(launches,2);
 });
-const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2, expense_policy_sha256:h}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
+const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, provider_concurrency_limit: 4, max_nodes: 2, expense_policy_sha256:h}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
 const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
 config.quote_sha256=sha256(canonical(quote));
 const safeInventory = () => [{account_id:config.account_id,region:config.region,instance_id:'ins-a1',role_name:'node-a',instance_state:'RUNNING',observed_at:new Date().toISOString(),evidence_ref:'synthetic/cloud',evidence_sha256:h}];
@@ -58,7 +58,7 @@ test('automatic zero floor waits for effective demand and budget, while validati
   assert.equal(planCapacity(s,[{instance_id:'ins-a1',instance_state:'STOPPED'}],zero).kind,'start');
   assert.equal(planCapacity({...s,policy:{...s.policy,budget_available:false}},[],zero).reason,'budget');
   assert.equal(planCapacity({...s,pending_cloud_reservations:1},[],zero).reason,'pending_cloud_operation');
-  assert.equal(planCapacity(snapshot(),[],{...config,phase:'single_node_validation'}).kind,'run');
+  assert.equal(planCapacity({...snapshot(),active_model_calls:4},[],{...config,phase:'single_node_validation'}).kind,'run');
 });
 
 test('automatic zero floor drains the final healthy idle node but refuses lease, unknown and missing-idle shortcuts',()=>{
@@ -102,10 +102,32 @@ test('cannot drain sole ready node, resident, or sole capability when another no
   other.capabilities = ['review'];
   assert.equal(planCapacity({...snapshot(), nodes: [node, other]}, [{instance_state: 'RUNNING'}, {instance_state: 'RUNNING'}], config).identity.instance_id, 'ins-b2');
 });
-test('stop charging validation has no bootstrap cycle; global8 still needs provider approval', () => {
+test('stop charging validation has no bootstrap cycle; above baseline needs provider approval', () => {
   assert.doesNotThrow(() => validateConfig({...config, phase: 'single_node_validation', stop_charging_verified: false}, {apply: true}));
   assert.throws(() => validateConfig({...config, stop_charging_verified: false}, {apply: true}), /STOP_CHARGING/);
-  assert.throws(() => validateConfig({...config, global_model_limit: 8}, {apply: true}), /PROVIDER_BUDGET/);
+  for (const limit of [5, 8, 17, 67, 2147483647]) {
+    assert.throws(() => validateConfig({...config, global_model_limit: limit}, {apply: true}), /PROVIDER_BUDGET/);
+    assert.doesNotThrow(() => validateConfig({...config, global_model_limit: limit, provider_budget_review_sha256: h}, {apply: true}));
+  }
+  for (const limit of [0, -1, 4.5, '67', 2147483648]) {
+    assert.throws(() => validateConfig({...config, global_model_limit: limit}), /CAPACITY_BOUND/);
+  }
+});
+test('a provider-backed PG limit can drive expansion without a duplicate controller limit', () => {
+  const c={...config,min_running:0,node_model_limit:8,provider_budget_review_sha256:h};
+  delete c.global_model_limit;
+  const s=snapshot();
+  Object.assign(s.policy,{node_model_limit:8,global_model_limit:67,provider_concurrency_limit:67,provider_policy_sha256:h});
+  s.active_model_calls=8;
+  s.effective_queued_work=1;
+  s.groups=[{capability:'review',effective_queued_work:1,oldest_wait_seconds:60,available_run_slots:0}];
+  const inventory=[...safeInventory(),{instance_id:'ins-b2',instance_state:'STOPPED'}];
+  assert.deepEqual(planCapacity(s,inventory,c),{kind:'start',instance_id:'ins-b2',capabilities:['review']});
+  assert.equal(planCapacity(s,inventory,{...c,global_model_limit:8}).reason,'policy_mismatch');
+  assert.equal(planCapacity(s,inventory,{...c,provider_budget_review_sha256:'b'.repeat(64)}).reason,'provider_budget_unverified');
+  assert.equal(planCapacity({...s,policy:{...s.policy,provider_concurrency_limit:8}},inventory,c).reason,'policy_mismatch');
+  assert.equal(planCapacity({...s,active_model_calls:67},inventory,c).kind,'hold');
+  assert.equal(planCapacity({...s,policy:{...s.policy,budget_available:false}},inventory,c).reason,'budget');
 });
 test('daily engineering costcap includes delayed bills, unknowns, drift and safe drain; no empty bill=zero', () => {
   assert.equal(costAdmission(expense(), [], config).allowed, true);

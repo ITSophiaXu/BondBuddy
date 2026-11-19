@@ -15,7 +15,7 @@ const connection=await isolatedTestDatabase(undefined,'pool-resilience');
 const serviceConnection=await isolatedTestDatabase(undefined,'pool-service-isolation');
 const hash='a'.repeat(64);
 const config={...JSON.parse(await readFile(new URL('./pool.example.json',import.meta.url),'utf8')),
- enabled:true,account_id:'123456',cloud_quote_refresh:undefined,global_model_limit:8,node_model_limit:8,
+ enabled:true,account_id:'123456',cloud_quote_refresh:undefined,global_model_limit:8,node_model_limit:8,provider_budget_review_sha256:hash,
  expense_policy_sha256:hash,expense_policy_revision:1,quote_sha256:hash,total_cap_cny_per_hour:4};
 const services=[{service_id:'authoring',capabilities:['authoring']},{service_id:'review',capabilities:['review','assistant']}];
 const identity={account_id:config.account_id,region:config.region,instance_id:'ins-test1',epoch:randomUUID()};
