@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from zipfile import ZipFile
 from docx import Document
-from bondbuddy_file_authoring.project_files import inspect, patch, validate_links
+from bondbuddy_file_authoring.project_files import inspect, patch, validate_links, table_layout
 from bondbuddy_file_authoring.word_patch import xml, q
 
 
@@ -78,6 +78,66 @@ class ProjectFilesTest(unittest.TestCase):
         amounts = [s for s in self.snapshot['spans'] if s['text'] == '10亿元']
         self.assertNotEqual(amounts[0]['location'], amounts[1]['location'])
         self.assertIn('行 2', amounts[1]['location'])
+
+
+
+    def full_width_document(self):
+        d = Document()
+        d.add_paragraph('财务情况分析。' * 20)
+        t = d.add_table(rows=3, cols=2)
+        cell = t.cell(0, 0).merge(t.cell(0, 1))
+        cell.text = '报告期关联往来明细'
+        cell.add_paragraph('单位：万元')
+        t.cell(1, 0).text = '年度'
+        t.cell(1, 1).text = '金额'
+        t.cell(2, 0).text = '2025'
+        t.cell(2, 1).text = '100'
+        return d, t, cell
+
+    def test_private_full_width_layout_preserves_the_versioned_text_snapshot(self):
+        d, _, _ = self.full_width_document()
+        d.save(self.path)
+        before = inspect(self.path, complete=True)
+        proof = table_layout(self.path)
+        expected = [s['id'] for s in before['spans'] if s['text'] in ('报告期关联往来明细', '单位：万元')]
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(proof['full_width_span_ids'], expected)
+        self.assertEqual(proof['sha256'], before['sha256'])
+        self.assertEqual(inspect(self.path, complete=True), before)
+        self.assertTrue(all(set(s) == {'id', 'text', 'location', 'sha256'} for s in before['spans']))
+
+    def test_ordinary_and_effectively_single_column_tables_never_get_a_layout_exception(self):
+        self.assertEqual(table_layout(self.path)['full_width_span_ids'], [])
+        for all_merged in (False, True):
+            d = Document()
+            t = d.add_table(rows=2, cols=2 if all_merged else 1)
+            for i, row in enumerate(t.rows):
+                cell = row.cells[0].merge(row.cells[1]) if all_merged else row.cells[0]
+                cell.text = f'数据第{i + 1}行100万元'
+            d.save(self.path)
+            self.assertEqual(table_layout(self.path)['full_width_span_ids'], [])
+
+    def test_ambiguous_or_nontext_full_width_rows_stay_on_the_strict_cell_path(self):
+        from docx.oxml import OxmlElement
+        for case in ('vertical', 'offset', 'missing_grid', 'wrong_span', 'nested', 'drawing'):
+            with self.subTest(case=case):
+                d, table, cell = self.full_width_document()
+                if case == 'vertical':
+                    node = OxmlElement('w:vMerge'); node.set(q('val'), 'restart')
+                    cell._tc.get_or_add_tcPr().append(node)
+                elif case == 'offset':
+                    node = OxmlElement('w:gridBefore'); node.set(q('val'), '1')
+                    cell._tc.getparent().get_or_add_trPr().append(node)
+                elif case == 'missing_grid':
+                    table._tbl.remove(table._tbl.find(q('tblGrid')))
+                elif case == 'wrong_span':
+                    cell._tc.get_or_add_tcPr().find(q('gridSpan')).set(q('val'), '3')
+                elif case == 'nested':
+                    cell.add_table(rows=1, cols=1).cell(0, 0).text = '嵌套明细'
+                else:
+                    cell.paragraphs[0].add_run()._r.append(OxmlElement('w:drawing'))
+                d.save(self.path)
+                self.assertEqual(table_layout(self.path)['full_width_span_ids'], [])
 
 
 if __name__ == '__main__':

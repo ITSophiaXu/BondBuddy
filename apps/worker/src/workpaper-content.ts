@@ -1,13 +1,17 @@
 import type {ProjectFileText,ProjectFileLink} from '@bondbuddy/contracts';
 import type {CodexCollectionDiagnosticDetails} from './codex-adapter.js';
+export type WorkpaperTableLayout={source_sha256:string;full_width_span_ids:readonly string[]};
 export class WorkpaperCoverageError extends Error {
   constructor(code:string,readonly missingSourceSpanIds:string[],readonly diagnostics:CodexCollectionDiagnosticDetails[]=[]){super(code);}
 }
 /** Host checks catch empty files, partial table adoption and missing evidence.
  * Report independent blockers together so the one repair turn can fix the final
- * document and its metadata. Every original gate remains mandatory.
+ * document and its metadata. Full coverage, verified quotations and data-grid
+ * gates remain mandatory; whole-width prose requires private host layout proof.
  * Semantic relevance still requires professional review; a declaration is not an audit. */
-export function validateWorkpaperCoverage(source:ProjectFileText,target:ProjectFileText,links:ProjectFileLink[],proposal:unknown){
+export function validateWorkpaperCoverage(source:ProjectFileText,target:ProjectFileText,links:ProjectFileLink[],proposal:unknown,layout?:WorkpaperTableLayout){
+  if(layout&&layout.source_sha256!==source.sha256)throw Error('INPUT_REVISION_CONFLICT');
+  const fullWidth=new Set(layout?.full_width_span_ids??[]);
   const p=proposal as {reviewed_span_ids?:unknown[];used_span_ids?:unknown[];excluded?:{span_id:string;reason:string}[]}|null;
   if(!p||!Array.isArray(p.reviewed_span_ids)||!Array.isArray(p.used_span_ids)||!Array.isArray(p.excluded))throw Error('WORKPAPER_COVERAGE_REQUIRED');
   const relevant=new Set(p.used_span_ids),reviewed=new Set(p.reviewed_span_ids),excluded=new Map(p.excluded.filter(x=>x&&typeof x.reason==='string'&&x.reason.trim().length>4).map(x=>[x.span_id,x.reason]));
@@ -26,16 +30,23 @@ export function validateWorkpaperCoverage(source:ProjectFileText,target:ProjectF
   if(missingTableUse.length)issue('WORKPAPER_TABLE_INCOMPLETE','workpaper-coverage.json','/used_span_ids','all_nonempty_cells_of_each_used_table',missingTableUse);
   const targets=new Map(target.spans.map(s=>[s.id,s])),sources=new Map(nonempty.map(s=>[s.id,s])),missingOutput:string[]=[];
   for(const table of tables){
-    const spans=nonempty.filter(s=>s.location.split(' / 行 ')[0]===table),cells=new Set(spans.map(s=>s.location)),linkedCells=new Set<string>(),outputCells=new Set<string>();
+    const spans=nonempty.filter(s=>s.location.split(' / 行 ')[0]===table),dataSpans=spans.filter(s=>!fullWidth.has(s.id));
+    const cells=new Set(dataSpans.map(s=>s.location)),linkedCells=new Set<string>(),outputCells=new Set<string>(),retainedFullWidth=new Set<string>();
     for(const link of links){
       const from=sources.get(link.source_span_id),to=targets.get(link.target_span_id);
-      if(from?.location.split(' / 行 ')[0]===table&&to?.location.includes(' / 行 ')){
-        linkedCells.add(from.location);outputCells.add(to.location);
+      if(from?.location.split(' / 行 ')[0]!==table||!to)continue;
+      if(to.location.includes(' / 行 ')){
+        linkedCells.add(from.location);
+        if(fullWidth.has(from.id))retainedFullWidth.add(from.id);else outputCells.add(to.location);
+      }else if(fullWidth.has(from.id)&&link.source_quote===from.text&&link.target_quote===from.text){
+        // Host-proven full-width text may be a caption/section paragraph. A
+        // partial quotation never grants this layout exception.
+        retainedFullWidth.add(from.id);
       }
     }
-    const absent=spans.filter(s=>!linkedCells.has(s.location));
+    const absent=spans.filter(s=>fullWidth.has(s.id)?!retainedFullWidth.has(s.id):!linkedCells.has(s.location));
     if(absent.length)missingOutput.push(...absent.map(s=>s.id));
-    else if(outputCells.size<cells.size)missingOutput.push(...spans.map(s=>s.id));
+    else if(outputCells.size<cells.size)missingOutput.push(...dataSpans.map(s=>s.id));
   }
   if(missingOutput.length)issue('WORKPAPER_TABLE_OUTPUT_INCOMPLETE','file-links.json','/links','complete_source_table_to_distinct_target_cells',missingOutput);
   const body=target.spans.map(s=>s.text).join('\n');

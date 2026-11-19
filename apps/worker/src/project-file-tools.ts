@@ -1,3 +1,4 @@
+import type {WorkpaperTableLayout} from './workpaper-content.js';
 import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -17,8 +18,8 @@ import {verifiedFileLinks} from './project-file-evidence.js';
 export const projectFilesRoot=resolve(fileURLToPath(import.meta.url),'../../../..');
 const run=promisify(execFile);
 export async function projectFilePython(ctx:StageContext,args:string[]){
-  const operation=['inspect','inspect-complete','patch'].includes(args[0]??'')?args[0]!:'other';
-  return withPerformanceSpan(operation.startsWith('inspect')?'document.inspect':'document.transform',{operation},()=>run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
+  const operation=['inspect','inspect-complete','table-layout','patch'].includes(args[0]??'')?args[0]!:'other';
+  return withPerformanceSpan((operation.startsWith('inspect')||operation==='table-layout')?'document.inspect':'document.transform',{operation},()=>run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024}));
 }
 export async function inspectProjectFile(ctx:StageContext,path:string,complete=false):Promise<ProjectFileText>{
@@ -29,6 +30,21 @@ export async function inspectProjectFile(ctx:StageContext,path:string,complete=f
     const value=JSON.parse(bytes.toString('utf8'));
     if(!Value.Check(ProjectFileTextSchema,value))throw Error('FILE_TEXT_INVALID');
     return value;
+  }finally{await rm(dir,{recursive:true,force:true});}
+}
+/** Host-only layout metadata; never sourced from model JSON or stored in the
+ * immutable source-spans snapshot, so old workspace hashes remain compatible. */
+export async function inspectWorkpaperTableLayout(ctx:StageContext,path:string,source:ProjectFileText):Promise<WorkpaperTableLayout>{
+  const dir=await mkdtemp(join(tmpdir(),'bb-table-layout-'));
+  try{
+    const output=join(dir,'layout.json');await projectFilePython(ctx,['table-layout',path,output]);
+    const bytes=await readFile(output);if(bytes.length>4*1024*1024)throw Error('FILE_TEXT_TOO_LARGE');
+    const value=JSON.parse(bytes.toString('utf8')),ids=value.full_width_span_ids;
+    const allowed=new Set(source.spans.filter(s=>s.location.includes(' / 行 ')).map(s=>s.id));
+    if(value.version!=='workpaper-table-layout-v1'||value.sha256!==source.sha256||!Array.isArray(ids)
+      ||ids.length>source.spans.length||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!allowed.has(id)))
+      throw Error('INPUT_REVISION_CONFLICT');
+    return {source_sha256:source.sha256,full_width_span_ids:ids};
   }finally{await rm(dir,{recursive:true,force:true});}
 }
 export async function prepareProjectFileSource(ctx:StageContext,input:M4WorkerInput,cwd:string){

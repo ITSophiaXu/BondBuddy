@@ -1,5 +1,5 @@
 import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
-import {validateWorkpaperCoverage,WorkpaperCoverageError} from './workpaper-content.js';
+import {validateWorkpaperCoverage,WorkpaperCoverageError,type WorkpaperTableLayout} from './workpaper-content.js';
 import {collectDirectWorkpaper} from './workpaper-direct-output.js';
 import {writeFile,rm} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -17,7 +17,7 @@ import { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 import { checkedM4File, prepareM4Files, verifyM4Originals, verifyM4Calculation,m4ArtifactPreview, M4_FILE_MAX } from './m4-file-workspace.js';
 import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
-import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks} from './project-file-tools.js';
+import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks,inspectWorkpaperTableLayout} from './project-file-tools.js';
 import type {ProjectFileText} from '@bondbuddy/contracts';
 import {sharedWorkpaperDocument} from './workpaper-shared-stage.js';
 
@@ -54,6 +54,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     const methodHash=pinned.hash;
     let originals = new Map<string, string>();
     let linkedSource:ProjectFileText|null=null;
+    let tableLayout:WorkpaperTableLayout|undefined;
     let preparedSource:string|undefined;
     const task=input.manifest.input.workpaper,direct=task?.mode==='direct',sourcePin=input.manifest.input.source_material;
     const observer = m4ActionObserver(ctx, 'document');
@@ -64,6 +65,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         const source=input.materials.find(m=>m.pin.material_id===sourcePin?.material_id&&m.pin.source_project_id===sourcePin.source_project_id);
         preparedSource=source?.mediaType==='application/pdf'?'scratch/association-source.pdf':'scratch/association-source.docx';
         originals.set(preparedSource,digest(await checkedM4File(cwd,preparedSource)));
+        if(task)tableLayout=await inspectWorkpaperTableLayout(ctx,join(cwd,preparedSource),linkedSource);
       }
       if(direct){const schema=Buffer.from(JSON.stringify(WorkpaperDecisionSchema));await writeFile(join(cwd,'workpaper-result-schema.json'),schema,{mode:0o400});originals.set('workpaper-result-schema.json',digest(schema));}
     };
@@ -77,7 +79,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         let coverage:unknown;
         try{coverage=JSON.parse((await checkedM4File(join(cwd,'output'),'workpaper-coverage.json',32*1024*1024)).toString('utf8'));}
         catch{throw new CodexOutputValidationError('workpaper_coverage_missing_or_invalid',{code:'workpaper_coverage_missing_or_invalid',file:'workpaper-coverage.json',rule:'safe_json_file'});}
-        try{validateWorkpaperCoverage(linkedSource,await inspectProjectFile(ctx,join(cwd,'output/document.docx')),project_file_links.links,coverage);}
+        try{validateWorkpaperCoverage(linkedSource,await inspectProjectFile(ctx,join(cwd,'output/document.docx')),project_file_links.links,coverage,tableLayout);}
         catch(error){
           if(error instanceof WorkpaperCoverageError){
             const first=error.diagnostics[0]??{code:error.message,file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',source_span_ids:error.missingSourceSpanIds.slice(0,32),source_span_count:error.missingSourceSpanIds.length};
