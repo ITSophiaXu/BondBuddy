@@ -54,10 +54,17 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
     const methodHash=pinned.hash;
     let originals = new Map<string, string>();
     let linkedSource:ProjectFileText|null=null;
-    const task=input.manifest.input.workpaper,direct=task?.mode==='direct';
+    let preparedSource:string|undefined;
+    const task=input.manifest.input.workpaper,direct=task?.mode==='direct',sourcePin=input.manifest.input.source_material;
     const observer = m4ActionObserver(ctx, 'document');
     const prepareBase = async (cwd: string) => { await recordM4Progress(ctx, 'm4_reading_materials'); originals = await prepareM4Files(ctx, input, skill, cwd);
-      linkedSource=await prepareProjectFileSource(ctx,input,cwd);if(linkedSource)originals.set('source-spans.json',digest(await checkedM4File(cwd,'source-spans.json',32*1024*1024)));
+      linkedSource=await prepareProjectFileSource(ctx,input,cwd);
+      if(linkedSource){
+        originals.set('source-spans.json',digest(await checkedM4File(cwd,'source-spans.json',32*1024*1024)));
+        const source=input.materials.find(m=>m.pin.material_id===sourcePin?.material_id&&m.pin.source_project_id===sourcePin.source_project_id);
+        preparedSource=source?.mediaType==='application/pdf'?'scratch/association-source.pdf':'scratch/association-source.docx';
+        originals.set(preparedSource,digest(await checkedM4File(cwd,preparedSource)));
+      }
       if(direct){const schema=Buffer.from(JSON.stringify(WorkpaperDecisionSchema));await writeFile(join(cwd,'workpaper-result-schema.json'),schema,{mode:0o400});originals.set('workpaper-result-schema.json',digest(schema));}
     };
     const collectOnce = async (cwd: string, intent: {call_id: string}): Promise<M4DocumentResult> => {
@@ -105,8 +112,16 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         schema: {}, validate: value => validM4DocumentResult(value, ctx)&&(!direct||value.workpaper_decision?.item_id===task!.entry.id), resultSchemaVersion: 'codex-m4-document-v1', templateVersion: `m4-document-${methodHash}`,
         onActivity: event => observer.onEvent(event), fileWorkspace: recoverableM4Workspace(ctx,'m4-document-v1',{prepare:prepareBase,collect},{
           verify:cwd=>verifyM4Originals(cwd,originals),
-          // Remove only the fresh trusted template copy before restoring it.
-          beforeRestore:cwd=>rm(join(cwd,'scratch/selected-template.docx'),{force:true})
+          // Fresh host-created copies collide with exclusive snapshot restoration.
+          // The source must still equal the pinned bytes; edited templates remain work.
+          beforeRestore:async(cwd,snapshot)=>{
+            if(preparedSource){
+              const prior=snapshot.files.find(f=>f.path===preparedSource);
+              if(!prior||prior.sha256!==originals.get(preparedSource))throw Error('INPUT_REVISION_CONFLICT');
+              await rm(join(cwd,preparedSource),{force:true});
+            }
+            await rm(join(cwd,'scratch/selected-template.docx'),{force:true});
+          }
         })}).run(ctx);
       if(outcome.kind==='done'&&direct&&validM4DocumentResult(outcome.value,ctx)&&!outcome.value.error&&outcome.value.workpaper_decision){
         const result=outcome.value,decision=result.workpaper_decision!;

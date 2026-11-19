@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { providerReconciliationCandidates, reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload,
-  recordProviderReconcileUnknown, recoverM4Collection, resumePausedRun, type RunKind } from '@bondbuddy/api/queue';
+  recordProviderReconcileUnknown, recoverM4Collection, recoverM4TimedOutWorkspace, resumePausedRun, type RunKind } from '@bondbuddy/api/queue';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { raiseAlert } from '@bondbuddy/api/evidence-gate';
 
@@ -30,7 +30,7 @@ export async function reconcileProviderRun(options:Options,owner:string,runId:st
       AND r.state IN ('paused','settlement_pending') AND r.stage='provider_reconcile'
       AND j.state='paused' AND j.stage='provider_reconcile'
     ORDER BY a.logical_call_id,a.attempt_no`,[owner,jobId,runId])).rows as PendingAttempt[];
-  const recoverOrFinish=async()=>await recoverM4Collection(pool,owner,runId,jobId)||await recoverFileAuthoringPayload(pool,owner,runId,jobId)||
+  const recoverOrFinish=async()=>await recoverM4Collection(pool,owner,runId,jobId)||await recoverM4TimedOutWorkspace(pool,owner,runId,jobId)||await recoverFileAuthoringPayload(pool,owner,runId,jobId)||
     await recoverUnifiedTimeout(pool,owner,runId,jobId)||await recordProviderReconcileUnknown(pool,owner,runId,jobId,reconciler.name);
   for(const attempt of attempts){
     let answer:ReconcileAnswer;
