@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "M4_formal_verified_M1_v4_pair_succeeded_content_failed_1667_v5_normal_continuation_running",
+  "real_task_delivery": "M4_formal_verified_M1_v5_pair_targeted_image_scope_passed_full_document_failed_1668_1669",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -1301,9 +1301,205 @@
       "previous_output_run": "a2d48641-1637-4050-b8b8-2704d5061b4f",
       "previous_output_sha256": "d84842c0d9dd0bcd8f70864cd555d4fa0b39a3506825c1c72e0175c06efd2215",
       "seeded": false,
-      "state": "running",
+      "state": "succeeded",
       "points": 8864,
-      "formal_image_acceptance": "pending"
+      "formal_image_acceptance": "passed_targeted_scope",
+      "full_document_acceptance": "failed_1668_1669",
+      "clean_sha256": "900c7fc9c425a4fc220880efceceb1c21cf11f2f4fdfaa960f8dfad34d8772f9",
+      "revision_sha256": "3a2edea539cb840772529e04922fa1e115ef2528b8995b3cdd3e37382afd4b60"
     }
+  },
+  "latest_real_scope_verification": {
+    "at": "2026-11-19T18:44:01.296498+00:00",
+    "run_id": "930e17d6-e1c1-4ca6-8ea6-5984e0be9d05",
+    "execution_mode": "normal_continuation",
+    "input_revision": 3,
+    "previous_output_run": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+    "real_provider": "copilot_enterprise",
+    "provider_account": "yingx_microsoft",
+    "model": "gpt-6-sol",
+    "reasoning_effort": "max",
+    "real_runtime_commit": "489ab045a04d59f01a2230248804e0ab85494575",
+    "main_pr_code_commit": "836e2172c0df1b7f5315e5535f055b29a8e508f3",
+    "formal_pair_downloaded_and_hash_verified": true,
+    "artifacts": [
+      {
+        "artifact_id": "word-20a3431bb623f9defa6d5ed53e88797639fc509a91b002808d0dd346662869fb",
+        "sha256": "3a2edea539cb840772529e04922fa1e115ef2528b8995b3cdd3e37382afd4b60",
+        "downloaded_byte_size": 432416,
+        "kind": "revision"
+      },
+      {
+        "artifact_id": "word-cbe6833216d98916e8169e3f2d3540dcd0e9e6a39faac599cb38d558d042c250",
+        "sha256": "900c7fc9c425a4fc220880efceceb1c21cf11f2f4fdfaa960f8dfad34d8772f9",
+        "downloaded_byte_size": 429211,
+        "kind": "clean"
+      }
+    ],
+    "functional_acceptance": "passed_queue_recovery_delivery_and_targeted_image_scope",
+    "embedded_image_checks": {
+      "clean_four_images": true,
+      "old_three_not_active_in_clean": true,
+      "four_historical_images_byte_identical_and_ordered": true,
+      "accepted_images_match_clean": true,
+      "rejected_images_restore_baseline": true,
+      "accepted_text_equals_clean": true,
+      "rejected_text_restores_baseline": true,
+      "clean_has_no_revisions": true,
+      "all_table_text_unchanged": true
+    },
+    "tracked_removed_images": 3,
+    "text_change_paragraphs": 7,
+    "all_table_text_unchanged": true,
+    "table_count": 93,
+    "primary_financial_checks": {
+      "checks": 55,
+      "pass": 55,
+      "fail": 0,
+      "limit": "Selected figures only, with unchanged table text and prior period/scope review; not every financial number."
+    },
+    "original_failure_slots": {
+      "chapters": 7,
+      "body_slots": 18,
+      "all_nonempty": true,
+      "all_mapped": true,
+      "structure": "unchanged"
+    },
+    "owner_isolation": {
+      "tests": 41,
+      "pass": 41,
+      "fail": 0
+    },
+    "actual_browser": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "actual_responses": 10,
+      "mocked_responses": 0,
+      "errors": 0,
+      "blocked": 0,
+      "screenshots_visually_reviewed": [
+        1440,
+        390
+      ]
+    },
+    "billing": {
+      "points": 8864,
+      "reserve": 1,
+      "settle": 1,
+      "release": 0,
+      "scope": "New normal local continuation; original v4 settlement remains unchanged."
+    },
+    "prior_records": {
+      "runs": 3,
+      "table_groups": 36,
+      "all_unchanged": true
+    },
+    "gateway": {
+      "at": "2026-11-19T18:34:44.253Z",
+      "run_id": "930e17d6-e1c1-4ca6-8ea6-5984e0be9d05",
+      "calls": [
+        {
+          "call_id": "call-8f2dd382-c9d2-467c-a747-9151e2e0add6",
+          "attempt_no": 1,
+          "requests": 82,
+          "status_counts": {
+            "200": 82
+          },
+          "max_request_bytes": 1608103,
+          "gateway_rejected": 0,
+          "upstream_errors": 0,
+          "max_image_count": 7,
+          "first_413_seq": null
+        },
+        {
+          "call_id": "call-c0fe9eef-51b3-4c0d-af07-08feeffb7840",
+          "attempt_no": 2,
+          "requests": 170,
+          "status_counts": {
+            "200": 170
+          },
+          "max_request_bytes": 1447859,
+          "gateway_rejected": 0,
+          "upstream_errors": 0,
+          "max_image_count": 2,
+          "first_413_seq": null
+        }
+      ],
+      "all_requests_200": true,
+      "request_body_guard_triggered": false,
+      "real_rotation_trigger": "image_context_budget",
+      "rotation_snapshot_readback": "48 files / 1140350 bytes / all hashes matched",
+      "not_deepseek_quality_validation": true
+    },
+    "render": {
+      "clean_pages": 299,
+      "revision_pages": 300,
+      "readonly_and_offline": true,
+      "word_hashes_unchanged": true,
+      "clean_pages_reviewed": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        45,
+        49,
+        52,
+        73,
+        177
+      ],
+      "revision_pages_reviewed": [
+        2,
+        45,
+        53
+      ],
+      "all_pages_reviewed": false
+    },
+    "document_content_acceptance": "failed_known_toc_and_layout_issues_1668_1669",
+    "known_issues": [
+      {
+        "id": 1668,
+        "description": "TOC cached titles and page numbers are stale."
+      },
+      {
+        "id": 1669,
+        "description": "Clean page177 table overlaps footer; page9 empty body and table continuation31-32 also require layout assessment."
+      }
+    ],
+    "user_acceptance": false,
+    "production_deployment": false,
+    "scope_clarification": "Optional question asked; preparing delivery of verified queue/recovery/image changes. Independent full-document issues retained, not silently counted as passed."
   }
 }
