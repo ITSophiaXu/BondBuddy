@@ -99,7 +99,7 @@ test('host layout revision: real paid batch, atomic readback failure, original p
     const old=first.file.current,opts={owner:user,versionId:old.version_id,expectedSha256:old.asset.pin.sha256,actor:'synthetic-layout-operator'};
     const count=async(table:string)=>(await pool.query('SELECT count(*)::int n FROM '+table+' WHERE owner_user_id=$1',[user])).rows[0].n;
     const unchanged=async()=>({runs:(await pool.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 ORDER BY id',[user])).rows,
-      ledger:(await pool.query('SELECT * FROM bb_credit_ledger WHERE owner_user_id=$1 ORDER BY id',[user])).rows,
+      ledger:(await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY id',[user])).rows,
       reservations:(await pool.query('SELECT * FROM bb_credit_reservations WHERE owner_user_id=$1 ORDER BY id',[user])).rows,
       original:(await pool.query('SELECT * FROM bb_project_file_versions WHERE id=$1',[old.version_id])).rows,
       artifacts:(await pool.query('SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=ANY($2::text[]) ORDER BY id',[user,[first.file.current.asset.pin.artifact_id,second.file.current.asset.pin.artifact_id]])).rows});
@@ -123,6 +123,10 @@ test('host layout revision: real paid batch, atomic readback failure, original p
     assert.equal(newRow.links.length,1);assert.equal(newRow.links[0].target_sha256,repaired[0].sha256);
     const artifact=(await pool.query('SELECT * FROM bb_artifact_versions WHERE id=$1',[newRow.asset.pin.artifact_id])).rows[0];
     assert.equal(digest(store.get(artifact.object_key)!),repaired[0].sha256);assert.deepEqual(await unchanged(),snapshot);
-    actor=randomUUID();assert.equal((await send('GET',wp+'/batches/'+batch.batch_id)).statusCode,404);actor=user;
+    const meta=await ok('GET','/api/v1/artifacts/'+newRow.asset.pin.artifact_id);
+    const downloaded=await send('GET',meta.download_url);assert.equal(downloaded.statusCode,200);assert.equal(digest(downloaded.rawPayload),repaired[0].sha256);
+    const originalMeta=await ok('GET','/api/v1/artifacts/'+old.asset.pin.artifact_id);assert.equal(digest((await send('GET',originalMeta.download_url)).rawPayload),old.asset.pin.sha256);
+    actor=randomUUID();assert.equal((await send('GET',wp+'/batches/'+batch.batch_id)).statusCode,404);assert.equal((await send('GET','/api/v1/artifacts/'+newRow.asset.pin.artifact_id)).statusCode,404);assert.equal((await send('GET',meta.download_url)).statusCode,404);actor=user;
+    assert.deepEqual(await unchanged(),snapshot);
   }finally{await app.close();await pool.end();}
 });
