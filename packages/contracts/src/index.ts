@@ -723,3 +723,4 @@ export * from './project-assistant.js';
 export * from './automatic-pricing.js';
 export * from './generation-progress.js';
 export * from './execution-capacity.js';
+export * from './workpaper-progressive.js';
