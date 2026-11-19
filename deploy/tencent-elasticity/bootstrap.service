@@ -15,9 +15,11 @@ Environment=NO_PROXY=localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,17
 # validated public slot binding establish persistent boot activation.
 ExecStart=/usr/bin/node /opt/bondbuddy/deploy/tencent-elasticity/bootstrap-entry.mjs
 # One persisted admission cooldown (<=60s), bounded enrollment (<=180s),
-# then artifact and readiness checks. This does not restart a failed entry.
-TimeoutStartSec=600
+# then artifact and readiness checks. Only explicit pre-runtime enrollment
+# waiting may repeat inside the entry; this unit never restarts a failed runtime.
+TimeoutStartSec=1900
 RemainAfterExit=yes
+Restart=no
 StandardOutput=null
 StandardError=journal
 

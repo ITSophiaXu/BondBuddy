@@ -21,7 +21,7 @@ export async function assertAuditPdfQuality(client: Pick<PoolClient, 'query'>, o
     const quality = row.checkpoint?.stages?.[PDF_QUALITY_STAGE];
     const message = auditPdfQualityState(quality) === 'pending' && ['failed','cancelled','paused','succeeded'].includes(row.state) ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
     if (!message) continue;
-    const pages = Array.isArray(quality?.low_resolution_pages) ? quality.low_resolution_pages.slice(0, 8).map((p: {page:number}) => p.page).join('、') : '';
+    const pages = Array.isArray(quality?.blocking_pages) ? quality.blocking_pages.slice(0, 8).join('、') : '';
     const detail = row.filename + (pages ? '（PDF 第 ' + pages + ' 页）' : '') + '：' + message;
     throw Object.assign(new Problem(422, 'INPUT_REQUIRED', detail), {inputIssues: [
       {field: 'materials.' + row.id, code: AUDIT_PDF_QUALITY_REQUIRED, message: detail},

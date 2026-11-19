@@ -1,7 +1,11 @@
 // Real synthetic child processes; no supplier or real sandbox is invoked. The
 // fake permission preflight below isolates adapter ordering from OS sandbox QA.
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:https';
+import type { AddressInfo } from 'node:net';
+import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,10 +20,11 @@ import type { StageContext } from './run-pipeline.js';
 const complete = { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } };
 const message = (text: string) => ({ type: 'item.completed', item: { type: 'agent_message', text } });
 const tool = (text: string) => ({ type: 'item.completed', item: { id: 'tool', type: 'command_execution', status: 'completed', exit_code: 0, command: 'synthetic', aggregated_output: text } });
-type Step = { event?: unknown; raw?: string; chunks?: string[]; repeat?: number; delay?: number; path?: string; text?: string; hang?: boolean };
+type Step = { event?: unknown; raw?: string; chunks?: string[]; repeat?: number; delay?: number; path?: string; text?: string; hang?: boolean;
+  request?: string; stderr?: string; exitCode?: number; waitFor?: string };
 async function setup(overrides: Partial<CodexAdapterConfig> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'bb-file-output-limits-')), executable = join(root, 'synthetic.mjs');
-  await writeFile(executable, `import {writeFileSync} from 'node:fs';
+  await writeFile(executable, `import {existsSync,writeFileSync} from 'node:fs';
 if (process.argv.includes('sandbox')) {
   writeFileSync('scratch/permission-result','ok'); console.log('BB_FILE_PERMISSIONS_OK');
 } else {
@@ -29,6 +34,15 @@ if (process.argv.includes('sandbox')) {
   writeFileSync('synthetic-args.json',JSON.stringify(process.argv.slice(2)));
   for(const step of steps) {
     if(step.path)writeFileSync(step.path,step.text);
+    if(step.waitFor)while(!existsSync(step.waitFor))await new Promise(resolve=>setTimeout(resolve,5));
+    if(step.request){
+      const arg=process.argv.find(value=>value.startsWith('model_providers.')&&value.includes('.base_url='));
+      const base=JSON.parse(arg.slice(arg.indexOf('=')+1));
+      const res=await fetch(base+step.request,{method:'POST',headers:{'content-type':'application/json'},body:'{"stream":true,"max_output_tokens":400}'});
+      await res.arrayBuffer();
+    }
+    if(step.stderr)process.stderr.write(step.stderr+'\\n');
+    if(step.exitCode!==undefined)process.exitCode=step.exitCode;
     const chunks=step.chunks?.map(value=>Buffer.from(value,'base64')) ??
       (step.raw!==undefined?[Buffer.from(step.raw)]:step.event?[Buffer.from(JSON.stringify(step.event)+'\\n')]:[]);
     for(let i=0;i<(step.repeat??1);i++)for(const chunk of chunks) {
@@ -55,6 +69,38 @@ if (process.argv.includes('sandbox')) {
   return { root, config, run, input, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
 const classify = (result: Awaited<ReturnType<typeof runCodexProcess>>) => classifyCodexResult(result, text => ({ ok: true, value: text }));
+const limitMessage = 'Incomplete response returned, reason: max_output_tokens';
+const limitFailure = { type: 'turn.failed', error: { message: limitMessage } };
+const limitRequest: Step = { request: '/responses' };
+const failureExit: Step = { exitCode: 1 };
+
+async function outputLimitProvider(t: TestContext) {
+  const root = await mkdtemp(join(tmpdir(), 'bb-output-limit-tls-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const certPath = join(root, 'cert.pem'), keyPath = join(root, 'key.pem');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1',
+    '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', keyPath, '-out', certPath], { stdio: 'ignore' });
+  const cert = await readFile(certPath), key = await readFile(keyPath);
+  // The contained adapter requires HTTPS upstreams. Trust just this temporary
+  // loopback certificate in this test thread; verification stays enabled.
+  const priorCAs = getCACertificates('default');
+  setDefaultCACertificates([...priorCAs, cert]);
+  t.after(() => setDefaultCACertificates(priorCAs));
+  const server = createServer({ cert, key }, async (req, res) => {
+    for await (const _chunk of req) { /* Synthetic response; request content is irrelevant. */ }
+    const reply = new URL(req.url!, 'http://127.0.0.1').searchParams.get('reply');
+    const status = reply === 'completed' ? 'completed' : 'incomplete';
+    const reason = reply === 'content_filter' ? reply : reply === 'unknown' ? 'private_unrecognized_reason' : 'max_output_tokens';
+    const event = reply === 'no-terminal' ? { type: 'response.created' } : { type: 'response.' + status,
+      response: { object: 'response', id: 'resp_synthetic', status, ...(status === 'incomplete' ? { incomplete_details: { reason } } : {}),
+        usage: { input_tokens: 116210, output_tokens: 128000, total_tokens: 244210 } } };
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end('data: ' + JSON.stringify(event) + '\n\n');
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
+  return 'https://127.0.0.1:' + (server.address() as AddressInfo).port;
+}
 
 test('file mode completes beyond 32 MiB cumulative stdout while retained log, message and command tail stay bounded', async () => {
   const s = await setup({ max_output_bytes: 32 * 1024 * 1024, file_output_limits: { event_bytes: 32768, final_message_bytes: 1024 } });
@@ -127,9 +173,77 @@ test('multiple complete events and a trailing complete line without newline are 
   } finally { await s.cleanup(); }
 });
 
-for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_CONTEXT_ROTATION_REQUIRED'] as const)
-test(`${failure} snapshots terminated work before observation and cleanup, then only audited retry restores it`, async () => {
-  const s = await setup({ authoring_timeout_ms: failure==='MODEL_TIMEOUT'?3000:10000, file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
+test('provider output limit requires matching last-request, route, pinned JSONL and process-exit evidence', async t => {
+  const base_url = await outputLimitProvider(t);
+  const s = await setup({ base_url, model_gateway: 'enforce', model_max_request_bytes: 4096 });
+  t.after(s.cleanup);
+  const exact: Step = { event: limitFailure };
+  const priorAck = join(s.root, 'prior-ack'), laterAck = join(s.root, 'later-ack');
+  const cases: { name: string; steps: Step[]; error: string; contextRotation?: boolean; ack?: string }[] = [
+    { name: 'snapshot-capable positive', steps: [limitRequest, exact, failureExit], error: 'MODEL_PROVIDER_OUTPUT_LIMIT' },
+    { name: 'non-recoverable file route', steps: [limitRequest, exact, failureExit], error: 'MODEL_TURN_FAILED', contextRotation: false },
+    { name: 'compaction endpoint', steps: [{ request: '/responses/compact' }, exact, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'similar CLI error', steps: [limitRequest, { event: { type: 'turn.failed', error: { message: 'quoted: ' + limitMessage } } }, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'stderr alone', steps: [limitRequest, { stderr: limitMessage }, failureExit], error: 'MODEL_PROCESS_EXIT_NONZERO' },
+    { name: 'CLI terminal evidence arrived before the request', steps: [exact, { waitFor: priorAck }, limitRequest, failureExit], error: 'MODEL_TURN_FAILED', ack: priorAck },
+    { name: 'a later matching incomplete request is not the same request', steps: [limitRequest, exact, { waitFor: laterAck }, limitRequest, failureExit], error: 'MODEL_TURN_FAILED', ack: laterAck },
+    { name: 'no terminal despite HTTP 200', steps: [{ request: '/responses?reply=no-terminal' }, exact, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'safety reason', steps: [{ request: '/responses?reply=content_filter' }, exact, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'unrecognized reason', steps: [{ request: '/responses?reply=unknown' }, exact, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'later complete request with identical output usage', steps: [limitRequest, { request: '/responses?reply=completed' }, exact, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'later request without terminal', steps: [limitRequest, exact, { request: '/responses?reply=no-terminal' }, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'conflicting CLI error', steps: [limitRequest, exact, { event: { type: 'error', message: 'synthetic network failure' } }, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'contradictory CLI turn.completed', steps: [limitRequest, exact, { event: complete }, failureExit], error: 'MODEL_TURN_FAILED' },
+    { name: 'wrong exit code', steps: [limitRequest, exact, { exitCode: 2 }], error: 'MODEL_TURN_FAILED' },
+  ];
+  for (const { name, steps, error, contextRotation = true, ack } of cases) await t.test(name, async () => {
+    const result = await s.run(steps, { contextRotation, gatewayLog: () => {},
+      onEvent: ack ? event => { if (event.type === 'turn.failed') void writeFile(ack, 'observed'); } : undefined });
+    assert.equal(classify(result).error_code, error);
+    if (error === 'MODEL_PROVIDER_OUTPUT_LIMIT') {
+      assert.equal(classify(result).outcome, 'pending_reconcile');
+      assert.equal(classify(result).finish_reason, 'max_output_tokens');
+      assert.equal(classify(result).usage.status, 'unknown');
+    }
+  });
+});
+
+test('confirmed provider output limit captures latest files only after child exit, and cancellation still vetoes capture', async t => {
+  const base_url = await outputLimitProvider(t);
+  const s = await setup({ base_url, model_gateway: 'enforce', model_max_request_bytes: 4096 });
+  t.after(s.cleanup);
+  for (const abortAfterClose of [false, true]) {
+    const journal = new MemoryCodexJournal(), controller = new AbortController();
+    let captured = 0, captureVerified = false;
+    const input = s.input([{ path: 'output/partial.txt', text: 'latest committed synthetic edit' }, limitRequest, { event: limitFailure }, failureExit]);
+    input.signal = controller.signal;
+    if (abortAfterClose) journal.storeExecLog = async () => { controller.abort(); };
+    input.fileWorkspace!.onFailure = async (cwd, intent) => {
+      captured++;
+      assert.equal(intent.attempt_no, 1);
+      assert.equal(journal.observations.length, 0, 'capture precedes the durable observation');
+      const pid = Number(await readFile(join(cwd, 'synthetic-pid'), 'utf8'));
+      assert.throws(() => process.kill(pid, 0), 'capture follows the complete CLI exit');
+      assert.equal(await readFile(join(cwd, 'output/partial.txt'), 'utf8'), 'latest committed synthetic edit');
+      captureVerified = true;
+    };
+    const result = await runContainedModelCall(input, journal, s.config);
+    assert.equal(result.status, 'needs_reconcile');
+    assert.equal(result.error_code, abortAfterClose ? 'MODEL_CANCELLED' : 'MODEL_PROVIDER_OUTPUT_LIMIT');
+    assert.equal(captured, abortAfterClose ? 0 : 1);
+    assert.equal(captureVerified, !abortAfterClose);
+    assert.equal(journal.results.size, 0);
+    assert.equal(journal.observations[0].observation.usage.status, 'unknown');
+    if (!abortAfterClose) assert.equal(journal.observations[0].observation.finish_reason, 'max_output_tokens');
+  }
+});
+
+for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_CONTEXT_ROTATION_REQUIRED','MODEL_PROVIDER_OUTPUT_LIMIT'] as const)
+test(`${failure} snapshots terminated work before observation and cleanup, then only audited retry restores it`, async t => {
+  const outputLimit = failure === 'MODEL_PROVIDER_OUTPUT_LIMIT';
+  const deadlineAt = outputLimit ? new Date(Date.now()+30000).toISOString() : undefined;
+  const gateway = outputLimit ? {base_url:await outputLimitProvider(t), model_gateway:'enforce' as const, model_max_request_bytes:4096} : {};
+  const s = await setup({ ...gateway, authoring_timeout_ms: failure==='MODEL_TIMEOUT'?3000:10000, file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
   try {
     const journal = new MemoryCodexJournal(), saved = new Map<string, Buffer>(); let snapshots = 0, cwdSeen = '';
     let snapshot: FileAuthoringRecovery | undefined;
@@ -137,14 +251,20 @@ test(`${failure} snapshots terminated work before observation and cleanup, then 
       lease: { checkpoint: {} }, checkpoint: {}, signal: new AbortController().signal,
       blobs: { put: async (key: string, bytes: Buffer) => { saved.set(key, Buffer.from(bytes)); },
         getIfExistsBounded: async (key: string, max: number) => { const bytes=saved.get(key); return bytes && bytes.length<=max ? bytes : null; } } } as unknown as StageContext;
-    const input = s.input([{ path: 'output/partial.txt', text: 'synthetic partial' }, { path: 'scratch/state.json', text: '{"done":1}' }, ...(failure==='MODEL_CONTEXT_ROTATION_REQUIRED'?[{event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Save and continue in a fresh context.'}],isError:false}}},hang:true}]:failure==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?[{event:{type:'error',message:'HTTP 413 Payload Too Large'},hang:true}]:[{ raw: failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048), hang: true }])]);
+    const failureSteps: Step[] = outputLimit ? [limitRequest,{event:limitFailure},failureExit]
+      : failure==='MODEL_CONTEXT_ROTATION_REQUIRED'?[{event:{type:'item.completed',item:{type:'mcp_tool_call',server:'bb_images',tool:'view_image',result:{content:[{type:'text',text:AUTHORING_IMAGE_BUDGET_SIGNAL+'. Save and continue in a fresh context.'}],isError:false}}},hang:true}]
+      : failure==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?[{event:{type:'error',message:'HTTP 413 Payload Too Large'},hang:true}]
+      : [{raw:failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048),hang:true}];
+    const input=s.input([{path:'output/partial.txt',text:'synthetic partial'},{path:'scratch/state.json',text:'{"done":1}'},...failureSteps]);
+    input.fileWorkspace!.deadlineAt=deadlineAt;
     input.fileWorkspace!.onFailure = async (cwd, intent) => {
       snapshots++; cwdSeen = cwd; assert.equal(intent.attempt_no, 1); assert.equal(journal.observations.length, 0);
       const pid = Number(await readFile(join(cwd, 'synthetic-pid'), 'utf8'));
       assert.throws(() => process.kill(pid, 0), 'checkpoint must run only after the spawned process is gone');
-      snapshot = await saveFileAuthoringRecovery(recoveryCtx, cwd, intent, { checkpoint: async (_pool, lease, stage, value) => {
+      snapshot = await saveFileAuthoringRecovery(recoveryCtx, cwd, intent, { deadlineAt, checkpoint: async (_pool, lease, stage, value) => {
         lease.checkpoint = { stages: { [stage]: value } };
       } });
+      assert.equal(snapshot.deadline_at,deadlineAt);
       assert.ok(snapshot.files.some(file => file.path==='output/partial.txt'));
       assert.ok(snapshot.files.some(file => file.path==='scratch/state.json'));
       assert.ok(snapshot.files.some(file => file.path==='input.json'));
@@ -160,6 +280,7 @@ test(`${failure} snapshots terminated work before observation and cleanup, then 
     assert.equal(journal.intents.length, 1);
     journal.prior = { ...journal.prior, status: 'failed', operator_retry: true };
     const retry = s.input([{ event: message('done') }, { event: complete }]);
+    retry.fileWorkspace!.deadlineAt=deadlineAt;
     const prepare = retry.fileWorkspace!.prepare;
     retry.fileWorkspace!.prepare = async cwd => { await prepare(cwd); await restoreFileAuthoringWork(recoveryCtx, cwd, snapshot!); };
     const second = await runContainedModelCall(retry, journal, s.config);

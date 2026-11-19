@@ -25,6 +25,12 @@ import { lockWalletSafetyForControl } from './billing-safety.js';
 import { integrityQueryEvidenceReady } from './integrity-billing-evidence.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
+const fileAuthoringOutputLimitErrors: readonly string[] = ['MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_OUTPUT_LIMIT'];
+const fileAuthoringRecoveryErrors = ['MODEL_PROVIDER_PAYLOAD_TOO_LARGE',...fileAuthoringOutputLimitErrors,'MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'];
+function isTerminatedProviderOutputLimit(runtime:{error_code?:string;finish_reason?:string;exit_code?:number;exit_signal?:string|null}) {
+  return runtime.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT' && runtime.finish_reason==='max_output_tokens' &&
+    runtime.exit_code===1 && runtime.exit_signal===null;
+}
 /** Includes only the trusted SQL safety failure, never unrelated SQL 55000s. */
 export function isBillingBlocked(error:unknown):boolean {
   return error instanceof Problem&&error.code==='BILLING_NOT_READY'||
@@ -483,8 +489,8 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
         (await client.query(`SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
           JOIN bb_jobs j ON j.id=a.job_id
           WHERE a.job_id=$1 AND a.owner_user_id=$2 AND a.status='pending_reconcile'
-          AND (t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'))
-          AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$' LIMIT 1`,[j.id,owner])).rowCount){
+          AND t.error_code=ANY($3::text[])
+          AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$' LIMIT 1`,[j.id,owner,fileAuthoringRecoveryErrors])).rowCount){
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
         await event(client,r,'paused','provider_reconcile','user_pause_requested');
         return runDto(r);
@@ -1085,9 +1091,9 @@ export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,
     AND NOT (COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true')
     AND EXISTS(SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=j.id AND a.owner_user_id=j.owner_user_id AND a.status='pending_reconcile'
-      AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED')
+      AND t.error_code=ANY($4::text[])
       AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$')
-    ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null]);
+    ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null,fileAuthoringRecoveryErrors]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
@@ -1130,12 +1136,16 @@ export async function recordProviderReconcileUnknown(
       await event(client,r,'paused',stage,stage,stage==='credits_exhausted'?'CREDITS_INSUFFICIENT':undefined);
       return false;
     }
-    const attempts=(await client.query(`SELECT a.id,a.logical_call_id,t.error_code,t.exit_code,t.exit_signal,t.adapter,
+    const attempts=(await client.query(`SELECT a.id,a.logical_call_id,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version,t.finish_reason,
       EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=a.id) AS has_result,
       EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id
-        AND o.error_code=t.error_code AND o.outcome IN ('failed','pending_reconcile') AND o.result_id IS NULL) AS observed_failure,
+        AND o.error_code=t.error_code AND o.outcome IN ('failed','pending_reconcile') AND o.result_id IS NULL
+         AND (t.error_code<>'MODEL_PROVIDER_OUTPUT_LIMIT' OR
+           o.finish_reason='max_output_tokens' AND o.outcome='pending_reconcile' AND o.usage_status='unknown')) AS observed_failure,
       EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id
-        AND (o.outcome NOT IN ('failed','pending_reconcile') OR o.error_code IS DISTINCT FROM t.error_code OR o.result_id IS NOT NULL)) AS conflicting
+        AND (o.outcome NOT IN ('failed','pending_reconcile') OR o.error_code IS DISTINCT FROM t.error_code OR o.result_id IS NOT NULL OR
+           t.error_code='MODEL_PROVIDER_OUTPUT_LIMIT' AND (o.finish_reason IS DISTINCT FROM 'max_output_tokens' OR
+             o.outcome<>'pending_reconcile' OR o.usage_status<>'unknown'))) AS conflicting
       FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
       LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation} ORDER BY a.created_at,a.id`,[jobId,owner])).rows;
@@ -1155,14 +1165,20 @@ export async function recordProviderReconcileUnknown(
       !(m4RecoverableCall.test(a.logical_call_id)&&Number(j.checkpoint?.m4_collection_recovery?.attempts??0)<2&&m4Saved.has(a.id))&&
       (!/^file-authoring-/.test(a.logical_call_id)||(!j.checkpoint?.stages?.file_authoring_recovery&&
         !['prepared','saved'].includes(j.checkpoint?.file_authoring_recovery_captures?.[a.id]?.state))));
+    const [attempt]=attempts;
+    const knownOutputLimit=!inactive&&r.task_kind==='update'&&attempts.length===1&&attempt.adapter==='codex_exec'&&attempt.adapter_version==='codex-file-authoring-2'&&
+      /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(attempt.logical_call_id)&&isTerminatedProviderOutputLimit(attempt)&&
+      attempt.observed_failure&&!attempt.conflicting&&!attempt.has_result;
     const fail=inactive||unrecoverable||transition.exhausted;
     if(fail)transition.state.exhausted=true;
     await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(COALESCE(checkpoint,'{}'::jsonb),
       '{provider_reconcile_unknown}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(transition.state)]);
-    if(transition.first)await event(client,r,'paused','provider_reconcile','provider_reconcile_unknown',
-      'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:transition.state.queries});
+    if(transition.first)await event(client,r,'paused','provider_reconcile',
+      knownOutputLimit?'file_authoring_output_limit_recovery_unavailable':'provider_reconcile_unknown',
+      knownOutputLimit?'MODEL_PROVIDER_OUTPUT_LIMIT':'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:transition.state.queries});
     if(fail){
-      const reason=inactive?'provider_reconcile_project_inactive':unrecoverable?'provider_reconcile_unrecoverable':'provider_reconcile_unknown_exhausted';
+      const reason=inactive?'provider_reconcile_project_inactive':knownOutputLimit?'file_authoring_output_limit_recovery_unavailable':
+        unrecoverable?'provider_reconcile_unrecoverable':'provider_reconcile_unknown_exhausted';
       const error=attempts.at(-1)?.error_code??'DATA_UNAVAILABLE';
       const audit={reconciler,reason_code:reason,decided_at:new Date(now).toISOString(),attempt_ids:attempts.map(a=>a.id)};
       await client.query(`UPDATE bb_jobs SET state='failed',stage='failed',checkpoint=jsonb_set(checkpoint,
@@ -1377,25 +1393,26 @@ function fileAuthoringRetryLimitReached(checkpoint:any,logical:string):boolean {
 }
 function fileAuthoringRetryReason(error:string):string {
   return error==='MODEL_CONTEXT_ROTATION_REQUIRED'?'file_authoring_context_rotation':error==='MODEL_TIMEOUT'?'file_authoring_timeout_auto_retry':
-    error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry';
+    fileAuthoringOutputLimitErrors.includes(error)?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry';
 }
 function fileAuthoringRecoveryEvent(error:string,suffix:string):string {
-  return `${error==='MODEL_CONTEXT_ROTATION_REQUIRED'?'file_authoring_context_rotation':error==='MODEL_TIMEOUT'?'file_authoring_timeout':error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit':'file_authoring_payload'}_${suffix}`;
+  return `${error==='MODEL_CONTEXT_ROTATION_REQUIRED'?'file_authoring_context_rotation':error==='MODEL_TIMEOUT'?'file_authoring_timeout':fileAuthoringOutputLimitErrors.includes(error)?'file_authoring_output_limit':'file_authoring_payload'}_${suffix}`;
 }
-/** Recovery uses immutable evidence. A local timeout or output cap is
- * reported as pending_reconcile, not the failed observation used for HTTP 413. */
+/** Recovery uses immutable evidence. Supplier output exhaustion also requires
+ * the exact finish reason in the observation, not just a runtime error code. */
 async function fileAuthoringRetryEvidence(client:PoolClient,r:any,j:any,a:any) {
-  const outcomes=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(a.error_code)?['pending_reconcile']:['failed'];
+  const outcomes=a.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?['failed']:['pending_reconcile'];
+  const finishReason=a.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT'?'max_output_tokens':null;
   return (await client.query(`SELECT
     EXISTS(SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$7 AND project_id=$8 AND revision=$9 AND input_hash=$10) AS input_matches,
     EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1) AS has_attempt_result,
     EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND error_code=$3 AND usage_status='unknown'
-      AND result_id IS NULL AND outcome=ANY($6::text[])) AS supported_observation,
+      AND result_id IS NULL AND outcome=ANY($6::text[]) AND ($11::text IS NULL OR finish_reason=$11)) AS supported_observation,
     EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND (error_code IS DISTINCT FROM $3 OR usage_status<>'unknown'
-      OR result_id IS NOT NULL OR NOT(outcome=ANY($6::text[])))) AS conflicting,
+      OR result_id IS NOT NULL OR NOT(outcome=ANY($6::text[])) OR ($11::text IS NOT NULL AND finish_reason IS DISTINCT FROM $11))) AS conflicting,
     EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND id<>$1
       AND (logical_call_id=$4 AND attempt_no>$5 OR created_at>(SELECT created_at FROM bb_model_call_attempts WHERE id=$1))) AS newer`,
-    [a.id,j.id,a.error_code,a.logical_call_id,a.attempt_no,outcomes,r.owner_user_id,r.project_id,r.input_revision,r.input_hash])).rows[0];
+    [a.id,j.id,a.error_code,a.logical_call_id,a.attempt_no,outcomes,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,finishReason])).rows[0];
 }
 function fileAuthoringJobMatchesInput(r:any,j:any):boolean {
   // Run-backed jobs bind input through run_id; the optional copied fields also
@@ -1416,7 +1433,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until || j.billing_cancel_requested_at ||
       !fileAuthoringJobMatchesInput(r,j))return false;
     if(!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r) || !await billingContractRecoverable(client,r,j))return false;
-    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version
+    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version,t.finish_reason
       FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
       LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
@@ -1425,8 +1442,10 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     if(a.status!=='pending_reconcile' || !/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id) ||
       a.adapter!=='codex_exec' || a.adapter_version!=='codex-file-authoring-2' ||
       a.observed_usage!=='unknown' || a.conflicting_measurements>0 ||
-      !['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(a.error_code) ||
+      !fileAuthoringRecoveryErrors.includes(a.error_code) ||
       !(a.exit_code!==null || /^SIG[A-Z0-9]+$/.test(a.exit_signal??'')))return false;
+    const providerOutputLimit=a.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT';
+    if(providerOutputLimit&&!isTerminatedProviderOutputLimit(a))return false;
     const evidence=await fileAuthoringRetryEvidence(client,r,j,a);
     if(!evidence.input_matches || r.artifact_id || evidence.has_attempt_result || !evidence.supported_observation || evidence.conflicting || evidence.newer)return false;
     const rotation=a.error_code==='MODEL_CONTEXT_ROTATION_REQUIRED';
@@ -1447,9 +1466,9 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
       ...Object.values(j.checkpoint?.operator_reconciliations??{})] as {logical_call_id?:string;deadline_at?:unknown}[];
     if(ready&&deadlineEvidence.some(prior=>prior?.logical_call_id===a.logical_call_id&&Object.hasOwn(prior,'deadline_at')&&
       (!isFileAuthoringDeadline(prior.deadline_at)||prior.deadline_at!==saved.deadline_at)))return false;
-    // Normal rotation is never inferred for historical attempts without the
-    // host's bounded execution contract; failures retain their legacy behavior.
-    if(rotation&&(!capture||!isFileAuthoringDeadline(saved?.deadline_at)))return false;
+    // Supplier output exhaustion and normal rotation require the modern,
+    // deadline-bound capture for this exact attempt, never an older snapshot.
+    if((rotation||providerOutputLimit)&&(!capture||capture.state!=='saved'||!isFileAuthoringDeadline(saved?.deadline_at)))return false;
     // Only an attempt without the modern protocol marker is historical.
     if(!hasCapture&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&noSnapshot)return false;
     const expired=ready&&isFileAuthoringDeadline(saved.deadline_at)&&Date.parse(saved.deadline_at)<=Date.now();
@@ -1459,6 +1478,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     const recoveryState=terminal?'failed':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
     const audit={actor:'worker_file_authoring_recovery',reason_code:reason,attempt_id:a.id,logical_call_id:a.logical_call_id,
       decision:terminal?'fail_run':'retry_unknown_usage',recovery_state:recoveryState,
+      ...(providerOutputLimit?{error_code:'MODEL_PROVIDER_OUTPUT_LIMIT'}:{}),
       ...(ready&&saved.deadline_at!==undefined?{deadline_at:saved.deadline_at}:{})};
     // Unknown usage is an immutable historical fact. A durable disposition permits
     // a later attempt without claiming this multi-turn invocation consumed zero.

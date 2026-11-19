@@ -57,7 +57,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if (!enrollmentBinder) throw Error('CONTROLLED_ENROLLMENT_BINDER_REQUIRED');
         const observed = await cloud.describe(op.identity.instance_id);
         const slot = config.role_names.indexOf(observed.role_name);
-        await issueNodeEnrollment({operation: op, slot, config, transport: cloud.transport, bind: enrollmentBinder,
+        return await issueNodeEnrollment({operation: op, slot, config, transport: cloud.transport, bind: enrollmentBinder, now:dependencies.now??Date.now,
           retirement:async()=>{if(!expenseLedger)throw Error('PG_EXPENSE_LEDGER_REQUIRED');
             return {operations:(await expenseLedger()).operations,nodes:(await control.snapshot()).nodes};},
           serviceTemplate: await readPrivateJson(config.node_secrets[slot].service_template_file)});
@@ -131,11 +131,25 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         log({event:'execution_pool_transport_admission_closed'});
       }
       if(drainAttempted)return;
-      const starting=snapshot.nodes.find(n=>n.state==='starting');
-      if(starting){
-        if(starting.cloud_start_operation_id)await enroll(await control.loadOperation(starting.cloud_start_operation_id));
-        return;
+      let initialEnrollmentPending=false;
+      for(const starting of snapshot.nodes.filter(n=>n.state==='starting')){
+        if(!starting.cloud_start_operation_id){initialEnrollmentPending=true;continue;}
+        let delayed=false;
+        try {
+          const enrollment=await enroll(await control.loadOperation(starting.cloud_start_operation_id));
+          delayed=(enrollment?.recovery_generation??0)>0;
+        } catch(error) {
+          if(error.message!=='ENROLLMENT_RECOVERY_EXHAUSTED')throw error;
+          delayed=true;
+          log({event:'execution_pool_enrollment_exhausted',instance_id:starting.identity.instance_id});
+        }
+        if(!delayed){initialEnrollmentPending=true;continue;}
+        // The slow node remains in inventory, cost accounting and PG admission.
+        // A spare may serve demand within the SAME two-node/global/budget caps.
+        // Never stop the delayed node or replay any workload as a timeout action.
+        log({event:'execution_pool_boot_delayed',instance_id:starting.identity.instance_id});
       }
+      if(initialEnrollmentPending)return;
       plan??=await controller.plan(inventory);
       if (plan.kind === 'drain') {
         await controller.drain(plan.identity, randomUUID(), plan.revision);
@@ -168,12 +182,12 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         }
         await controller.start(request, operationId);
       }
-    } catch {
+    } catch (error) {
       // A broken config/lock/publication must not leave yesterday's budget
       // admission enabled. This never changes leases or authorizes expenditure.
       try{const s=await control.snapshot();if(s.policy.managed_nodes&&s.policy.budget_available)
         await control.setAdmissionBudget(s.policy.revision,false,s.policy.expense_policy_sha256);}catch{}
-      log({event: 'execution_pool_reconcile_failed_closed'}); // no vendor messages, inputs or credentials
+      log({event: 'execution_pool_reconcile_failed_closed',reason:['ENROLLMENT_VAULT_CONFLICT','SECRET_PUBLISH_UNCONFIRMED','SECRET_VERSION_CONFLICT','SECRET_VERSION_CAPACITY'].includes(error?.message)?error.message:'RECONCILE_UNAVAILABLE'}); // no vendor messages, inputs or credentials
     } finally { try{await releaseTick?.();}finally{busy = false;} }
   }};
 }

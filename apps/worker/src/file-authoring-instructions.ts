@@ -8,6 +8,9 @@ export type FileAuthoringInstructionSources = {
 };
 
 export const FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES = 64 * 1024;
+export const FILE_AUTHORING_BATCH_POLICY_FILE = 'authoring-batch-policy.json';
+export const FILE_AUTHORING_SMALL_BATCH_POLICY = '{"version":"authoring-output-limit-retry-v1"}\n';
+export const FILE_AUTHORING_OUTPUT_LIMIT_RETRY = '本次从单步输出达到上限后已保存的进度继续。每步只处理一个短小节或同表的少量关联行：生成增量、落盘验读、提交 checkpoint，再做下一批。不要在单次工具参数、命令、补丁或聊天里重发成批原文、整表、整章、整个操作日志或大脚本。不能拆成多条的单个表格操作，先分段写入本地小文件或由工具读出原有字段，再在本地组装并按原接口一次原子提交，不在一个模型回包中展开。最终仅简短说明交付状态，完整成果写入文件。完整章节与事实覆盖、来源核对、Word 预检及宿主验收要求不变。';
 
 // Execution guidance only. The diagnostic remains failed, and the host always
 // rebuilds and checks the final operation log independently before delivery.
