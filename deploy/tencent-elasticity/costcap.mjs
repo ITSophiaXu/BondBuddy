@@ -22,7 +22,9 @@ const pending = o => ['intent','submitted','unknown'].includes(o.state);
 function chargingHistory(operations, created, until) {
   for(const o of operations.filter(o=>['run','start'].includes(o.action)))
     requireThat(o.dispatched_at||['intent','cancelled','rejected'].includes(o.state)&&!o.provider_request_id,'EXPENSE_DISPATCH_REQUIRED');
-  const starts=operations.filter(o=>['run','start'].includes(o.action)&&o.dispatched_at);
+  // Audited local non-submission retains the dispatch reservation timestamp.
+  const starts=operations.filter(o=>['run','start'].includes(o.action)&&o.dispatched_at&&
+    !(o.action==='start'&&o.state==='cancelled'&&!o.provider_request_id&&digest(o.local_preflight_proof_sha256)));
   const events=starts.map(o=>({at:ms(o.dispatched_at),running:true,epoch:o.identity.epoch,id:o.operation_id}));
   for(const o of operations.filter(o=>o.action==='stop')) {
     const observed=o.cloud_observation, dispatched=Date.parse(o.dispatched_at), completed=Date.parse(o.completed_at), at=Date.parse(observed?.observed_at);

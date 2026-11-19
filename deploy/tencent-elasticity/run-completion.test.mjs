@@ -17,7 +17,7 @@ import {createControlAuthority,readAuthorityRegisteredNodes} from './control-aut
 import {canonical,sha256,validateConfig,retainedNodePin} from './policy.mjs';
 import {executionCloudClientToken} from '@bondbuddy/api/execution-capacity';
 import {createExecutionPoolOpsHandler} from './ops-handler.mjs';
-import {produceExpenseSnapshot} from './costcap.mjs';
+import {expensePeriod} from './costcap.mjs';
 
 const exec=promisify(execFile),h='a'.repeat(64);
 const services=[{service_id:'authoring',capabilities:['authoring']}];
@@ -71,7 +71,7 @@ async function retainedFixture(t) {
   const node={identity:{...original.identity,epoch:randomUUID()},state:'stopped',source_sha256:pin.source_sha256,image_sha256:pin.image_sha256,
     launch_manifest_sha256:pin.launch_manifest_sha256,expected_services:original.request.services,capabilities:original.request.capabilities,
     cloud_start_operation_id:'synthetic-latest-warm',ready_slots:0};
-  const snapshot={policy:{revision:1,managed_nodes:true,budget_available:true,node_model_limit:4,global_model_limit:4,max_nodes:2},
+  const snapshot={policy:{revision:1,managed_nodes:true,budget_available:true,node_model_limit:4,global_model_limit:4,provider_concurrency_limit:4,max_nodes:2},
     nodes:[node],pending_cloud_reservations:0,active_model_calls:0,groups:[],effective_queued_work:0};
   f.control.snapshot=async()=>snapshot;
   f.control.loadOperation=async id=>id===pin.create_operation_id?original:f.operation;
@@ -85,7 +85,7 @@ async function retainedFixture(t) {
     if(action==='RunInstances'){
       writes.push({action,payload});return {RequestId:'synthetic-new-ack',InstanceIdSet:['ins-new']};
     }
-    if(action==='DescribeInstances'&&payload.Filters?.[0].Name==='tag:bondbuddy-pool')return {TotalCount:1,InstanceSet:[f.instance],RequestId:'synthetic-inventory'};
+    if(action==='DescribeInstances'&&payload.Offset===0&&payload.Limit===100)return {TotalCount:1,InstanceSet:[f.instance],RequestId:'synthetic-inventory'};
     return read(service,action,payload,options);
   };
   f.instance.InstanceState='STOPPED';
@@ -103,6 +103,30 @@ test('retained instance inventory and warm Start preserve original Run despite a
   await f.cloud.describe(f.pin.instance_id);
 });
 
+test('warm Start checks historical creation bytes before claiming the dispatch',async t=>{
+  const f=await retainedFixture(t);
+  const data=bootstrapUserData(config,f.original.request,0);
+  f.config.business_overlay_sha256=h;
+  let claims=0;
+  const claim=f.control.claimCloudDispatch;
+  f.control.claimCloudDispatch=async (...args)=>{claims++;return claim(...args);};
+  await assert.rejects(f.controller.dispatch(f.warm),/RETAINED_NODE_MANIFEST_DRIFT/);
+  assert.equal(claims,0);
+  assert.deepEqual(f.writes,[]);
+
+  f.config.retained_warm_bootstraps=[{instance_id:f.pin.instance_id,
+    launch_manifest_sha256:f.pin.launch_manifest_sha256,user_data_sha256:sha256(data),
+    user_data_base64:Buffer.from(data).toString('base64')}];
+  // Keep the new warm intent in the CAS stub, as the real reservation does.
+  const control={...f.control,claimCloudDispatch:async()=>{claims++;return {...f.warm,state:'unknown',revision:1};},
+    recordCloudResult:async(_id,_revision,result)=>result};
+  const controller=new ExecutionPoolController({control,cloud:f.cloud,config:f.config});
+  const result=await controller.dispatch(f.warm);
+  assert.equal(result.provider_request_id,'synthetic-warm-ack');
+  assert.equal(claims,1);
+  assert.deepEqual(f.writes,[{action:'StartInstances',payload:{InstanceIds:[f.pin.instance_id]}}]);
+});
+
 test('new Run uses only the new default image and pins while the retained instance remains registered',async t=>{
   const f=await retainedFixture(t),id='synthetic-cold',slot=1;
   const request={...f.original.request,source_sha256:f.config.source_sha256,image_sha256:f.config.image_sha256,epoch:randomUUID()};
@@ -118,7 +142,7 @@ test('new Run uses only the new default image and pins while the retained instan
   f.transport.call=async(service,action,payload,options)=>{
     if(action!=='DescribeInstances')return read(service,action,payload,options);
     const all=[f.instance,cold],instances=payload.InstanceIds?all.filter(i=>payload.InstanceIds.includes(i.InstanceId)):
-      payload.Filters[0].Name==='tag:bondbuddy-pool'?all:all.filter(i=>i.CamRoleName===payload.Filters[0].Values[0]);
+      payload.Filters?all.filter(i=>i.CamRoleName===payload.Filters[0].Values[0]):all;
     return {TotalCount:instances.length,InstanceSet:instances,RequestId:'synthetic-mixed-inventory'};
   };
   const inventory=await f.cloud.inventory();assert.deepEqual(inventory.map(i=>i.instance_id),[f.pin.instance_id,'ins-new']);
@@ -169,17 +193,19 @@ test('retained pin configuration rejects wildcards, duplicates and incomplete or
 test('existing controller entry creates warm requests from retained PG pins and rejects request drift before reservation',async t=>{
   const f=await retainedFixture(t);let reserved,writes=0;
   f.control.listPendingOperations=async()=>[];
+  f.snapshot.policy.expense_policy_sha256=h;
   f.control.reserveStart=async request=>{reserved=request;return {...f.warm,request};};
   f.control.claimCloudDispatch=async()=>({...f.warm,state:'unknown'});
   f.control.recordCloudResult=async(_id,_revision,result)=>result;
-  const quote={version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:f.config.account_id,region:f.config.region,policy_revision:1,
-    valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,
-      evidence_ref:'synthetic/fixed',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,
-      running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/quote',evidence_sha256:h,enforced_bound_sha256:h}))};
-  f.config.quote_sha256=sha256(canonical(quote));
-  const costSnapshot=async inventory=>produceExpenseSnapshot({config:f.config,quote,inventory,ledger:{captured_at:new Date().toISOString(),
-    operations:[f.original],nodes:[{...f.node,identity:f.original.identity,cloud_start_operation_id:f.original.operation_id,
-      created_at:f.original.dispatched_at,destroyed_at:null}]}});
+  const costSnapshot=async inventory=>{
+    const observed_at=new Date().toISOString();
+    return {version:'execution-cloud-expense-v2',observed_at,...expensePeriod(observed_at,f.config.time_zone),
+    currency:'CNY',account_id:f.config.account_id,region:f.config.region,
+    quote_sha256:f.config.quote_sha256,expense_policy_sha256:h,policy_revision:1,period_cap_cny:48,total_hourly_cap_cny:2.4,
+    inventory_sha256:sha256(canonical(inventory)),ledger_sha256:h,quote_component_evidence:Array(6).fill(h),spent_upper_bound_cny:0,
+    reserved_upper_bound_cny:0,unknown_liability_cny:0,drain_reserve_cny:1.6,resident_remaining_period_cny:0,
+    prospective_slot_cny:0,fixed_commitments_upper_bound_cny:0};
+  };
   const handler=createExecutionPoolOpsHandler({control:f.control,configPath:'synthetic',dependencies:{readConfig:async()=>f.config,
     costSnapshot,cloud:{inventory:()=>f.cloud.inventory(),execute:async()=>{writes++;return {RequestId:'synthetic-start'};}}}});
   await handler.tick();assert.ok(reserved);assert.equal(reserved.launch_manifest_sha256,f.pin.launch_manifest_sha256);

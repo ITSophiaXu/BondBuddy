@@ -129,7 +129,8 @@ export class TencentCvm {
       original.run_acceptance.launch_binding_sha256===p.launch_binding_sha256,'RETAINED_NODE_CREATION_DRIFT');
     requireRetainedRequest(this.config,instanceId,original.request);
     const c=nodeLaunchConfig(this.config,instanceId),slot=c.role_names.indexOf(p.role_name);
-    requireThat(sha256(canonical(runParameters(c,original.request,original.client_token,bootstrapUserData(c,original.request,slot),slot,original.operation_id)))===p.launch_manifest_sha256,
+    const userData=warmBootstrapUserData(c,original.request,slot,instanceId);
+    requireThat(sha256(canonical(runParameters(c,original.request,original.client_token,userData,slot,original.operation_id,instanceId)))===p.launch_manifest_sha256,
       'RETAINED_NODE_MANIFEST_DRIFT');
   }
   async assertAccount() {
@@ -227,8 +228,26 @@ export class TencentCvm {
     const evidence=await this.archive(canonical(safe));requireThat(evidence.sha256===sha256(canonical(safe))&&evidence.ref,'RUN_CREATION_EVIDENCE');
     return {...safe,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};
   }
+  async prepareStart({identity, request}) {
+    validateConfig(this.config,{apply:true});
+    requireThat(identity?.account_id===this.config.account_id&&identity.region===this.config.region&&
+      identity.instance_id===request?.instance_id,'OPERATION_SCOPE');
+    const i=await this.describe(identity.instance_id);
+    requireThat(i.instance_state==='STOPPED','START_REQUIRES_STOPPED');
+    requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
+    requireRetainedRequest(this.config,i.instance_id,request);
+    const config=nodeLaunchConfig(this.config,i.instance_id);
+    const slot=config.role_names.indexOf(i.role_name);
+    const oldRequest={...request,instance_id:null};
+    const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
+    const userData=warmBootstrapUserData(config,oldRequest,slot,i.instance_id);
+    const oldParams=runParameters(config,oldRequest,executionCloudClientToken(i.create_operation_id),userData,slot,i.create_operation_id,i.instance_id);
+    requireThat(sha256(canonical(oldParams))===request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
+    return ()=>this.transport.call('cvm','StartInstances',{InstanceIds:[i.instance_id]});
+  }
   async execute(operation, {userData, slot} = {}) {
     requireThat(operation.action!=='destroy','EXECUTION_DESTROY_UNSUPPORTED');
+    if(operation.action==='start')return (await this.prepareStart(operation))();
     if(operation.action==='stop')requireThat(executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))),'STOP_PROOF_REQUIRED');
     validateConfig(this.config, {apply: true, expenditure: operation.action !== 'stop'});
     await this.assertAccount();
@@ -258,18 +277,6 @@ export class TencentCvm {
     }
     requireThat(operation.identity?.account_id === this.config.account_id && operation.identity.region === this.config.region, 'OPERATION_SCOPE');
     const i = await this.describe(operation.identity.instance_id);
-    if (operation.action === 'start') {
-      requireThat(i.instance_state === 'STOPPED', 'START_REQUIRES_STOPPED');
-      requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
-      const oldRequest={...operation.request,instance_id:null};
-      requireRetainedRequest(this.config,i.instance_id,operation.request);
-      const config=nodeLaunchConfig(this.config,i.instance_id);
-      const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
-      const oldParams=runParameters(config,oldRequest,executionCloudClientToken(i.create_operation_id),warmBootstrapUserData(config,oldRequest,this.config.role_names.indexOf(i.role_name),i.instance_id),
-        this.config.role_names.indexOf(i.role_name),i.create_operation_id,i.instance_id);
-      requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
-      return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});
-    }
     requireThat(operation.action === 'stop' && executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))), 'STOP_PROOF_REQUIRED');
     requireThat(i.instance_state === 'RUNNING', 'STOP_REQUIRES_RUNNING');
     return this.transport.call('cvm', 'StopInstances', {InstanceIds: [i.instance_id], StopType: 'SOFT', StoppedMode: 'STOP_CHARGING'});
