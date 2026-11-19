@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "running_second_replay",
+  "real_task_delivery": "second_replay_running_with_m4_collection_failure",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -187,5 +187,55 @@
     "critical_related_party_pages_visually_reviewed": 7,
     "material_source_discrepancy": "preserved_for_output_comparison",
     "output_comparison": "pending_actual_delivery"
+  },
+  "latest_development_code_commit": "631d3d9c99d2ab6623c1d14b2fe23160e6866372",
+  "next_integration_commit": "d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1",
+  "active_runtime": {
+    "api": "865c8037d40067834b74a475c4806e71ba112ce9",
+    "worker": "87d60ab9936dea7a4b20e0eb927fe82e5cd4718a",
+    "new_link_diagnostic_patch_active": false
+  },
+  "link_repair_followup": {
+    "issue": 1656,
+    "at": "2026-11-19T09:11:02.438Z",
+    "code_commit": "631d3d9c99d2ab6623c1d14b2fe23160e6866372",
+    "integration_commit": "d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1",
+    "tests": 46,
+    "pass": 46,
+    "fail": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "migrations": 196,
+    "tap_sha256": "f6ae3f8171508c89e5383c653cc5318e993f24ea602b4c807b0640c7773fef66",
+    "provider_output": "synthetic",
+    "production_connections": false,
+    "real_delivery": "pending_new_candidate_replay",
+    "code_commits": [
+      "2540dfb8865702cbbb7c7f7f136ada673e3a5296",
+      "631d3d9c99d2ab6623c1d14b2fe23160e6866372"
+    ],
+    "real_failure": {
+      "run_id": "79aa03ad-278b-46b3-8d56-7ff7f7c6840c",
+      "error": "WORKPAPER_CONTENT_LINKS_MISSING",
+      "model_attempts": 2,
+      "source_nonempty_spans": 7679,
+      "target_spans": 280,
+      "used_sources": 313,
+      "proposed_links": 389,
+      "verified_links": 378,
+      "invalid_target_quotes": 11,
+      "missing_used_source_links": 10,
+      "exit_snapshots": [
+        307,
+        307
+      ],
+      "word_and_link_hashes_unchanged_during_first_repair": true,
+      "additional_full_table_coverage_gaps": true,
+      "reserve": 1,
+      "release": 1,
+      "settle": 0,
+      "formal_delivery": false
+    },
+    "next_admitted_run": "d14291de-6820-48d1-93f3-892617527541"
   }
 }
