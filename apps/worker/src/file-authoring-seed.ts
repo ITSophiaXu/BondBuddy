@@ -83,8 +83,9 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
    FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id JOIN bb_call_usage u ON u.attempt_id=a.id
    WHERE a.job_id=$1 AND a.owner_user_id=$2 ORDER BY a.created_at DESC,a.attempt_no DESC LIMIT 1`,[old.id,scope.owner])).rows[0];
   const snapshot=old.checkpoint?.stages?.file_authoring_recovery as FileAuthoringRecovery|undefined,capture=old.checkpoint?.file_authoring_recovery_captures?.[a?.id],audit=old.checkpoint?.operator_reconciliations?.[a?.id];
+  const sourceExit=a?.error_code==='MODEL_TIMEOUT'&&a.finish_reason==='timeout'||a?.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'&&a.finish_reason==='request_rejected';
   if(!a||a.status!=='failed'||a.logical_call_id!=='file-authoring-v1'||a.adapter!=='codex_exec'||a.adapter_version!=='codex-file-authoring-2'
-   ||a.error_code!=='MODEL_TIMEOUT'||a.finish_reason!=='timeout'||!['SIGTERM','SIGKILL'].includes(a.exit_signal)||a.exit_code!==null
+   ||!sourceExit||!['SIGTERM','SIGKILL'].includes(a.exit_signal)||a.exit_code!==null
    ||a.usage_status!=='unknown'||Number(a.conflicting_measurements)!==0||!snapshot||!isFileAuthoringDeadline(snapshot.deadline_at)||Date.parse(snapshot.deadline_at)>Date.now()
    ||!validFileAuthoringRecovery(snapshot,{owner:scope.owner,project:scope.project,run:source.id,inputHash:scope.inputHash,attempt:a.id,logical:a.logical_call_id})
    ||!snapshot.files.some(f=>f.path==='output/operations.json'&&f.byte_size>0)
@@ -94,8 +95,8 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
   const evidence=(await client.query(`SELECT
    EXISTS(SELECT 1 FROM bb_model_call_attempts n WHERE n.job_id=$1 AND (n.created_at>(SELECT created_at FROM bb_model_call_attempts WHERE id=$2) OR n.created_at=(SELECT created_at FROM bb_model_call_attempts WHERE id=$2) AND n.attempt_no>$3)) AS newer,
    EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id IN(SELECT id FROM bb_model_call_attempts WHERE job_id=$1)) AS result,
-   EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=$2 AND o.outcome='pending_reconcile' AND o.error_code='MODEL_TIMEOUT' AND o.finish_reason='timeout' AND o.usage_status='unknown' AND o.result_id IS NULL) AS observed,
-   EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=$2 AND (o.outcome<>'pending_reconcile' OR o.error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR o.finish_reason IS DISTINCT FROM 'timeout' OR o.usage_status<>'unknown' OR o.result_id IS NOT NULL)) AS conflict`,[old.id,a.id,a.attempt_no])).rows[0];
+   EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=$2 AND o.outcome=$6 AND o.error_code=$4 AND o.finish_reason=$5 AND o.usage_status='unknown' AND o.result_id IS NULL) AS observed,
+   EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=$2 AND (o.outcome<>$6 OR o.error_code IS DISTINCT FROM $4 OR o.finish_reason IS DISTINCT FROM $5 OR o.usage_status<>'unknown' OR o.result_id IS NOT NULL)) AS conflict`,[old.id,a.id,a.attempt_no,a.error_code,a.finish_reason,a.error_code==='MODEL_TIMEOUT'?'pending_reconcile':'failed'])).rows[0];
   const terminal=(await client.query('SELECT payload FROM bb_run_events WHERE run_id=$1 AND seq=$2',[source.id,source.event_cursor])).rows[0]?.payload;
   if(evidence.newer||evidence.result||!evidence.observed||evidence.conflict||terminal?.reason!=='file_authoring_context_deadline_exhausted'||terminal.error_code!=='MODEL_TIMEOUT')throw conflict();
   const seedId=`seed-${inputManifestHash({source:source.id,attempt:a.id,target:target.id}).slice(0,40)}`;
@@ -112,7 +113,7 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
   const now=Date.now(),authorizedAt=new Date(now).toISOString(),deadlineAt=new Date(now+input.budgetMs).toISOString();copied.deadline_at=deadlineAt;
   const receipt:FileAuthoringSeed={version:'file-authoring-new-run-seed-v1',owner_user_id:scope.owner,project_id:scope.project,run_id:scope.run,job_id:scope.job,input_revision:scope.revision,input_hash:scope.inputHash,
    source_run_id:source.id,source_job_id:old.id,source_attempt_id:a.id,source_snapshot_sha256:inputManifestHash(snapshot),actor:input.actor,authorized_at:authorizedAt,deadline_at:deadlineAt,budget_ms:input.budgetMs,
-   small_batches:Object.values(old.checkpoint?.operator_reconciliations??{}).some((v:any)=>v?.logical_call_id===a.logical_call_id&&(v.reason_code==='file_authoring_payload_auto_retry'||v.reason_code==='file_authoring_output_limit_auto_retry'&&v.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT')),snapshot:copied,snapshot_sha256:inputManifestHash(copied)};
+   small_batches:a.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'||Object.values(old.checkpoint?.operator_reconciliations??{}).some((v:any)=>v?.logical_call_id===a.logical_call_id&&(v.reason_code==='file_authoring_payload_auto_retry'||v.reason_code==='file_authoring_output_limit_auto_retry'&&v.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT')),snapshot:copied,snapshot_sha256:inputManifestHash(copied)};
   if(!validFileAuthoringSeed(receipt,scope))throw conflict();
   await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_build_object('stages',jsonb_build_object($2::text,$3::jsonb)),updated_at=now() WHERE id=$1`,[job.id,FILE_AUTHORING_SEED_STAGE,JSON.stringify(receipt)]);
   const seq=Number(target.event_cursor)+1,eventId=uid(),payload={reason:'file_authoring_prior_work_seeded',source_run_id:source.id,source_attempt_id:a.id,deadline_at:deadlineAt,files:copied.files.length};

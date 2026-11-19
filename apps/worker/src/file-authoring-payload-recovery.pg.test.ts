@@ -436,7 +436,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
     assert.equal((await pool.query('SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1',[total.lease.runId])).rows[0].payload.reason,`${localPrefix}_retries_exhausted`);
     await publishPrices(pool,{id:'synthetic-payload-prices',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'Payload recovery billing regression'});
     await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1000000,expiresAt:null,actor:'synthetic',reason:'Synthetic recovery credits'}));
-    if(localFailure==='MODEL_TIMEOUT'){
+    for(const seedSourceError of localFailure==='MODEL_TIMEOUT'?['MODEL_TIMEOUT','MODEL_PROVIDER_PAYLOAD_TOO_LARGE']:[]){
       const deadline=new Date(Date.now()+3600_000).toISOString(),balanceBefore=await creditBalanceExact(pool,owner);
       const rotatingPaid=await fixture({paid:true,error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
       const held=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows[0];
@@ -462,7 +462,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows,[held],
         'normal rotation does not release, replace, reset or charge the original reservation');
       const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
-      const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_TIMEOUT',capture:'saved',deadline,seedWork:true});
+      const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:seedSourceError,termination:'signal',runtimeFinishReason:seedSourceError==='MODEL_TIMEOUT'?'timeout':'request_rejected',observationFinishReason:seedSourceError==='MODEL_TIMEOUT'?'timeout':'request_rejected',observationOutcome:seedSourceError==='MODEL_TIMEOUT'?'pending_reconcile':'failed',capture:'saved',deadline,seedWork:true});
       const nextUsageBefore=await usageRows(next.attempt),nextEvidenceBefore=await evidenceRows(next.attempt);
       assert.equal(nextUsageBefore.length,1);assert.equal(nextUsageBefore[0].call_status,'pending_reconcile');
       const clock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);

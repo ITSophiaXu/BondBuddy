@@ -448,6 +448,7 @@ export type CodexProcessResult = {
   tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
   /** Set only after the snapshot-capable CLI and its last gateway stream agree. */
   provider_output_limit?: 'max_output_tokens';
+  context_rotation_reason?: 'image_context_budget' | 'request_context_budget';
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed' | 'payload_rejected' | 'gateway_failed' | 'context_rotation' | 'deadline_exceeded';
 };
 
@@ -512,13 +513,22 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const emitGatewayLog = o.gatewayLog ?? writeModelGatewayLog;
   const gatewayLog = (line: Record<string, unknown>) => { try { emitGatewayLog(line); } catch { /* logging cannot change enforcement */ } };
   let gateway: ModelGateway | null = null;
-  let gatewayFailed = false, payloadRejected = false, payloadTooLarge = true;
+  let gatewayFailed = false, payloadRejected = false, payloadTooLarge = true, requestBudgetRotation = false;
   let stopRejectedPayload: (() => void) | null = null;
   if ((c.model_gateway === 'measure' || c.model_gateway === 'enforce') && !o.signal?.aborted) {
     try {
       gateway = await startModelGateway({ upstreamBaseUrl: c.base_url, proxyEnv: c.proxy_env, mode: c.model_gateway,
         ...(c.model_gateway === 'enforce' ? { maxRequestBytes: c.model_max_request_bytes } : {}),
-        onPayloadRejected: event => { payloadRejected = true; payloadTooLarge = event.status === 413; stopRejectedPayload?.(); },
+        onPayloadRejected: event => {
+          payloadRejected = true; payloadTooLarge = event.status === 413;
+          // Only the trusted local body guard may request a fresh recoverable
+          // file context. Upstream 413, encoding failures and ordinary routes
+          // remain failures; the request limit itself is never raised.
+          requestBudgetRotation = o.fileAuthoring === true && o.contextRotation === true && c.model_gateway === 'enforce'
+            && event.source === 'local' && event.code === 'MODEL_REQUEST_BUDGET_EXCEEDED' && event.status === 413
+            && (event.reason === 'wire_bytes' || event.reason === 'decoded_bytes');
+          stopRejectedPayload?.();
+        },
         onRecord: record => { const line = modelGatewayRequestLog(record, o.trace); if (line) gatewayLog(line); } });
       args = buildCodexArgs({ ...c, base_url: gateway.baseUrl }, o);
       withLoopbackNoProxy(env);
@@ -588,6 +598,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     };
     stopRejectedPayload = () => {
       if (r.turn_completed) return;
+      if(requestBudgetRotation){r.context_rotation_reason='request_context_budget';stop('context_rotation',false);return;}
       r.provider_error_code = payloadTooLarge ? 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE' : 'MODEL_PROVIDER_REQUEST_REJECTED';
       stop('payload_rejected', false);
     };
@@ -742,7 +753,7 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   if (r.stop === 'spawn_failed') return { outcome: 'confirmed_not_sent', error_code: 'MODEL_SPAWN_FAILED', finish_reason: null, usage: unknown };
   if (r.stop === 'gateway_failed') return { outcome: 'failed', error_code: 'MODEL_ADAPTER_CONFIG_INVALID', finish_reason: 'gateway_unavailable', usage: unknown };
   if (r.stop === 'deadline_exceeded') return { outcome: 'confirmed_not_sent', error_code: 'MODEL_TIMEOUT', finish_reason: 'context_deadline_exhausted', usage: unknown };
-  if (r.stop === 'context_rotation') return { outcome: 'pending_reconcile', error_code: 'MODEL_CONTEXT_ROTATION_REQUIRED', finish_reason: 'image_context_budget', usage: unknown };
+  if (r.stop === 'context_rotation') return { outcome: 'pending_reconcile', error_code: 'MODEL_CONTEXT_ROTATION_REQUIRED', finish_reason: r.context_rotation_reason ?? 'image_context_budget', usage: unknown };
   if (r.stop === 'tool') return { outcome: 'failed', error_code: 'MODEL_TOOL_ATTEMPT_BLOCKED', finish_reason: 'tool_blocked', usage };
   if (r.stop === 'cancelled') return { outcome: 'pending_reconcile', error_code: 'MODEL_CANCELLED', finish_reason: 'interrupted', usage };
   // Earlier requests in this CLI call may have consumed tokens. Do not mark the
