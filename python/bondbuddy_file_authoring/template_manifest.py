@@ -180,7 +180,8 @@ def build_manifest(source: Path):
         source_structure = outline(parts)
     except ValueError:
         source_structure = {'status': 'unsupported', 'reason': 'Effective outline requires unsupported revision handling'}
-    return {'version': VERSION, 'baseline_sha256': sha(source.read_bytes()),
+    from .embedded_images import IMAGE_EDIT_GUIDANCE
+    return {'version': VERSION, 'image_edit_guidance': IMAGE_EDIT_GUIDANCE, 'baseline_sha256': sha(source.read_bytes()),
             'source_structure': source_structure,
             'offset_unit': 'unicode_code_points', 'nodes': described, 'styles': styles, 'property_formats': formats,
             'document_defaults': defaults, 'numbering_definitions': numbering,

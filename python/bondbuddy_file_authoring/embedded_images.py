@@ -8,6 +8,8 @@ import hashlib
 import posixpath
 from .word_patch import paragraph_text, q, xml
 
+IMAGE_EDIT_GUIDANCE = '固定编辑新增窄范围 remove_image 操作，仅适用于 inspect 的 image_edit.supported=true、无正文的单个普通内嵌PNG/JPEG图片段落。先实际查看图片并核对本期主体和机构，不能只按文件名猜测。操作字段为 id、kind=remove_image、node_id、before=空字符串、relationship_id、image_sha256、after、reason；关系ID和原图SHA256必须照抄该段inspect，reason必须说明本次目标为何不适用旧图。after为空可移除已确认不适用的旧承销商标识；after非空只写本次资料支持的业务文字或准确的局部待核说明，不编造新Logo、官方关系图、已签协议或核查结论。既有修订可接受/拒绝且原图可追溯；移除后须验读、回查正文和原编号结构、重新预检并由宿主渲染。不得笼统删除所有图片：适用的历史行业统计及已有本期图示继续保留并明确期间；其他域、OLE、外链图、混合正文或复杂对象的门禁不变。'
+
 REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 A = 'http://schemas.openxmlformats.org/drawingml/2006/main'

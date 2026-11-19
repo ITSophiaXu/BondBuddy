@@ -910,6 +910,9 @@ def main():
                 result = {'version': 'word-edit-inspect-v1', 'baseline_sha256': sha(raw),
                           'offset_unit': 'unicode_code_points', 'total': total,
                           'nodes': nodes}
+                if any(n.get('image_edit', {}).get('supported') for n in nodes):
+                    from .embedded_images import IMAGE_EDIT_GUIDANCE
+                    result['image_edit_guidance'] = IMAGE_EDIT_GUIDANCE
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception as exc:

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { buildFileAuthoringInstructions, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FILE_AUTHORING_IMAGE_EDIT_GUIDANCE, FileAuthoringInstructionsError } from './file-authoring-instructions.js';
+import { buildFileAuthoringInstructions, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FileAuthoringInstructionsError } from './file-authoring-instructions.js';
 
 const errorCode = (code: FileAuthoringInstructionsError['code']) => (error: unknown) =>
   error instanceof FileAuthoringInstructionsError && error.code === code;
@@ -66,15 +66,4 @@ test('the byte budget includes preamble, continuation and the complete controlle
   ]) {
     assert.throws(() => buildFileAuthoringInstructions({ taskInstructions: 'task', controlled: false, ...extra }), errorCode('AUTHORING_INSTRUCTIONS_TOO_LARGE'));
   }
-});
-
-
-test('source-bound image removal guidance is exposed only to the controlled editor without changing fixed instruction bytes', () => {
-  const taskInstructions='Unchanged complete task.', fixedEditInstructions='Unchanged fixed interface.';
-  const controlled=buildFileAuthoringInstructions({taskInstructions,fixedEditInstructions,controlled:true});
-  const direct=buildFileAuthoringInstructions({taskInstructions,controlled:false});
-  assert.ok(controlled.includes(FILE_AUTHORING_IMAGE_EDIT_GUIDANCE));
-  assert.ok(controlled.includes(fixedEditInstructions));
-  assert.ok(controlled.includes('relationship_id')&&controlled.includes('image_sha256'));
-  assert.equal(direct.includes(FILE_AUTHORING_IMAGE_EDIT_GUIDANCE),false);
 });

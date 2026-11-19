@@ -23,6 +23,7 @@ class ImageEditTests(unittest.TestCase):
  def generate(self,ops):
   log=empty_log(self.data,self.source.read_bytes());log['operations']=ops;path=self.root/'operations.json';write_json(path,log);out=self.root/'out';finalize(self.input,path,out);return out,path
  def test_manifest_binds_actual_part_and_raster_hash(self):
+  manifest=build_manifest(self.source);self.assertIn('relationship_id',manifest['image_edit_guidance']);self.assertIn('image_sha256',manifest['image_edit_guidance']);self.assertLess(len(manifest['image_edit_guidance'].encode('utf-8')),4096)
   self.assertIn('remove_image',build_manifest(self.source)['supported_operations']);self.assertEqual(self.node['image_edit']['sha256'],sha(PNG));self.assertEqual(self.node['image_edit']['media_type'],'image/png')
  def test_removal_is_tracked_rejectable_and_exactly_replayed(self):
   before=self.source.read_bytes();out,path=self.generate([self.operation()]);tracked=xml(package(out/'tracked.docx')['word/document.xml']);clean=xml(package(out/'clean.docx')['word/document.xml'])
