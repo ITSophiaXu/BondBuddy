@@ -1,6 +1,8 @@
 # Official evidence is hashed as downloaded. Never normalize its line endings.
 # Deployment guards run through Bash even from a Windows checkout.
 /deploy/m1/scripts/*.sh text eol=lf
+# Codex executes this image-provided auth helper directly through its Linux shebang.
+/deploy/m1/scripts/copilot-token.mjs text eol=lf
 # Runtime candidates are pinned to these LF repository bytes on every build host.
 /knowledge/exchange-bonds/drafts/sse-private/rule-pack.json text eol=lf
 /knowledge/exchange-bonds/drafts/sse-private/chapter-template.json text eol=lf

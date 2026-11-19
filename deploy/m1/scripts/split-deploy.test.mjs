@@ -141,7 +141,7 @@ test('legacy deployment, backup, restore and rollback reject a split env before 
  }
 });
 test('business model catalogs retain 1M windows and 900K compression', () => {
- for(const file of ['codex-model-catalog.json','codex-authoring-model-catalog.json','codex-file-authoring-model-catalog.json','codex-image-model-catalog.json','codex-deepseek-model-catalog.json']) {
+ for(const file of ['codex-model-catalog.json','codex-authoring-model-catalog.json','codex-file-authoring-model-catalog.json','codex-copilot-file-authoring-model-catalog.json','codex-image-model-catalog.json','codex-deepseek-model-catalog.json']) {
   const catalog=JSON.parse(readFileSync(join(root,'deploy/m1',file),'utf8'));
   for(const model of catalog.models) {assert.equal(model.context_window,1000000);assert.equal(model.max_context_window,1000000);assert.equal(model.auto_compact_token_limit,900000);}
  }

@@ -136,6 +136,8 @@ jobs:
       - name: Linux runtime, shared worker and M3 targeted integration
         run: |
           node --test --test-concurrency=1 --test-reporter=tap \
+            scripts/local-prelaunch/auth-helper.test.mjs \
+            scripts/local-prelaunch/upgrade.test.mjs \
             apps/worker/dist/runtime-entry.test.js \
             apps/worker/dist/run-runtime.test.js \
             apps/worker/dist/runtime-parse-slots.test.js \
