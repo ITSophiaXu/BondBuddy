@@ -23,11 +23,12 @@ export class ExecutionPoolController {
     const plan = planCapacity(snapshot, inventory, this.config);
     requireThat(['start', 'run'].includes(plan.kind) && plan.instance_id === request.instance_id &&
       plan.capabilities.every(cap => request.capabilities.includes(cap)), 'FRESH_EXPANSION_GATE');
+    const start=request.instance_id?await this.cloud.prepareStart?.({identity:request,request}):undefined;
     const operation = await this.control.reserveStart(request, opId, snapshot.policy.revision);
     requireThat(canonical(operation.request) === canonical(request), 'RESERVED_REQUEST_MISMATCH');
     const slot = this.config.role_names.findIndex(role => !inventory.some(i => i.role_name === role));
     requireThat(request.instance_id || slot >= 0, 'ROLE_SLOT_EXHAUSTED');
-    return this.dispatch(operation, {slot});
+    return this.dispatch(operation, {slot,start});
   }
   async resumeIntent(operation) {
     validateConfig(this.config, {apply: true, expenditure: false});
@@ -79,12 +80,13 @@ export class ExecutionPoolController {
     requireThat(operation.action !== 'destroy', 'EXECUTION_DESTROY_UNSUPPORTED');
     if (operation.state !== 'intent') return operation;
     if(operation.action==='stop')requireThat(executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))),'STOP_PROOF_REQUIRED');
+    const start=operation.action==='start'?(material?.start??await this.cloud.prepareStart?.(operation)):undefined;
     // Unique CAS winner marks uncertainty BEFORE the request. Crashes and client
     // timeouts never imply no cloud effect. Losing dispatchers cannot call SDK.
     const claimed = await this.control.claimCloudDispatch(operation.operation_id, operation.revision);
     let result;
     try {
-      const response = await this.cloud.execute(claimed, claimed.action === 'run' ?
+      const response = start?await start():await this.cloud.execute(claimed, claimed.action === 'run' ?
         {slot: material.slot, userData: bootstrapUserData(this.config, claimed.request, material.slot)} : undefined);
       let identity = claimed.identity;
       if (claimed.action === 'run') {

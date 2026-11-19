@@ -68,6 +68,17 @@ test('unknown warm Start is charged from dispatch, even without completion or pr
   assert.deepEqual(result.rows[0].operation_ids,['start2']);close(result.reserved_upper_bound_cny,1.2);
 });
 
+test('only an audited local Start cancellation preserves the stopped billing interval',()=>{
+  const ledger=fixture(),before=bound(ledger);
+  const local={...launch('local',epoch2,6,'start','cancelled'),provider_request_id:null};
+  ledger.operations.push(local);
+  assert.ok(bound(ledger).spent_upper_bound_cny>before.spent_upper_bound_cny);
+  local.local_preflight_proof_sha256=h;
+  assert.equal(bound(ledger).spent_upper_bound_cny,before.spent_upper_bound_cny);
+  local.provider_request_id='unexpected-ack';
+  assert.ok(bound(ledger).spent_upper_bound_cny>before.spent_upper_bound_cny);
+});
+
 test('Beijing cross-day running and stopped segments survive unknown Start carry and another warm epoch',()=>{
   const ledger=fixture(26);ledger.operations[1]=stop('stop1',identity.epoch,1);
   const s=reserve(ledger,'unknown');s.dispatched_at=time(25);
