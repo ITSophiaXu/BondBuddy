@@ -37,7 +37,7 @@ test('one shared image launches both role slots with distinct public bindings an
   }
   assert.equal(launches,2);
 });
-const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
+const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2, expense_policy_sha256:h}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
 const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
 config.quote_sha256=sha256(canonical(quote));
 const safeInventory = () => [{account_id:config.account_id,region:config.region,instance_id:'ins-a1',role_name:'node-a',instance_state:'RUNNING',observed_at:new Date().toISOString(),evidence_ref:'synthetic/cloud',evidence_sha256:h}];
@@ -267,6 +267,26 @@ test('cost producer failure closes authoritative admission, yet progresses alrea
   const control={snapshot:async()=>({...snapshot(),policy:{...snapshot().policy,budget_available:budget,expense_policy_sha256:h},nodes:[node]}),listPendingOperations:async()=>[],setAdmissionBudget:async(_,available)=>{budget=available;closed++;},beginDrain:async()=>{drains++;return node;},drainProof:async()=>null};
   const handler=createExecutionPoolOpsHandler({control,configPath:'synthetic',dependencies:{readConfig:async()=>config,costSnapshot:async()=>{throw Error('missing bound');},cloud:{inventory:async()=>safeInventory()}}});
   await handler.tick();assert.equal(budget,false);assert.equal(closed,1);assert.equal(drains,1);
+});
+
+test('newly missing inventory or cost evidence at the final launch gate still fences claims', async () => {
+  for(const source of ['inventory','expense']){
+    const configWithDemand={...config,min_running:0};
+    const s=snapshot();
+    s.groups=[{capability:'authoring',effective_queued_work:1,oldest_wait_seconds:600,available_run_slots:0}];
+    let inventories=0,estimates=0,reservations=0;
+    const control={snapshot:async()=>s,listPendingOperations:async()=>[],reserveStart:async()=>{reservations++;},
+      setAdmissionBudget:async(_,available)=>{s.policy.budget_available=available;}};
+    const handler=createExecutionPoolOpsHandler({control,configPath:'synthetic',dependencies:{
+      readConfig:async()=>configWithDemand,clientToken:async id=>sha256(id),
+      cloud:{inventory:async()=>{if(++inventories===2&&source==='inventory')throw Error('inventory read failed');return [];}},
+      costSnapshot:async inv=>{const observed=expense(inv);if(++estimates===2&&source==='expense')observed.unknown_liability_cny=49;return observed;},
+    }});
+    await handler.tick();
+    assert.equal(inventories,2);
+    assert.equal(s.policy.budget_available,false);
+    assert.equal(reservations,0);
+  }
 });
 
 test('unknown Run recovery binds each exact role slot without redispatch or manufacturing ACK', async () => {

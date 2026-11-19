@@ -48,6 +48,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
     if (busy || !configPath) return;
     busy = true;
     let releaseTick;
+    let admissionVerified=false;
     const tickId=randomUUID(),startedAt=performance.now();
     let stage='config_read',operationContext;
     const failure=error=>({tick_id:tickId,stage,elapsed_ms:Math.max(0,Math.round(performance.now()-startedAt)),...diagnosticError(error),
@@ -55,6 +56,16 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       ...(/^ins-[a-z0-9]+$/.test(operationContext?.identity?.instance_id??'')?{instance_id:operationContext.identity.instance_id}:{}),
       ...(diagnosticUuid(operationContext?.identity?.epoch)?{epoch:operationContext.identity.epoch}:{})});
     const diagnosticLog=value=>{try{log(value);}catch{ /* Logging must not alter recovery or cloud dispatch. */ }};
+    const fenceAdmission=async()=>{
+      const failedStage=stage;
+      stage='failure_admission_fence';
+      try{
+        const {policy}=await control.snapshot();
+        if(policy.managed_nodes&&policy.budget_available)
+          await control.setAdmissionBudget(policy.revision,false,policy.expense_policy_sha256);
+      }catch(error){diagnosticLog({event:'execution_pool_admission_fence_failed',...failure(error)});}
+      finally{stage=failedStage;}
+    };
     try {
       const rawConfig=await readConfig(configPath);stage='config_validate';
       const baseConfig = validateConfig(rawConfig);
@@ -83,7 +94,18 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         config=fresh.config;controller.config=config;cloud.config=config;
         return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config,history:await readExpenseHistory(config)});
       });
-      const controller = new ExecutionPoolController({control, cloud, config,costSnapshot});
+      const readInventory=async()=>{
+        try{return await cloud.inventory();}
+        catch(error){admissionVerified=false;throw error;}
+      };
+      const assessExpense=async inventory=>{
+        try{
+          const admission=costAdmission(await costSnapshot(inventory),inventory,config);
+          if(!admission.allowed)admissionVerified=false;
+          return admission;
+        }catch(error){admissionVerified=false;throw error;}
+      };
+      const controller = new ExecutionPoolController({control, cloud, config,readInventory,assessExpense});
       const enroll = async op => {
         if (!['run', 'start'].includes(op?.action) || op.state !== 'completed') return;
         operationContext=op;stage='enrollment_prepare';
@@ -103,13 +125,15 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       // graceful drain keep progressing on the existing scheduler's ticks.
       let inventory, snapshot;
       const syncBudget=async()=>{
+        admissionVerified=false;
+        inventory=undefined;
         stage='budget_snapshot';
         snapshot=await control.snapshot();
         let admission={allowed:false,reason:'expense_producer_unavailable'};
         let admissionFailure;
         try{
-          stage='cloud_inventory';inventory=await cloud.inventory();
-          stage='cost_snapshot';admission=costAdmission(await costSnapshot(inventory),inventory,config);
+          stage='cloud_inventory';inventory=await readInventory();
+          stage='cost_snapshot';admission=await assessExpense(inventory);
           if(admission.allowed&&!dependencies.cloud){
             stage='transport_issuer_validate';
             if(config.node_secrets?.length!==2)throw Error('PG_DYNAMIC_ISSUER_REQUIRED');
@@ -118,27 +142,37 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
             if(config.phase==='automatic')validateTransportLifecycleProof(await readConfig(config.transport_renewal_evidence_file),config);
           }
         }catch(error){admissionFailure=failure(error);admission={allowed:false,reason:'expense_or_issuer_unavailable'};diagnosticLog({event:'execution_pool_cost_evaluation_failed',...admissionFailure});}
+        const approved=config.expense_policy_sha256;
+        const hash=/^[a-f0-9]{64}$/.test(approved??'')?approved:sha256(canonical(config));
+        if(admission.allowed&&snapshot.policy.managed_nodes&&snapshot.policy.expense_policy_sha256!==hash)
+          admission={allowed:false,reason:'expense_policy_mismatch'};
         if(snapshot.policy.managed_nodes && admission.allowed!==snapshot.policy.budget_available) {
-          const approved=config.expense_policy_sha256;
-          // Enabling requires the same reviewed PG expense policy. Tightening
-          // also works when a new quote/config fails validation.
-          const hash=/^[a-f0-9]{64}$/.test(approved??'')?approved:sha256(canonical(config));
           stage='budget_admission_write';
-          if(!admission.allowed || snapshot.policy.expense_policy_sha256===hash)
-            await control.setAdmissionBudget(snapshot.policy.revision,admission.allowed,hash);
+          await control.setAdmissionBudget(snapshot.policy.revision,admission.allowed,hash);
           stage='budget_snapshot';snapshot=await control.snapshot();
         }
+        admissionVerified=admission.allowed&&snapshot.policy.budget_available&&snapshot.policy.expense_policy_sha256===hash;
         if(!admission.allowed)diagnosticLog({event:'execution_pool_cost_admission_closed',reason:admission.reason,...admissionFailure});
+      };
+      const syncBeforeRecovery=async()=>{
+        try{await syncBudget();}
+        catch(error){
+          diagnosticLog({event:'execution_pool_cost_sync_failed',...failure(error)});
+          await fenceAdmission();
+        }
       };
       if (pending.length) {
         const op = pending[0];
         operationContext=op;
         if (op.state === 'intent') {
-          if(op.action==='stop'){try{await syncBudget();}catch(error){diagnosticLog({event:'execution_pool_cost_sync_failed',...failure(error)});}}else await syncBudget();
+          if(op.action==='stop')await syncBeforeRecovery();
+          else await syncBudget();
           stage='operation_resume';
+          const wasVerified=admissionVerified;
           await controller.resumeIntent(op);
+          if(wasVerified&&!admissionVerified)await fenceAdmission();
         }
-        else {try{await syncBudget();}catch(error){diagnosticLog({event:'execution_pool_cost_sync_failed',...failure(error)});}
+        else {await syncBeforeRecovery();
           stage='operation_recover';await enroll(await controller.recover(op.operation_id));}
         return;
       }
@@ -152,7 +186,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         const result=await controller.drain(ongoing.identity,ongoing.drain_operation_id,ongoing.revision);
         if(result.state!=='draining')return;
         drainAttempted=true;stage='drain_snapshot';snapshot=await control.snapshot();
-      }else if(!snapshot.nodes.some(n=>n.state==='starting')){
+      }else if(inventory&&!snapshot.nodes.some(n=>n.state==='starting')){
         stage='capacity_plan';
         plan=await controller.plan(inventory);
         if(plan.kind==='drain'){
@@ -177,13 +211,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       }catch(error){
         const renewalFailure=failure(error);
         renewalBlocked=true;
-        // Credential outages fence new claims/spend but cannot block contraction
-        // or admitted leases. Failure to tighten does not suppress drain either.
-        stage='transport_admission_fence';
-        try{if(snapshot.policy.managed_nodes&&snapshot.policy.budget_available){
-          await control.setAdmissionBudget(snapshot.policy.revision,false,config.expense_policy_sha256);snapshot=await control.snapshot();
-        }}catch(error){diagnosticLog({event:'execution_pool_admission_fence_failed',...failure(error)});}
-        diagnosticLog({event:'execution_pool_transport_admission_closed',...renewalFailure});
+        if(stage==='transport_renewal_ledger'){
+          admissionVerified=false;
+          await fenceAdmission();
+        }
+        diagnosticLog({event:'execution_pool_transport_renewal_failed',...renewalFailure});
       }
       if(drainAttempted)return;
       let initialEnrollmentPending=false;
@@ -205,7 +237,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         // Never stop the delayed node or replay any workload as a timeout action.
         log({event:'execution_pool_boot_delayed',instance_id:starting.identity.instance_id});
       }
-      if(initialEnrollmentPending)return;
+      if(initialEnrollmentPending||!inventory)return;
       stage='capacity_plan';
       plan??=await controller.plan(inventory);
       if (plan.kind === 'drain') {
@@ -213,7 +245,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         operationContext={operation_id:operationId,identity:plan.identity};stage='node_drain';
         await controller.drain(plan.identity, operationId, plan.revision);
       } else if (['run', 'start'].includes(plan.kind)) {
-        if(renewalBlocked||renewalIssued)return;
+        if(!admissionVerified||renewalBlocked||renewalIssued)return;
         stage='launch_validate';validateConfig(config, {apply: true});
         // The real automatic entry must have a usable operation-aware issuer
         // before reserving or spending on a node. Synthetic cloud fixtures do
@@ -245,12 +277,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       }
     } catch(error) {
       const reconcileFailure=failure(error);
-      // A broken config/lock/publication must not leave yesterday's budget
-      // admission enabled. This never changes leases or authorizes expenditure.
-      stage='failure_admission_fence';
-      try{const s=await control.snapshot();if(s.policy.managed_nodes&&s.policy.budget_available)
-        await control.setAdmissionBudget(s.policy.revision,false,s.policy.expense_policy_sha256);}catch(error){diagnosticLog({event:'execution_pool_admission_fence_failed',...failure(error)});}
-      diagnosticLog({event:'execution_pool_reconcile_failed_closed',reason:['ENROLLMENT_VAULT_CONFLICT','SECRET_PUBLISH_UNCONFIRMED','SECRET_VERSION_CONFLICT','SECRET_VERSION_CAPACITY'].includes(error?.message)?error.message:'RECONCILE_UNAVAILABLE',...reconcileFailure});
+      // Only a tick with newly proven pool-wide admission can isolate a later
+      // failure. The failed operation ends here; healthy services keep claiming.
+      if(!admissionVerified)await fenceAdmission();
+      diagnosticLog({event:admissionVerified?'execution_pool_reconcile_local_failure':'execution_pool_reconcile_failed_closed',
+        reason:['ENROLLMENT_VAULT_CONFLICT','SECRET_PUBLISH_UNCONFIRMED','SECRET_VERSION_CONFLICT','SECRET_VERSION_CAPACITY'].includes(error?.message)?error.message:'RECONCILE_UNAVAILABLE',...reconcileFailure});
     } finally { try{await releaseTick?.();}catch(error){stage='control_tick_release';diagnosticLog({event:'execution_pool_tick_release_failed',...failure(error)});throw error;}finally{busy = false;} }
   }};
 }
