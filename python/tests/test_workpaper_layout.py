@@ -33,6 +33,16 @@ class WorkpaperPaginationTest(unittest.TestCase):
                 a,b=Path(d)/('a'+str(i)),Path(d)/('b'+str(i));self.package(a,table)
                 self.assertEqual(normalize_workpaper_layout(a,b)['changed_paragraphs'],0)
                 self.assertEqual(a.read_bytes(),b.read_bytes())
+    def test_explicit_merged_header_font_grid_and_margins_bound_the_origin_row_height(self):
+        with tempfile.TemporaryDirectory() as d:
+            a,b,c=[Path(d)/x for x in ('a','b','c')]
+            table='<w:tbl><w:tblPr><w:tblCellMar><w:left w:w="108"/><w:right w:w="108"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="1037"/><w:gridCol w:w="1800"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val="397" w:hRule="atLeast"/><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="21"/></w:rPr><w:t>主要经营地、注册地</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>持股比例</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>直接</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:trHeight w:val="500" w:hRule="atLeast"/></w:trPr><w:tc><w:p><w:r><w:t>东营市</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>100.00</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+            self.package(a,table);r=normalize_workpaper_layout(a,b);self.assertEqual(r['changed_header_rows'],1)
+            with ZipFile(b) as z:rows=list(E.fromstring(z.read('word/document.xml')).iter(W+'tr'))
+            self.assertGreater(int(rows[0].find('./'+W+'trPr/'+W+'trHeight').get(W+'val')),397)
+            self.assertEqual(rows[2].find('./'+W+'trPr/'+W+'trHeight').get(W+'val'),'500')
+            self.assertEqual(normalize_workpaper_layout(b,c)['changed_header_rows'],0);self.assertEqual(b.read_bytes(),c.read_bytes())
+
     def test_explicit_page_break_stops_caption_chaining(self):
         with tempfile.TemporaryDirectory() as d:
             a,b=Path(d)/'a',Path(d)/'b';self.package(a,'<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:br w:type="page"/><w:t>标题</w:t></w:r></w:p>'+self.table())

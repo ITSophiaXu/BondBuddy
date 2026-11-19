@@ -14,3 +14,14 @@ for(const corrupt of [false,true])test('host table layout preserves exact raw pr
   const normalized=await readFile(path);assert.equal(await normalizeWorkpaperLayout(ctx,dir),undefined);assert.deepEqual(await readFile(path),normalized);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+import{validM4DocumentResult}from'./m4-document-stage.js';
+test('layout receipt is bound to the exact owned original and final document without requiring it on old results',()=>{
+ const ctx={run:{id:'run',project_id:'project',owner_user_id:'owner',input_hash:'a'.repeat(64)}} as StageContext;
+ const prefix='owners/owner/projects/project/runs/run/m4-documents/';
+ const value={version:'codex-m4-document-v1',input_hash:'a'.repeat(64),skill_sha256:'b'.repeat(64),method_hash:'c'.repeat(64),files:{'document.docx':{key:prefix+'call/'+'d'.repeat(64)+'/document.docx',sha256:'d'.repeat(64),byte_size:100},'preparation-note.docx':{key:prefix+'call/'+'e'.repeat(64)+'/preparation-note.docx',sha256:'e'.repeat(64),byte_size:101}}};
+ assert.equal(validM4DocumentResult(value,ctx),true);
+ const receipt={version:'workpaper-pagination-v1',input_sha256:'f'.repeat(64),output_sha256:'d'.repeat(64),changed_paragraphs:0,changed_header_rows:1,content_unchanged:true,original:{key:'owners/owner/projects/project/runs/run/m4-layout-preimages/'+'f'.repeat(64)+'/document.docx',sha256:'f'.repeat(64),byte_size:99}};
+ assert.equal(validM4DocumentResult({...value,workpaper_layout:receipt},ctx),true);
+ for(const change of [{output_sha256:'0'.repeat(64)},{changed_header_rows:0},{changed_header_rows:-1},{content_unchanged:false},{original:{...receipt.original,key:receipt.original.key.replace('/owner/','/foreign/')}}])assert.equal(validM4DocumentResult({...value,workpaper_layout:{...receipt,...change}},ctx),false);
+});
