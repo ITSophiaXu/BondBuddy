@@ -513,7 +513,7 @@ test('only a trusted local request-body limit rotates a snapshot-capable file co
   }finally{await other.cleanup();}
  });
  await t.test('model text containing a budget code never authorizes rotation',async()=>{
-  const raw=await s.run([tool('MODEL_REQUEST_BUDGET_EXCEEDED'),message('synthetic result'),complete],{contextRotation:true});
+  const raw=await s.run([{event:tool('MODEL_REQUEST_BUDGET_EXCEEDED')},{event:message('synthetic result')},{event:complete}],{contextRotation:true});
   assert.equal(classify(raw).outcome,'completed');assert.notEqual(raw.stop,'context_rotation');
  });
 });
