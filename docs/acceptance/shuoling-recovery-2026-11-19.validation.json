@@ -45,5 +45,6 @@
       "http": "mocked"
     }
   },
-  "prompt_followup_commit": "e194ef81"
+  "prompt_followup_commit": "21ff3b38",
+  "prompt_followup_regression": "running"
 }
