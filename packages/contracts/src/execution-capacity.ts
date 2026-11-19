@@ -89,7 +89,7 @@ export function executionCloudCompletionMatches(op:ExecutionCloudOperation,obser
   (op.action!=='stop'||o.stop_charging_mode==='STOP_CHARGING');
 }
 
-export const ExecutionCloudExpenseLedgerSchema=obj({captured_at:Type.String(),operations:Type.Array(obj({...ExecutionCloudOperationSchema.properties,created_at:Type.String(),dispatched_at:nullable(Type.String()),completed_at:nullable(Type.String()),cloud_observation:nullable(ExecutionCloudObservationSchema),rejection_evidence:nullable(ExecutionCloudRejectionSchema)})),nodes:Type.Array(obj({identity:ExecutionNodeIdentitySchema,state:literals(EXECUTION_NODE_STATES),created_at:Type.String(),destroyed_at:nullable(Type.String()),cloud_start_operation_id:id,stop_operation_id:nullable(id),launch_manifest_sha256:hash}))});
+export const ExecutionCloudExpenseLedgerSchema=obj({captured_at:Type.String(),operations:Type.Array(obj({...ExecutionCloudOperationSchema.properties,created_at:Type.String(),dispatched_at:nullable(Type.String()),completed_at:nullable(Type.String()),cloud_observation:nullable(ExecutionCloudObservationSchema),rejection_evidence:nullable(ExecutionCloudRejectionSchema),local_preflight_proof_sha256:Type.Optional(hash)})),nodes:Type.Array(obj({identity:ExecutionNodeIdentitySchema,state:literals(EXECUTION_NODE_STATES),created_at:Type.String(),destroyed_at:nullable(Type.String()),cloud_start_operation_id:id,stop_operation_id:nullable(id),launch_manifest_sha256:hash}))});
 export type ExecutionCloudExpenseLedger=Static<typeof ExecutionCloudExpenseLedgerSchema>;
 
 /** Private control adapter. Implementations use the sole database and fresh CAS;

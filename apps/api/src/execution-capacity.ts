@@ -368,7 +368,9 @@ export async function executionCloudExpenseLedger(pool:Pool):Promise<ExecutionCl
  return transaction(pool,async client=>{
   await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
   const captured=(await client.query('SELECT clock_timestamp() AS at')).rows[0].at;
-  const operations=(await client.query('SELECT * FROM bb_execution_cloud_operations ORDER BY created_at,operation_id')).rows.map(r=>({...opDto(r),created_at:r.created_at.toISOString(),dispatched_at:r.dispatched_at?.toISOString()??null,completed_at:r.completed_at?.toISOString()??null,cloud_observation:r.cloud_observation,rejection_evidence:r.rejection_evidence}));
+  const operations=(await client.query('SELECT * FROM bb_execution_cloud_operations ORDER BY created_at,operation_id')).rows.map(r=>({...opDto(r),created_at:r.created_at.toISOString(),dispatched_at:r.dispatched_at?.toISOString()??null,completed_at:r.completed_at?.toISOString()??null,cloud_observation:r.cloud_observation,rejection_evidence:r.rejection_evidence,
+   ...(r.local_preflight_cancellation?.version==='execution-local-start-cancellation-v1'
+    ?{local_preflight_proof_sha256:r.local_preflight_cancellation.proof_sha256}:{})}));
   const nodes=(await client.query('SELECT * FROM bb_execution_nodes ORDER BY account_id,region,instance_id')).rows.map(r=>({identity:identity(r),state:r.state,created_at:r.created_at.toISOString(),destroyed_at:r.destroyed_at?.toISOString()??null,cloud_start_operation_id:r.cloud_start_operation_id,stop_operation_id:r.stop_operation_id,launch_manifest_sha256:r.launch_manifest_sha256.trim()}));
   return {captured_at:captured.toISOString(),operations,nodes};
  });
