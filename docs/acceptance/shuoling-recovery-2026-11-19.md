@@ -82,3 +82,13 @@ M4 原募集书 1,881 顶层块及121张表已完整提取供内部核对。三�
 待启用固定候选 d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1 编译通过，隔离 PG16/Azurite/native sandbox 定向回归46 tests / 46 pass / 0 fail / 0 skip / 0 cancel，196个迁移。覆盖最终换行引文失配拒绝、精确collector诊断、修正后可收集、安全有界补救提示、整表门禁及快照恢复。供应商行为 synthetic；TAP SHA256 f6ae3f8171508c89e5383c653cc5318e993f24ea602b4c807b0640c7773fef66。
 
 当前活动API仍865c8037、worker及M1仍87d60ab9；本轮没有重启活动服务，不能称#1656已用于当前真实调用。待本轮活动工作安全结束，再将新worker纳入本地固定版，通过正式retry_failed入口复验失败项并保留成功兄弟成果。最终Word、ZIP、全页、关键事实及唯一结算仍待验收，用户未验收；代码修复及定向自测完成，尚未部署，待统一发布。
+
+## 17:44：同时报告门禁与不可变旧诊断兼容
+
+第二轮另两项明确失败：1-5-8-1 run 50cc2de4-345e-416e-8d68-3e1229d97684 先 WORKPAPER_TABLE_INCOMPLETE（164文件快照），一次补救后 WORKPAPER_TABLE_OUTPUT_INCOMPLETE（179文件快照）；1-5-9-2 run d14291de-6820-48d1-93f3-892617527541 两次 WORKPAPER_TABLE_INCOMPLETE（384/386文件快照）。连同前述1-5-9-1，三项均无正式成果；1-5-8-4和M1仍运行。不能从running列表消失推定成功，必须核对明确终态及artifact。
+
+补丁27285c60同时收集独立的来源关联、整表used记录和正文整表问题，最多8条私有诊断，每条来源ID仍最多32个、每个最多128字符，让唯一一次补救获得同次收集的全部独立阻断；所有原验证规则不变。补丁5d0854a5保留旧三字段收集回执的不可变payload/hash，重新核对owner/run/job/logical/attempt/prompt/project/input，仅允许同一旧主错误增加白名单细化；其他冲突继续拒绝。固定SKILL.md字节未修改。
+
+最终待启用候选现为77310bdb2304ee395406e990b5432afded46daaf，取代上一待启用d774cd8e。编译通过，隔离PG16/Azurite/native sandbox回归49/49，0 fail/skip/cancel，196迁移；TAP SHA256 15fe6132faaa5c2cecfad6d9678aa443e2d4cad803bbe29991690586a0498b02。该轮供应商行为synthetic，不替代真实交付。450个编译文件已逐一hash核对，存入独立只读候选runtime卷，但尚未激活。
+
+当前实际仍API865c8037、M4 worker/M1 87d60ab9。只在所有本地generation调用及租约已结束后替换M4 worker；M1为独立update容器，保持运行。随后用最新revision经正式retry_failed重试失败项，保留成功兄弟成果。正式下载、全部Word页面/关键事实、跨账号成果隔离、ZIP及唯一结算仍待验收；用户未验收，无生产变更。代码完成，尚未部署，待统一发布。

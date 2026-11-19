@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "second_replay_running_with_m4_collection_failure",
+  "real_task_delivery": "second_replay_three_m4_failed_one_m4_and_m1_running",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -188,8 +188,8 @@
     "material_source_discrepancy": "preserved_for_output_comparison",
     "output_comparison": "pending_actual_delivery"
   },
-  "latest_development_code_commit": "631d3d9c99d2ab6623c1d14b2fe23160e6866372",
-  "next_integration_commit": "d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1",
+  "latest_development_code_commit": "5d0854a576448dcdadaaaecd412527e947627a59",
+  "next_integration_commit": "77310bdb2304ee395406e990b5432afded46daaf",
   "active_runtime": {
     "api": "865c8037d40067834b74a475c4806e71ba112ce9",
     "worker": "87d60ab9936dea7a4b20e0eb927fe82e5cd4718a",
@@ -197,22 +197,24 @@
   },
   "link_repair_followup": {
     "issue": 1656,
-    "at": "2026-11-19T09:11:02.438Z",
-    "code_commit": "631d3d9c99d2ab6623c1d14b2fe23160e6866372",
-    "integration_commit": "d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1",
-    "tests": 46,
-    "pass": 46,
+    "at": "2026-11-19T09:44:24.531Z",
+    "code_commit": "5d0854a576448dcdadaaaecd412527e947627a59",
+    "integration_commit": "77310bdb2304ee395406e990b5432afded46daaf",
+    "tests": 49,
+    "pass": 49,
     "fail": 0,
     "skipped": 0,
     "cancelled": 0,
     "migrations": 196,
-    "tap_sha256": "f6ae3f8171508c89e5383c653cc5318e993f24ea602b4c807b0640c7773fef66",
+    "tap_sha256": "15fe6132faaa5c2cecfad6d9678aa443e2d4cad803bbe29991690586a0498b02",
     "provider_output": "synthetic",
     "production_connections": false,
     "real_delivery": "pending_new_candidate_replay",
     "code_commits": [
       "2540dfb8865702cbbb7c7f7f136ada673e3a5296",
-      "631d3d9c99d2ab6623c1d14b2fe23160e6866372"
+      "631d3d9c99d2ab6623c1d14b2fe23160e6866372",
+      "27285c60f6a8941f3ee3fe740726b90fca2d3374",
+      "5d0854a576448dcdadaaaecd412527e947627a59"
     ],
     "real_failure": {
       "run_id": "79aa03ad-278b-46b3-8d56-7ff7f7c6840c",
@@ -236,6 +238,48 @@
       "settle": 0,
       "formal_delivery": false
     },
-    "next_admitted_run": "d14291de-6820-48d1-93f3-892617527541"
+    "next_admitted_run": "d14291de-6820-48d1-93f3-892617527541",
+    "previous_regression": {
+      "integration_commit": "d774cd8e6e0f27f6ac1de4d9dd629042a952f5b1",
+      "tests": 46,
+      "pass": 46,
+      "tap_sha256": "f6ae3f8171508c89e5383c653cc5318e993f24ea602b4c807b0640c7773fef66"
+    },
+    "runtime_stage": {
+      "at": "2026-11-19T09:44:29.701Z",
+      "source_commit": "77310bdb2304ee395406e990b5432afded46daaf",
+      "files": 450,
+      "all_hashes_match": true,
+      "volume": "bb-shuoling-worker-77310bdb",
+      "activated": false
+    },
+    "additional_real_failures": [
+      {
+        "code": "1-5-8-1",
+        "run_id": "50cc2de4-345e-416e-8d68-3e1229d97684",
+        "errors": [
+          "WORKPAPER_TABLE_INCOMPLETE",
+          "WORKPAPER_TABLE_OUTPUT_INCOMPLETE"
+        ],
+        "snapshot_files": [
+          164,
+          179
+        ],
+        "formal_delivery": false
+      },
+      {
+        "code": "1-5-9-2",
+        "run_id": "d14291de-6820-48d1-93f3-892617527541",
+        "errors": [
+          "WORKPAPER_TABLE_INCOMPLETE",
+          "WORKPAPER_TABLE_INCOMPLETE"
+        ],
+        "snapshot_files": [
+          384,
+          386
+        ],
+        "formal_delivery": false
+      }
+    ]
   }
 }
