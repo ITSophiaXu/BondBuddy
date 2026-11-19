@@ -484,7 +484,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       // Legacy billing fixtures pin one quote per price version. Publish a new
       // synthetic version so this is a separately authorized normal purchase;
       // original quote/reservation/observations are never edited.
-      await publishPrices(pool,{id:uid(),prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'Explicit new-run seed fixture quote'});
+      await publishPrices(pool,{id:uid(),prices:INITIAL_FIXED_PRICES,effectiveAt:new Date(Date.now()-1000).toISOString(),actor:'synthetic',reason:'Explicit new-run seed fixture quote'});
       const quote=await paidApp.inject({method:'POST',url:'/api/v1/projects/'+rotatingPaid.project+'/credit-quote',headers:{origin:'http://bondbuddy.test'},payload:{input_revision:1,input_hash:rotatingPaid.inputHash}});
       assert.equal(quote.statusCode,200,quote.body);
       const started=await paidApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{execution_request_id:uid(),project_id:rotatingPaid.project,input_revision:1,input_hash:rotatingPaid.inputHash,quote_id:quote.json().quote.quote_id,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'}});
