@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {digest} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {FILE_AUTHORING_SEED_STAGE,validFileAuthoringSeed,type FileAuthoringSeed} from './file-authoring-seed.js';
+import {FILE_AUTHORING_SEED_STAGE,validFileAuthoringSeed,zeroChargeSeedReservation,type FileAuthoringSeed} from './file-authoring-seed.js';
 import {authorizedFileAuthoringRecovery,fileAuthoringContextDeadline,fileAuthoringUsesSmallBatches,recoverFileAuthoringInput,restoreFileAuthoringWork} from './file-authoring-recovery.js';
 import type {StageContext} from './run-pipeline.js';
 function fixture(){
@@ -57,4 +57,13 @@ test('seed cannot import a foreign run or reset an expired or current budget by 
   (s:FileAuthoringSeed)=>{s.snapshot.files[0].key=s.snapshot.files[0].key.replace('/new-run/','/failed-run/');s.snapshot_sha256=inputManifestHash(s.snapshot);},
   (s:FileAuthoringSeed)=>{s.snapshot.files[1].path='task.md';s.snapshot_sha256=inputManifestHash(s.snapshot);},
  ]){const seed=structuredClone(f.seed);change(seed);assert.equal(validFileAuthoringSeed(seed,f.scope),false);const ctx={...f.ctx,lease:{...f.ctx.lease,checkpoint:{stages:{[FILE_AUTHORING_SEED_STAGE]:seed}}}};assert.throws(()=>fileAuthoringContextDeadline(ctx,'file-authoring-v1'),/AUTHORING_RECOVERY_UNSAFE/);}
+});
+
+test('seed cannot waive a prior charge, reuse a settled reservation, or reinterpret an unknown billing policy',()=>{
+ for(const policy of ['on_delivery','authoring_balance_v2'])for(const state of ['released','held'] as const){
+  assert.equal(zeroChargeSeedReservation({state,billing_policy:policy,charged_points:'0'},state),true);
+  for(const charged of ['1','-1',null,undefined])assert.equal(zeroChargeSeedReservation({state,billing_policy:policy,charged_points:charged},state),false);
+  assert.equal(zeroChargeSeedReservation({state:'settled',billing_policy:policy,charged_points:'0'},state),false);
+ }
+ assert.equal(zeroChargeSeedReservation({state:'released',billing_policy:'unknown',charged_points:'0'},'released'),false);
 });

@@ -12,6 +12,11 @@ export type FileAuthoringSeed={version:'file-authoring-new-run-seed-v1';owner_us
  actor:string;authorized_at:string;deadline_at:string;budget_ms:number;small_batches:boolean;snapshot:FileAuthoringRecovery;snapshot_sha256:string};
 const field=/^[A-Za-z0-9_.@-]{1,128}$/;
 const conflict=()=>new Error('AUTHORING_SEED_CONFLICT');
+/** Both existing policies may start a separately quoted execution, but the
+ * source must have released with zero charged points and the target be unused. */
+export function zeroChargeSeedReservation(r:{state:string;billing_policy:string;charged_points:unknown},state:'released'|'held'){
+ return r.state===state&&['on_delivery','authoring_balance_v2'].includes(r.billing_policy)&&String(r.charged_points)==='0';
+}
 const prefix=(r:{owner_user_id:string;project_id:string;id:string})=>`owners/${r.owner_user_id}/projects/${r.project_id}/runs/${r.id}/file-authoring/recovery/`;
 
 export function validFileAuthoringSeed(value:unknown,scope:{owner:string;project:string;run:string;job:string;revision:number;inputHash:string}):value is FileAuthoringSeed{
@@ -54,8 +59,8 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
   const project=(await client.query('SELECT archived_at,deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2',[scope.project,scope.owner])).rows[0];
   if(!project||project.archived_at||project.deleted_at)throw conflict();
   const reservations=(await client.query('SELECT * FROM bb_credit_reservations WHERE id=ANY($1::text[]) AND owner_user_id=$2 FOR UPDATE',[[source.reservation_id,target.reservation_id],scope.owner])).rows;
-  if(source.reservation_id===target.reservation_id||reservations.length!==2||!reservations.some(r=>r.id===source.reservation_id&&r.run_id===source.id&&r.state==='released'&&r.billing_policy==='on_delivery'&&String(r.charged_points)==='0')
-   ||!reservations.some(r=>r.id===target.reservation_id&&r.run_id===target.id&&r.state==='held'&&r.billing_policy==='on_delivery'))throw conflict();
+  if(source.reservation_id===target.reservation_id||reservations.length!==2||!reservations.some(r=>r.id===source.reservation_id&&r.run_id===source.id&&zeroChargeSeedReservation(r,'released'))
+   ||!reservations.some(r=>r.id===target.reservation_id&&r.run_id===target.id&&zeroChargeSeedReservation(r,'held')))throw conflict();
   const exists=await client.query(`SELECT 1 WHERE EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1)
     OR EXISTS(SELECT 1 FROM bb_artifact_versions WHERE run_id=ANY($2::text[]))`,[job.id,[source.id,target.id]]);
   if(exists.rowCount)throw conflict();
