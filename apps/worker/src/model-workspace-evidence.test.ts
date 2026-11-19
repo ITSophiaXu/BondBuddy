@@ -8,7 +8,8 @@ import {digest} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import type {ProviderCallIntent} from '@bondbuddy/api/provider-results';
 import type {StageContext} from './run-pipeline.js';
-import {captureExitedWorkspace,type WorkspaceExit} from './model-workspace-evidence.js';
+import {captureExitedWorkspace,collectionDiagnostic,type WorkspaceExit} from './model-workspace-evidence.js';
+import {m4CollectionRepairFeedback} from './m4-workspace-recovery.js';
 
 const intent={call_id:'call-capture',logical_call_id:'m4-document-v1',attempt_no:1,owner_user_id:'owner',
  project_id:'project',run_id:'run',job_id:'job',prompt_snapshot_ref:'prompt'} as ProviderCallIntent;
@@ -56,4 +57,19 @@ test('a storage capture failure records a safe reason and never publishes an exi
    {event:'capture_failure',payload:{code:'workspace_capture_failed',reason:'storage_failed'}}]);
   assert.equal(f.objects.size,0);assert.ok(!JSON.stringify(f.evidence).includes('private storage exception'));
  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('link repair feedback contains only bounded host span identifiers and points at the actual association file',()=>{
+ const raw={code:'WORKPAPER_CONTENT_LINKS_MISSING',file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',
+  source_span_ids:['p4106','header1-p0'],source_span_count:40,private_quote:'private customer fact'};
+ const safe=collectionDiagnostic({collectionDiagnostic:raw});
+ assert.deepEqual(safe,{code:raw.code,file:raw.file,field:raw.field,rule:raw.rule,source_span_ids:raw.source_span_ids,source_span_count:40});
+ const feedback=m4CollectionRepairFeedback(safe);assert.match(feedback,/output\/file-links\.json/);assert.match(feedback,/p4106/);
+ assert.match(feedback,/不能只修改 workpaper-coverage/);assert.match(feedback,/最后一次编辑/);assert.match(feedback,/逐字且唯一/);
+ assert.ok(!feedback.includes(raw.private_quote));
+ for(const source_span_ids of [Array.from({length:33},(_,i)=>'p'+i),['p0','p0'],['p0 customer content'],['p'+'1'.repeat(129)]])
+  assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...raw,source_span_ids}}),{code:'collection_failed'});
+ for(const source_span_count of [-1,1.5,1000001,1])
+  assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...raw,source_span_count}}),{code:'collection_failed'});
+ assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{code:'workpaper_file_missing',file:'document.docx'}}),{code:'workpaper_file_missing',file:'document.docx'});
 });

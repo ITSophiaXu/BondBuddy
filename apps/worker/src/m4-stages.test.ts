@@ -167,6 +167,12 @@ test('workpaper CLI verifies source, coverage, template and links; the private n
       await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(f.directory)})/'output/document.docx'\nd=Document(p);d.paragraphs[0].text=${JSON.stringify(text)};d.save(p)`],{cwd:root,timeout:30000});
       await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
       await writeFile(join(f.directory,'output/workpaper-coverage.json'),JSON.stringify({reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]}));
+      assert.match(await options.buildPrompt(f.ctx),/target-spans-final/);
+      await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:'stale final-document quote',field:'资产负债'}]}));
+      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),error=>{
+        assert.deepEqual((error as {collectionDiagnostic?:unknown}).collectionDiagnostic,{code:'WORKPAPER_CONTENT_LINKS_MISSING',file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',source_span_ids:['p0'],source_span_count:1});return true;
+      });
+      await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
       return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'})};
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');

@@ -12,6 +12,15 @@ import type {StageContext} from './run-pipeline.js';
 
 export const M4_FULL_SOURCE_READING_INSTRUCTIONS = '当 task.input.document_type 为 workpaper 时，reviewed_span_ids 必须包含 source-spans.json 中全部已实际通读的非空段落，不能只记录命中关键词或用于正文的段落；used_span_ids 和 excluded 都不能替代审阅记录。先实际读取遗漏段落，再记录其 id，不得仅复制全部 id 冒充阅读。已审阅但与本项无关的段落才可排除；无法核实的图片或原件事实如实保留具体缺口，不能声称已核实。';
 
+export const M4_VERIFIED_LINKS_INSTRUCTIONS = '底稿最后一次编辑、扩展表格和排版保存后，重新读取最终 output/document.docx 的实际段落，按 document.xml 中全部 w:p（包括表格）零起算更新 output/file-links.json。可用 python -B -m bondbuddy_file_authoring.project_files inspect output/document.docx scratch/target-spans-final.json 获取宿主相同的段落文本。每条 source_quote 必须在指定来源段落中逐字且唯一出现，target_quote 必须在指定最终目标段落中逐字且唯一出现；旧段落编号或旧版引文不能沿用。逐项检查 workpaper-coverage.json 的每个 used_span_ids 均至少有一条通过两端核对的关联，相关完整表格仍须逐单元格入表关联。引文失配应核对真实正文、引用文本或段落编号，不得通过自动更换目标位置、删去相关 used 段落、改列 excluded 或伪造关联规避校验。';
+
+export function m4CollectionRepairFeedback(diagnostic:ReturnType<typeof collectionDiagnostic>){
+ return '已有 scratch/ 和 output/ 文件已恢复。只修复收集阶段指出的问题，保留已经完成的正文和材料提取；不得重建整个任务。检查规则：'+JSON.stringify(diagnostic)+
+  '。读取 input.json 和对应 schema，补齐缺少的文件、正确字段及全文覆盖记录。不能用聊天说明代替文件；不能编造缺少的事实。'+
+  (diagnostic.rule==='all_nonempty_source_spans'?M4_FULL_SOURCE_READING_INSTRUCTIONS:'')+
+  (diagnostic.code==='WORKPAPER_CONTENT_LINKS_MISSING'?'本次错误定位 output/file-links.json；source_span_ids 是尚无有效正文关联的来源ID样本，source_span_count 为总数。不能只修改 workpaper-coverage.json。'+M4_VERIFIED_LINKS_INSTRUCTIONS:'');
+}
+
 type Workspace=NonNullable<ContainedCallInput['fileWorkspace']>;
 /** Documents and shared/group plans use the same private exit evidence boundary. */
 export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,base:Pick<Workspace,'prepare'|'collect'>,
@@ -24,10 +33,6 @@ export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,bas
   await options.beforeRestore?.(cwd,saved.snapshot);
   await restoreFileAuthoringWork(ctx,cwd,saved.snapshot);
  };
- const feedback=(diagnostic:ReturnType<typeof collectionDiagnostic>)=>
-  '已有 scratch/ 和 output/ 文件已恢复。只修复收集阶段指出的问题，保留已经完成的正文和材料提取；不得重建整个任务。检查规则：'+JSON.stringify(diagnostic)+
-  '。读取 input.json 和对应 schema，补齐缺少的文件、正确字段及全文覆盖记录。不能用聊天说明代替文件；不能编造缺少的事实。'+
-   (diagnostic.rule==='all_nonempty_source_spans'?M4_FULL_SOURCE_READING_INSTRUCTIONS:'');
  return {
   prepare:async cwd=>{if(timeout&&!repair)throw Error('WORKSPACE_RECOVERY_CONFLICT');await base.prepare(cwd);if(repair)await restore(cwd,repair);},collect:base.collect,
   ...(timeout?{get deadlineAt(){return timeout.deadline_at;}}:{}),
@@ -36,7 +41,7 @@ export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,bas
    const diagnostic=collectionDiagnostic(error);await writeWorkspaceEvidence(ctx,intent,'collection_failure',diagnostic);
    repair=await read(intent.call_id);
    return options.repair!==false&&error instanceof CodexOutputValidationError&&repair?.exit.completed&&repair.exit.observation.usage.status==='measured'
-    &&intent.attempt_no===1?feedback(diagnostic):null;
+    &&intent.attempt_no===1?m4CollectionRepairFeedback(diagnostic):null;
   },
   ...(options.repair===false?{}:{prepareCollectionRepair:async(prior)=>{
    const saved=await read(prior.call_id);
@@ -58,7 +63,7 @@ export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,bas
      AND o.outcome='failed' AND o.error_code='MODEL_OUTPUT_SCHEMA_INVALID' AND o.usage_status='measured'`,
     [prior.call_id,ctx.run.owner_user_id,ctx.run.id])).rows[0];
    if(!saved?.exit.completed||saved.exit.observation.usage.status!=='measured'||!row||prior.attempt_no!==1)return null;
-   repair=saved;return feedback(collectionDiagnostic({collectionDiagnostic:row.payload}));
+   repair=saved;return m4CollectionRepairFeedback(collectionDiagnostic({collectionDiagnostic:row.payload}));
   }}),
   recoverCollection:async prior=>{
    const saved=await read(prior.call_id);

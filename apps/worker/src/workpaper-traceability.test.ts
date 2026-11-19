@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workpaperFilenameTitle,defaultWorkpaperIds,type ProjectFileText,type ProjectFileLink} from '@bondbuddy/contracts';
 import {workpaperImpact} from './workpaper-changes.js';
-import {validateWorkpaperCoverage} from './workpaper-content.js';
+import {validateWorkpaperCoverage,WorkpaperCoverageError} from './workpaper-content.js';
+import {verifiedFileLinks} from './project-file-evidence.js';
 import {assessmentEvidence,groundWorkpaperDecision} from './workpaper-assessment-stage.js';
 const snapshot=(texts:string[],locations?:string[]):ProjectFileText=>({version:'project-file-text-v1',format:'docx',sha256:'a'.repeat(64),coverage:'complete',warnings:[],spans:texts.map((text,i)=>({id:'p'+i,text,location:locations?.[i]??'段落 '+i,sha256:'b'.repeat(64)}))});
 const link=(id:string):ProjectFileLink=>({source_span_id:id,source_quote:'100',target_span_id:'p1',target_quote:'100',source_location:'表格 1 / 行 1 / 列 1',target_location:'表格 2 / 行 3 / 列 2',field:'总资产',period:'2025年末',unit:'万元',source_sha256:'a'.repeat(64),target_sha256:'c'.repeat(64)});
@@ -41,4 +42,20 @@ test('full table coverage and nonempty output are enforced',()=>{
   assert.throws(()=>validateWorkpaperCoverage(source,target,[link('p0'),link('p1')],{...coverage,used_span_ids:['p0','p1'],excluded:[{span_id:'p2',reason:'不应遗漏的相关数据'}]}),/TABLE_INCOMPLETE/);
   assert.throws(()=>validateWorkpaperCoverage(source,{...target,spans:target.spans.map(s=>({...s,text:'[[内容1]]'}))},links,coverage),/EMPTY_OR_INTERNAL/);
   assert.throws(()=>validateWorkpaperCoverage(source,target,[],coverage),/LINKS_MISSING/);
+});
+
+
+test('a stale final-document quotation identifies missing sources and is never rebound or excluded automatically',()=>{
+ const source=snapshot(['营业收入100万元','负债50万元']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'营业收入100万元','负债50万元']);
+ const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:i?s.text:'旧版收入100万元'}));
+ const coverage={reviewed_span_ids:['p0','p1'],used_span_ids:['p0','p1'],excluded:[]};
+ const partial=verifiedFileLinks(source,target,proposals);assert.equal(partial.length,1);
+ assert.throws(()=>validateWorkpaperCoverage(source,target,partial,coverage),error=>{
+  assert.ok(error instanceof WorkpaperCoverageError);assert.equal(error.message,'WORKPAPER_CONTENT_LINKS_MISSING');
+  assert.deepEqual(error.missingSourceSpanIds,['p0']);return true;
+ });
+ assert.deepEqual(coverage.used_span_ids,['p0','p1']);assert.deepEqual(coverage.excluded,[]);
+ proposals[0]!.target_quote=source.spans[0]!.text;
+ assert.equal(validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage).used,2);
 });

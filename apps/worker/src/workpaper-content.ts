@@ -1,4 +1,7 @@
 import type {ProjectFileText,ProjectFileLink} from '@bondbuddy/contracts';
+export class WorkpaperCoverageError extends Error {
+  constructor(code:string,readonly missingSourceSpanIds:string[]){super(code);}
+}
 /** Host checks catch empty files, partial table adoption and missing evidence.
  * Semantic relevance still requires professional review; a model's coverage
  * declaration is never presented as an independent audit. */
@@ -9,7 +12,8 @@ export function validateWorkpaperCoverage(source:ProjectFileText,target:ProjectF
   const nonempty=source.spans.filter(s=>s.text.trim()),ids=new Set(nonempty.map(s=>s.id));
   if(!relevant.size||[...relevant].some(id=>!ids.has(String(id))||excluded.has(String(id)))||nonempty.some(s=>!reviewed.has(s.id)||!relevant.has(s.id)&&!excluded.has(s.id)))throw Error('WORKPAPER_SOURCE_COVERAGE_INCOMPLETE');
   const linked=new Set(links.map(l=>l.source_span_id));
-  if([...relevant].some(id=>!linked.has(String(id))))throw Error('WORKPAPER_CONTENT_LINKS_MISSING');
+  const missingLinks=[...relevant].filter(id=>!linked.has(String(id))).map(String);
+  if(missingLinks.length)throw new WorkpaperCoverageError('WORKPAPER_CONTENT_LINKS_MISSING',missingLinks);
   // Once a table is used, every nonempty cell must be accounted for. The author
   // can split wide tables, but cannot take only the first few rows.
   const tables=new Set(nonempty.filter(s=>relevant.has(s.id)&&s.location.includes(' / 行 ')).map(s=>s.location.split(' / 行 ')[0]));
