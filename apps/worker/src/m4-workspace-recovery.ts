@@ -10,6 +10,8 @@ import {recoverFileAuthoringInput,restoreFileAuthoringWork} from './file-authori
 import {checkedM4File} from './m4-file-workspace.js';
 import type {StageContext} from './run-pipeline.js';
 
+export const M4_FULL_SOURCE_READING_INSTRUCTIONS = '当 task.input.document_type 为 workpaper 时，reviewed_span_ids 必须包含 source-spans.json 中全部已实际通读的非空段落，不能只记录命中关键词或用于正文的段落；used_span_ids 和 excluded 都不能替代审阅记录。先实际读取遗漏段落，再记录其 id，不得仅复制全部 id 冒充阅读。已审阅但与本项无关的段落才可排除；无法核实的图片或原件事实如实保留具体缺口，不能声称已核实。';
+
 type Workspace=NonNullable<ContainedCallInput['fileWorkspace']>;
 /** Documents and shared/group plans use the same private exit evidence boundary. */
 export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,base:Pick<Workspace,'prepare'|'collect'>,
@@ -24,7 +26,8 @@ export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,bas
  };
  const feedback=(diagnostic:ReturnType<typeof collectionDiagnostic>)=>
   '已有 scratch/ 和 output/ 文件已恢复。只修复收集阶段指出的问题，保留已经完成的正文和材料提取；不得重建整个任务。检查规则：'+JSON.stringify(diagnostic)+
-  '。读取 input.json 和对应 schema，补齐缺少的文件、正确字段及全文覆盖记录。不能用聊天说明代替文件；不能编造缺少的事实。';
+  '。读取 input.json 和对应 schema，补齐缺少的文件、正确字段及全文覆盖记录。不能用聊天说明代替文件；不能编造缺少的事实。'+
+   (diagnostic.rule==='all_nonempty_source_spans'?M4_FULL_SOURCE_READING_INSTRUCTIONS:'');
  return {
   prepare:async cwd=>{if(timeout&&!repair)throw Error('WORKSPACE_RECOVERY_CONFLICT');await base.prepare(cwd);if(repair)await restore(cwd,repair);},collect:base.collect,
   ...(timeout?{get deadlineAt(){return timeout.deadline_at;}}:{}),
@@ -47,7 +50,7 @@ export function recoverableM4Workspace(ctx:StageContext,logicalCallId:string,bas
       ||!['SIGTERM','SIGKILL'].includes(saved.exit.runtime.exit_signal??'')||audit?.decision!=='retry_unknown_usage'
       ||audit.reason_code!=='m4_timeout_workspace_continuation'||audit.deadline_at!==timeout.deadline_at)throw Error('WORKSPACE_RECOVERY_CONFLICT');
     repair=saved;
-    return '上次调用已确认超时退出，已有 scratch/ 和 output/ 完整快照将恢复。本次只接续尚未完成的核对与交付文件，先读取已有工作记录和实际文件，不从头重建。保持原始输入、模板和报价；本次最多90分钟，不能重复延长。若 task.input.document_type 为 workpaper，提交前逐项检查正式收集规则：workpaper-coverage.json 的 reviewed_span_ids 必须包含全部已实际审阅的非空 source-spans；used 或 excluded 均不能替代审阅记录。缺少审阅的段落先实际读取，禁止仅追加ID伪造完成。写全结果、覆盖、关联及两份Word，再结束调用。';
+    return '上次调用已确认超时退出，已有 scratch/ 和 output/ 完整快照将恢复。本次只接续尚未完成的核对与交付文件，先读取已有工作记录和实际文件，不从头重建。保持原始输入、模板和报价；本次最多90分钟，不能重复延长。'+M4_FULL_SOURCE_READING_INSTRUCTIONS+'按实际分类写全结果与覆盖；generate 时补齐关联及两份Word，其他分类由宿主形成具体说明，不伪造原件或履职记录，再结束调用。';
    }
    const row=(await ctx.pool.query(`SELECT e.payload FROM bb_model_workspace_evidence e
     JOIN bb_provider_call_observations o ON o.attempt_id=e.attempt_id
