@@ -1,3 +1,4 @@
+import { onTaskRestart } from './task-restart.js';
 import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
@@ -101,7 +102,7 @@ export class MaterialWorkspace {
   private cacheKey=''; private pendingCreate?:{creation_request_id:string;name:string;source_project_id?:string};
   private syncOnReturn=()=>{if(this.live()&&document.visibilityState==='visible')void this.refresh();};
   constructor(private api:ApiClient,private owner:string,private shell:(html:string,section:string)=>void,private current:()=>boolean,
-    private topicId?:string,private sourceProjectId?:string,private createNew=false,private entryRunId?:string) {this.m4=new M4Api(api,this.controller.signal);this.selected='init';
+    private topicId?:string,private sourceProjectId?:string,private createNew=false,private entryRunId?:string) {onTaskRestart(this.controller.signal,()=>this.refresh());this.m4=new M4Api(api,this.controller.signal);this.selected='init';
       for(const type of M4_DOCUMENT_TYPES)this.drafts.set(type,{version:0,input:{document_type:type,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]},dirty:false,conflict:false});}
 
   get hasUnconfirmed(){return this.invalidDraftType||this.uploading||this.uploadPreparing||this.cachePending>0||this.cacheFailure||this.cacheRequestConflict||this.uploadRecordsPresent||!!this.uploadRecoveryProblem||this.viewDirty||[...this.drafts.values()].some(d=>d.dirty)||Boolean(this.pendingMessage||this.pendingExecution);}
@@ -521,8 +522,8 @@ export class MaterialWorkspace {
     const problem=latest?.state===run.state&&['paused','awaiting_input','failed','rejected'].includes(run.state)&&latest.payload.error_code?friendlyError(new ApiError(0,latest.payload.error_code)):'';
     const observed=materialLiveStatus(task),p=task.credit_charge?.progress;
     const canPause=active&&['queued','running'].includes(run.state)&&!p?.pause_requested&&!p?.credit_exhausted;
-    const canResume=active&&!p?.credit_exhausted&&(p?.pause_requested||run.state==='paused'&&['user_paused','credits_exhausted'].includes(run.stage??''));
-    return `<section class="panel m4-delivery" data-run-id="${esc(run.run_id)}"><header class="m4-delivery-head"><div><h2>${input?M4_DOCUMENT_LABELS[input.document_type]:'文件生成'}</h2><p class="m4-muted">${esc(input?.fields.issuer_name??'')} · ${materialPriorTime(task.created_at)!==null?esc(date(task.created_at))+' 提交':'提交时间暂不可核实'}</p></div></header>${taskProgress(run,'material',observed)}${materialCreditReceipt(task)}${problem?`<p class="m4-warning" role="alert">${esc(problem)}</p>`:''}<div class="m4-delivery-actions">${canPause?`<button class="btn secondary" data-m4-action="pause" data-run="${esc(run.run_id)}">暂停生成</button>`:''}${canResume?`<button class="btn primary" data-m4-action="resume" data-run="${esc(run.run_id)}">继续生成</button>`:''}${p?.credit_exhausted?`<a class="btn primary" href="${esc(rechargeHref(this.workspace!.topic.project_id))}">查看积分与支付状态</a>`:''}${this.taskReturnHtml(task)}${active?`<button class="text-btn" data-m4-action="cancel" data-run="${esc(run.run_id)}">结束本次生成</button>`:''}</div>${this.priorResultHtml(task)}<p class="m4-muted">本次任务使用提交时的固定内容；返回后可继续编辑当前同文种草稿，后续修改用于下一轮。</p>${materialActivityLog(task)}</section>${this.taskDetailsHtml(task)}`;
+    const canResume=active&&!p?.credit_exhausted&&run.state==='running'&&!!p?.pause_requested;
+    return `<section class="panel m4-delivery" data-run-id="${esc(run.run_id)}"><header class="m4-delivery-head"><div><h2>${input?M4_DOCUMENT_LABELS[input.document_type]:'文件生成'}</h2><p class="m4-muted">${esc(input?.fields.issuer_name??'')} · ${materialPriorTime(task.created_at)!==null?esc(date(task.created_at))+' 提交':'提交时间暂不可核实'}</p></div></header>${taskProgress(run,'material',observed,{availablePoints:p?.available_points})}${materialCreditReceipt(task)}${problem?`<p class="m4-warning" role="alert">${esc(problem)}</p>`:''}<div class="m4-delivery-actions">${canPause?`<button class="btn secondary" data-m4-action="pause" data-run="${esc(run.run_id)}">暂停生成</button>`:''}${canResume?`<button class="btn primary" data-m4-action="resume" data-run="${esc(run.run_id)}">继续生成</button>`:''}${p?.credit_exhausted?`<a class="btn primary" href="${esc(rechargeHref(this.workspace!.topic.project_id))}">查看积分与支付状态</a>`:''}${this.taskReturnHtml(task)}${active?`<button class="text-btn" data-m4-action="cancel" data-run="${esc(run.run_id)}">结束本次生成</button>`:''}</div>${this.priorResultHtml(task)}<p class="m4-muted">本次任务使用提交时的固定内容；返回后可继续编辑当前同文种草稿，后续修改用于下一轮。</p>${materialActivityLog(task)}</section>${this.taskDetailsHtml(task)}`;
   }
   private priorResultHtml(task:M4Task){
     if(task.manifest.kind!=='document'||!this.workspace)return '';
