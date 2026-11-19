@@ -56,20 +56,33 @@ export async function finishTask(pool: Pool, task: string, lease: string, outcom
 /** Symmetric jitter so instances and tasks drift apart instead of firing together. */
 export const jittered = (ms: number, jitter: number, random = Math.random) => Math.round(ms * (1 + jitter * (2 * random() - 1)));
 
+type SchedulerLoop = { timer?: NodeJS.Timeout; running?: Promise<void> };
+
 export class OpsScheduler {
   private stopped = false;
-  private timer: NodeJS.Timeout | null = null;
-  private running: Promise<void> | null = null;
+  private started = false;
+  private readonly tasks: SchedulerLoop = {};
+  private readonly executionPool: SchedulerLoop = {};
   readonly owner: string;
   constructor(private readonly options: SchedulerOptions) {
     this.owner = options.owner ?? defaultOwner();
     for (const task of options.tasks) if (!safeCode.test(task.name) || task.intervalMs < 1000 || task.leaseMs < 1000) throw new Error(`Invalid scheduled task ${task.name}`);
   }
 
-  /** One pass over all tasks; runs each task this instance wins, one at a time to keep memory flat. */
+  private async tickExecutionPool() {
+    if (this.stopped || !this.options.executionPoolTick) return;
+    try { await this.options.executionPoolTick(); }
+    catch { this.options.log?.({ scheduler: 'execution_pool_tick_failed' }); }
+  }
+
   async tick() {
+    await this.tickExecutionPool();
+    await this.tickTasks();
+  }
+
+  /** One pass over due maintenance tasks, keeping each task's existing PG lease. */
+  private async tickTasks() {
     const { pool, tasks, jitter = 0.1, log = () => {} } = this.options;
-    if(!this.stopped&&this.options.executionPoolTick){try{await this.options.executionPoolTick();}catch{log({scheduler:'execution_pool_tick_failed'});}}
     for (const task of tasks) {
       if (this.stopped) return;
       let lease: string | null;
@@ -88,19 +101,30 @@ export class OpsScheduler {
   }
 
   start() {
+    if (this.started || this.stopped) return this;
+    this.started = true;
     const tickMs = this.options.tickMs ?? 5000;
-    const loop = () => {
-      if (this.stopped) return;
-      this.running = this.tick().finally(() => { this.running = null; if (!this.stopped) this.timer = setTimeout(loop, jittered(tickMs, 0.2)); });
+    const startLoop = (state: SchedulerLoop, tick: () => Promise<void>) => {
+      const loop = () => {
+        state.timer = undefined;
+        if (this.stopped) return;
+        state.running = tick().finally(() => {
+          state.running = undefined;
+          if (!this.stopped) state.timer = setTimeout(loop, jittered(tickMs, 0.2));
+        });
+      };
+      loop();
     };
-    loop();
+    if (this.options.executionPoolTick) startLoop(this.executionPool, () => this.tickExecutionPool());
+    startLoop(this.tasks, () => this.tickTasks());
     return this;
   }
 
   async stop() {
     this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    await this.running;
+    clearTimeout(this.executionPool.timer);
+    clearTimeout(this.tasks.timer);
+    await Promise.all([this.executionPool.running, this.tasks.running]);
   }
 }
 
