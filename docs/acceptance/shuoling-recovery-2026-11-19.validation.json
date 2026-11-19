@@ -45,6 +45,28 @@
       "http": "mocked"
     },
     "actual_browser_inspection": {
+      "status": "passed",
+      "browser": "msedge",
+      "headless": true,
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "api": "real_local_backend",
+      "actual_api_responses": 46,
+      "mocked_responses": 0,
+      "new_generation_or_retry_actions": 0,
+      "page_errors": 0,
+      "blocked_requests": 0,
+      "report_sha256": "fd6a9f736941e883abcf29717849c378195495437b8a1cd83c1e281f59ee7fe4",
+      "scope": [
+        "two_account_login",
+        "M1_latest_model_summary",
+        "M4_all_four_items",
+        "1440_and_390_widths"
+      ],
+      "not_user_acceptance": true
+    },
+    "desktop_cua": {
       "status": "blocked",
       "reason": "CUA GetCursorPos access denied",
       "mocked_tests_unchanged": true
@@ -137,6 +159,33 @@
     "key_figures": 28,
     "tie_outs": 12,
     "passed": 12,
+    "output_comparison": "pending_actual_delivery"
+  },
+  "actual_owner_isolation_second_replay": {
+    "tests": 9,
+    "pass": 9,
+    "fail": 0,
+    "artifact_checks": "pending_actual_delivery"
+  },
+  "old_terminal_preservation": {
+    "runs": 4,
+    "failed_and_released_unchanged": true,
+    "unknown_attempts_unchanged": true,
+    "observation_count": 11,
+    "observation_baseline_sha256": "f7644e0830457949caa9aa5bb82f2e6402e58f8e704f8358395086c28200904f"
+  },
+  "m1_second_replay_snapshot": {
+    "files": 121,
+    "bytes": 19462894,
+    "all_readback_hashes_match": true
+  },
+  "source_m4_checks": {
+    "prospectus_top_level_blocks": 1881,
+    "prospectus_tables": 121,
+    "audit_pdf_pages_extracted": 303,
+    "pure_image_pdfs": 2,
+    "critical_related_party_pages_visually_reviewed": 7,
+    "material_source_discrepancy": "preserved_for_output_comparison",
     "output_comparison": "pending_actual_delivery"
   }
 }
