@@ -302,7 +302,7 @@ class FixedEditTests(unittest.TestCase):
 
     def test_column_rejects_merges_and_existing_revisions_without_partial_table_changes(self):
         table = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'table')
-        for tag in ['gridSpan', 'vMerge', 'tblGridChange', 'fldSimple']:
+        for tag in ['gridSpan', 'tblGridChange', 'fldSimple']:
             editor = Editor(self.data, self.source)
             node = editor.nodes[table['node_id']][1]
             ET.SubElement(node.find('.//' + q('tcPr')), q(tag))
@@ -311,6 +311,32 @@ class FixedEditTests(unittest.TestCase):
                 editor.apply({'id': 'column', 'kind': 'insert_column', 'node_id': table['node_id'],
                               'before': node_text(node), 'column_index': 1, 'values': ['2025', '120']})
             self.assertEqual(serialized(node), previous)
+
+    def test_vertical_merge_allows_independent_column_insertion(self):
+        doc = Document(self.source)
+        doc.tables[0].cell(0, 0).merge(doc.tables[0].cell(1, 0))
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        self.log = empty_log(self.data, self.source.read_bytes())
+        table = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'table')
+        output, receipt = self.generate([{'id': 'period', 'kind': 'insert_column', 'node_id': table['node_id'],
+                                          'before': table['text'], 'column_index': 1, 'position': 'before',
+                                          'values': ['2025年度', '120']}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        rows = Document(output / 'clean.docx').tables[0]._tbl.findall(q('tr'))
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(len(row.findall(q('tc'))) == 3 for row in rows))
+        first = [row.findall(q('tc'))[0] for row in rows]
+        self.assertEqual(first[0].find(q('tcPr') + '/' + q('vMerge')).get(q('val')), 'restart')
+        self.assertIsNotNone(first[1].find(q('tcPr') + '/' + q('vMerge')))
+        self.assertEqual(node_text(rows[0].findall(q('tc'))[1]), '2025年度')
+        self.assertEqual(node_text(rows[1].findall(q('tc'))[1]), '120')
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        plan = json.loads((output / 'format-plan.json').read_text(encoding='utf-8'))
+        restore_absent_property_shells(rejected, plan, 'word/document.xml')
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
 
     def test_wrong_hash_stale_anchor_unknown_fields_and_no_log_are_rejected(self):
         node = self.node('保留😀的原始段落。')
