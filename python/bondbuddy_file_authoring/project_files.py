@@ -88,6 +88,11 @@ def table_layout(path, packaged=None):
     path = Path(path)
     if path.suffix.lower() not in ('.docx', '.pdf'):
         raise ValueError('FILE_FORMAT_UNSUPPORTED')
+    # PDF conversion is not original OOXML grid evidence. Preserve the strict
+    # fallback and avoid a second potentially different Word conversion.
+    if path.suffix.lower() == '.pdf':
+        return dict(version='workpaper-table-layout-v1', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    full_width_span_ids=[])
     if packaged is None:
         with tempfile.TemporaryDirectory(prefix='bb-table-layout-') as tmp:
             _, root, _ = package(path, Path(tmp))

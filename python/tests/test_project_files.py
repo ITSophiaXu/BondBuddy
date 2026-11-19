@@ -140,5 +140,15 @@ class ProjectFilesTest(unittest.TestCase):
                 self.assertEqual(table_layout(self.path)['full_width_span_ids'], [])
 
 
+
+    def test_pdf_has_no_original_ooxml_layout_exception_or_second_conversion(self):
+        import hashlib
+        path = self.root / 'not-converted.pdf'
+        path.write_bytes(b'%PDF-1.7 opaque source bytes')
+        proof = table_layout(path)
+        self.assertEqual(proof['full_width_span_ids'], [])
+        self.assertEqual(proof['sha256'], hashlib.sha256(path.read_bytes()).hexdigest())
+
+
 if __name__ == '__main__':
     unittest.main()
