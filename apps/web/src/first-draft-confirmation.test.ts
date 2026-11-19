@@ -12,7 +12,7 @@ function controller() {
   const source=readFileSync(new URL('../src/project-execution.ts',import.meta.url),'utf8'),exports:Record<string,any>={};
   runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,
     {exports,require:(name:string)=>name==='./first-draft-confirmation'?decision:name==='./api'?{ApiError,friendlyError:()=> 'Synthetic error'}:
-      {executionTaskKind:()=> 'generation',sourceProspectusInputGaps:()=>[]},AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
+      {onTaskRestart:()=>{},executionTaskKind:()=> 'generation',sourceProspectusInputGaps:()=>[]},AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
   const materials=[{material_id:'finance',material_version:1,role:'financial',sha256:'b'.repeat(64)}];
   const fields={market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',target_reporting_periods:[{end:'2025-09-30'}]}};
   const draft={project:{project_id:'project',kind:'generation',draft_revision:1,...fields},fields,dirty:false,state:'saved',valid:true,save:async()=>true};

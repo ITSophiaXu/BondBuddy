@@ -1,0 +1,146 @@
+{
+  "boundary": "Real web/auth/CSRF/API/PostgreSQL/Azurite/WorkerRuntime; synthetic historical task seed and controllable synthetic model stages",
+  "checks": [
+    {
+      "name": "真实页面暂停入口可见",
+      "passed": true
+    },
+    {
+      "name": "390px窄屏入口可见且无横向溢出",
+      "passed": true
+    },
+    {
+      "name": "双页面同时点击只恢复原任务一次，无新增run或预留",
+      "passed": true
+    },
+    {
+      "name": "worker名额占满时真实排队，积分与预留保持不变",
+      "passed": true
+    },
+    {
+      "name": "名额释放后真实worker接单并保存阶段",
+      "passed": true
+    },
+    {
+      "name": "运行中暂停落地，刷新后检查点与重新启动入口保留",
+      "passed": true
+    },
+    {
+      "name": "重新登录后恢复同一任务，已完成两个阶段未重复执行",
+      "passed": true
+    },
+    {
+      "name": "恢复后完成真实私有存储Word交付与授权下载（内容合成）",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "bytes": 1344
+      }
+    },
+    {
+      "name": "始终复用原预留并结算，无重复扣费",
+      "passed": true
+    },
+    {
+      "name": "账号积分账本一致性审计通过",
+      "passed": true
+    },
+    {
+      "name": "另一账号恢复原任务返回404",
+      "passed": true
+    },
+    {
+      "name": "恢复全过程未调用execute且无页面脚本错误",
+      "passed": true
+    }
+  ],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "http://localhost:5549/api/v1/runs/b0704f98-ae20-4375-97cd-303950f9aa79/resume"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5549/api/v1/runs/b0704f98-ae20-4375-97cd-303950f9aa79/resume"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5549/api/v1/runs/821f10d3-55f2-4031-b09c-5294ac144ffc/pause"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5549/api/v1/runs/b0704f98-ae20-4375-97cd-303950f9aa79/pause"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:5549/api/v1/runs/b0704f98-ae20-4375-97cd-303950f9aa79/resume"
+    }
+  ],
+  "errors": [],
+  "eventsAfterConcurrentClick": [
+    {
+      "type": "run.state_changed",
+      "state": "queued",
+      "stage": "queued",
+      "payload": {
+        "reason": "submitted",
+        "channel": "production"
+      }
+    },
+    {
+      "type": "run.state_changed",
+      "state": "paused",
+      "stage": "user_paused",
+      "payload": {
+        "reason": "user_paused",
+        "channel": "production"
+      }
+    },
+    {
+      "type": "run.state_changed",
+      "state": "queued",
+      "stage": "queued",
+      "payload": {
+        "reason": "user_resumed",
+        "channel": "production"
+      }
+    }
+  ],
+  "download": {
+    "status": 200,
+    "bytes": 1344
+  },
+  "billing": {
+    "before": [
+      {
+        "id": "1f4022cb-a722-4d4b-926d-32acbb5d8c50",
+        "state": "held",
+        "charged_points": "0"
+      }
+    ],
+    "after": [
+      {
+        "id": "1f4022cb-a722-4d4b-926d-32acbb5d8c50",
+        "state": "settled",
+        "charged_points": "159900"
+      }
+    ],
+    "events": [
+      {
+        "kind": "settle",
+        "n": 25,
+        "points": "159900"
+      }
+    ],
+    "audit": {
+      "consistent": true,
+      "lotDrift": [],
+      "reservationDrift": [],
+      "paymentDrift": [],
+      "refundDrift": [],
+      "heldTasks": []
+    }
+  },
+  "passed": true,
+  "finished_at": "2026-11-19T06:56:14.673Z"
+}

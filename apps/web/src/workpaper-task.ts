@@ -1,3 +1,5 @@
+import { onTaskRestart } from './task-restart.js';
+import { taskRestartHtml } from './task-restart.js';
 import {WORKPAPER_DECISION_LABELS,type WorkpaperAssessment,type WorkpaperCatalogue,type WorkpaperCheck} from '@bondbuddy/contracts';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {esc,date} from './ui';
@@ -11,7 +13,7 @@ import '../../../product-prototype/public/workpaper-task.css';
 export class WorkpaperTaskPanel {
   private abort=new AbortController();private timer?:ReturnType<typeof setTimeout>;private busy=false;
   private run?:Dto<'RunResponse'>;
-  constructor(private api:ApiClient,private host:HTMLElement,private project:string,private runId:string,private operation:string,private current:()=>boolean){}
+  constructor(private api:ApiClient,private host:HTMLElement,private project:string,private runId:string,private operation:string,private current:()=>boolean){onTaskRestart(this.abort.signal,()=>this.refresh());}
   dispose(){this.abort.abort();clearTimeout(this.timer);}
   get hasUnconfirmed(){return this.busy;}
   async beforeLeave(){return !this.busy;}
@@ -54,7 +56,7 @@ export class WorkpaperTaskPanel {
       const reconciling=run.state==='paused'&&run.stage==='provider_reconcile';
       const summary=reconciling?'检查服务正在核对本次执行结果，原进度保留。请刷新查看恢复状态。':run.state==='paused'?'本次检查已暂停，输入和已完成进度保留。':terminal?'本次任务记录已保留。':'关闭页面后检查仍会继续，重新打开可查看进度。';
       this.message('');
-      this.host.querySelector('#wp-task-content')!.innerHTML=`<div class="wp-check-status"><strong role="status">${esc(runStateLabel[run.state])}</strong><span>${esc(date(run.updated_at))}</span></div>${details}<p>${summary}</p><div class="wp-action-buttons">${run.state==='paused'&&!reconciling?'<button class="btn primary" data-wp-task-action="resume">继续检查</button>':['queued','running'].includes(run.state)?'<button class="btn secondary" data-wp-task-action="pause">暂停检查</button>':''}${!terminal?'<button class="btn secondary" data-wp-task-action="cancel">停止本次检查</button>':''}</div>`;
+      this.host.querySelector('#wp-task-content')!.innerHTML=`<div class="wp-check-status"><strong role="status">${esc(runStateLabel[run.state])}</strong><span>${esc(date(run.updated_at))}</span></div>${details}<p>${summary}</p>${taskRestartHtml(run)}<div class="wp-action-buttons">${['queued','running'].includes(run.state)?'<button class="btn secondary" data-wp-task-action="pause">暂停检查</button>':''}${!terminal?'<button class="btn secondary" data-wp-task-action="cancel">停止本次检查</button>':''}</div>`;
       this.host.querySelectorAll<HTMLButtonElement>('[data-wp-task-action]').forEach(button=>button.onclick=()=>void this.act(button.dataset.wpTaskAction as 'pause'|'resume'|'cancel'));
       if(!terminal)this.timer=setTimeout(()=>{if(!this.busy)void this.refresh();},5000);
     }catch(e){if(this.live())this.message('这次底稿检查暂时无法读取，请刷新重试。'+friendlyError(e,'read'));}

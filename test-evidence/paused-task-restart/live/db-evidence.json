@@ -1,0 +1,32 @@
+{
+  "id": "b0704f98-ae20-4375-97cd-303950f9aa79",
+  "state": "succeeded",
+  "input_revision": 1,
+  "input_hash": "673985a8656b799bf44bcfab42088df99db33c5be3c0e267419db4ee640a33d0",
+  "artifact_id": "word-92c153f2b2f184b84e0235aafd7497732c5aa17bf50cf53dcd82af8cf54d43a5",
+  "reservation_id": "1f4022cb-a722-4d4b-926d-32acbb5d8c50",
+  "billing_policy": "authoring_balance_v2",
+  "charged_points": "159900",
+  "checkpoint": {
+    "stages": {
+      "input_lock": {
+        "synthetic": true,
+        "completed_once": true
+      },
+      "materials_ready": {
+        "synthetic": true,
+        "completed_once": true
+      },
+      "model_generation": {
+        "synthetic": true,
+        "completed_once": true
+      },
+      "word_delivery_pair": {
+        "synthetic": true,
+        "preview_content": "合成暂停恢复测试成果",
+        "clean_artifact_id": "word-92c153f2b2f184b84e0235aafd7497732c5aa17bf50cf53dcd82af8cf54d43a5",
+        "revision_artifact_id": "word-92c153f2b2f184b84e0235aafd7497732c5aa17bf50cf53dcd82af8cf54d43a5"
+      }
+    }
+  }
+}

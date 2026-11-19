@@ -1,3 +1,5 @@
+import { onTaskRestart } from './task-restart.js';
+import { taskRestartHtml } from './task-restart.js';
 import { MARKET_LABELS, OFFERING_LABELS, M4_DOCUMENT_LABELS, type M4DocumentType, PROJECT_FIELD_LIMITS } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
@@ -18,7 +20,7 @@ type CollectionView={expanded:string[];results:string[];limit:number;tails:[stri
 const collectionViews=new Map<string,CollectionView>();
 
 export class ProjectBrowser {
-  private items:ProjectItem[]=[];private loaded=false;private busy=false;private disposed=false;
+  private items:ProjectItem[]=[];private loaded=false;private partial=false;private busy=false;private disposed=false;
   private controller=new AbortController();private timer?:ReturnType<typeof setTimeout>;private limit=30;
   private expanded=new Set<string>();private tasks=new Map<string,Dto<'ProjectTasksResponse'>>();private taskErrors=new Map<string,string>();private taskLoading=new Set<string>();
   private results=new Set<string>();
@@ -34,7 +36,7 @@ export class ProjectBrowser {
   private onOnline=()=>{if(this.live()){this.offline=false;this.refreshOnReturn();}};
   private onOffline=()=>{if(this.live()){this.offline=true;this.renderSync();}};
   private reviewHistory:ReviewHistory;
-  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){this.reviewHistory=new ReviewHistory(api);}
+  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){onTaskRestart(this.controller.signal,()=>this.load());this.reviewHistory=new ReviewHistory(api);}
   private live(){return !this.disposed&&this.current();}
   private viewKey(){return JSON.stringify([this.owner,this.q,this.group,this.archiveView,this.legacyKind]);}
   dispose(){
@@ -82,33 +84,39 @@ export class ProjectBrowser {
     if(problem)this.hadSyncProblem=true;else if(recovered)this.hadSyncProblem=false;this.syncProblem=problem;this.syncRendered=true;
     el.setAttribute('aria-live',announce?'polite':'off');
     const last=this.lastSync?`列表上次同步 <time datetime="${esc(this.lastSync)}">${esc(syncTime.format(new Date(this.lastSync)))}</time>`:'尚未完成同步';
-    const message=this.offline?`当前离线，${this.loaded?'保留上次结果，可继续查看已加载内容。':'连接恢复后将重新同步。'}`:working?'正在同步，已展开内容保持可读。':this.stale?'同步未成功，当前显示上次结果。':this.taskErrors.size?'部分任务未能更新，保留已展开记录，请在对应项目重试。':recovered?'已恢复同步，状态每 30 秒自动同步。':'状态每 30 秒自动同步。';
+    const message=this.offline?`当前离线，${this.loaded?'保留已读取内容，连接恢复后重新同步。':'连接恢复后将重新同步。'}`:working?this.partial?'已显示先读取的项目，正在同步其余项目。':'正在同步，已展开内容保持可读。':this.stale?this.partial?'项目同步未完成，当前只显示已读取的项目。':'同步未成功，当前显示上次结果。':this.taskErrors.size?'部分任务未能更新，保留已展开记录，请在对应项目重试。':recovered?'已恢复同步，状态每 30 秒自动同步。':'状态每 30 秒自动同步。';
     el.innerHTML=`<span>${message}</span><span>${last}</span>`;el.dataset.state=this.offline?'offline':this.stale||this.taskErrors.size?'stale':working?'syncing':'current';
   }
   private async load(manual=false){
-    if(!this.live())return;if(this.busy){this.refreshPending=true;this.pendingManual ||= manual;return;}if(this.offline&&!manual){if(!this.loaded){const list=document.querySelector<HTMLElement>('#project-list');if(list){list.setAttribute('aria-busy','false');list.innerHTML='<p class="collection-empty">当前离线。连接恢复后将读取项目与任务。</p>';}}this.renderSync();this.schedule();return;}this.busy=true;clearTimeout(this.timer);this.renderSync();
+    if(!this.live())return;if(this.busy){if(manual){this.refreshPending=true;this.pendingManual=true;}return;}if(this.offline&&!manual){if(!this.loaded){const list=document.querySelector<HTMLElement>('#project-list');if(list){list.setAttribute('aria-busy','false');list.innerHTML='<p class="collection-empty">当前离线。连接恢复后将读取项目与任务。</p>';}}this.renderSync();this.schedule();return;}this.busy=true;clearTimeout(this.timer);this.renderSync();
     const button=document.querySelector<HTMLButtonElement>('#refresh-projects')!;button.setAttribute('aria-disabled','true');document.querySelector('#project-list')!.setAttribute('aria-busy','true');
     try{
-      const items=await loadProjectCollection(c=>this.api.projects(c,{archive:'all',limit:'100'},this.controller.signal),()=>!this.live());
-      if(!items||!this.live())return;this.items=items;this.loaded=true;this.stale=false;this.lastSync=new Date().toISOString();this.offline=!navigator.onLine;document.querySelector<HTMLElement>('#collection-error')!.hidden=true;
+      const items=await loadProjectCollection(c=>this.api.projects(c,{archive:'all',limit:'100'},this.controller.signal),()=>!this.live(),partial=>{
+        // Keep a complete previous snapshot visible during refresh. On first entry,
+        // show each received page without presenting its counts as account totals.
+        if(!this.live()||this.loaded&&!this.partial)return;
+        this.items=partial;this.loaded=true;this.partial=true;this.stale=false;this.paint();this.renderSync();
+      });
+      if(!items||!this.live())return;this.items=items;this.loaded=true;this.partial=false;this.stale=false;this.lastSync=new Date().toISOString();this.offline=!navigator.onLine;document.querySelector<HTMLElement>('#collection-error')!.hidden=true;
       const ids=new Set(items.map(p=>p.project_id));this.expanded=new Set([...this.expanded].filter(id=>ids.has(id)));for(const map of [this.tasks,this.taskErrors,this.taskSynced])for(const id of map.keys())if(!ids.has(id))map.delete(id);
       this.paint();await Promise.allSettled([...this.expanded].map(id=>this.loadTasks(id,true)));
-    }catch(error){if(this.live()){this.stale=true;const node=document.querySelector<HTMLElement>('#collection-error')!;node.hidden=false;node.textContent=(this.loaded?'刷新未成功，当前显示上次同步结果。':'项目与任务未能同步。')+friendlyError(error,'read');}}
+    }catch(error){if(this.live()){this.stale=true;const node=document.querySelector<HTMLElement>('#collection-error')!;node.hidden=false;node.textContent=(this.partial?'项目同步中断，当前仅显示已读取的项目。':this.loaded?'刷新未成功，当前显示上次同步结果。':'项目与任务未能同步。')+friendlyError(error,'read');}}
     finally{if(this.live()){this.busy=false;button.setAttribute('aria-disabled','false');document.querySelector('#project-list')!.setAttribute('aria-busy','false');this.renderSync();if(this.refreshPending){const queuedManual=this.pendingManual;this.refreshPending=false;this.pendingManual=false;await this.load(queuedManual);}else this.schedule();}}
   }
   private paint(){
     if(!this.live()||!this.loaded)return;
     const reading=this.captureReading();
     const base=this.items.filter(p=>(this.archiveView==='all'||Boolean(p.archived_at)===(this.archiveView==='archived'))&&(!this.legacyKind||p.kind===this.legacyKind));
-    for(const k of ['all','attention','active','done']){document.querySelector(`[data-count="${k}"]`)!.textContent=String(base.filter(p=>this.matches(p,k)).length);document.querySelector(`[data-group="${k}"]`)!.setAttribute('aria-pressed',String(this.group===k));}
+    const count=(n:number)=>this.partial?(n?`${n}+`:'…'):String(n);
+    for(const k of ['all','attention','active','done']){document.querySelector(`[data-count="${k}"]`)!.textContent=count(base.filter(p=>this.matches(p,k)).length);document.querySelector(`[data-group="${k}"]`)!.setAttribute('aria-pressed',String(this.group===k));}
     const q=this.q.trim().toLocaleLowerCase();const filtered=base.filter(p=>this.matches(p,this.group)&&(!q||(p.name+' '+(p.issuer_name??'')).toLocaleLowerCase().includes(q)));
     const readingRoot=reading?.root??this.restoring?.reading?.root,index=filtered.findIndex(p=>p.project_id===readingRoot);if(index>=this.limit)this.limit=Math.ceil((index+1)/30)*30;
     const visible=filtered.slice(0,this.limit);
-    document.querySelector('#project-count')!.textContent=String(filtered.length);
-    document.querySelector('#list-count')!.textContent=`显示 ${visible.length} / ${filtered.length} 个项目 · 状态自动同步`;
+    document.querySelector('#project-count')!.textContent=count(filtered.length);
+    document.querySelector('#list-count')!.textContent=this.partial?`显示 ${visible.length} 个 · 已读取 ${this.items.length} 个项目，继续同步…`:`显示 ${visible.length} / ${filtered.length} 个项目 · 状态自动同步`;
     document.querySelector<HTMLButtonElement>('#load-more')!.hidden=visible.length>=filtered.length;
     const list=document.querySelector<HTMLElement>('#project-list')!;
-    list.innerHTML=visible.length?`<div class="collection-table-wrap"><table class="collection-table"><thead><tr><th scope="col">项目名称</th><th scope="col">任务概况</th><th scope="col">最近更新</th><th scope="col">任务与结果</th></tr></thead><tbody>${visible.map(p=>this.row(p)).join('')}</tbody></table></div>`:`<div class="collection-empty"><h3>${this.items.length?'没有找到匹配的项目':'还没有项目'}</h3><p>${this.items.length?'试试其他项目名称、发行人或任务状态。':'新建一个项目，开始准备募集书和项目文件。'}</p>${this.items.length?'<button class="btn secondary" id="clear-project-filters">清除筛选</button>':'<a class="btn primary" href="#/new">新建项目</a>'}</div>`;
+    list.innerHTML=visible.length?`<div class="collection-table-wrap"><table class="collection-table"><thead><tr><th scope="col">项目名称</th><th scope="col">任务概况</th><th scope="col">最近更新</th><th scope="col">任务与结果</th></tr></thead><tbody>${visible.map(p=>this.row(p)).join('')}</tbody></table></div>`:this.partial?'<p class="collection-empty">正在读取更多项目，筛选结果尚未完整…</p>':`<div class="collection-empty"><h3>${this.items.length?'没有找到匹配的项目':'还没有项目'}</h3><p>${this.items.length?'试试其他项目名称、发行人或任务状态。':'新建一个项目，开始准备募集书和项目文件。'}</p>${this.items.length?'<button class="btn secondary" id="clear-project-filters">清除筛选</button>':'<a class="btn primary" href="#/new">新建项目</a>'}</div>`;
     this.tagReadingTargets(list);
     list.querySelector('#clear-project-filters')?.addEventListener('click',()=>{document.querySelector<HTMLInputElement>('#project-search')!.value='';this.group='all';document.querySelector<HTMLSelectElement>('#project-archive')!.value='active';this.filter();});
     list.querySelectorAll<HTMLButtonElement>('[data-tasks]').forEach(b=>b.addEventListener('click',()=>{
@@ -194,7 +202,7 @@ export class ProjectBrowser {
   }
   private taskRow(t:ProjectTask){
     const view=taskView(t);const label=t.document_type&&M4_DOCUMENT_LABELS[t.document_type as M4DocumentType]||taskLabel(t);
-    return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small></div><a class="btn ${this.hasResult(t)?'primary':'secondary'} small" href="${taskHref(t)}">${this.hasResult(t)?'查看结果':view.action} ${ico('chevron')}</a></article>`;
+    return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small>${taskRestartHtml(t,{compact:true})}</div><a class="btn ${this.hasResult(t)?'primary':'secondary'} small" href="${taskHref(t)}">${this.hasResult(t)?'查看结果':view.action} ${ico('chevron')}</a></article>`;
   }
   private async loadTasks(id:string,reset:boolean){
     if(!this.live()||!this.items.some(p=>p.project_id===id))return;

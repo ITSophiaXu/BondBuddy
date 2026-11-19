@@ -1,3 +1,4 @@
+import type { Static } from '@sinclair/typebox';
 import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER } from '@bondbuddy/contracts';
 import { refreshUploadTicket, uploadTicket } from './upload-session.js';
 import { appendProjectMaterialEvent } from './project-material-events.js';import { registerProjectQa } from './project-qa.js';
@@ -57,7 +58,7 @@ import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
 import { admitProjectCreate, admitRunSubmit, admitUploadCreate, reportTrialRejection, sourceHash, TrialLimitProblem, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
 import { installTrialRoutes } from './trial-routes.js';
 import { installPlatformProbeRoutes } from './platform-probe.js';
-import { enqueueAuditPdfQuality, requestAuditPdfQuality, cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
+import { enqueueAuditPdfQuality, requestAuditPdfQuality, cancelMaterialParse, resumeMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
 import { installFactEvidenceReviewRoutes } from './fact-evidence-reviews.js';
@@ -1674,6 +1675,13 @@ export function createServer(settings: Settings = {}) {
   const parseJob='/api/v1/projects/:project_id/materials/:material_id/parse-job';
   app.get(parseJob,{schema:{response:{200:schemas.MaterialParseJobResponse}}},async request=>
     materialParseJobDto(await readMaterialParseJob(db(),await owner(request),param(request,'project_id'),param(request,'material_id'))));
+  app.post(`${parseJob}/resume`,{schema:{body:schemas.MaterialParseResumeRequest,response:{200:schemas.MaterialParseJobResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'project_id');
+    return transaction(db(),async client=>{
+      await project(client,user,id);
+      return materialParseJobDto(await resumeMaterialParse(client,user,id,param(request,'material_id'),body<Static<typeof schemas.MaterialParseResumeRequest>>(request)));
+    });
+  });
   app.post(`${parseJob}/cancel`,{schema:{body:schemas.RunActionRequest,response:{200:schemas.MaterialParseJobResponse}}},async request=>{
     const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id'),traceId=uid();
     try {

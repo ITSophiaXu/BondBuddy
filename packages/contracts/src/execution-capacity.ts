@@ -6,6 +6,8 @@ const id=Type.String({minLength:1,maxLength:128,pattern:'^[A-Za-z0-9:_-]+$'});
 const hash=Type.String({pattern:'^[a-f0-9]{64}$'});
 const epoch=Type.String({pattern:'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'});
 const count=Type.Integer({minimum:0});
+// PostgreSQL integer representation for provider limits and global slot IDs.
+const modelCapacity=Type.Integer({minimum:1,maximum:2147483647});
 const nullable=<T extends TSchema>(s:T)=>Type.Union([s,Type.Null()]);
 export const EXECUTION_NODE_STATES=['starting','ready','draining','drained','stop_submitted','stopped','lost'] as const;
 export const EXECUTION_CLOUD_ACTIONS=['run','start','stop','destroy'] as const;
@@ -38,7 +40,7 @@ export const ExecutionNodeIdentitySchema=obj({account_id:id,region:id,instance_i
 export type ExecutionNodeIdentity=Static<typeof ExecutionNodeIdentitySchema>;
 export const ExecutionNodeContextSchema=obj({identity:ExecutionNodeIdentitySchema,session_id:epoch});
 export type ExecutionNodeContext=Static<typeof ExecutionNodeContextSchema>;
-export const ExecutionCapacityPolicySchema=obj({revision:count,managed_nodes:Type.Boolean(),global_model_limit:Type.Integer({minimum:4,maximum:8,multipleOf:4}),node_model_limit:Type.Union([Type.Literal(4),Type.Literal(8)]),max_nodes:Type.Integer({minimum:1,maximum:2}),budget_available:Type.Boolean(),provider_concurrency_limit:Type.Integer({minimum:1,maximum:64}),provider_policy_sha256:nullable(hash),expense_policy_sha256:nullable(hash),cooldown_until:nullable(Type.String()),launch_blocked_by_operation_id:Type.Optional(nullable(id))});
+export const ExecutionCapacityPolicySchema=obj({revision:count,managed_nodes:Type.Boolean(),global_model_limit:modelCapacity,node_model_limit:Type.Union([Type.Literal(4),Type.Literal(8)]),max_nodes:Type.Integer({minimum:1,maximum:2}),budget_available:Type.Boolean(),provider_concurrency_limit:modelCapacity,provider_policy_sha256:nullable(hash),expense_policy_sha256:nullable(hash),cooldown_until:nullable(Type.String()),launch_blocked_by_operation_id:Type.Optional(nullable(id))});
 export type ExecutionCapacityPolicy=Static<typeof ExecutionCapacityPolicySchema>;
 export const ExecutionNodeSchema=obj({identity:ExecutionNodeIdentitySchema,state:literals(EXECUTION_NODE_STATES),revision:count,source_sha256:hash,image_sha256:hash,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true}),launch_manifest_sha256:hash,expected_services:Type.Array(obj({service_id:id,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1})})),drain_operation_id:nullable(id),cloud_start_operation_id:id,ready_slots:count,active_leases:count,active_model_calls:count,last_heartbeat_at:nullable(Type.String()),idle_since:nullable(Type.String()),stop_operation_id:nullable(id)});
 export type ExecutionNode=Static<typeof ExecutionNodeSchema>;
