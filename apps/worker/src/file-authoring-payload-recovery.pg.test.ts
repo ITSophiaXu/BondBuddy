@@ -28,7 +28,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
   const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
     getIfExistsBounded:async k=>objects.get(k)??null,exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
   const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
-  const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
+  const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,enableRunRuntime:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;seedWork?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
     observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;
