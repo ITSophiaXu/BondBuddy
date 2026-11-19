@@ -290,6 +290,38 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       await event(c,user,id,'workpaper.batch_submitted',{batch_id:batchId,count:selected.length});return batchId;
 }
 
+// A user may start a fresh execution after a proven local timeout was finally
+// failed and its delivery reservation released. Keep supplier usage unknown;
+// an unobserved, conflicting or still-active call continues to block retry.
+async function hasUnresolvedWorkpaperCalls(c:PoolClient,owner:string,batch:string){
+ return !!(await c.query(`SELECT 1 FROM bb_workpaper_attempts a
+  JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.run_id=a.run_id
+  JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+  JOIN bb_model_call_attempts m ON m.owner_user_id=j.owner_user_id AND m.job_id=j.id
+  LEFT JOIN bb_model_call_attempt_runtime t ON t.owner_user_id=m.owner_user_id AND t.attempt_id=m.id
+  LEFT JOIN bb_call_usage u ON u.attempt_id=m.id
+  LEFT JOIN bb_credit_reservations h ON h.owner_user_id=r.owner_user_id AND h.id=r.reservation_id AND h.run_id=r.id
+  WHERE a.owner_user_id=$1 AND a.batch_id=$2 AND m.status='pending_reconcile' AND NOT COALESCE(
+   r.state='failed' AND j.state='failed' AND j.subtype='m4_document_v1' AND r.task_kind='generation'
+   AND j.lease_token IS NULL AND j.lease_until IS NULL AND r.billing_mode='fixed_credits'
+   AND h.state='released' AND h.billing_policy='on_delivery' AND h.finalized_at IS NOT NULL
+   AND m.logical_call_id='m4-document-v1' AND t.adapter='codex_exec' AND t.adapter_version='codex-file-authoring-1'
+   AND t.error_code='MODEL_TIMEOUT' AND t.finish_reason='timeout' AND t.exit_signal IN ('SIGTERM','SIGKILL')
+   AND u.usage_status='unknown' AND u.conflicting_measurements=0
+   AND j.checkpoint#>>'{provider_reconcile_terminal,reconciler}'='codex_no_lookup'
+   AND j.checkpoint#>>'{provider_reconcile_terminal,reason_code}'='provider_reconcile_unrecoverable'
+   AND jsonb_typeof(j.checkpoint#>'{provider_reconcile_terminal,attempt_ids}')='array'
+   AND (j.checkpoint#>'{provider_reconcile_terminal,attempt_ids}') ? m.id
+   AND EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.reservation_id=h.id AND e.kind='release')
+   AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.kind='settle')
+   AND EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=m.id AND o.outcome='pending_reconcile'
+    AND o.error_code='MODEL_TIMEOUT' AND o.finish_reason='timeout' AND o.usage_status='unknown' AND o.result_id IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=m.id AND
+    (o.outcome<>'pending_reconcile' OR o.error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR o.finish_reason IS DISTINCT FROM 'timeout'
+     OR o.usage_status<>'unknown' OR o.result_id IS NOT NULL))
+   AND NOT EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=m.id)
+  ,false) LIMIT 1`,[owner,batch])).rowCount;
+}
 export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
   registerGenerationProgress(app,db,owner,'workpapers');
   const zipCache=new WorkpaperZipCache();
@@ -389,9 +421,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
           LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
           WHERE i.batch_id=$1 AND (NOT(r.state=ANY($2::text[])) OR NOT(j.state=ANY($2::text[])) OR j.lease_token IS NOT NULL OR j.lease_until IS NOT NULL)`,[batch,terminal])).rowCount;
         if(active)throw conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成；等待处理的文件请点击“查看任务”完成处理。');
-        if((await c.query(`SELECT 1 FROM bb_workpaper_attempts a JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.run_id=a.run_id
-          JOIN bb_model_call_attempts m ON m.owner_user_id=j.owner_user_id AND m.job_id=j.id
-          WHERE a.batch_id=$1 AND m.status='pending_reconcile' LIMIT 1`,[batch])).rowCount)
+        if(await hasUnresolvedWorkpaperCalls(c,user,batch))
           throw conflict('PROJECT_RUN_ACTIVE','本批模型调用仍在核对用量，请等待对账完成后重试，避免重复调用。');
         const failed=(await c.query(`SELECT i.item_id FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id
           WHERE i.batch_id=$1 AND (i.state='failed' OR r.state=ANY($2::text[]))`,[batch,['failed','cancelled','rejected','test_completed']])).rows.map(r=>r.item_id);

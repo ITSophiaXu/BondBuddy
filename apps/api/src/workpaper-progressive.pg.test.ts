@@ -12,7 +12,9 @@ import {headerlessCatalogueXlsx} from './workpaper-catalogue-fixture.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {advanceWorkpaperBatch as advanceWorkpaperBatchOnce,pauseSharedWorkpaperBatch} from './workpapers.js';
 import {inputManifestHash} from './production-rule-pin.js';
-import {claim,promoteWordArtifact,finish} from './queue.js';
+import {claim,promoteWordArtifact,finish,recordPotentialCall,recordProviderReconcileUnknown} from './queue.js';
+import {savePromptSnapshot} from './log-ops.js';
+import {recordModelAttemptRuntime,recordProviderCallObservation,type ProviderCallIntent} from './provider-results.js';
 import {registerM4Artifacts} from './m4-workspace.js';
 
 import {flushPerformanceTraces} from './performance-trace.js';
@@ -95,7 +97,7 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000,leg
   assert.equal((await finish(runtimePool,lease,'succeeded',{artifactId:document.artifactId,artifactVersion:document.artifactVersion,blobs})).state,'succeeded');
  };
  const close=async()=>{await app.close();await flushPerformanceTraces(pool,5000);await pool.end();};
- return {pool,user,project,path,base,cat,request,start,read,action,fail,succeed,send,ok,close,setActor:(id:string)=>{actor=id;}};
+ return {pool,blobs,user,project,path,base,cat,request,start,read,action,fail,succeed,send,ok,close,setActor:(id:string)=>{actor=id;}};
 }
 
 test('progressive API: immutable chapter order, eight admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
@@ -512,5 +514,58 @@ test('direct paused batches retain completed siblings and reject child recovery 
   batch=await f.read(batch.batch_id);batch=await f.action(batch,{action:'retry_failed'});
   assert.deepEqual(batch.items.find(i=>i.entry.id===complete!.entry.id),preserved);
   assert.equal(batch.items.find(i=>i.entry.id===blocked!.entry.id)!.attempt,2);
+ }finally{await f.close();}
+});
+
+test('direct retry admits a finally failed observed timeout without rewriting unknown usage or prior billing',{skip:!configured,timeout:180000},async()=>{
+ const f=await fixture('observed-timeout-retry',2,true);
+ try{
+  const pricing=(await f.ok('GET',f.path+'/file-generation')).pricing;
+  f.request.price_version=pricing.price_version;f.request.expected_points=f.request.item_ids.length*Number(pricing.workpaper_points);
+  let batch=await f.ok('POST',f.base+'/batches',{...f.request,progressive:undefined}) as WorkpaperBatch;
+  await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+  const original=batch.items.find(i=>i.run_id)!;assert.ok(original);
+  let lease=await claim(f.pool,60,{runKinds:['generation']});
+  for(let n=0;!lease&&n<50;n++){await new Promise(r=>setTimeout(r,100));lease=await claim(f.pool,60,{runKinds:['generation']});}
+  assert.ok(lease);assert.equal(lease.runId,original.run_id);
+  const run=(await f.pool.query('SELECT * FROM bb_runs WHERE id=$1',[lease.runId])).rows[0];
+  const prompt=await savePromptSnapshot(f.pool,f.blobs,{owner:f.user,projectId:run.project_id,runId:run.id,kind:'model_request',version:1,
+   body:'Synthetic observed timeout; no supplier call.',inputRevision:run.input_revision,inputHash:run.input_hash,templateVersion:'synthetic-timeout-retry'});
+  const intent:ProviderCallIntent={owner_user_id:f.user,project_id:run.project_id,run_id:run.id,job_id:lease.jobId,trace_id:run.id,
+   call_id:randomUUID(),logical_call_id:'m4-document-v1',attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-observed-timeout',prompt_snapshot_ref:prompt};
+  await recordPotentialCall(f.pool,lease,intent.logical_call_id,1,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:prompt});
+  await recordModelAttemptRuntime(f.pool,lease,intent,{adapter:'codex_exec',adapter_version:'codex-file-authoring-1',model_provider:'synthetic',model_config_version:intent.model_config_version,
+   provider_request_id_status:'unknown',framework_thread_id:null,started_at:new Date().toISOString(),duration_ms:5400001,exit_code:null,exit_signal:'SIGTERM',finish_reason:'timeout',error_code:'MODEL_TIMEOUT',tool_attempts:187,pricing_status:'unknown'});
+  await recordProviderCallObservation(f.pool,f.blobs,{...intent,provider_request_id:null,outcome:'pending_reconcile',finish_reason:'timeout',error_code:'MODEL_TIMEOUT',
+   usage:{status:'unknown',input_tokens:null,cached_input_tokens:null,output_tokens:null,reasoning_tokens:null,total_tokens:null},
+   result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null},()=>false,{lease,source:'provider'});
+  assert.equal(await recordProviderReconcileUnknown(f.pool,f.user,run.id,lease.jobId,'codex_no_lookup'),true);
+  await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);assert.equal(batch.pause_reason,'shared_blocked');
+  const oldUsage=(await f.pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[intent.call_id])).rows;
+  const oldObservations=(await f.pool.query('SELECT * FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY id',[intent.call_id])).rows;
+  const checkpoint=(await f.pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0].checkpoint;
+  const url=f.base+'/batches/'+batch.batch_id+'/actions',request={action:'retry_failed',expected_revision:batch.revision};
+  for(const audit of [undefined,{...checkpoint.provider_reconcile_terminal,attempt_ids:[randomUUID()]},{...checkpoint.provider_reconcile_terminal,reconciler:'lookup_error'}]){
+   const changed={...checkpoint};if(audit===undefined)delete changed.provider_reconcile_terminal;else changed.provider_reconcile_terminal=audit;
+   await f.pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[lease.jobId,changed]);
+   assert.equal((await f.send('POST',url,request)).statusCode,409,'missing or mismatched closure proof keeps retry blocked');
+  }
+  await f.pool.query('UPDATE bb_jobs SET checkpoint=$2 WHERE id=$1',[lease.jobId,checkpoint]);
+  const replies=await Promise.all([f.send('POST',url,request),f.send('POST',url,request)]);
+  assert.deepEqual(replies.map(r=>r.statusCode).sort(),[200,409]);batch=await f.read(batch.batch_id);
+  assert.equal(batch.items.find(i=>i.entry.id===original.entry.id)!.attempt,2);
+  assert.equal((await f.pool.query('SELECT state FROM bb_runs WHERE id=$1',[run.id])).rows[0].state,'failed');
+  assert.equal((await f.pool.query('SELECT status FROM bb_model_call_attempts WHERE id=$1',[intent.call_id])).rows[0].status,'pending_reconcile');
+  assert.deepEqual((await f.pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[intent.call_id])).rows,oldUsage);
+  assert.deepEqual((await f.pool.query('SELECT * FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY id',[intent.call_id])).rows,oldObservations);
+  for(let turn=0;turn<8;turn++){
+   await advanceWorkpaperBatch(f.pool);batch=await f.read(batch.batch_id);
+   for(const item of batch.items.filter(i=>i.run_id&&i.state==='queued'))await f.succeed(item.run_id!);
+   if(batch.state==='complete')break;
+  }
+  assert.equal(batch.state,'complete');assert.equal(batch.items.filter(i=>i.state==='succeeded').length,4);
+  const old=(await f.pool.query("SELECT h.state,(SELECT count(*)::int FROM bb_credit_events e WHERE e.reservation_id=h.id AND e.kind='release') releases,(SELECT count(*)::int FROM bb_credit_events e WHERE e.reservation_id=h.id AND e.kind='settle') settlements FROM bb_credit_reservations h WHERE h.run_id=$1",[run.id])).rows[0];
+  assert.deepEqual(old,{state:'released',releases:1,settlements:0});
+  assert.equal((await f.pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[f.user])).rows[0].n,4);
  }finally{await f.close();}
 });
