@@ -1,0 +1,15 @@
+{
+  "issue": 1651,
+  "environment": "local Chromium, real web modules, mocked HTTP",
+  "baseline": {
+    "tests": 2,
+    "failed": 2
+  },
+  "fixed": {
+    "tests": 21,
+    "passed": 21,
+    "failed": 0
+  },
+  "production_changed": false,
+  "real_model_calls": 0
+}

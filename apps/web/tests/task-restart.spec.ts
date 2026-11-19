@@ -68,3 +68,22 @@ for(const placement of ['workpaper','file-check'])test(placement+' paused item c
  },{placement,run:original});
  await expect(page.getByRole('button',{name:'重新启动',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+for(const phase of ['read','resume'] as const)test('polling card replacement during '+phase+' preserves one restart and visible feedback',async({page})=>{
+ let reads=0,posts=0,release!:()=>void;const gate=new Promise<void>(ok=>release=ok);
+ await page.route('**/api/v1/runs/saved-run',async r=>{reads++;if(phase==='read')await gate;await r.fulfill({json:original});});
+ await page.route('**/api/v1/runs/saved-run/resume',async r=>{posts++;if(phase==='resume')await gate;await r.fulfill({json:{...original,state:'queued',stage:'queued'}});});
+ await mount(page);await page.getByRole('button',{name:'重新启动',exact:true}).click();await expect.poll(()=>phase==='read'?reads:posts).toBe(1);
+ await page.evaluate(()=>{const card=document.querySelector<HTMLElement>('[data-task-restart]')!;card.outerHTML=card.outerHTML;});release();
+ await expect.poll(()=>posts,{timeout:3000}).toBe(1);await expect(page.locator('.task-restart [role="status"]')).toContainText('正在排队',{timeout:3000});
+ expect(reads).toBe(1);expect(posts).toBe(1);await expect(page.getByRole('button',{name:'重新启动',exact:true})).toBeHidden();
+});
+
+for(const change of ['route','remove'] as const)test('restart stops when '+change+' invalidates the task context',async({page})=>{
+ let reads=0,posts=0,release!:()=>void;const gate=new Promise<void>(ok=>release=ok);
+ await page.route('**/api/v1/runs/saved-run',async r=>{reads++;await gate;await r.fulfill({json:original});});
+ await page.route('**/api/v1/runs/saved-run/resume',r=>{posts++;return r.fulfill({json:{...original,state:'queued'}});});
+ await mount(page);await page.getByRole('button',{name:'重新启动',exact:true}).click();await expect.poll(()=>reads).toBe(1);
+ await page.evaluate(change=>{if(change==='route')location.hash='#another-task';else document.querySelector('[data-task-restart]')!.remove();},change);
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/v1/runs/saved-run'));release();await(await response).finished();await page.waitForTimeout(200);expect(posts).toBe(0);
+});
