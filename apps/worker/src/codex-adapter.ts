@@ -323,7 +323,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recov
   if (c.credential.kind === 'command') kv.push(
     `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
     `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
-    `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.105.1')}`,
+    `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.109.2')}`,
     `${p}.http_headers.Editor-Plugin-Version=${q('copilot-chat/0.32.3')}`, `${p}.http_headers.User-Agent=${q('GitHubCopilotChat/0.32.3')}`,
     `${p}.http_headers.OpenAI-Intent=${q('conversation-panel')}`, `${p}.http_headers.X-GitHub-Api-Version=${q('2025-04-01')}`);
   else if (c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash')
