@@ -35,7 +35,9 @@ export async function writeWorkspaceEvidence(ctx:StageContext,intent:ProviderCal
  * signal preserves bytes after cancellation without reviving the cancelled task. */
 export async function captureExitedWorkspace(ctx:StageContext,cwd:string,intent:ProviderCallIntent,exit:WorkspaceExit) {
  if(exit.runtime.exit_code===null&&!['SIGTERM','SIGKILL'].includes(exit.runtime.exit_signal??''))return;
- const captureCtx={...ctx,signal:AbortSignal.timeout(30000)};
+ // Real OCR/Word workspaces contain hundreds of files. Keep cleanup bounded,
+ // but allow the full metadata pass and verified object-store round trips.
+ const captureCtx={...ctx,signal:AbortSignal.timeout(5*60*1000)};
  try {
   await saveFileAuthoringRecovery(captureCtx,cwd,intent,{persist:async snapshot=>{
     const payload={version:'model-workspace-evidence-v1' as const,snapshot,exit},bytes=Buffer.from(JSON.stringify(payload));
@@ -49,8 +51,11 @@ export async function captureExitedWorkspace(ctx:StageContext,cwd:string,intent:
     if(!stored||digest(JSON.parse(stored.toString('utf8')))!==digest(payload))throw Error('WORKSPACE_EVIDENCE_STORE_FAILED');
     await writeWorkspaceEvidence(captureCtx,intent,'exit',payload);
   }});
- }catch{
-  await writeWorkspaceEvidence(captureCtx,intent,'capture_failure',{code:'workspace_capture_failed'});
+ }catch(error){
+  const failure=(error as {captureFailure?:unknown})?.captureFailure;
+  const reason=captureCtx.signal.aborted?'capture_timeout':
+   ['unsafe_workspace','capacity_exceeded','storage_failed'].includes(String(failure))?failure:'capture_failed';
+  await writeWorkspaceEvidence(captureCtx,intent,'capture_failure',{code:'workspace_capture_failed',reason});
   throw Error('WORKSPACE_CAPTURE_FAILED');
  }
 }

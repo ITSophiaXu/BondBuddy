@@ -19,7 +19,7 @@ if(!/^(?:npipe:|unix:\/\/\/var\/run\/docker.sock$)/.test(endpoint))throw Error('
 // consume test timeouts. Source/assets stay read-only; only these compiled paths
 // and dependencies are overlaid by private Linux tmpfs mounts.
 const runtimeDirs=['apps/api','apps/worker',...['contracts','domain','rule-pack-registry','rule-applicability-context'].map(p=>'packages/'+p)];
-const packed=spawnSync('tar',['--exclude=node_modules','--exclude=dist','-cf',resolve(evidence,'compiled-runtime.tar'),...runtimeDirs],{cwd:root,encoding:'utf8',timeout:120000});
+const packed=spawnSync('tar',['--exclude=node_modules','--exclude=dist','-cf',resolve(evidence,'compiled-runtime.tar'),...runtimeDirs],{cwd:root,encoding:'utf8',timeout:300000});
 if(packed.error||packed.status)throw Error('Compiled test snapshot failed: '+JSON.stringify({error:packed.error?.message,status:packed.status,signal:packed.signal,stderr:packed.stderr}));
 const types=spawnSync('tar',['-rf',resolve(evidence,'compiled-runtime.tar'),'node_modules/typescript','node_modules/@types','node_modules/undici-types'],{cwd:root,encoding:'utf8',timeout:120000});
 if(types.error||types.status)throw Error('Compiler dependency snapshot failed');
@@ -41,10 +41,12 @@ try{
  const suites=[['stage-recovery',[
  'apps/worker/dist/model-capacity-confirmation.pg.test.js','apps/worker/dist/model-capacity-ownership.pg.test.js','apps/worker/dist/model-call-budget.pg.test.js',
  'apps/worker/dist/execution-node-capacity.pg.test.js','apps/worker/dist/m4-pipeline.pg.test.js',
- 'apps/worker/dist/codex-file-authoring.test.js','apps/worker/src/model-call-budget.connection.test.mjs','apps/worker/dist/workpaper-direct-output.test.js',
+ 'apps/worker/dist/model-workspace-evidence.test.js','apps/worker/dist/codex-file-authoring.test.js','apps/worker/src/model-call-budget.connection.test.mjs','apps/worker/dist/workpaper-direct-output.test.js',
  'apps/worker/dist/file-authoring-recovery.test.js','apps/worker/dist/m4-stages.test.js','apps/worker/dist/provider-reconcile-sweep.pg.test.js','apps/worker/dist/managed-database-permissions.pg.test.js'
 ]]];
  for(const [suite,allFiles] of suites){
+ const unknown=selection.filter(name=>!allFiles.some(file=>file.endsWith('/'+name)));
+ if(unknown.length)throw Error('Unknown tests: '+unknown.join(', '));
  const suiteFiles=selection.length?allFiles.filter(file=>selection.some(name=>file.endsWith('/'+name))):allFiles;
  if(!suiteFiles.length)throw Error('No matching tests');
  const result=docker(['run','--security-opt','no-new-privileges:true','--security-opt','seccomp='+resolve(root,'deploy/m1/security/codex-seccomp.json'),'--rm','--name',name+'-tests','--network',network,'--tmpfs','/tmp:rw,exec,nosuid,nodev,size=1g','--tmpfs','/code/node_modules:rw,exec,nosuid,nodev,size=512m',

@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "in_progress",
+  "real_task_delivery": "failed_first_real_replay",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -43,6 +43,11 @@
       "pass": 7,
       "fail": 0,
       "http": "mocked"
+    },
+    "actual_browser_inspection": {
+      "status": "blocked",
+      "reason": "CUA GetCursorPos access denied",
+      "mocked_tests_unchanged": true
     }
   },
   "prompt_followup_commit": "21ff3b38",
@@ -54,5 +59,27 @@
     "cancelled": 0,
     "migrations": 196,
     "tap_sha256": "1ce8cf05b5a9f758aadfb336e5fcb32865ccc8d40f30f8f18ae65103928b5822"
+  },
+  "actual_owner_isolation": {
+    "tests": 6,
+    "pass": 6,
+    "fail": 0,
+    "artifact_checks": "pending_actual_delivery"
+  },
+  "source_financial_checks": {
+    "sheets_extracted": 12,
+    "tie_outs": 8,
+    "passed": 8,
+    "output_comparison": "pending_actual_delivery"
+  },
+  "capture_budget_followup": {
+    "issue": 1646,
+    "status": "testing",
+    "real_workspaces": 3,
+    "real_files": 654,
+    "real_bytes": 58331072,
+    "real_snapshot_checks": "passed_independent_diagnostic",
+    "regression": "pending",
+    "formal_delivery": "pending"
   }
 }
