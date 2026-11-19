@@ -42,7 +42,7 @@ test('host layout revision: real paid batch, atomic readback failure, original p
   const store=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
   const origin='http://synthetic-workpaper.test';
-  const server=(automatic:boolean)=>createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,enableSubscriptionBilling:automatic,enableOutcomePricing:automatic,principal:async()=>({userId:actor,csrfVerified:true})});
+  const server=(automatic:boolean)=>createServer({pool,blobs,allowedOrigin:origin,historicalBillingFixture:true,enableRunRuntime:true,enableSubscriptionBilling:automatic,enableOutcomePricing:automatic,principal:async()=>({userId:actor,csrfVerified:true})});
   let app=server(false);
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode} ${r.body}`);return r.json();};
