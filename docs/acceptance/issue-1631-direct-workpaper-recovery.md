@@ -32,3 +32,13 @@ node ../../node_modules/@playwright/test/cli.js test tests/workpaper-batch.spec.
 原型为 product-prototype/public/workpaper-batch.html，commit 73f3cb60c362b1ed77329f1c0e5124415c9ba791；对应迁移页 apps/web/src/workpaper-panel.ts。复用原卡片、操作区和逐份列表；手动暂停仍显示“继续文件包”。shared_blocked 的“重试受阻文件并继续”和“查看任务”复用现有 progressive 用语。旧原型没有该共享失败状态，截图展示同尺寸手动暂停基线与失败实现；不冒充精确同状态原型或用户已验收。视觉检查通过，无横向溢出。
 
 无公共枚举语义、新接口、数据库迁移或运行时依赖。API/web 同批集成；#1624 的受限执行角色授权修复需另行纳入统一发布。PR 未合并，未取得用户验收，未部署。最终统一验收待办：固定集成版中原失败任务真实生成、成果下载与内容/全页检查，以及用户实际操作。
+
+## 2026-11-19：已终结超时显式重试（Refs #1650）
+
+真实原输入回放发现，旧 M4 经 codex_no_lookup 正式终结、释放预留后，unknown 调用仍永久挡住 retry_failed。补丁 ac27e204 仅在显式新执行时允许已确认 MODEL_TIMEOUT/timeout/SIGTERM或SIGKILL、无活动 lease、无冲突或结果、终结审计精确绑定 attempt、fixed_credits/on_delivery 预留已 released 且有 release 无 settle 的 m4_document_v1 codex_exec 调用。缺失或不匹配审计、未证明退出及其他类型继续阻止。旧调用、unknown 用量、观察、失败终态和释放记录保持不变，不复活旧 run。
+
+固定集成候选 865c8037d40067834b74a475c4806e71ba112ce9，隔离 PG16 API 集成 17 tests / 17 pass / 0 fail / 0 skip / 0 cancel。新增用例通过正式持久调用/运行时/观察/对账路径生成旧失败，验证缺少/错审计仍拒绝、并发仅一次成功、新四项完成及唯一结算、旧未知用量和观察不变。供应商输出 synthetic；TAP SHA256 0afd90f8676c1d25fc2dc368dc4f556d1025007127b8bfad1e8f7d1f2e55ed0f。
+
+15:29 本地正式 retry_failed API 已 HTTP 200，三条新 run running，第四项 queued；旧三项 failed/unknown/released 均保留。真实模型 Copilot Enterprise / gpt-6-sol / max / yingx_microsoft，独立数据库和存储。worker 源码在本次 API 补丁前后完全未变，活动 worker 容器未重启。最终 Word 正式下载、内容和全部页面、归属与最终结算仍待完成；不能以自动化成果代替真实验收。
+
+无新增迁移或依赖。代码完成，尚未部署，待统一发布；用户尚未验收。
