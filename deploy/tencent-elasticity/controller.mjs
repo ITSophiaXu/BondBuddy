@@ -1,6 +1,6 @@
 import {canonical, planCapacity, requireThat, sha256, validateConfig, requireRetainedRequest} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
-import {requireCostAdmission, costAdmission} from './costcap.mjs';
+import {costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
 import {executionCloudCompletionMatches,executionRunAcceptanceMatches,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
@@ -8,14 +8,18 @@ import {executionCloudCompletionMatches,executionRunAcceptanceMatches,executionS
 /** One existing ops invocation. No polling service, timer or independent task store. */
 export class ExecutionPoolController {
   /** @param {{control: ExecutionCapacityControl, cloud: object, config: object}} options */
-  constructor({control, cloud, config, costSnapshot}) { Object.assign(this, {control, cloud, config, costSnapshot}); }
+  constructor({control, cloud, config, costSnapshot, readInventory, assessExpense}) {
+    Object.assign(this, {control, cloud, config});
+    this.readInventory = readInventory ?? (() => cloud.inventory());
+    this.assessExpense = assessExpense ?? (async inventory => costAdmission(await costSnapshot(inventory),inventory,this.config));
+  }
   async plan(inventory) { return planCapacity(await this.control.snapshot(), inventory, this.config); }
   async start(request, opId, material) {
     validateConfig(this.config, {apply: true});
     requireRetainedRequest(this.config,request.instance_id,request);
     const snapshot = await this.control.snapshot();
-    const inventory = await this.cloud.inventory();
-    requireCostAdmission(await this.costSnapshot(inventory), inventory, this.config);
+    const inventory = await this.readInventory();
+    requireThat((await this.assessExpense(inventory)).allowed, 'CLOUD_COSTCAP_REJECTED');
     const plan = planCapacity(snapshot, inventory, this.config);
     requireThat(['start', 'run'].includes(plan.kind) && plan.instance_id === request.instance_id &&
       plan.capabilities.every(cap => request.capabilities.includes(cap)), 'FRESH_EXPANSION_GATE');
@@ -29,9 +33,9 @@ export class ExecutionPoolController {
     validateConfig(this.config, {apply: true, expenditure: false});
     if (operation.action === 'stop') return this.dispatch(operation);
     requireRetainedRequest(this.config,operation.request.instance_id,operation.request);
-    const inventory = await this.cloud.inventory();
+    const inventory = await this.readInventory();
     let admission={allowed:false};
-    try{admission=costAdmission(await this.costSnapshot(inventory),inventory,this.config);}catch{}
+    try{admission=await this.assessExpense(inventory);}catch{}
     const snapshot=await this.control.snapshot();
     requireThat(snapshot.pending_cloud_reservations===1,'INTENT_PENDING_SCOPE');
     // The sole never-dispatched intent is its own reservation, not additional
@@ -60,7 +64,7 @@ export class ExecutionPoolController {
     const snapshot = await this.control.snapshot();
     const current = snapshot.nodes.find(n => canonical(n.identity) === canonical(identity));
     if (!['draining', 'drained'].includes(current?.state)) {
-      const plan = planCapacity(snapshot, await this.cloud.inventory(), this.config);
+      const plan = planCapacity(snapshot, await this.readInventory(), this.config);
       requireThat(plan.kind === 'drain' && canonical(plan.identity) === canonical(identity) && plan.revision === revision, 'FRESH_DRAIN_GATE');
     }
     const node = await this.control.beginDrain(identity, opId, revision);
@@ -119,7 +123,7 @@ export class ExecutionPoolController {
     if (!['submitted', 'unknown'].includes(op.state)) return op;
     if (!op.identity) {
       requireThat(op.action === 'run', 'UNBOUND_OPERATION');
-      const inventory = await this.cloud.inventory();
+      const inventory = await this.readInventory();
       const candidates = inventory.filter(i => i.create_operation_id === op.operation_id);
       requireThat(candidates.length <= 1, 'UNKNOWN_RUN_INVENTORY_AMBIGUOUS');
       if (!candidates.length) return op; // absence is not proof of rejected Run
