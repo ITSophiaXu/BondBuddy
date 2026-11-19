@@ -105,7 +105,7 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const balance=required?await creditBalanceExact(db,owner):null;
   const files=versionSummaries??await workpaperFileVersions(db,owner,id,false);
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:serializeInt64(b.total_points),charged_points:serializeInt64(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
-    ...(b.progressive_plan?{progressive:{...b.progressive_plan,phase:b.progressive_phase},pause_reason:b.pause_reason}:{}),
+    pause_reason:b.pause_reason,...(b.progressive_plan?{progressive:{...b.progressive_plan,phase:b.progressive_phase}}:{}),
     ...(items.length?{template_mode:items.every(i=>i.has_template)?'selected' as const:items.every(i=>!i.has_template)?'automatic' as const:'mixed' as const}:{}),
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
     items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current,progress=workpaperItemProgress(i);return {entry:i.entry,decision:i.output_decision??i.input_decision??undefined,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),...(progress?{progress}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
@@ -143,7 +143,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
   const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
   const result=await transaction(pool,async c=>{
     const b=(await c.query(`SELECT b.* FROM bb_workpaper_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
-      WHERE (b.state IN ('queued','running') OR b.progressive_plan IS NOT NULL AND b.state IN ('paused','cancelled') AND EXISTS(
+      WHERE (b.state IN ('queued','running') OR (b.progressive_plan IS NOT NULL OR b.max_parallel IS NOT NULL) AND b.state IN ('paused','cancelled') AND EXISTS(
         SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
         WHERE i.batch_id=b.id AND i.state='running' AND r.state IN ('succeeded','failed','cancelled','rejected','test_completed')))
       AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
@@ -290,6 +290,38 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       await event(c,user,id,'workpaper.batch_submitted',{batch_id:batchId,count:selected.length});return batchId;
 }
 
+// A user may start a fresh execution after a proven local timeout was finally
+// failed and its delivery reservation released. Keep supplier usage unknown;
+// an unobserved, conflicting or still-active call continues to block retry.
+async function hasUnresolvedWorkpaperCalls(c:PoolClient,owner:string,batch:string){
+ return !!(await c.query(`SELECT 1 FROM bb_workpaper_attempts a
+  JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.run_id=a.run_id
+  JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+  JOIN bb_model_call_attempts m ON m.owner_user_id=j.owner_user_id AND m.job_id=j.id
+  LEFT JOIN bb_model_call_attempt_runtime t ON t.owner_user_id=m.owner_user_id AND t.attempt_id=m.id
+  LEFT JOIN bb_call_usage u ON u.attempt_id=m.id
+  LEFT JOIN bb_credit_reservations h ON h.owner_user_id=r.owner_user_id AND h.id=r.reservation_id AND h.run_id=r.id
+  WHERE a.owner_user_id=$1 AND a.batch_id=$2 AND m.status='pending_reconcile' AND NOT COALESCE(
+   r.state='failed' AND j.state='failed' AND j.subtype='m4_document_v1' AND r.task_kind='generation'
+   AND j.lease_token IS NULL AND j.lease_until IS NULL AND r.billing_mode='fixed_credits'
+   AND h.state='released' AND h.billing_policy='on_delivery' AND h.finalized_at IS NOT NULL
+   AND m.logical_call_id='m4-document-v1' AND t.adapter='codex_exec' AND t.adapter_version='codex-file-authoring-1'
+   AND t.error_code='MODEL_TIMEOUT' AND t.finish_reason='timeout' AND t.exit_signal IN ('SIGTERM','SIGKILL')
+   AND u.usage_status='unknown' AND u.conflicting_measurements=0
+   AND j.checkpoint#>>'{provider_reconcile_terminal,reconciler}'='codex_no_lookup'
+   AND j.checkpoint#>>'{provider_reconcile_terminal,reason_code}'='provider_reconcile_unrecoverable'
+   AND jsonb_typeof(j.checkpoint#>'{provider_reconcile_terminal,attempt_ids}')='array'
+   AND (j.checkpoint#>'{provider_reconcile_terminal,attempt_ids}') ? m.id
+   AND EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.reservation_id=h.id AND e.kind='release')
+   AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.kind='settle')
+   AND EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=m.id AND o.outcome='pending_reconcile'
+    AND o.error_code='MODEL_TIMEOUT' AND o.finish_reason='timeout' AND o.usage_status='unknown' AND o.result_id IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=m.id AND
+    (o.outcome<>'pending_reconcile' OR o.error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR o.finish_reason IS DISTINCT FROM 'timeout'
+     OR o.usage_status<>'unknown' OR o.result_id IS NOT NULL))
+   AND NOT EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=m.id)
+  ,false) LIMIT 1`,[owner,batch])).rowCount;
+}
 export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
   registerGenerationProgress(app,db,owner,'workpapers');
   const zipCache=new WorkpaperZipCache();
@@ -372,7 +404,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(b.action==='pause'&&['queued','running'].includes(row.state))state='paused';
       else if(b.action==='cancel'&&['queued','running','paused'].includes(row.state))state='cancelled';
       else if(b.action==='resume'&&row.state==='paused'&&row.progressive_phase!=='awaiting_confirmation'){
-        if(row.progressive_plan){
+        {
           if((await c.query("SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id WHERE i.batch_id=$1 AND r.state IN ('paused','awaiting_input') LIMIT 1",[batch])).rowCount)
             throw conflict('PROJECT_RUN_ACTIVE','仍有文件等待处理条件恢复或补充信息，请先点击该文件的“查看任务”完成处理，再继续本批。');
           if(row.pause_reason==='shared_blocked'&&(await c.query("SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id WHERE i.batch_id=$1 AND r.state IN ('failed','cancelled','rejected','test_completed') LIMIT 1",[batch])).rowCount)
@@ -384,18 +416,16 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
         state='queued';
         await c.query("UPDATE bb_workpaper_batches SET progressive_phase='remaining',progressive_retry_items=NULL,progressive_retry_return_phase=NULL WHERE id=$1",[batch]);
       }
-      else if(b.action==='retry_failed'&&(['partial','cancelled'].includes(row.state)||row.progressive_plan&&row.state==='paused'&&(row.progressive_phase==='awaiting_confirmation'||row.pause_reason==='shared_blocked'))){
+      else if(b.action==='retry_failed'&&(['partial','cancelled'].includes(row.state)||row.state==='paused'&&(row.pause_reason==='shared_blocked'||row.progressive_plan&&row.progressive_phase==='awaiting_confirmation'))){
         const active=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
           LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
-          WHERE i.batch_id=$1 AND (NOT(r.state=ANY($2::text[])) OR $3 AND (NOT(j.state=ANY($2::text[])) OR j.lease_token IS NOT NULL OR j.lease_until IS NOT NULL))`,[batch,terminal,!!row.progressive_plan])).rowCount;
+          WHERE i.batch_id=$1 AND (NOT(r.state=ANY($2::text[])) OR NOT(j.state=ANY($2::text[])) OR j.lease_token IS NOT NULL OR j.lease_until IS NOT NULL)`,[batch,terminal])).rowCount;
         if(active)throw conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成；等待处理的文件请点击“查看任务”完成处理。');
-        if(row.progressive_plan&&(await c.query(`SELECT 1 FROM bb_workpaper_attempts a JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.run_id=a.run_id
-          JOIN bb_model_call_attempts m ON m.owner_user_id=j.owner_user_id AND m.job_id=j.id
-          WHERE a.batch_id=$1 AND m.status='pending_reconcile' LIMIT 1`,[batch])).rowCount)
+        if(await hasUnresolvedWorkpaperCalls(c,user,batch))
           throw conflict('PROJECT_RUN_ACTIVE','本批模型调用仍在核对用量，请等待对账完成后重试，避免重复调用。');
         const failed=(await c.query(`SELECT i.item_id FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id
           WHERE i.batch_id=$1 AND (i.state='failed' OR r.state=ANY($2::text[]))`,[batch,['failed','cancelled','rejected','test_completed']])).rows.map(r=>r.item_id);
-        if(!failed.length&&row.progressive_plan)throw conflict('INPUT_REVISION_CONFLICT','本批没有需要重试的失败文件。');
+        if(!failed.length)throw conflict('INPUT_REVISION_CONFLICT','本批没有需要重试的失败文件。');
         const pendingRetry=row.progressive_plan&&row.state!=='cancelled'&&row.progressive_phase==='retry_failed'?(await c.query("SELECT item_id FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND item_id=ANY($2::text[])",[batch,row.progressive_retry_items??[]])).rows.map(r=>r.item_id):[];
         await c.query("UPDATE bb_workpaper_items SET run_id=NULL,state='queued',attempt=attempt+1,error=NULL WHERE batch_id=$1 AND item_id=ANY($2::text[])",[batch,failed]);state='queued';
         const returnPhase=row.state==='cancelled'?'cancelled':row.progressive_phase==='retry_failed'?row.progressive_retry_return_phase??'remaining':['trial','awaiting_confirmation'].includes(row.progressive_phase)?'awaiting_confirmation':'remaining';

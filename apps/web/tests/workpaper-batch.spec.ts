@@ -183,3 +183,25 @@ test('automatic workpaper tariff starts the chosen batch on one click with the s
  await page.goto('/'+href({step:'workpapers'}));await expect(page.locator('.wp-fee-summary')).toContainText('10,374');await expect(page.locator('#wp-start')).toHaveText('开始生成底稿');
  await page.locator('#wp-start').click();await expect.poll(()=>state.requests.length).toBe(1);expect(state.requests[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:10374});await expect(page.locator('#wp-confirm-start')).toHaveCount(0);
 });
+
+
+for(const width of [1440,390])test('direct shared failure exposes retry and preserves manual resume '+width,async({page})=>{
+ const s=await setup(page,4);await page.setViewportSize({width,height:960});
+ const batch:WorkpaperBatch={batch_id:'blocked-direct',topic_id:'topic-direct',catalogue_id:'catalogue-1',revision:4,state:'paused',pause_reason:'shared_blocked',source:s.source,total_points:18000,charged_points:4500,created_at:now,error:'共享模型服务恢复后可重试。',items:s.data.catalogues[0].entries.map((entry,i)=>({entry,run_id:i<2?'direct-run-'+i:null,state:i===0?'succeeded':i===1?'failed':'queued',stage:null,attempt:1,error:null,artifacts:[]}))};
+ s.data.batches=[batch];const actions:any[]=[];
+ await page.route('**/workpapers/batches/blocked-direct/actions',async route=>{actions.push(fixtureRequest(route.request()));batch.state='queued';batch.revision++;await route.fulfill({json:fixtureBody(route,batch)});});
+ await page.goto('/'+href({step:'workpapers',view:'results',batch:batch.batch_id}));
+ const panel=page.locator('[data-wp-batch-id="blocked-direct"]');
+ await expect(panel.getByRole('button',{name:'重试受阻文件并继续',exact:true})).toBeEnabled();await expect(panel.locator('[data-wp-action="resume"]')).toHaveCount(0);
+ if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await panel.screenshot({path:resolve(process.env.BB_UX_EVIDENCE_DIR,'direct-shared-recovery-'+width+'.png')});}
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await panel.getByRole('button',{name:'重试受阻文件并继续',exact:true}).click();expect(actions).toEqual([{action:'retry_failed',expected_revision:4}]);
+ batch.state='paused';batch.pause_reason=null;await page.reload();await expect(panel.getByRole('button',{name:'继续文件包',exact:true})).toBeEnabled();
+});
+
+for(const state of ['running','queued','paused','awaiting_input'] as const)test('direct blocked retry waits for child '+state,async({page})=>{
+ const s=await setup(page,2);const batch:WorkpaperBatch={batch_id:'blocked-active',topic_id:'topic-active',catalogue_id:'catalogue-1',revision:1,state:'paused',pause_reason:'shared_blocked',source:s.source,total_points:9000,charged_points:0,created_at:now,error:null,items:s.data.catalogues[0].entries.map((entry,i)=>({entry,run_id:'child-'+i,state:i?state:'failed',stage:null,attempt:1,error:null,artifacts:[]}))};s.data.batches=[batch];
+ await page.goto('/'+href({step:'workpapers',view:'results',batch:batch.batch_id}));const panel=page.locator('[data-wp-batch-id="blocked-active"]');await expect(panel.getByRole('button',{name:'重试受阻文件并继续',exact:true})).toBeDisabled();
+ if(state==='paused'||state==='awaiting_input'){if(!await panel.locator('details').evaluate(el=>(el as HTMLDetailsElement).open))await panel.locator('summary').click();await expect(panel.getByRole('link',{name:'查看任务',exact:true})).toHaveAttribute('href',/topic=topic-active.*run=child-1/);}
+ await expect(panel.getByRole('button',{name:'结束后续排队',exact:true})).toBeEnabled();
+});
