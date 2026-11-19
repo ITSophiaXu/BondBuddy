@@ -302,7 +302,13 @@ class Editor:
         """Add a period to a rectangular table without widening its original grid."""
         if table.tag != q('tbl'):
             error('WORD_EDIT_NODE_KIND_MISMATCH')
-        if capability_limits(table) or table.findall('.//' + q('tbl')):
+        limits = capability_limits(table)
+        if any(limit in limits for limit in ('existing_revisions', 'fields_or_embedded_objects', 'section_break')) or table.findall('.//' + q('tbl')):
+            error('WORD_EDIT_COMPLEX_COLUMN_UNSUPPORTED')
+        # Vertical merges do not change a row's physical cell count; the new
+        # column is independent and must not inherit vMerge. Horizontal spans
+        # and irregular grids still need a different grid-splitting design.
+        if any(n.tag in {q('gridSpan'), q('hMerge'), q('gridBefore'), q('gridAfter')} for n in table.iter()):
             error('WORD_EDIT_COMPLEX_COLUMN_UNSUPPORTED')
         grid = table.find(q('tblGrid'))
         rows = table.findall(q('tr'))
@@ -338,7 +344,11 @@ class Editor:
             if not isinstance(texts, list) or len(texts) != len(ps) or not ps or source.findall(q('tbl')):
                 error('WORD_EDIT_COMPLEX_CELL_UNSUPPORTED')
             added = ET.Element(q('tc'))
-            added.append(copy.deepcopy(source.find(q('tcPr'))))
+            copied = copy.deepcopy(source.find(q('tcPr')))
+            merge = copied.find(q('vMerge'))
+            if merge is not None:
+                copied.remove(merge)
+            added.append(copied)
             for p, value in zip(ps, texts):
                 added.append(self.clone_paragraph(p, text_value(value)))
             additions.append(added)
