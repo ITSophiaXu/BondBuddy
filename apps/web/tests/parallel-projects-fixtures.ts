@@ -45,7 +45,7 @@ export function fixture() {
   const state = { projects, tasks, owner: ownerId, authenticated: true, calls: [] as Call[], errors: [] as string[], unexpected: [] as string[],
     projectReads: [] as (string | undefined)[], taskReads: [] as Read[], artifactReads: [] as string[], runReads: [] as string[],
     failProjects: false, failTask: undefined as ((projectId: string, cursor?: string) => boolean) | undefined,
-    projectGate: undefined as (() => Promise<void>) | undefined,
+    projectGate: undefined as ((cursor?: string) => Promise<void>) | undefined,
     taskGate: undefined as ((projectId: string, cursor?: string) => Promise<void>) | undefined,
     archiveIntent: undefined as { projectId: string; archived: boolean } | undefined,
     malformedTask: undefined as 'foreign-root' | 'duplicate-run' | undefined };
@@ -67,7 +67,7 @@ export function boundaryFixture() {
 }
 const installed = new WeakMap<Page, State>();
 export const mutations = (state: State) => state.calls.filter(call => call.method !== 'GET');
-export function projectPage(state: State): Dto<'ProjectListResponse'> {
+export function projectPage(state: State, cursor?: string, limit = 100): Dto<'ProjectListResponse'> {
   if (state.owner !== ownerId) return { items: [], page: { has_more: false, next_cursor: null } };
   const items = state.projects.map(p => {
     const tasks = state.tasks.get(p.project_id) ?? [], latest = tasks[0] ?? null;
@@ -77,7 +77,10 @@ export function projectPage(state: State): Dto<'ProjectListResponse'> {
         attention: tasks.length ? tasks.filter(t => ['awaiting_input', 'paused', 'failed', 'rejected', 'cancelled', 'test_completed'].includes(t.state)).length : 1,
         completed: tasks.filter(t => t.state === 'succeeded').length, total: tasks.length, latest, recent_result: result } };
   }).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  return { items, page: { has_more: false, next_cursor: null } };
+  const start = cursor ? Number(cursor) : 0;
+  if (!Number.isInteger(start) || start < 0 || start > items.length) throw new Error(`Unknown synthetic project cursor ${cursor}`);
+  const chunk = items.slice(start, start + limit), has_more = start + chunk.length < items.length;
+  return { items: chunk, page: { has_more, next_cursor: has_more ? String(start + chunk.length) : null } };
 }
 function taskPage(state: State, projectId: string, cursor?: string): Dto<'ProjectTasksResponse'> {
   const all = state.tasks.get(projectId) ?? [], prefix = `parallel-cursor:${projectId}:`;
@@ -119,7 +122,8 @@ export async function install(page: Page, state = fixture()) {
       if (path === '/auth/recovery/info') return reply(route, 'RecoveryInfoResponse', { enabled: false, support_contact: null, link_minutes: 30 });
       if (path === '/projects') {
         checked('ProjectListQuery', Object.fromEntries(url.searchParams)); state.projectReads.push(url.searchParams.get('cursor') ?? undefined);
-        const snapshot = structuredClone(projectPage(state)); await state.projectGate?.();
+        const cursor = url.searchParams.get('cursor') ?? undefined;
+        const snapshot = structuredClone(projectPage(state, cursor, Number(url.searchParams.get('limit') ?? 100))); await state.projectGate?.(cursor);
         if (state.failProjects) return problem(route, 503, 'DATA_UNAVAILABLE');
         return reply(route, 'ProjectListResponse', snapshot);
       }
