@@ -31,5 +31,19 @@
   },
   "real_task_delivery": "in_progress",
   "user_acceptance": false,
-  "production_deployment": false
+  "production_deployment": false,
+  "web": {
+    "typecheck": "passed",
+    "vite_build": "passed",
+    "http": 200,
+    "current_asset": "main-m5MQo3u5.js",
+    "browser": {
+      "channel": "msedge",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "http": "mocked"
+    }
+  },
+  "prompt_followup_commit": "e194ef81"
 }
