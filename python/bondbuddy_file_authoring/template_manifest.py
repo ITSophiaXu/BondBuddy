@@ -69,7 +69,7 @@ def capability_limits(node):
     return limits
 
 
-def describe_node(node_id, part, node, ids=None, formats=None):
+def describe_node(node_id, part, node, ids=None, formats=None, parts=None):
     ids = ids or {}
     def property_ref(value):
         raw = property_xml(value)
@@ -118,6 +118,11 @@ def describe_node(node_id, part, node, ids=None, formats=None):
                 else:
                     runs.append({'properties_ref': key, 'text_length': len(text), 'run_count': 1})
         result['runs'] = runs
+        if parts is not None:
+            from .embedded_images import describe_image
+            image = describe_image(parts, part, node)
+            if image is not None:
+                result['image_edit'] = image
     elif node.tag == q('tbl'):
         rows = node.findall(q('tr'))
         result.update(properties=property_ref(node.find(q('tblPr'))),
@@ -135,10 +140,10 @@ def describe_node(node_id, part, node, ids=None, formats=None):
     return result
 
 
-def describe_nodes(nodes, formats=None, selected=None):
+def describe_nodes(nodes, formats=None, selected=None, parts=None):
     ids = {id(node): node_id for node_id, (_, node) in nodes.items()}
     selected = nodes if selected is None else selected
-    return [describe_node(node_id, part, node, ids, formats) for node_id, (part, node) in selected.items()]
+    return [describe_node(node_id, part, node, ids, formats, parts) for node_id, (part, node) in selected.items()]
 
 
 def build_manifest(source: Path):
@@ -164,7 +169,7 @@ def build_manifest(source: Path):
             base = styles[base]['based_on']
         style['inheritance_chain'] = chain
     formats = {}
-    described = describe_nodes(nodes, formats)
+    described = describe_nodes(nodes, formats, parts=parts)
     numbering = {}
     if 'word/numbering.xml' in parts:
         for node in xml(parts['word/numbering.xml']):
@@ -190,6 +195,6 @@ def build_manifest(source: Path):
                          for part, root in roots.items() for section in root.iter(q('sectPr'))],
             'resources': [{'part': part, 'sha256': sha(raw), 'byte_size': len(raw)} for part, raw in parts.items()],
             'supported_operations': ['replace_text', 'replace_cell_text', 'insert_paragraph', 'insert_row', 'insert_column',
-                                     'insert_table', 'delete_table', 'add_comment'],
+                                     'insert_table', 'delete_table', 'add_comment', 'remove_image'],
             'unsupported_operations': ['change_cell_merges', 'move_section', 'edit_field'],
             'visual_review': 'not_run'}
