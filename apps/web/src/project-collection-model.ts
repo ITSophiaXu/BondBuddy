@@ -54,10 +54,12 @@ export async function authoringTasks(read:(cursor?:string)=>Promise<Dto<'Project
   return [...items.values()];
 }
 /** Do not display partial pagination as a complete account count. */
-export async function loadProjectCollection(read:(cursor?:string)=>Promise<Dto<'ProjectListResponse'>>,aborted:()=>boolean){
+export async function loadProjectCollection(read:(cursor?:string)=>Promise<Dto<'ProjectListResponse'>>,aborted:()=>boolean,onPartial?:(items:ProjectItem[])=>void){
   const items=new Map<string,ProjectItem>(),seen=new Set<string>();let cursor:string|undefined;
   do{const page=await read(cursor);if(aborted())return null;for(const p of page.items)items.set(p.project_id,p);
-    if(!page.page.has_more)break;const next=page.page.next_cursor;if(!next||seen.has(next))throw Error('Project pagination did not advance');seen.add(next);cursor=next;
+    if(!page.page.has_more)break;const next=page.page.next_cursor;if(!next||seen.has(next))throw Error('Project pagination did not advance');seen.add(next);
+    onPartial?.([...items.values()].sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||b.project_id.localeCompare(a.project_id)));
+    cursor=next;
   }while(true);
   return [...items.values()].sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||b.project_id.localeCompare(a.project_id));
 }

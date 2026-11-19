@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-19",
+  "base": "a0f082450dbcb4eab271471bb5fabcf5d5ea2067",
+  "issue": 1645,
+  "status": "code_complete_not_deployed",
+  "tests": {
+    "web_unit": {
+      "pass": 1208,
+      "fail": 0
+    },
+    "targeted_unit": {
+      "pass": 36,
+      "fail": 0,
+      "included_in_web_unit": true
+    },
+    "browser": {
+      "pass": 17,
+      "fail": 0,
+      "kind": "real components, synthetic HTTP"
+    },
+    "parse_resume_postgresql": {
+      "pass": 1,
+      "fail": 0
+    },
+    "billing_postgresql": {
+      "pass": 2,
+      "fail": 0
+    },
+    "contracts": {
+      "synthetic_examples": 184,
+      "internal_examples": 12,
+      "passed": true
+    }
+  },
+  "limits": [
+    "An existing queue fixture fails reading an absent manifest on both modified and untouched HEAD server; original Azurite queue case skipped without Azurite.",
+    "No real model, production account, production database or deployment used."
+  ],
+  "dependencies": {
+    "new_packages": false,
+    "new_migrations": false,
+    "release_components": [
+      "web",
+      "api"
+    ]
+  }
+}

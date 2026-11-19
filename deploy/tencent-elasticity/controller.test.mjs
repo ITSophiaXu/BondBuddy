@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, chmod, symlink, rm, readFile} from 'node:fs/promises';
+import {mkdtemp, chmod, symlink, rm, readFile, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {ExecutionPoolController} from './controller.mjs';
@@ -37,7 +37,7 @@ test('one shared image launches both role slots with distinct public bindings an
   }
   assert.equal(launches,2);
 });
-const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, max_nodes: 2}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
+const snapshot = () => ({policy: {revision: 1, managed_nodes: true, budget_available: true, node_model_limit: 4, global_model_limit: 4, provider_concurrency_limit: 4, max_nodes: 2, expense_policy_sha256:h}, nodes: [], pending_cloud_reservations: 0, active_model_calls: 0, groups: [], effective_queued_work: 0});
 const quote = {version:'execution-cloud-price-bounds-v1',currency:'CNY',account_id:config.account_id,region:config.region,policy_revision:1,valid_from:'2026-01-01T00:00:00Z',valid_until:'2030-01-01T00:00:00Z',fixed_commitments:['secret','snapshot'].map(kind=>({kind,upper_bound_cny:0,evidence_ref:'synthetic/fixed-zero',evidence_sha256:h,enforced_bound_sha256:h})),components:['compute','disk','ip','egress','network','secret'].map(kind=>({kind,running_cny_per_node_hour:kind==='compute'?.8:.08,stopped_cny_per_node_hour:kind==='compute'?0:.08,evidence_ref:'synthetic/pricing',evidence_sha256:h,enforced_bound_sha256:h}))};
 config.quote_sha256=sha256(canonical(quote));
 const safeInventory = () => [{account_id:config.account_id,region:config.region,instance_id:'ins-a1',role_name:'node-a',instance_state:'RUNNING',observed_at:new Date().toISOString(),evidence_ref:'synthetic/cloud',evidence_sha256:h}];
@@ -58,7 +58,7 @@ test('automatic zero floor waits for effective demand and budget, while validati
   assert.equal(planCapacity(s,[{instance_id:'ins-a1',instance_state:'STOPPED'}],zero).kind,'start');
   assert.equal(planCapacity({...s,policy:{...s.policy,budget_available:false}},[],zero).reason,'budget');
   assert.equal(planCapacity({...s,pending_cloud_reservations:1},[],zero).reason,'pending_cloud_operation');
-  assert.equal(planCapacity(snapshot(),[],{...config,phase:'single_node_validation'}).kind,'run');
+  assert.equal(planCapacity({...snapshot(),active_model_calls:4},[],{...config,phase:'single_node_validation'}).kind,'run');
 });
 
 test('automatic zero floor drains the final healthy idle node but refuses lease, unknown and missing-idle shortcuts',()=>{
@@ -102,10 +102,32 @@ test('cannot drain sole ready node, resident, or sole capability when another no
   other.capabilities = ['review'];
   assert.equal(planCapacity({...snapshot(), nodes: [node, other]}, [{instance_state: 'RUNNING'}, {instance_state: 'RUNNING'}], config).identity.instance_id, 'ins-b2');
 });
-test('stop charging validation has no bootstrap cycle; global8 still needs provider approval', () => {
+test('stop charging validation has no bootstrap cycle; above baseline needs provider approval', () => {
   assert.doesNotThrow(() => validateConfig({...config, phase: 'single_node_validation', stop_charging_verified: false}, {apply: true}));
   assert.throws(() => validateConfig({...config, stop_charging_verified: false}, {apply: true}), /STOP_CHARGING/);
-  assert.throws(() => validateConfig({...config, global_model_limit: 8}, {apply: true}), /PROVIDER_BUDGET/);
+  for (const limit of [5, 8, 17, 67, 2147483647]) {
+    assert.throws(() => validateConfig({...config, global_model_limit: limit}, {apply: true}), /PROVIDER_BUDGET/);
+    assert.doesNotThrow(() => validateConfig({...config, global_model_limit: limit, provider_budget_review_sha256: h}, {apply: true}));
+  }
+  for (const limit of [0, -1, 4.5, '67', 2147483648]) {
+    assert.throws(() => validateConfig({...config, global_model_limit: limit}), /CAPACITY_BOUND/);
+  }
+});
+test('a provider-backed PG limit can drive expansion without a duplicate controller limit', () => {
+  const c={...config,min_running:0,node_model_limit:8,provider_budget_review_sha256:h};
+  delete c.global_model_limit;
+  const s=snapshot();
+  Object.assign(s.policy,{node_model_limit:8,global_model_limit:67,provider_concurrency_limit:67,provider_policy_sha256:h});
+  s.active_model_calls=8;
+  s.effective_queued_work=1;
+  s.groups=[{capability:'review',effective_queued_work:1,oldest_wait_seconds:60,available_run_slots:0}];
+  const inventory=[...safeInventory(),{instance_id:'ins-b2',instance_state:'STOPPED'}];
+  assert.deepEqual(planCapacity(s,inventory,c),{kind:'start',instance_id:'ins-b2',capabilities:['review']});
+  assert.equal(planCapacity(s,inventory,{...c,global_model_limit:8}).reason,'policy_mismatch');
+  assert.equal(planCapacity(s,inventory,{...c,provider_budget_review_sha256:'b'.repeat(64)}).reason,'provider_budget_unverified');
+  assert.equal(planCapacity({...s,policy:{...s.policy,provider_concurrency_limit:8}},inventory,c).reason,'policy_mismatch');
+  assert.equal(planCapacity({...s,active_model_calls:67},inventory,c).kind,'hold');
+  assert.equal(planCapacity({...s,policy:{...s.policy,budget_available:false}},inventory,c).reason,'budget');
 });
 test('daily engineering costcap includes delayed bills, unknowns, drift and safe drain; no empty bill=zero', () => {
   assert.equal(costAdmission(expense(), [], config).allowed, true);
@@ -269,6 +291,26 @@ test('cost producer failure closes authoritative admission, yet progresses alrea
   await handler.tick();assert.equal(budget,false);assert.equal(closed,1);assert.equal(drains,1);
 });
 
+test('newly missing inventory or cost evidence at the final launch gate still fences claims', async () => {
+  for(const source of ['inventory','expense']){
+    const configWithDemand={...config,min_running:0};
+    const s=snapshot();
+    s.groups=[{capability:'authoring',effective_queued_work:1,oldest_wait_seconds:600,available_run_slots:0}];
+    let inventories=0,estimates=0,reservations=0;
+    const control={snapshot:async()=>s,listPendingOperations:async()=>[],reserveStart:async()=>{reservations++;},
+      setAdmissionBudget:async(_,available)=>{s.policy.budget_available=available;}};
+    const handler=createExecutionPoolOpsHandler({control,configPath:'synthetic',dependencies:{
+      readConfig:async()=>configWithDemand,clientToken:async id=>sha256(id),
+      cloud:{inventory:async()=>{if(++inventories===2&&source==='inventory')throw Error('inventory read failed');return [];}},
+      costSnapshot:async inv=>{const observed=expense(inv);if(++estimates===2&&source==='expense')observed.unknown_liability_cny=49;return observed;},
+    }});
+    await handler.tick();
+    assert.equal(inventories,2);
+    assert.equal(s.policy.budget_available,false);
+    assert.equal(reservations,0);
+  }
+});
+
 test('unknown Run recovery binds each exact role slot without redispatch or manufacturing ACK', async () => {
   for(const slot of [0,1]){
     const r=request();r.launch_manifest_sha256=sha256(canonical(runParameters(config,r,sha256('op1'),bootstrapUserData(config,r,slot),slot,'op1')));
@@ -314,4 +356,50 @@ test('fixed secret and snapshot commitments are reserved in full and survive the
  assert.equal(produceExpenseSnapshot({ledger:next,inventory:[],quote:q,config:c}).fixed_commitments_upper_bound_cny,10.4);
  const missing={...q,fixed_commitments:q.fixed_commitments.filter(c=>c.kind!=='snapshot')};
  assert.throws(()=>produceExpenseSnapshot({ledger,inventory:[],quote:missing,config:{...c,quote_sha256:sha256(canonical(missing))}}),/EXPENSE_FIXED_COMMITMENTS_REQUIRED/);
+});
+
+
+test('only explicit enrollment waiting can request bootstrap retry; no runtime effect has occurred',async()=>{
+ for(const code of ['NODE_ENROLLMENT_PENDING','NODE_ENROLLMENT_DEADLINE','NODE_ROLE_MISMATCH','CLOUD_HTTP_UNCERTAIN']){
+   let effects=0;
+   await assert.rejects(bootstrapNode({publicManifest:{version:'execution-bootstrap-v1'},metadata:identity,
+     broker:{enroll:async()=>{throw Error(code);}},runtime:{verifyArtifacts:async()=>effects++},writeEnvelope:async()=>effects++}),error=>{
+       assert.equal(error.bootstrapRetrySafe===true,['NODE_ENROLLMENT_PENDING','NODE_ENROLLMENT_DEADLINE'].includes(code));return true;
+     });assert.equal(effects,0);
+ }
+});
+
+
+test('delayed starting node permits only an affordable demanded spare and both starting enrollments advance',async()=>{
+ const {issueNodeEnrollment}=await import('./enrollment.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'bb-delayed-node-')),secrets=new Map();let at=Date.now(),reserved=0,closed=0;
+ const cfg={...config,registration_directory:dir,node_secrets:config.node_secrets.map((x,i)=>({...x,service_template_file:join(dir,`service-${i}.json`)}))};
+ for(const d of cfg.node_secrets)await writeFile(d.service_template_file,'{}',{mode:0o600});
+ const op={operation_id:'delayed-start',action:'start',state:'completed',identity,provider_request_id:'start-ack',request:request(),cloud_observation:{...observation(),instance_state:'RUNNING',latest_operation:'StartInstances',latest_operation_request_id:'start-ack'}};
+ const transport={call:async(_,action,p)=>{
+   const key=p.SecretName+':'+p.VersionId;
+   if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...secrets.keys()].filter(k=>k.startsWith(p.SecretName+':')).map(k=>({VersionId:k.split(':')[1]}))};
+   if(action==='GetSecretValue'){if(!secrets.has(key)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:secrets.get(key)};}
+   if(action==='PutSecretValue'){assert(!secrets.has(key));secrets.set(key,p.SecretString);return {};}
+   throw Error('unexpected cloud mutation');
+ }};
+ const operations=new Map([[op.operation_id,op]]);
+ let inventory=safeInventory(),allowed=true;
+ const s={...snapshot(),nodes:[{identity,state:'starting',cloud_start_operation_id:op.operation_id}],effective_queued_work:1,groups:[{capability:'authoring',effective_queued_work:1,oldest_wait_seconds:600,available_run_slots:0}]};
+ const control={snapshot:async()=>s,listPendingOperations:async()=>[],loadOperation:async id=>operations.get(id),
+   setAdmissionBudget:async(_r,v)=>{s.policy.budget_available=v;closed++;},reserveStart:async r=>{reserved++;return {state:'submitted',request:r};}};
+ const handler=createExecutionPoolOpsHandler({control,configPath:'synthetic',enrollmentBinder:async()=>{},expenseLedger:async()=>({operations:[],nodes:[]}),dependencies:{now:()=>at,readConfig:async()=>cfg,clientToken:async id=>sha256(id),
+   cloud:{transport,describe:async id=>inventory.find(n=>n.instance_id===id),inventory:async()=>inventory},costSnapshot:async i=>({...expense(i),...(allowed?{}:{spent_upper_bound_cny:1000})})}});
+ try{
+   await issueNodeEnrollment({operation:op,slot:0,config:cfg,transport,serviceTemplate:{},bind:async()=>{},now:()=>at});
+   await handler.tick();assert.equal(reserved,0);
+   at+=600001;await handler.tick();assert.equal(reserved,1);assert.equal(closed,0);assert.equal(s.nodes[0].state,'starting');
+   inventory=[...safeInventory(),{...safeInventory()[0],instance_id:'ins-b2',role_name:'node-b'}];
+   const second={...op,operation_id:'second-delayed-start',identity:{...identity,instance_id:'ins-b2'}};operations.set(second.operation_id,second);
+   s.nodes.push({identity:second.identity,state:'starting',cloud_start_operation_id:second.operation_id});
+   await issueNodeEnrollment({operation:second,slot:1,config:cfg,transport,serviceTemplate:{},bind:async()=>{},now:()=>at-600001});
+   await handler.tick();assert.equal(reserved,1);
+   assert([...secrets.values()].map(v=>JSON.parse(v)).some(v=>v.operation_id===second.operation_id&&v.enrollment_generation===1));
+   allowed=false;await handler.tick();assert.equal(reserved,1);assert.equal(s.policy.budget_available,false);
+ }finally{await rm(dir,{recursive:true});}
 });

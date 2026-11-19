@@ -1,5 +1,6 @@
 {
   "version": 3,
+  "execution_bootstrap": true,
   "node": "REPLACE_WITH_REGISTERED_INSTANCE_ID",
   "state_directory": "/var/lib/bondbuddy-diagnostics",
   "compose_projects": ["bondbuddy-execution"],

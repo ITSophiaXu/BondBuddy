@@ -136,7 +136,7 @@ export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', '
 export const ERROR_CATEGORIES = ['validation', 'auth', 'material_parse', 'ocr', 'model_provider', 'tool', 'queue', 'export', 'delivery', 'metering', 'internal'] as const;
 // #16 contained model adapter (internal worker/#79 codes; never shown as a public API error).
 export const MODEL_ADAPTER_KINDS = ['codex_exec'] as const;
-export const MODEL_ADAPTER_ERROR_CODES = ['MODEL_ADAPTER_CONFIG_INVALID', 'MODEL_SPAWN_FAILED', 'MODEL_TOOL_ATTEMPT_BLOCKED', 'MODEL_OUTPUT_SCHEMA_INVALID', 'MODEL_TIMEOUT', 'MODEL_STREAM_BROKEN', 'MODEL_TURN_FAILED', 'MODEL_PROVIDER_REQUEST_REJECTED', 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE', 'MODEL_CONTEXT_ROTATION_REQUIRED', 'MODEL_PROVIDER_BALANCE_EXHAUSTED', 'MODEL_PROVIDER_AUTH_FAILED', 'MODEL_PROVIDER_RATE_LIMITED', 'MODEL_PROCESS_EXIT_NONZERO', 'MODEL_CANCELLED', 'MODEL_OUTPUT_TOO_LARGE', 'MODEL_RESULT_STORE_FAILED', 'MODEL_USAGE_PENDING', 'MODEL_PRIOR_ATTEMPT_UNRESOLVED'] as const;
+export const MODEL_ADAPTER_ERROR_CODES = ['MODEL_ADAPTER_CONFIG_INVALID', 'MODEL_SPAWN_FAILED', 'MODEL_TOOL_ATTEMPT_BLOCKED', 'MODEL_OUTPUT_SCHEMA_INVALID', 'MODEL_TIMEOUT', 'MODEL_STREAM_BROKEN', 'MODEL_TURN_FAILED', 'MODEL_PROVIDER_REQUEST_REJECTED', 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE', 'MODEL_PROVIDER_OUTPUT_LIMIT', 'MODEL_CONTEXT_ROTATION_REQUIRED', 'MODEL_PROVIDER_BALANCE_EXHAUSTED', 'MODEL_PROVIDER_AUTH_FAILED', 'MODEL_PROVIDER_RATE_LIMITED', 'MODEL_PROCESS_EXIT_NONZERO', 'MODEL_CANCELLED', 'MODEL_OUTPUT_TOO_LARGE', 'MODEL_RESULT_STORE_FAILED', 'MODEL_USAGE_PENDING', 'MODEL_PRIOR_ATTEMPT_UNRESOLVED'] as const;
 export const MODEL_ADAPTER_OUTCOMES = ['completed', 'failed', 'pending_reconcile', 'confirmed_not_sent'] as const;
 export const MODEL_ADAPTER_USAGE_STATUSES = ['measured', 'pending', 'unknown'] as const;
 // #17/#13/#76 durable material parse seam. One job per owner + material version + parser version.
@@ -356,6 +356,7 @@ export const schemas = {
   RunActionRequest: obj({ reason: Type.String({ minLength: 1 }) }),
   AuditPdfQualityCheckRequest: AuditPdfQualityCheckRequestSchema,
   MaterialParseJobResponse: MaterialParseJobSchema,
+  MaterialParseResumeRequest: obj({job_id:id,material_version:revision,material_sha256:hash}),
   RunEvent: RunEventSchema,
   RunEventsResponse: obj({ items: Type.Array(RunEventSchema), next_cursor: nullable(Type.Integer({ minimum: 0 })) }),
   ProjectEvent: ProjectEventSchema,
@@ -506,6 +507,7 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/events', 'Read current owner material events after the project-local sequence (50 by default, at most 100)', 'ProjectEventsResponse', 200, undefined, [404, 422]),
   op('post', '/projects/{project_id}/materials/{material_id}/pdf-quality', 'Ensure or retry the immutable audit PDF resolution inspection', 'MaterialParseJobResponse', 200, 'AuditPdfQualityCheckRequest', [404, 422]),
   op('get', '/projects/{project_id}/materials/{material_id}/parse-job', 'Read the durable parse job of the current material version', 'MaterialParseJobResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/materials/{material_id}/parse-job/resume', 'Requeue the same paused material version and keep completed checkpoints', 'MaterialParseJobResponse', 200, 'MaterialParseResumeRequest', [404, 409]),
   op('post', '/projects/{project_id}/materials/{material_id}/parse-job/cancel', 'Cancel a non-final parse job; exactly one final state wins', 'MaterialParseJobResponse', 200, 'RunActionRequest', [404, 409]),
   op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read the latest persisted historical recognition; 409 CAPABILITY_NOT_READY while its parse job is pending', 'RecognitionResponse', 200, undefined, [404, 409]),
   op('patch', '/projects/{project_id}/materials/{material_id}/source-profile', 'Correct source recognition with revision (contract only)', 'RecognitionResponse', 200, 'RecognitionPatchRequest', [404, 409]),

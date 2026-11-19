@@ -64,8 +64,9 @@ test('file-update failure entry promises its recorded task state rather than an 
 });
 test('collection pagination never turns partial pages into totals; empty and abort are distinct',async()=>{
   const item=(id:string):ProjectItem=>({project_id:id,name:id,draft_revision:1,updated_at:'2026-10-20T00:00:00Z'});
-  let n=0;const rows=await loadProjectCollection(async()=>++n===1?{items:[item('a')],page:{has_more:true,next_cursor:'2'}}:{items:[item('a'),item('b')],page:{has_more:false,next_cursor:null}},()=>false);
-  assert.equal(rows?.length,2);
+  const partial:string[][]=[];
+  let n=0;const rows=await loadProjectCollection(async()=>++n===1?{items:[item('a')],page:{has_more:true,next_cursor:'2'}}:{items:[item('a'),item('b')],page:{has_more:false,next_cursor:null}},()=>false,items=>partial.push(items.map(p=>p.project_id)));
+  assert.deepEqual(partial,[['a']]);assert.equal(rows?.length,2);
   await assert.rejects(loadProjectCollection(async()=>({items:[item('a')],page:{has_more:true,next_cursor:'same'}}),()=>false));
   assert.equal(await loadProjectCollection(async()=>({items:[],page:{has_more:false,next_cursor:null}}),()=>true),null);
 });

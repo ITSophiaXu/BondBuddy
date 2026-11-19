@@ -1,3 +1,4 @@
+import { onTaskRestart } from './task-restart.js';
 import { canReviewFirstDraft, checkedFirstDraftExclusions, sameFirstDraftExclusions } from './first-draft-confirmation';
 import type { FirstDraftConfirmationRequest, FirstDraftExclusionsResponse, ProspectusVersions } from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
@@ -100,6 +101,11 @@ export function readinessMessage(reason: string, lastProcessingStage?: string, r
   if (runState === 'failed' && reason === 'provider_reconcile_project_inactive') return '所属项目已归档或删除，本轮任务已失败。已保存的处理记录仍保留。';
   if (runState === 'failed' && ['provider_reconcile_unrecoverable','provider_reconcile_unknown_exhausted'].includes(reason)) return '本轮处理未能恢复，任务已失败。已保存材料和处理记录仍保留；可在项目中明确开始新一轮任务。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
+  if (reason === 'file_authoring_output_limit_recovery_pending') return '编制服务的单步输出达到上限，正在核对已保存的进度。通过核对后将继续原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_recovery_unavailable') return runState === 'failed'
+    ? '编制服务的单步输出达到上限，本轮无法从已核验的进度继续。已保存材料仍保留，请联系支持核对本轮任务。'
+    : '编制服务的单步输出达到上限，目前无法核实可接续的进度。请联系支持核对原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_retries_exhausted') return '编制服务多次达到单步输出上限，已停止自动重试。已保存材料与处理记录仍保留，请联系支持核对。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
   if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“继续修改”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';
@@ -208,7 +214,7 @@ export class ProjectExecution {
     private initialNotice = '', private onDelivered?:()=>void,
     private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string,
     private onMaterialsEditable?:(editable:boolean)=>void,
-    private readAdoptedVersion?:()=>ProspectusVersion|null) {}
+    private readAdoptedVersion?:()=>ProspectusVersion|null) {onTaskRestart(this.controller.signal,()=>this.poll());}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
@@ -550,14 +556,12 @@ export class ProjectExecution {
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
-    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
+    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress,{availablePoints:this.charge?.progress?.available_points})}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
-      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
-        ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
-          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun && !this.nextRequested ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
+      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested ? '<button class="button secondary" type="button" id="resume-run">撤销暂停并继续</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${!activeRun && !this.nextRequested ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}?${esc(withProjectContext(new URLSearchParams()).toString())}">查看此前成功成果</a>` : ''}`;
     const creditDetails = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details');
     if (creditDetails) creditDetails.open = creditDetailsOpen;

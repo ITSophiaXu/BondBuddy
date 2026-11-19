@@ -1,3 +1,4 @@
+import { onTaskRestart } from './task-restart.js';
 import {uploadPicker,uploadPickerContent} from './upload-picker';
 import {orderedUploadPipeline,UploadPreparationError} from './upload-scheduler';
 import { documentDeliverable } from './document-deliverable';
@@ -131,6 +132,7 @@ export class ReviewWorkspace {
 
   constructor(private api: ApiClient, private owner: string, private projectId: string,
     private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string,private handoffQuery=new URLSearchParams(),private routeChanged?:(hash:string)=>void) {
+    onTaskRestart(this.controller.signal,()=>this.refresh());
     this.reviewApi = new ReviewApi(api,projectId,this.controller.signal);
     this.readable = new ReadableReview(api,projectId,this.controller.signal,source=>void this.prepareFollowup(source));
     this.handling = new RevisionHandlingDialog(api);

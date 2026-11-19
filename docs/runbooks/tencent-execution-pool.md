@@ -132,7 +132,7 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 新登记首次发行前，按完整持久操作历史回收准确旧 epoch 的凭据版本。只有原创建／Start ACK、identity 和 pins 匹配，且旧 epoch 已有非空原 ACK、StopInstances／SUCCESS／STOPPED／STOP_CHARGING 的完成证明，才可回收仍有效的旧登记或 TLS 版本；当前、未决、未知和不透明版本保留。十版本硬界不扩大，清理后仍无空位则关闭新发行。删除先在既有私有签发 vault 留下准确 Secret／VersionId／内容 hash 的派发标记；未知 Delete 只精确回读，未知 Put 不再次清理或重发。首次 Get 加单次最多 31 调用清理、Put 与最终 Get，合计每节点每控制 tick 最多 34 次；同 tick 的另一节点续证由原 68 次预留覆盖。
 
-六轮 SSM 扫描受 180 秒总期限约束；默认 IMDS 取证未接外层 signal，末次最多另需 5 秒，之后不再发 TC3。十分钟登记 vault 过期后的恢复仍关闭新增，不能通过换 token／版本／epoch 或重发未知 Put 恢复；该恢复出口仍待实现。
+六轮 SSM 扫描受 180 秒总期限约束；默认 IMDS 取证未接外层 signal，末次最多另需 5 秒，之后不再发 TC3。十分钟登记 vault 过期后，当前恢复实现仅在原不可变版本已精确回读确认时，发行至多三个派生版本，沿用同一 token／epoch／已完成云操作；未知 Put 不得重发。k 个已确认前序版本加入保留集，额外 k 次确认加退休清理与新发行仍不超过每节点 34 次。节点 broker 必须先升级以识别派生版本；参见[启动恢复验收与发布接续](../acceptance/tencent-pool-recovery-2026-11-18.md)。
 
 ## 受限私网出口
 
