@@ -42,3 +42,13 @@ node ../../node_modules/@playwright/test/cli.js test tests/workpaper-batch.spec.
 15:29 本地正式 retry_failed API 已 HTTP 200，三条新 run running，第四项 queued；旧三项 failed/unknown/released 均保留。真实模型 Copilot Enterprise / gpt-6-sol / max / yingx_microsoft，独立数据库和存储。worker 源码在本次 API 补丁前后完全未变，活动 worker 容器未重启。最终 Word 正式下载、内容和全部页面、归属与最终结算仍待完成；不能以自动化成果代替真实验收。
 
 无新增迁移或依赖。代码完成，尚未部署，待统一发布；用户尚未验收。
+
+## 18:49：最新develop兼容复验（未激活）
+
+开发分支对齐截至本次核验的develop beabb1aa；#1628代码合并f384d380，#1633代码合并ad095951，组合兼容候选固定f92e7cff51cd67925ac138d4e4b72d1eb8a239a4。底稿重试页面一处冲突保留受阻retry保护与查看任务入口，采用新版“重新启动本批”文案；两个工作区对应页面及API重试代码在换行规范化后相同。
+
+完整核对API/worker/contracts源码993文件、12,857,670字节，编译通过，产物1675文件（worker450/API840）。前端先重建共享contracts后通过类型检查及Vite构建，产物写独立目录，没有覆盖活动网页。全新隔离PG16/Azurite/native sandbox执行198个迁移；worker 98/98、API 18/18、网页既有重启/同批保留单元测试11/11，三轮均0 fail/skip/cancel，分别记录，供应商行为synthetic。worker TAP SHA256 93fb787741b998de447a68d63b5e472e756d3913714e454033fc686b35fe2f0a；API TAP 976e284dd9f8f31da9f0a7a844dcca9b8381080635c9b334f1d86b536c3123fe；网页 TAP e63ac06bf40d5a8a1350c0961c84d0e7d03359d2ff0613f669a3513fa4759729。
+
+覆盖精确/同时收集诊断、不可变旧回执兼容、退出快照、续租提交丢回包与失权停止、并发容量、旧未知用量、重试后唯一结算、暂停解析重启及同批成功成果保留。当前最新已观察GitHub head46727751的7项CI均未启动，注释明确为账户payments/spending limit，不能记为CI通过。
+
+兼容候选未激活，也未在活动本地数据库应用新增develop迁移。实际仍API865c8037、M4 worker77310bdb、M1 87d60ab9；本地入口5518。原输入真实模型仍3项M4和M1运行、1项M4等槽，尚无正式成功文件。正式Word/ZIP、全页、关键事实、归属与最终唯一结算继续待验收，用户未验收；代码完成，尚未部署，待统一发布。
