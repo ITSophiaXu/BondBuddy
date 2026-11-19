@@ -105,6 +105,42 @@ def _merged_header_height(table, row):
     if minimum<=int(height.get(W+'val')) or minimum>2160:return None
     return height,minimum
 
+def _single_line_body_row(table,row):
+    """Only permit page flow when every cell's explicit text fits one line.
+    Multi-line names and paragraphs retain their original row keep setting.
+    """
+    columns=table.findall('./'+W+'tblGrid/'+W+'gridCol')
+    if not columns or any(not c.get(W+'w','').isdigit() for c in columns):return False
+    if any(row.find('./'+W+'trPr/'+W+k) is not None for k in ('gridBefore','gridAfter')):return False
+    width_index=0
+    for cell in row.findall(W+'tc'):
+        span=cell.find('./'+W+'tcPr/'+W+'gridSpan');n=span.get(W+'val','1') if span is not None else '1'
+        if not n.isdigit() or int(n)<1 or width_index+int(n)>len(columns):return False
+        width=sum(int(c.get(W+'w')) for c in columns[width_index:width_index+int(n)]);width_index+=int(n)
+        paragraphs=cell.findall(W+'p')
+        if len(paragraphs)!=1 or next(paragraphs[0].iter(W+'br'),None) is not None:return False
+        paragraph=paragraphs[0];text=_text(paragraph)
+        if not text:continue
+        sizes=[]
+        for run in paragraph.findall(W+'r'):
+            if next(run.iter(W+'t'),None) is None:continue
+            size=run.find('./'+W+'rPr/'+W+'sz')
+            if size is None or not size.get(W+'val','').isdigit():return False
+            sizes.append(int(size.get(W+'val'))*10)
+        if not sizes:return False
+        for side in ('left','right'):
+            margin=cell.find('./'+W+'tcPr/'+W+'tcMar/'+W+side)
+            if margin is None:margin=table.find('./'+W+'tblPr/'+W+'tblCellMar/'+W+side)
+            if margin is None or not margin.get(W+'w','').isdigit():return False
+            width-=int(margin.get(W+'w'))
+        # Full em for all characters is deliberately conservative for Latin and
+        # digits; unknown indentation/line breaks never receive this exception.
+        ind=paragraph.find('./'+W+'pPr/'+W+'ind')
+        if ind is not None and any(v not in ('0','0.0') for v in ind.attrib.values()):return False
+        if len(text)*max(sizes)*1.1>width:return False
+    return width_index==len(columns)
+
+
 def normalize_workpaper_layout(source, output):
     source, output=Path(source),Path(output)
     before=source.read_bytes()
@@ -157,7 +193,7 @@ def normalize_workpaper_layout(source, output):
             # cantSplit clips in some renderers. Merged/nested rows are excluded.
             for row in rows[len(headers):]:
                 flag=row.find('./'+W+'trPr/'+W+'cantSplit')
-                if not _enabled(flag) or next(row.iter(W+'vMerge'),None) is not None or next(row.iter(W+'hMerge'),None) is not None or next(row.iter(W+'tbl'),None) is not None:continue
+                if not _enabled(flag) or not _single_line_body_row(table,row) or next(row.iter(W+'vMerge'),None) is not None or next(row.iter(W+'hMerge'),None) is not None or next(row.iter(W+'tbl'),None) is not None:continue
                 flag.set(W+'val','0')
                 split_changes.append({'table':list(body.findall(W+'tbl')).index(table),'row':rows.index(row)})
             previous=table.getprevious()

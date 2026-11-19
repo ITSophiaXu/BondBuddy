@@ -48,6 +48,7 @@ class WorkpaperPaginationTest(unittest.TestCase):
             a,b,c=[Path(d)/x for x in ('a','b','c')]
             table=self.table().replace('<w:tr><w:tc>', '<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc>')
             table=table.replace('<w:tc><w:p><w:r><w:t>2', '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p><w:r><w:t>2')
+            table=table.replace('<w:tbl>','<w:tbl><w:tblPr><w:tblCellMar><w:left w:w="108"/><w:right w:w="108"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>').replace('<w:r>','<w:r><w:rPr><w:sz w:val="21"/></w:rPr>')
             self.package(a,table);r=normalize_workpaper_layout(a,b)
             self.assertEqual(r['changed_split_rows'],1);self.assertEqual(r['row_split_changes'],[{'table':0,'row':1}])
             with ZipFile(b) as z:rows=list(E.fromstring(z.read('word/document.xml')).iter(W+'tr'))
