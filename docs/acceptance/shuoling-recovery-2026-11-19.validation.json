@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "M4_formal_verified_M1_v4_official_pair_succeeded_content_acceptance_failed_1667",
+  "real_task_delivery": "M4_formal_verified_M1_v4_pair_succeeded_content_failed_1667_v5_normal_continuation_running",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -1212,5 +1212,98 @@
     },
     "user_acceptance": false,
     "production_deployment": false
+  },
+  "image_fix": {
+    "main_code_commit": "836e2172c0df1b7f5315e5535f055b29a8e508f3",
+    "local_candidate_commit": "489ab045a04d59f01a2230248804e0ab85494575",
+    "validation": {
+      "at": "2026-11-19T17:50:35.521Z",
+      "commit": "489ab045a04d59f01a2230248804e0ab85494575",
+      "main_pr_code_commit": "836e2172c0df1b7f5315e5535f055b29a8e508f3",
+      "worker_regression": {
+        "tests": 30,
+        "pass": 30,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "migrations": 196,
+        "tap_sha256": "f641b212d0d332df3cc8431b83ae03077c3aad0f141f853ed2a1e9f806d1ab73",
+        "scope": "isolated original API/worker capsule, actual Python tools, synthetic provider; all first/repair/recovery prompt combinations"
+      },
+      "complete_worker_typecheck": true,
+      "typecheck_scope": "isolated complete worker compilation passed; final worker source and all 452 runtime bytes identical to active 1d51b2a8",
+      "python_specialized": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "includes_tool_metadata_help": true
+      },
+      "previous_python_fixed": {
+        "tests": 59,
+        "pass": 59,
+        "fail": 0,
+        "scope": "before metadata-only help relocation; initial Windows CLI encoding failure retained separately"
+      },
+      "previous_python_related": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0
+      },
+      "initial_candidate_failure": {
+        "tests": 31,
+        "pass": 30,
+        "fail": 1,
+        "reason": "full guidance exceeded 64KiB in real composed recovery prompt; moved to existing readonly manifest and inspect, did not raise limit or truncate"
+      },
+      "actual_source_cli_help": {
+        "actual_source": true,
+        "diagnostic_only": true,
+        "official_delivery": false,
+        "image_sha256": "89ac69844908ba6bb54d9b3cd7081cd634e55db4cbae9f52f82557d2b7a8f6cd",
+        "guide_sha256": "1eb7adac70919315feea69193b742799ab8cf06b3d342f385b3eaf8059356e7b",
+        "guide_bytes": 1002,
+        "stdout_bytes": 2722,
+        "input_and_original_and_operations_unchanged": true,
+        "first_prompt_expanded": false
+      },
+      "runtime_diff": {
+        "at": "2026-11-19T17:45:43.068Z",
+        "commit": "489ab045a04d59f01a2230248804e0ab85494575",
+        "worker_files": 452,
+        "worker_bytes_identical_to_active": true,
+        "old_python_files": 118,
+        "new_python_files": 119,
+        "added": [
+          "bondbuddy_file_authoring/embedded_images.py"
+        ],
+        "changed": [
+          "bondbuddy_file_authoring/fixed_edit.py",
+          "bondbuddy_file_authoring/template_manifest.py"
+        ],
+        "removed": [],
+        "preserved_other_python_files": 116,
+        "active_runtime_changed": false
+      },
+      "active_runtime_changed": false,
+      "production_deployment": false
+    },
+    "activation": {
+      "state": "verified",
+      "worker_files": 452,
+      "python_files": 119,
+      "all_hashes_match": true,
+      "protected_services_unchanged": true
+    },
+    "normal_continuation": {
+      "run_id": "930e17d6-e1c1-4ca6-8ea6-5984e0be9d05",
+      "input_revision": 3,
+      "input_hash": "7345499fd5b27608563ba385e87644e13f1cea793c31327d2f4ea3acff21fc27",
+      "previous_output_run": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+      "previous_output_sha256": "d84842c0d9dd0bcd8f70864cd555d4fa0b39a3506825c1c72e0175c06efd2215",
+      "seeded": false,
+      "state": "running",
+      "points": 8864,
+      "formal_image_acceptance": "pending"
+    }
   }
 }
