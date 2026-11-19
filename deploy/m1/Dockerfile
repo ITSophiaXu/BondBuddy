@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY product-prototype/public/workpaper-entry.css product-prototype/public/
 COPY product-prototype/public/upload-progress.css product-prototype/public/
-COPY product-prototype/public/subscription-billing.css product-prototype/public/subscription-topup.css product-prototype/public/billing-price-admin.css product-prototype/public/payment-experience.css product-prototype/public/
+COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/payment-experience.css product-prototype/public/
 COPY apps apps
 # Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
 COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
