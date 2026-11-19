@@ -456,5 +456,56 @@
     ],
     "formal_delivery": false,
     "user_acceptance": false
+  },
+  "develop_compatibility": {
+    "at": "2026-11-19T10:50:08.274Z",
+    "integration_commit": "f92e7cff51cd67925ac138d4e4b72d1eb8a239a4",
+    "develop_base": "beabb1aad449c63149d826ae68b6dd6c28bb1dae",
+    "pr1628_code_commit": "f384d3802eac8817c2b6aec075414f64951e1a61",
+    "pr1633_code_commit": "ad09595192b950ac644616aaa3105db8951b3dda",
+    "source_files_verified": 993,
+    "compiled_files": 1675,
+    "migrations": 198,
+    "worker": {
+      "tests": 98,
+      "pass": 98,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "93fb787741b998de447a68d63b5e472e756d3913714e454033fc686b35fe2f0a"
+    },
+    "api": {
+      "tests": 18,
+      "pass": 18,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "976e284dd9f8f31da9f0a7a844dcca9b8381080635c9b334f1d86b536c3123fe"
+    },
+    "web": {
+      "at": "2026-11-19T10:39:00.019Z",
+      "commit": "f92e7cff51cd67925ac138d4e4b72d1eb8a239a4",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "e63ac06bf40d5a8a1350c0961c84d0e7d03359d2ff0613f669a3513fa4759729",
+      "scope": "existing task restart and batch preservation unit tests",
+      "typecheck": "passed",
+      "vite_build": "passed",
+      "active_runtime_changed": false
+    },
+    "model_behavior": "synthetic",
+    "production_connections": false,
+    "active_runtime_changed": false,
+    "formal_delivery": false,
+    "user_acceptance": false,
+    "ci": {
+      "last_observed_head": "46727751bd6f722a796e5a7123fc327af3f7adce",
+      "jobs": 7,
+      "status": "not_started_billing_or_spending_limit",
+      "proof_sha256": "20958dbc1390c2a52417154c610f284d24a9d71b40186d9f008f1a4e6f5ff6af"
+    }
   }
 }
