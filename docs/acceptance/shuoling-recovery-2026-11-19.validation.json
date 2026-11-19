@@ -280,6 +280,125 @@
         ],
         "formal_delivery": false
       }
-    ]
+    ],
+    "real_failed_output_replay": {
+      "at": "2026-11-19T09:55:28.734Z",
+      "candidate": "77310bdb2304ee395406e990b5432afded46daaf",
+      "outputs": 6,
+      "all_still_rejected": true,
+      "real_inputs": true,
+      "provider_call": false,
+      "formal_delivery": false,
+      "report_sha256": "a020024a77baf51a8a0059323afc02977b4e6374ac288e290c52bfc6a2bd58ab",
+      "cases": [
+        {
+          "entry": "1-5-8-1",
+          "attempt": 1,
+          "primary": "WORKPAPER_TABLE_INCOMPLETE",
+          "issues": [
+            {
+              "code": "WORKPAPER_TABLE_INCOMPLETE",
+              "file": "workpaper-coverage.json",
+              "source_span_count": 267
+            },
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 279
+            }
+          ]
+        },
+        {
+          "entry": "1-5-8-1",
+          "attempt": 2,
+          "primary": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+          "issues": [
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 10
+            }
+          ]
+        },
+        {
+          "entry": "1-5-9-1",
+          "attempt": 1,
+          "primary": "WORKPAPER_CONTENT_LINKS_MISSING",
+          "issues": [
+            {
+              "code": "WORKPAPER_CONTENT_LINKS_MISSING",
+              "file": "file-links.json",
+              "source_span_count": 10
+            },
+            {
+              "code": "WORKPAPER_TABLE_INCOMPLETE",
+              "file": "workpaper-coverage.json",
+              "source_span_count": 989
+            },
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 1040
+            }
+          ]
+        },
+        {
+          "entry": "1-5-9-1",
+          "attempt": 2,
+          "primary": "WORKPAPER_CONTENT_LINKS_MISSING",
+          "issues": [
+            {
+              "code": "WORKPAPER_CONTENT_LINKS_MISSING",
+              "file": "file-links.json",
+              "source_span_count": 10
+            },
+            {
+              "code": "WORKPAPER_TABLE_INCOMPLETE",
+              "file": "workpaper-coverage.json",
+              "source_span_count": 989
+            },
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 1040
+            }
+          ]
+        },
+        {
+          "entry": "1-5-9-2",
+          "attempt": 1,
+          "primary": "WORKPAPER_TABLE_INCOMPLETE",
+          "issues": [
+            {
+              "code": "WORKPAPER_TABLE_INCOMPLETE",
+              "file": "workpaper-coverage.json",
+              "source_span_count": 845
+            },
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 905
+            }
+          ]
+        },
+        {
+          "entry": "1-5-9-2",
+          "attempt": 2,
+          "primary": "WORKPAPER_TABLE_INCOMPLETE",
+          "issues": [
+            {
+              "code": "WORKPAPER_TABLE_INCOMPLETE",
+              "file": "workpaper-coverage.json",
+              "source_span_count": 798
+            },
+            {
+              "code": "WORKPAPER_TABLE_OUTPUT_INCOMPLETE",
+              "file": "file-links.json",
+              "source_span_count": 858
+            }
+          ]
+        }
+      ]
+    }
   }
 }
