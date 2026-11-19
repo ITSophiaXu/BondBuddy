@@ -1,3 +1,4 @@
+import {enrollmentVersionId,ENROLLMENT_RECOVERY_GENERATIONS} from './enrollment-version.mjs';
 import {randomBytes} from 'node:crypto';
 import {open, mkdir} from 'node:fs/promises';
 import {constants} from 'node:fs';
@@ -94,7 +95,7 @@ export function createSsmEnrollmentBroker({config, transport, now = Date.now, wa
       requireThat(envelope.identity?.account_id===config.account_id&&envelope.identity.region===config.region&&
         envelope.identity.instance_id===metadata.instance_id&&envelope.role_id===config.role_id&&
         /^[a-f0-9-]{36}$/.test(envelope.identity.epoch??'')&&envelope.expires_at<=now()+900000&&
-        envelope.operation_completed===true&&envelope.operation_id===version_id&&
+        envelope.operation_completed===true&&enrollmentVersionId(envelope.operation_id,envelope.enrollment_generation??0)===version_id&&
         envelope.source_sha256===config.source_sha256&&envelope.image_sha256===config.image_sha256&&
         canonical(envelope.services)===canonical(config.services),'NODE_SECRET_BINDING');
       candidates.push(envelope);
@@ -132,30 +133,48 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     operation.provider_request_id && operation.identity.account_id === config.account_id && operation.identity.region === config.region,
     'ISSUER_SCOPE');
   requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(operation.operation_id), 'SECRET_VERSION_BOUND');
-  const transportCredentials=descriptor.pg_issuer?await issueTransportCredentials(operation.identity,descriptor.pg_issuer,{now,operation}):serviceTemplate.transport_credentials;
-  const proposed = {...serviceTemplate,...(transportCredentials?{transport_credentials:transportCredentials}:{}), identity: operation.identity, role_id: descriptor.role_id,
-    services: operation.request.services, source_sha256: operation.request.source_sha256,
-    image_sha256: operation.request.image_sha256, launch_manifest_sha256: operation.request.launch_manifest_sha256,
-    registration_token: randomBytes(32).toString('base64url'), expires_at: now() + 600000,
-    operation_id: operation.operation_id, provider_request_id:operation.provider_request_id, operation_completed: true,
-    operation_action:operation.action,...(operation.action==='run'?{run_acceptance:operation.run_acceptance,run_creation:operation.cloud_observation?.run_creation}:{})};
-  // Own credential vault persists the SAME token/payload across PG bind or SSM
-  // publish timeouts. This is not an independent operation queue.
   await mkdir(config.registration_directory, {recursive: true, mode: 0o700});
-  const vaultPath = `${config.registration_directory}/${sha256(operation.operation_id)}.json`;
-  let payload;
-  try {
-    const f = await open(vaultPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-    try {await f.writeFile(canonical(proposed)); await f.sync();} finally {await f.close();}
-    payload = proposed;
-  } catch (e) {if (e.code !== 'EEXIST') throw e; payload = await readPrivateJson(vaultPath);}
-  requireThat(payload.operation_id === operation.operation_id && canonical(payload.identity) === canonical(operation.identity) &&
-    payload.provider_request_id===operation.provider_request_id && payload.expires_at > now() + 60000 &&
-    payload.launch_manifest_sha256 === operation.request.launch_manifest_sha256 && canonical(payload.services)===canonical(operation.request.services),
-    'ENROLLMENT_VAULT_CONFLICT');
+  const originalPath = `${config.registration_directory}/${sha256(operation.operation_id)}.json`;
+  let payload, vaultPath, versionId, previous;
+  for(let generation=0;generation<=ENROLLMENT_RECOVERY_GENERATIONS;generation++) {
+    versionId=enrollmentVersionId(operation.operation_id,generation);
+    vaultPath=generation===0?originalPath:`${originalPath}.enrollment-${generation}`;
+    try { payload=await readPrivateJson(vaultPath); }
+    catch(error) {
+      if(error.code!=='ENOENT')throw error;
+      const transportCredentials=descriptor.pg_issuer?await issueTransportCredentials(operation.identity,descriptor.pg_issuer,{now,operation}):serviceTemplate.transport_credentials;
+      const proposed = {...serviceTemplate,...(transportCredentials?{transport_credentials:transportCredentials}:{}), identity: operation.identity, role_id: descriptor.role_id,
+        services: operation.request.services, source_sha256: operation.request.source_sha256,
+        image_sha256: operation.request.image_sha256, launch_manifest_sha256: operation.request.launch_manifest_sha256,
+        registration_token: previous?.registration_token??randomBytes(32).toString('base64url'), expires_at: now() + 600000,
+        operation_id: operation.operation_id, provider_request_id:operation.provider_request_id, operation_completed: true,
+        ...(generation?{enrollment_generation:generation}:{}),
+        operation_action:operation.action,...(operation.action==='run'?{run_acceptance:operation.run_acceptance,run_creation:operation.cloud_observation?.run_creation}:{})};
+      try {
+        const f=await open(vaultPath,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
+        try {await f.writeFile(canonical(proposed));await f.sync();}finally{await f.close();}
+        payload=proposed;
+      } catch(error) {if(error.code!=='EEXIST')throw error;payload=await readPrivateJson(vaultPath);}
+    }
+    requireThat(payload.operation_id===operation.operation_id && canonical(payload.identity)===canonical(operation.identity) &&
+      payload.provider_request_id===operation.provider_request_id && Number.isFinite(payload.expires_at) &&
+      (payload.enrollment_generation??0)===generation &&
+      (!previous||payload.registration_token===previous.registration_token) &&
+      payload.source_sha256===operation.request.source_sha256&&payload.image_sha256===operation.request.image_sha256&&
+      payload.launch_manifest_sha256===operation.request.launch_manifest_sha256&&canonical(payload.services)===canonical(operation.request.services),
+      'ENROLLMENT_VAULT_CONFLICT');
+    if(payload.expires_at>now()+60000)break;
+    // Resolve the previous exact immutable publication before issuing another.
+    // A lost ACK with absent/different readback cannot be bypassed by expiry.
+    const confirmed=await transport.call('ssm','GetSecretValue',{SecretName:descriptor.secret_name,VersionId:versionId});
+    requireThat(confirmed.SecretName===descriptor.secret_name&&confirmed.VersionId===versionId&&
+      confirmed.SecretString===canonical(payload),'SECRET_PUBLISH_UNCONFIRMED');
+    requireThat(generation<ENROLLMENT_RECOVERY_GENERATIONS,'ENROLLMENT_RECOVERY_EXHAUSTED');
+    previous=payload;
+  }
   await bind(operation.identity, operation.operation_id, payload.registration_token);
-  const get = () => transport.call('ssm', 'GetSecretValue', {SecretName: descriptor.secret_name, VersionId: operation.operation_id});
-  const matches = r => r.SecretName === descriptor.secret_name && r.VersionId === operation.operation_id &&
+  const get = () => transport.call('ssm', 'GetSecretValue', {SecretName: descriptor.secret_name, VersionId: versionId});
+  const matches = r => r.SecretName === descriptor.secret_name && r.VersionId === versionId &&
     r.SecretString && sha256(r.SecretString) === sha256(canonical(payload));
   let existing;
   try {existing = await get();} catch (e) {if (e.code !== 'ResourceNotFound' && !e.code?.startsWith('ResourceNotFound.')) throw e;}
@@ -164,15 +183,16 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     let dispatched=false;
     // A previously dispatched Put only reads its original immutable version.
     // Prune and capacity checks run before the first dispatch, in the same
-    // persisted control tick. Initial Get + prune<=31 + Put/Get totals <=34.
+    // persisted control tick. For generation k, keep its k confirmed predecessors: k readbacks +
+    // <=1+3*(10-k) prune calls + Get/Put/Get <=34. The original fee bound holds.
     try{const marker=await readPrivateJson(`${vaultPath}.dispatched`);
       requireThat(marker.operation_id===operation.operation_id&&marker.payload_sha256===sha256(canonical(payload)),'ENROLLMENT_DISPATCH_DRIFT');
       requireThat(matches(await get()),'SECRET_PUBLISH_UNCONFIRMED');
-      return {instance_id:operation.identity.instance_id,epoch:operation.identity.epoch,expires_at:payload.expires_at};
+      return {instance_id:operation.identity.instance_id,epoch:operation.identity.epoch,expires_at:payload.expires_at,recovery_generation:payload.enrollment_generation??0};
     }catch(error){if(error.code!=='ENOENT')throw error;}
     const history=await retirement();
     requireThat(Array.isArray(history?.operations)&&Array.isArray(history.nodes),'SECRET_RETIREMENT_PROOF_REQUIRED');
-    await pruneRetiredNodeVersions({secretName:descriptor.secret_name,keep:[operation.operation_id],scope:operation.identity,
+    await pruneRetiredNodeVersions({secretName:descriptor.secret_name,keep:Array.from({length:(payload.enrollment_generation??0)+1},(_,g)=>enrollmentVersionId(operation.operation_id,g)),scope:operation.identity,
       operations:history.operations,nodes:history.nodes,transport,registrationDirectory:config.registration_directory,
       caSha256:descriptor.pg_issuer?.ca_sha256,now});
     try{const f=await open(`${vaultPath}.dispatched`,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
@@ -180,8 +200,8 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     }catch(error){if(error.code!=='EEXIST')throw error;const marker=await readPrivateJson(`${vaultPath}.dispatched`);
       requireThat(marker.operation_id===operation.operation_id&&marker.payload_sha256===sha256(canonical(payload)),'ENROLLMENT_DISPATCH_DRIFT');}
     if(dispatched)try {await transport.call('ssm', 'PutSecretValue', {SecretName: descriptor.secret_name,
-      VersionId: operation.operation_id, SecretString: canonical(payload)});} catch { /* exact readback resolves unknown */ }
+      VersionId: versionId, SecretString: canonical(payload)});} catch { /* exact readback resolves unknown */ }
     requireThat(matches(await get()), 'SECRET_PUBLISH_UNCONFIRMED');
   }
-  return {instance_id: operation.identity.instance_id, epoch: operation.identity.epoch, expires_at: payload.expires_at};
+  return {instance_id: operation.identity.instance_id, epoch: operation.identity.epoch, expires_at: payload.expires_at,recovery_generation:payload.enrollment_generation??0};
 }

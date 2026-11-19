@@ -117,7 +117,15 @@ export async function bootstrapNode({publicManifest, metadata, broker, runtime, 
   diagnostics?.stage('binding');
   requireThat(publicManifest.version === 'execution-bootstrap-v1', 'BOOTSTRAP_VERSION');
   diagnostics?.stage('enrollment');
-  const enrollment = await broker.enroll(metadata);
+  let enrollment;
+  try { enrollment = await broker.enroll(metadata); }
+  catch (error) {
+    // The broker performs read-only calls. Only explicit waiting before any
+    // runtime/transport/artifact side effect may restart the systemd entry.
+    if (['NODE_ENROLLMENT_PENDING','NODE_ENROLLMENT_DEADLINE'].includes(error.message))
+      error.bootstrapRetrySafe = true;
+    throw error;
+  }
   diagnostics?.stage('binding');
   requireThat(enrollment.verified === true && enrollment.expires_at > now() + 60000 &&
     /^\d{1,20}$/.test(enrollment.identity.account_id) && enrollment.identity.account_id === metadata.account_id &&
