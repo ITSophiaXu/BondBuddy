@@ -73,3 +73,17 @@ test('link repair feedback contains only bounded host span identifiers and point
   assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...raw,source_span_count}}),{code:'collection_failed'});
  assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{code:'workpaper_file_missing',file:'document.docx'}}),{code:'workpaper_file_missing',file:'document.docx'});
 });
+
+
+test('combined repair issues remain bounded and describe the document and metadata together',()=>{
+ const first={code:'WORKPAPER_TABLE_INCOMPLETE',file:'workpaper-coverage.json',field:'/used_span_ids',rule:'all_nonempty_cells_of_each_used_table',source_span_ids:['p2'],source_span_count:1};
+ const second={code:'WORKPAPER_TABLE_OUTPUT_INCOMPLETE',file:'file-links.json',field:'/links',rule:'complete_source_table_to_distinct_target_cells',source_span_ids:['p1','p2'],source_span_count:2,private_quote:'private customer fact'};
+ const safe=collectionDiagnostic({collectionDiagnostic:{...first,issues:[first,second],issue_count:2}});
+ assert.equal(safe.issues?.length,2);const feedback=m4CollectionRepairFeedback(safe);
+ assert.match(feedback,/output\/document\.docx/);assert.match(feedback,/全部issues/);assert.match(feedback,/不能只修第一个错误/);
+ assert.ok(!feedback.includes(second.private_quote));
+ for(const issues of [Array.from({length:9},()=>first),[{...first,source_span_ids:['private content']}]] )
+  assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...first,issues,issue_count:issues.length}}),{code:'collection_failed'});
+ assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...first,issues:[first,second],issue_count:1}}),{code:'collection_failed'});
+ assert.deepEqual(collectionDiagnostic(null),{code:'collection_failed'});
+});

@@ -1,5 +1,5 @@
 import {inputManifestHash as digest} from '@bondbuddy/api/production-rule-pin';
-import type {CodexCollectionDiagnostic} from './codex-adapter.js';
+import type {CodexCollectionDiagnostic,CodexCollectionDiagnosticDetails} from './codex-adapter.js';
 import type {ProviderCallIntent,ProviderCallObservation,ModelAttemptRuntime} from '@bondbuddy/api/provider-results';
 import type {StageContext} from './run-pipeline.js';
 import {saveFileAuthoringRecovery,type FileAuthoringRecovery} from './file-authoring-recovery.js';
@@ -10,14 +10,23 @@ export type CollectionDiagnostic = CodexCollectionDiagnostic;
 
 // Only host-defined identifiers leave the collector; never JSON values, exception
 // text, client filenames or customer content. The private snapshot holds bytes.
-export function collectionDiagnostic(error:unknown):CollectionDiagnostic {
- const d=(error as {collectionDiagnostic?:CollectionDiagnostic})?.collectionDiagnostic;
- if(!d||!/^[a-zA-Z0-9_]{1,80}$/.test(d.code)||![d.file,d.field,d.rule].every(v=>v===undefined||typeof v==='string'&&/^[a-zA-Z0-9_./-]{1,160}$/.test(v)))return {code:'collection_failed'};
+function safeDiagnosticDetails(value:unknown):CodexCollectionDiagnosticDetails|null {
+ const d=value as CodexCollectionDiagnosticDetails|null;
+ if(!d||!/^[a-zA-Z0-9_]{1,80}$/.test(d.code)||![d.file,d.field,d.rule].every(v=>v===undefined||typeof v==='string'&&/^[a-zA-Z0-9_./-]{1,160}$/.test(v)))return null;
  const ids=d.source_span_ids,count=d.source_span_count;
- if(ids!==undefined&&(!Array.isArray(ids)||ids.length>32||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||id.length>128||!/^(?:p[0-9]+|(?:footnotes|endnotes|header[0-9]*|footer[0-9]*)-p[0-9]+)$/.test(id))))return {code:'collection_failed'};
- if(count!==undefined&&(!Number.isSafeInteger(count)||count<(ids?.length??0)||count>1000000))return {code:'collection_failed'};
+ if(ids!==undefined&&(!Array.isArray(ids)||ids.length>32||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||id.length>128||!/^(?:p[0-9]+|(?:footnotes|endnotes|header[0-9]*|footer[0-9]*)-p[0-9]+)$/.test(id))))return null;
+ if(count!==undefined&&(!Number.isSafeInteger(count)||count<(ids?.length??0)||count>1000000))return null;
  return {code:d.code,...(d.file?{file:d.file}:{}),...(d.field?{field:d.field}:{}),...(d.rule?{rule:d.rule}:{}),
   ...(ids?{source_span_ids:[...ids]}:{}),...(count!==undefined?{source_span_count:count}:{})};
+}
+export function collectionDiagnostic(error:unknown):CollectionDiagnostic {
+ const raw=(error as {collectionDiagnostic?:CollectionDiagnostic}|null)?.collectionDiagnostic,first=safeDiagnosticDetails(raw);
+ if(!first)return {code:'collection_failed'};
+ const issues=raw?.issues,count=raw?.issue_count;
+ if(issues!==undefined&&(!Array.isArray(issues)||issues.length>8))return {code:'collection_failed'};
+ const safe=issues?.map(safeDiagnosticDetails);
+ if(safe?.some(d=>!d)||count!==undefined&&(!Number.isSafeInteger(count)||count<(safe?.length??0)||count>1000000))return {code:'collection_failed'};
+ return {...first,...(safe?{issues:safe as CodexCollectionDiagnosticDetails[]}:{}),...(count!==undefined?{issue_count:count}:{})};
 }
 export async function writeWorkspaceEvidence(ctx:StageContext,intent:ProviderCallIntent,event:'exit'|'collection_failure'|'capture_failure',payload:unknown) {
  const hash=digest(payload);

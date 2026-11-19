@@ -59,3 +59,20 @@ test('final layout line breaks invalidate stale quotations until the actual fina
  proposals[0]!.target_quote=target.spans[1]!.text;
  assert.equal(validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage).used,2);
 });
+
+
+test('one repair sees missing associations and both table coverage gates before another turn is spent',()=>{
+ const source=snapshot(['标题2025年末资产','100万元','200万元'],['表格 1 / 行 1 / 列 1','表格 1 / 行 2 / 列 1','表格 1 / 行 3 / 列 1']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'标题2025年末资产100万元'],['段落 1','表格 1 / 行 1 / 列 1']);
+ const proposals=source.spans.slice(0,2).map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p1',target_quote:i?'旧版100万元':s.text}));
+ const coverage={reviewed_span_ids:['p0','p1','p2'],used_span_ids:['p0','p1'],excluded:[{span_id:'p2',reason:'遗漏的表格尾部数据'}]};
+ assert.throws(()=>validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage),error=>{
+  assert.ok(error instanceof WorkpaperCoverageError);
+  assert.deepEqual(error.diagnostics.map(d=>d.code),['WORKPAPER_CONTENT_LINKS_MISSING','WORKPAPER_TABLE_INCOMPLETE','WORKPAPER_TABLE_OUTPUT_INCOMPLETE']);
+  assert.deepEqual(error.diagnostics.map(d=>d.file),['file-links.json','workpaper-coverage.json','file-links.json']);
+  assert.deepEqual(error.diagnostics[0]!.source_span_ids,['p1']);assert.deepEqual(error.diagnostics[1]!.source_span_ids,['p2']);return true;
+ });
+ const corrected=snapshot(['财务分析与口径说明。'.repeat(20),...source.spans.map(s=>s.text)],['段落 1',...source.spans.map(s=>s.location)]);
+ const complete=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:s.text}));
+ assert.equal(validateWorkpaperCoverage(source,corrected,verifiedFileLinks(source,corrected,complete),{...coverage,used_span_ids:['p0','p1','p2'],excluded:[]}).used,3);
+});

@@ -79,8 +79,10 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         catch{throw new CodexOutputValidationError('workpaper_coverage_missing_or_invalid',{code:'workpaper_coverage_missing_or_invalid',file:'workpaper-coverage.json',rule:'safe_json_file'});}
         try{validateWorkpaperCoverage(linkedSource,await inspectProjectFile(ctx,join(cwd,'output/document.docx')),project_file_links.links,coverage);}
         catch(error){
-          if(error instanceof WorkpaperCoverageError)throw new CodexOutputValidationError(error.message,{code:error.message,file:'file-links.json',field:'/links',
-            rule:'each_used_source_requires_verified_link',source_span_ids:error.missingSourceSpanIds.slice(0,32),source_span_count:error.missingSourceSpanIds.length});
+          if(error instanceof WorkpaperCoverageError){
+            const first=error.diagnostics[0]??{code:error.message,file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',source_span_ids:error.missingSourceSpanIds.slice(0,32),source_span_count:error.missingSourceSpanIds.length};
+            throw new CodexOutputValidationError(error.message,{...first,...(error.diagnostics.length>1?{issues:error.diagnostics.slice(0,8),issue_count:error.diagnostics.length}:{})});
+          }
           if(error instanceof Error&&error.message.startsWith('WORKPAPER_'))throw new CodexOutputValidationError(error.message,{code:error.message,file:'workpaper-coverage.json',rule:'validateWorkpaperCoverage'});throw error;
         }
       }

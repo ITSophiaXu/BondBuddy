@@ -40,7 +40,8 @@ const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MA
 const MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES = 512 * 1024;
 const modelGatewayExecLogReserve = (maxBytes: number) => maxBytes >= 4 * 1024 * 1024 ? MODEL_GATEWAY_EXEC_LOG_RESERVE_BYTES : 0;
 /** A completed turn produced a known-invalid file, not an unknown provider outcome. */
-export type CodexCollectionDiagnostic={code:string;file?:string;field?:string;rule?:string;source_span_ids?:string[];source_span_count?:number};
+export type CodexCollectionDiagnosticDetails={code:string;file?:string;field?:string;rule?:string;source_span_ids?:string[];source_span_count?:number};
+export type CodexCollectionDiagnostic=CodexCollectionDiagnosticDetails&{issues?:CodexCollectionDiagnosticDetails[];issue_count?:number};
 export class CodexOutputValidationError extends Error {
   constructor(message:string,readonly collectionDiagnostic?:CodexCollectionDiagnostic){super(message);}
 }

@@ -15,10 +15,15 @@ export const M4_FULL_SOURCE_READING_INSTRUCTIONS = '当 task.input.document_type
 export const M4_VERIFIED_LINKS_INSTRUCTIONS = '底稿最后一次编辑、扩展表格和排版保存后，重新读取最终 output/document.docx 的实际段落，按 document.xml 中全部 w:p（包括表格）零起算更新 output/file-links.json。可用 python -B -m bondbuddy_file_authoring.project_files inspect output/document.docx scratch/target-spans-final.json 获取宿主相同的段落文本。每条 source_quote 必须在指定来源段落中逐字且唯一出现，target_quote 必须在指定最终目标段落中逐字且唯一出现；排版后新增的换行、制表符和空格必须按最终段落原样写入 target_quote，不得在记录时自行拼接。旧段落编号或旧版引文不能沿用。逐项检查 workpaper-coverage.json 的每个 used_span_ids 均至少有一条通过两端核对的关联，只要 used 来源位于表格，该表所有非空段落均须列为 used，完整行列、期间、表头和单位均须在成果表格中逐单元格关联；不能仅取同表的几个数值或前几行。引文失配应核对真实正文、引用文本或段落编号，不得通过自动更换目标位置、删去相关 used 段落、改列 excluded 或伪造关联规避校验。';
 
 export function m4CollectionRepairFeedback(diagnostic:ReturnType<typeof collectionDiagnostic>){
+ const codes=new Set([diagnostic,...diagnostic.issues??[]].map(d=>d.code));
+ const associations=['WORKPAPER_CONTENT_LINKS_MISSING','WORKPAPER_TABLE_INCOMPLETE','WORKPAPER_TABLE_OUTPUT_INCOMPLETE'].some(code=>codes.has(code));
  return '已有 scratch/ 和 output/ 文件已恢复。只修复收集阶段指出的问题，保留已经完成的正文和材料提取；不得重建整个任务。检查规则：'+JSON.stringify(diagnostic)+
   '。读取 input.json 和对应 schema，补齐缺少的文件、正确字段及全文覆盖记录。不能用聊天说明代替文件；不能编造缺少的事实。'+
-  (diagnostic.rule==='all_nonempty_source_spans'?M4_FULL_SOURCE_READING_INSTRUCTIONS:'')+
-  (diagnostic.code==='WORKPAPER_CONTENT_LINKS_MISSING'?'本次错误定位 output/file-links.json；source_span_ids 是尚无有效正文关联的来源ID样本，source_span_count 为总数。不能只修改 workpaper-coverage.json。'+M4_VERIFIED_LINKS_INSTRUCTIONS:'');
+  (diagnostic.rule==='all_nonempty_source_spans'||codes.has('WORKPAPER_SOURCE_COVERAGE_INCOMPLETE')?M4_FULL_SOURCE_READING_INSTRUCTIONS:'')+
+  (codes.has('WORKPAPER_CONTENT_LINKS_MISSING')?'正文关联错误定位 output/file-links.json，给出的source_span_ids是缺少有效关联的来源样本；不能只修改 workpaper-coverage.json。':'')+
+  (codes.has('WORKPAPER_TABLE_INCOMPLETE')?'整表审阅和使用记录不全：核对 workpaper-coverage.json 的 used_span_ids，保留涉及表格的全部非空单元格、行列、期间和单位。':'')+
+  (codes.has('WORKPAPER_TABLE_OUTPUT_INCOMPLETE')?'成果整表采用不全：必须同时核对 output/document.docx 和 output/file-links.json；每个来源单元格须映射到实际成果表格单元格，不能用一段摘要或多项指向同一格代替完整表格。':'')+
+  (associations?'source_span_ids仅为各问题的有界样本；同时处理列出的全部issues，并在结束前复核其余已使用表格，不能只修第一个错误。'+M4_VERIFIED_LINKS_INSTRUCTIONS:'');
 }
 
 type Workspace=NonNullable<ContainedCallInput['fileWorkspace']>;
