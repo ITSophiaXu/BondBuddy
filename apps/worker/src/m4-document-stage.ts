@@ -17,13 +17,14 @@ import { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 import { checkedM4File, prepareM4Files, verifyM4Originals, verifyM4Calculation,m4ArtifactPreview, M4_FILE_MAX } from './m4-file-workspace.js';
 import { m4ActionObserver, recordM4Progress } from './m4-action-progress.js';
 import { m4ModelGate,m4PinnedMethod } from './m4-method.js';
-import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks,inspectWorkpaperTableLayout} from './project-file-tools.js';
+import {prepareProjectFileSource,saveGenerationLinks,publishProjectFileLinks,inspectWorkpaperTableLayout,normalizeWorkpaperLayout,type WorkpaperLayoutReceipt} from './project-file-tools.js';
 import type {ProjectFileText} from '@bondbuddy/contracts';
 import {sharedWorkpaperDocument} from './workpaper-shared-stage.js';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export type M4DocumentResult = {version: 'codex-m4-document-v1'; input_hash: string; skill_sha256: string; method_hash: string;
   internal_note?:true;
+  workpaper_layout?:WorkpaperLayoutReceipt;
   workpaper_decision?:WorkpaperDecision;
   project_file_links?:Awaited<ReturnType<typeof saveGenerationLinks>>;
   files: Record<string, {key: string; sha256: string; byte_size: number}>; error?: 'WORD_DELIVERY_UNAVAILABLE'};
@@ -37,6 +38,12 @@ export function validM4DocumentResult(value: unknown, ctx: StageContext): value 
     && Object.entries(v.files).every(([name, f]) => names.includes(name as typeof names[number]) && f.key.startsWith(prefix(ctx))
       && !f.key.includes('..') && f.key.endsWith(`/${f.sha256}/${name}`) && /^[a-f0-9]{64}$/.test(f.sha256)
       && Number.isSafeInteger(f.byte_size) && f.byte_size > 0 && f.byte_size <= M4_FILE_MAX)
+    && (v.workpaper_layout===undefined||v.workpaper_layout.version==='workpaper-pagination-v1'&&v.workpaper_layout.content_unchanged===true
+      &&v.workpaper_layout.output_sha256===v.files['document.docx']?.sha256&&/^[a-f0-9]{64}$/.test(v.workpaper_layout.input_sha256)
+      &&Number.isSafeInteger(v.workpaper_layout.changed_paragraphs)&&v.workpaper_layout.changed_paragraphs>0
+      &&v.workpaper_layout.original?.sha256===v.workpaper_layout.input_sha256&&Number.isSafeInteger(v.workpaper_layout.original.byte_size)
+      &&v.workpaper_layout.original.byte_size>0&&v.workpaper_layout.original.byte_size<=M4_FILE_MAX
+      &&v.workpaper_layout.original.key===`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-layout-preimages/${v.workpaper_layout.input_sha256}/document.docx`)
     && (v.error === 'WORD_DELIVERY_UNAVAILABLE' || names.every(name => !!v.files[name])
       && v.files['document.docx']!.sha256!==v.files['preparation-note.docx']!.sha256);
 }
@@ -73,6 +80,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
       await verifyM4Originals(cwd, originals);
       const output=direct&&linkedSource?await collectDirectWorkpaper(cwd,task!.entry,linkedSource):undefined;
       if(direct&&!output)throw Error('WORKPAPER_SOURCE_UNAVAILABLE');
+      const workpaper_layout=task&&!output?.replacements?await normalizeWorkpaperLayout(ctx,cwd):undefined;
       await verifyM4Calculation(ctx,cwd);
       const project_file_links=linkedSource&&!output?.replacements?await saveGenerationLinks(ctx,linkedSource,cwd,input.manifest.kind==='document'&&!!input.manifest.input.workpaper):undefined;
       if(input.manifest.kind==='document'&&input.manifest.input.workpaper&&linkedSource&&project_file_links){
@@ -102,7 +110,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
         }catch{throw Error('M4_OUTPUT_STORE_FAILED');}
         files[name] = {key, sha256, byte_size: bytes.length};
       }
-      return {version: 'codex-m4-document-v1', input_hash: ctx.run.input_hash.trim(), skill_sha256: skill.sha256, method_hash: methodHash, files,project_file_links,
+      return {version: 'codex-m4-document-v1', input_hash: ctx.run.input_hash.trim(), skill_sha256: skill.sha256, method_hash: methodHash, files,project_file_links,workpaper_layout,
         ...(output?{workpaper_decision:output.decision}:{}),
         ...(input.manifest.kind==='document'&&input.manifest.input.workpaper?{internal_note:true as const}:{}),
         ...(!names.every(name => files[name]) ? {error: 'WORD_DELIVERY_UNAVAILABLE' as const} : {})};

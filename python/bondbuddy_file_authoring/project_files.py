@@ -261,6 +261,9 @@ def source_diff(before, after):
 if __name__ == '__main__':
     if sys.argv[1] in ('inspect', 'inspect-complete'):
         Path(sys.argv[3]).write_text(json.dumps(inspect(sys.argv[2], complete=sys.argv[1]=='inspect-complete'), ensure_ascii=False), encoding='utf8')
+    elif sys.argv[1] == 'normalize-workpaper-layout':
+        from .workpaper_layout import normalize_workpaper_layout
+        Path(sys.argv[4]).write_text(json.dumps(normalize_workpaper_layout(sys.argv[2], sys.argv[3])), encoding='utf8')
     elif sys.argv[1] == 'table-layout':
         Path(sys.argv[3]).write_text(json.dumps(table_layout(sys.argv[2]), ensure_ascii=False), encoding='utf8')
     elif sys.argv[1] == 'diff':

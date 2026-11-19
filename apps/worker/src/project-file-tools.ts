@@ -18,7 +18,7 @@ import {verifiedFileLinks} from './project-file-evidence.js';
 export const projectFilesRoot=resolve(fileURLToPath(import.meta.url),'../../../..');
 const run=promisify(execFile);
 export async function projectFilePython(ctx:StageContext,args:string[]){
-  const operation=['inspect','inspect-complete','table-layout','patch'].includes(args[0]??'')?args[0]!:'other';
+  const operation=['inspect','inspect-complete','table-layout','normalize-workpaper-layout','patch'].includes(args[0]??'')?args[0]!:'other';
   return withPerformanceSpan((operation.startsWith('inspect')||operation==='table-layout')?'document.inspect':'document.transform',{operation},()=>run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024}));
 }
@@ -78,4 +78,27 @@ export async function publishProjectFileLinks(db:Pool|PoolClient,owner:string,ru
   await db.query(`INSERT INTO bb_project_file_generation_links(run_id,owner_user_id,result,result_hash) VALUES($1,$2,$3,$4) ON CONFLICT(run_id) DO NOTHING`,[runId,owner,result,hash]);
   const old=(await db.query('SELECT result_hash FROM bb_project_file_generation_links WHERE owner_user_id=$1 AND run_id=$2',[owner,runId])).rows[0];
   if(old.result_hash.trim()!==hash)throw Error('INPUT_REVISION_CONFLICT');
+}
+
+export type WorkpaperLayoutReceipt={version:'workpaper-pagination-v1';input_sha256:string;output_sha256:string;changed_paragraphs:number;content_unchanged:true;
+ original:{key:string;sha256:string;byte_size:number}};
+/** Reflow only host-recognized table headings. Persist the original bytes before
+ * changing the output, then run all original link/coverage gates on the new SHA. */
+export async function normalizeWorkpaperLayout(ctx:StageContext,cwd:string):Promise<WorkpaperLayoutReceipt|undefined>{
+ const {checkedM4File,M4_FILE_MAX}=await import('./m4-file-workspace.js');
+ const original=await checkedM4File(join(cwd,'output'),'document.docx');
+ const dir=await mkdtemp(join(tmpdir(),'bb-workpaper-layout-'));
+ try{
+  const input=join(dir,'input.docx'),output=join(dir,'output.docx'),report=join(dir,'receipt.json');
+  await writeFile(input,original,{mode:0o400});await projectFilePython(ctx,['normalize-workpaper-layout',input,output,report]);
+  const candidate=await checkedM4File(dir,'output.docx'),bytes=await checkedM4File(dir,'receipt.json',4*1024*1024),r=JSON.parse(bytes.toString('utf8'));
+  if(r.version!=='workpaper-pagination-v1'||r.content_unchanged!==true||r.input_sha256!==digest(original)||r.output_sha256!==digest(candidate)
+   ||!Number.isSafeInteger(r.changed_paragraphs)||r.changed_paragraphs<0||!Array.isArray(r.changes)||r.changes.length!==r.changed_paragraphs)throw Error('WORKPAPER_LAYOUT_INVALID');
+  if(!r.changed_paragraphs){if(!original.equals(candidate))throw Error('WORKPAPER_LAYOUT_INVALID');return;}
+  const key=`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-layout-preimages/${r.input_sha256}/document.docx`;
+  await ctx.blobs.put(key,original,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const stored=await ctx.blobs.getIfExistsBounded(key,M4_FILE_MAX);if(!stored||stored.length!==original.length||digest(stored)!==r.input_sha256)throw Error('M4_OUTPUT_STORE_FAILED');
+  await writeFile(join(cwd,'output/document.docx'),candidate,{mode:0o600});
+  return {version:r.version,input_sha256:r.input_sha256,output_sha256:r.output_sha256,changed_paragraphs:r.changed_paragraphs,content_unchanged:true,original:{key,sha256:r.input_sha256,byte_size:original.length}};
+ }finally{await rm(dir,{recursive:true,force:true});}
 }
