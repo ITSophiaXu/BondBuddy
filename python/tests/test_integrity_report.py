@@ -72,4 +72,20 @@ class IntegrityReportTest(unittest.TestCase):
             self.assertIn('仅覆盖本次查询页面',text)
             self.assertNotRegex(text, r'HTTP|403|Forbidden|GeoBL|net::|ERR_')
 
+    def test_missing_record_separates_planned_query_attempt_and_export_time(self):
+        with tempfile.TemporaryDirectory() as td:
+            subject={'id':'s','name':'合成企业','kind':'company'}
+            records=[
+                {'subject_id':'s','site_id':'missing','site_name':'未执行站点','status':'query_failed','query':'','checked_at':'2026-10-26T00:00:00Z','reason':'本轮结束前未取得本项查询记录，无需上传补充证据。','sources':[],'search_performed':False},
+                {'subject_id':'s','site_id':'attempted','site_name':'尝试站点','status':'query_failed','query':'合成企业','checked_at':'2026-10-26T00:00:00Z','reason':'查询控件尚未触发可确认的请求。','sources':[],'search_performed':True},
+            ]
+            data={'input':{'project_name':'合成测试','draft':{'subjects':[subject],'site_ids':['missing','attempted']}},'generated_at':'2026-10-27T00:00:00Z','records':records}
+            target=Path(td)/'out.docx';generate(data,target)
+            text='\n'.join(p.text for p in Document(target).paragraphs)
+            self.assertIn('拟查询词：未记录',text)
+            self.assertIn('未实际执行查询；记录时间（非访问时间',text)
+            self.assertIn('尝试查询词：合成企业',text)
+            self.assertIn('访问/尝试时间（北京时间）',text)
+            self.assertIn('导出时间（北京时间）：2026年10月27日',text)
+
 if __name__=='__main__': unittest.main()

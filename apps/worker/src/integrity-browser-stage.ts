@@ -68,7 +68,9 @@ async function saveBatch(ctx:StageContext,subject:IntegritySubject,site:Integrit
  return (await loadBatch(ctx,subject.id,site.id))!;
 }
 export async function officialIntegrityRecord(ctx:StageContext,site:IntegritySite,subject:IntegritySubject,options:IntegrityBrowserOptions):Promise<IntegrityRecord|StageOutcome>{
- const base:IntegrityRecord={subject_id:subject.id,site_id:site.id,site_name:site.name,urls:site.links.map(l=>l.url),query:'',status:'needs_manual',reason:'',checked_at:new Date().toISOString(),sources:[],search_performed:false};
+ // Keep the known planned subject even when no browser access happens; the report
+ // must distinguish this plan from an actual query/attempt.
+ const base:IntegrityRecord={subject_id:subject.id,site_id:site.id,site_name:site.name,urls:site.links.map(l=>l.url),query:subject.name,status:'needs_manual',reason:'',checked_at:new Date().toISOString(),sources:[],search_performed:false};
  if(subject.kind==='person'&&site.companyOnly)return {...base,status:'not_applicable',reason:'此网站查询范围仅适用于企业。'};
  if(!site.links.length)return {...base,status:'query_failed',reason:'未能自动确定属地官网，本项未完成查询；无需上传补充证据。'};
  // Deliberately omit both corporate and personal identifiers from the public browser interface.
