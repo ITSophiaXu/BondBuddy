@@ -1101,5 +1101,32 @@
     },
     "user_acceptance": false,
     "production_deployment": false
+  },
+  "browser_formal_v4": {
+    "at": "2026-11-19T16:26:01.522Z",
+    "checks": 10,
+    "pass": 10,
+    "fail": 0,
+    "actual_responses": 47,
+    "mocked_responses": 0,
+    "page_errors": 0,
+    "blocked": 0,
+    "report_sha256": "97d1ad58959659b82a578c738a4707a5458fa936e9700c1991cb86529db03511",
+    "visual_review": {
+      "reviewed": true,
+      "images": [
+        "m1-current-progress.png",
+        "m4-1440.png",
+        "m4-390.png"
+      ],
+      "note": "Actual current M1 progress, completed M4, four downloads and ZIP feedback visible; desktop/mobile screenshots inspected."
+    },
+    "zip": {
+      "crc": "passed",
+      "browser_sha256": "4d6c59042622bf598c179dec1e60cb899d2106aef1273f07b78dfd95ec3165d1",
+      "all_four_formal_members_identical": true,
+      "container_timestamps_differ": true
+    },
+    "user_acceptance": false
   }
 }
