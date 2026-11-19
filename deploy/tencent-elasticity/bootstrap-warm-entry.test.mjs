@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {runBootstrapEntry} from './bootstrap-entry.mjs';
+import {runBootstrapEntry,awaitBootstrapEnrollment} from './bootstrap-entry.mjs';
 import {selectExecutionNodeConfig} from './node-adapter.mjs';
 import {sha256} from './policy.mjs';
 
@@ -88,4 +88,17 @@ test('a persisted rate rejection enables future boots but performs no metadata o
   const {entry, events} = await fixture({rateLimited: true});
   await assert.rejects(entry(), /BOOTSTRAP_RATE_LIMITED/);
   assert.deepEqual(events, ['binding', 'enable', 'admission']);
+});
+
+
+test('entry waits only for safe enrollment, within a deadline; runtime/unknown failures are never retried',async()=>{
+ let at=0,calls=0;
+ const result=await awaitBootstrapEnrollment({now:()=>at,wait:async ms=>{at+=ms;},run:async()=>{
+   if(++calls<3)throw Object.assign(Error('NODE_ENROLLMENT_PENDING'),{bootstrapRetrySafe:true});return 'ready';
+ }});assert.equal(result,'ready');assert.equal(calls,3);
+ for(const code of ['BOOTSTRAP_NOT_READY','CLOUD_HTTP_UNCERTAIN']){
+   calls=0;await assert.rejects(awaitBootstrapEnrollment({run:async()=>{calls++;throw Error(code);}}),new RegExp(code));assert.equal(calls,1);
+ }
+ at=0;calls=0;await assert.rejects(awaitBootstrapEnrollment({now:()=>at,wait:async ms=>{at+=ms;},run:async()=>{calls++;throw Object.assign(Error('NODE_ENROLLMENT_PENDING'),{bootstrapRetrySafe:true});}}),/NODE_ENROLLMENT_PENDING/);
+ assert.equal(at,1740000);assert.equal(calls,59);
 });

@@ -56,3 +56,53 @@ test('unknown initial secret publish cannot be reissued by a later tick',async()
  }}};
  try{await assert.rejects(issueNodeEnrollment(options));await assert.rejects(issueNodeEnrollment(options));assert.equal(puts,1);}finally{await rm(dir,{recursive:true});}
 });
+
+
+test('expired confirmed enrollment renews immutable version, same PG token and epoch, bounded to three recoveries',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'bb-enrollment-expiry-'));let at=Date.now(),puts=0;const stored=new Map(),tokens=[];
+ const config={account_id:identity.account_id,region:identity.region,registration_directory:dir,role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a'}]};
+ const transport={call:async(_,action,p)=>{
+   if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...stored.keys()].map(VersionId=>({VersionId}))};
+   if(action==='PutSecretValue'){assert(!stored.has(p.VersionId));stored.set(p.VersionId,p.SecretString);puts++;throw Error('lost ACK after accepted');}
+   if(action==='GetSecretValue'){if(!stored.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored.get(p.VersionId)};}
+   throw Error('unexpected mutation '+action);
+ }};
+ const options={operation,slot:0,config,transport,serviceTemplate:{},bind:async(i,op,token)=>{assert.deepEqual(i,identity);assert.equal(op,operation.operation_id);tokens.push(token);},now:()=>at};
+ try{
+   for(let gen=0;gen<=3;gen++){
+     const result=await issueNodeEnrollment(options);assert.equal(result.recovery_generation,gen);
+     assert.equal((await issueNodeEnrollment(options)).recovery_generation,gen);assert.equal(puts,gen+1);
+     at+=600001;
+   }
+   await assert.rejects(issueNodeEnrollment(options),/ENROLLMENT_RECOVERY_EXHAUSTED/);
+   assert.equal(puts,4);assert.equal(new Set(tokens).size,1);assert.equal(stored.size,4);
+ }finally{await rm(dir,{recursive:true});}
+});
+
+test('expired unconfirmed publication cannot be bypassed with a new version',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'bb-enrollment-unknown-expired-'));let at=Date.now(),puts=0;
+ const config={account_id:identity.account_id,region:identity.region,registration_directory:dir,role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a'}]};
+ const options={operation,slot:0,config,now:()=>at,serviceTemplate:{},bind:async()=>{},transport:{call:async(_,action)=>{
+   if(action==='ListSecretVersionIds')return {SecretName:'node-a',Versions:[]};if(action==='PutSecretValue'){puts++;throw Error('uncertain');}
+   const e=Error();e.code='ResourceNotFound';throw e;
+ }}};
+ try{await assert.rejects(issueNodeEnrollment(options));at+=600001;await assert.rejects(issueNodeEnrollment(options));assert.equal(puts,1);}
+ finally{await rm(dir,{recursive:true});}
+});
+
+test('node accepts current generation only with exact completed Start, scope and derived immutable version',async()=>{
+ const {enrollmentVersionId}=await import('./enrollment-version.mjs');const at=Date.now();
+ const config={pool_tag:'synthetic',account_id:identity.account_id,region:identity.region,role_name:'role-a',role_id:'7',secret_name:'node-a',services,source_sha256:h,image_sha256:h};
+ const envelope={identity,role_id:'7',services,source_sha256:h,image_sha256:h,expires_at:at+600000,operation_completed:true,operation_action:'start',launch_manifest_sha256:h,operation_id:'op1',provider_request_id:'ack1',enrollment_generation:1};
+ let version=enrollmentVersionId('op1',1),ack='ack1';
+ const transport={call:async(_,action,p)=>{
+   if(action==='GetCallerIdentity')return {AccountId:identity.account_id,UserId:'7:synthetic'};
+   if(action==='DescribeInstances')return {TotalCount:1,InstanceSet:[{InstanceId:identity.instance_id,InstanceState:'RUNNING',CamRoleName:'role-a',LatestOperation:'StartInstances',LatestOperationState:'SUCCESS',LatestOperationRequestId:ack,Tags:[{Key:'bondbuddy-pool',Value:'synthetic'},{Key:'bondbuddy-execution-slot',Value:'role-a'}]}]};
+   if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[{VersionId:'op1'},{VersionId:version}]};
+   if(action==='GetSecretValue')return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:canonical(p.VersionId==='op1'?{...envelope,enrollment_generation:0,expires_at:at-1}:envelope)};
+ }};
+ const enroll=()=>createSsmEnrollmentBroker({config,transport,now:()=>at,attempts:1}).enroll(identity);
+ assert.equal((await enroll()).enrollment_generation,1);
+ version='foreign';await assert.rejects(enroll(),/NODE_SECRET_BINDING/);
+ version=enrollmentVersionId('op1',1);ack='old-ack';await assert.rejects(enroll(),/NODE_ENROLLMENT_PENDING/);
+});

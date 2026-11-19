@@ -1,3 +1,4 @@
+import {enrollmentVersionMatches} from './enrollment-version.mjs';
 import {X509Certificate,randomUUID} from 'node:crypto';
 import {open,mkdir,rename,unlink} from 'node:fs/promises';
 import {constants} from 'node:fs';
@@ -76,7 +77,7 @@ export async function pruneRetiredNodeVersions({secretName,keep,scope,operations
       op.request?.launch_manifest_sha256===value.launch_manifest_sha256);
     if(!issued||!(value.version==='execution-transport-envelope-v1'&&value.transport_credentials||
       value.version!=='execution-transport-envelope-v1'&&value.operation_completed===true&&value.operation_action===issued.action&&
-      versionId===value.operation_id&&typeof value.registration_token==='string'&&
+      enrollmentVersionMatches(value,versionId)&&typeof value.registration_token==='string'&&
       Number.isFinite(value.expires_at)&&canonical(value.services)===canonical(issued.request.services)))continue;
     if(value.transport_credentials)try{validateTransportCredentials(value.transport_credentials,
       {...identity,operation_id:issued.operation_id,provider_request_id:issued.provider_request_id,ca_sha256:caSha256},

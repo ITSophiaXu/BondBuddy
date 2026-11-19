@@ -41,8 +41,9 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
   const i=instances.get(op.identity.instance_id);assert.ok(i);i.instance_state=op.action==='stop'?'STOPPED':'RUNNING';i.latest_operation=op.action==='stop'?'StopInstances':'StartInstances';i.latest_operation_state='SUCCESS';i.latest_operation_request_id=requestId;i.stop_charging_mode=op.action==='stop'?'STOP_CHARGING':null;return {RequestId:requestId};
  }};
  const control={...authority,claimCloudDispatch:async(...args)=>{if(failDispatch){failDispatch=false;throw Error('synthetic crash before dispatch');}return authority.claimCloudDispatch(...args);}};
+ let enrollmentNow=Date.now();
  const costSnapshot=async inventory=>{if(failExpense)throw Error('synthetic missing fee bound');return produceExpenseSnapshot({ledger:await executionCloudExpenseLedger(pool),inventory,quote,config});};
- const handler=createExecutionPoolOpsHandler({control,configPath:'config',expenseLedger:()=>executionCloudExpenseLedger(pool),enrollmentBinder:(...args)=>bindExecutionRegistration(pool,...args),dependencies:{cloud,costSnapshot,readConfig:async path=>path==='config'?config:path==='quote'?quote:{service_environments:{authoring:{DATABASE_URL:connection},review:{DATABASE_URL:connection}}}}});
+ const handler=createExecutionPoolOpsHandler({control,configPath:'config',expenseLedger:()=>executionCloudExpenseLedger(pool),enrollmentBinder:(...args)=>bindExecutionRegistration(pool,...args),dependencies:{cloud,costSnapshot,now:()=>enrollmentNow,readConfig:async path=>path==='config'?config:path==='quote'?quote:{service_environments:{authoring:{DATABASE_URL:connection},review:{DATABASE_URL:connection}}}}});
  const snap=()=>authority.snapshot();
  const enroll=async id=>{
   const n=(await snap()).nodes.find(n=>n.identity.instance_id===id),op=await authority.loadOperation(n.cloud_start_operation_id),role=instances.get(id).role_name,slot=config.role_names.indexOf(role);
@@ -60,6 +61,13 @@ test('existing ops factory and real PG: dual nodes, expense fence, drain, warm i
   await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state) VALUES($1,$2,$1,'generation','default','queued')",[id,owner]);return id;};
  const claimJob=async(p,id)=>{const token=randomUUID();await transaction(p,async c=>{await executionClaimGate(c,p);await c.query("UPDATE bb_jobs SET state='running',lease_token=$2,lease_until=now()+interval '120 seconds' WHERE id=$1",[id,token]);});return {kind:'job',id,token};};
  await t.test('startup records one exact Run; unready node is no capacity and no second Run',async()=>{await handler.tick();assert.equal(calls.length,1);await handler.tick();assert.equal((await snap()).nodes[0].state,'starting');await handler.tick();assert.equal(calls.length,1);assert.equal((await snap()).nodes[0].ready_slots,0);});
+ await t.test('expired confirmed enrollment preserves PG token/epoch and does not create sessions or replay cloud Start',async()=>{
+  const before=(await pool.query('SELECT epoch,registration_token_sha256 FROM bb_execution_nodes')).rows;
+  enrollmentNow+=600001;await handler.tick();
+  assert.deepEqual((await pool.query('SELECT epoch,registration_token_sha256 FROM bb_execution_nodes')).rows,before);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_execution_node_sessions')).rows[0].n,0);
+  assert.equal(calls.length,1);assert.equal(secrets.size,2);assert.equal((await snap()).policy.budget_available,true);
+ });
  const a=await enroll('ins-a1');config.resident_instance_id='ins-a1';config.phase='two_node_validation';
  const leasesA=[];for(let i=0;i<4;i++)leasesA.push(await claimJob(a[0],await addJob()));await addJob();await snap();await pool.query("UPDATE bb_execution_work_readiness SET ready_since=clock_timestamp()-interval '60 seconds'");
  await t.test('only admitted unsupplied demand triggers second Run, still hard max two',async()=>{await handler.tick();assert.equal(calls.length,2);await handler.tick();assert.equal((await snap()).nodes.find(n=>n.identity.instance_id==='ins-b2').state,'starting');});
