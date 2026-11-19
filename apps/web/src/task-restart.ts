@@ -78,8 +78,15 @@ export function installTaskRestart(api:RestartApi,owner:()=>string|undefined) {
     event.preventDefault();event.stopImmediatePropagation();
     const id=button.dataset.restartRun??button.dataset.restartRefresh!,root=button.closest<HTMLElement>('[data-task-restart]');
     const user=owner();if(!root||!user||pending.has(id))return;
-    const signal=new AbortController().signal,current=()=>owner()===user&&root.isConnected;
-    const message=(text:string)=>{if(current())root.querySelector<HTMLElement>('[role="status"]')!.textContent=text;};
+    const href=window.location.href;
+    // Polling replaces cards without changing the owner, route or saved task.
+    const liveRoot=()=>{
+      if(owner()!==user||window.location.href!==href)return undefined;
+      if(root.isConnected)return root;
+      return [...document.querySelectorAll<HTMLElement>('[data-task-restart]')].find(card=>card.dataset.taskRestart===id);
+    };
+    const signal=new AbortController().signal,current=()=>!!liveRoot();
+    const message=(text:string)=>{liveRoot()?.querySelector<HTMLElement>('[role="status"]')?.replaceChildren(document.createTextNode(text));};
     pending.add(id);sync(id,true);message(button.dataset.restartRefresh?'正在读取原任务状态…':'正在检查恢复条件…');
     void (async()=>{
       try {
@@ -87,7 +94,7 @@ export function installTaskRestart(api:RestartApi,owner:()=>string|undefined) {
         if(!current()||!run)return;
         if(run.run_id!==id)throw new ApiError(0,'DATA_UNAVAILABLE');
         const policy=restartPolicy(run);
-        const restart=root.querySelector<HTMLButtonElement>('[data-restart-run]')!;
+        const restart=liveRoot()!.querySelector<HTMLButtonElement>('[data-restart-run]')!;
         restart.dataset.restartBlocked=String(policy.blocked);
         if(run.state==='paused')message(policy.reason??'原任务仍处于暂停状态，可以重新启动；恢复时沿用原材料和计费规则。');
         else {
