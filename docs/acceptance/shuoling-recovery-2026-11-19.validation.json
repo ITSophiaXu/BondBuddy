@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "first_m4_delivered_and_reviewed_three_m4_and_m1_still_running",
+  "real_task_delivery": "M4_formal_verified_M1_v4_seed_in_progress",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -773,5 +773,88 @@
     },
     "user_acceptance": false,
     "production_deployed": false
+  },
+  "latest_20261120_0010": {
+    "at": "2026-11-19T16:09:33.660Z",
+    "combination": {
+      "at": "2026-11-19T16:01:07.376Z",
+      "commit": "0d5b4ea3c100e0b6a486093467beb8bfba22b8c0",
+      "migrations": 199,
+      "tests": 52,
+      "pass": 52,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "12761509aae1877ac2f74a63a9f6d40e143be406dc9d53dbdcf4551ed49f2d62",
+      "scope": "three targeted worker suites; real isolated PG16/Azurite, synthetic provider",
+      "production_connections": false
+    },
+    "minimal_m1": {
+      "at": "2026-11-19T16:01:07.384Z",
+      "commit": "1d51b2a8c83ea19e9174510241f232d3d0354da1",
+      "migrations": 196,
+      "tests": 52,
+      "pass": 52,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "4d0b755c27642ee142732ec02f84e6b51f7e510f4f011bf7f0b1c42bee0af9d5",
+      "scope": "three targeted worker suites; real isolated PG16/Azurite, synthetic provider",
+      "production_connections": false
+    },
+    "m4": {
+      "at": "2026-11-19T15:39:43.839Z",
+      "state": "M4_local_formal_deliveries_verified",
+      "batch_id": "7b8650e7-7f93-4961-99e0-6e8b93fccab6",
+      "batch_revision": 19,
+      "items": [
+        {
+          "code": "1-5-8-1",
+          "run_id": "77fe3fce-ba2b-4de8-b2b7-89509f22a9e5",
+          "sha256": "da208a1cc1b07927babeaa0b7082568aa0bcd77423656d48dc3dffde2cd9ef39",
+          "path": "C:\\Users\\yingx\\AppData\\Local\\BondBuddy\\shuoling-acceptance-20261119\\m4\\T3\\deliveries\\1-5-8-1-layout-da208a1cc1b0.docx",
+          "revised": true
+        },
+        {
+          "code": "1-5-8-4",
+          "run_id": "7845441a-4632-4e5f-bdbc-1c7772e5cbf7",
+          "sha256": "508114775515fae11ab9817ee03ca20c6a69cb9b59f34e1609ee1cf5f7f94862",
+          "path": "C:\\Users\\yingx\\AppData\\Local\\BondBuddy\\shuoling-acceptance-20261119\\m4\\T3\\deliveries\\1-5-8-4-layout-508114775515.docx",
+          "revised": true
+        },
+        {
+          "code": "1-5-9-1",
+          "run_id": "84e9a410-6947-45be-b2c9-ed17e20b6017",
+          "sha256": "fa49d8960d0271e30696d487d9bd6a7760004fb9dba34adb52388d94f0d9bec2",
+          "path": "C:\\Users\\yingx\\AppData\\Local\\BondBuddy\\shuoling-acceptance-20261119\\m4\\T3\\deliveries\\1-5-9-1.docx",
+          "revised": false
+        },
+        {
+          "code": "1-5-9-2",
+          "run_id": "0e404446-df0b-4813-b2f1-14014eeda232",
+          "sha256": "7b9754b08ac1662e58f6eac23e7aecb0fb8661cd8bf5f9ed3e0bd76e743104b6",
+          "path": "C:\\Users\\yingx\\AppData\\Local\\BondBuddy\\shuoling-acceptance-20261119\\m4\\T3\\deliveries\\1-5-9-2.docx",
+          "revised": false
+        }
+      ],
+      "zip_sha256": "f57265bbe5853e1c4c99108c11bf647ebb1e3a0f91489bf4d90837b665baafb1",
+      "zip_crc": "passed",
+      "download_hashes_match": true,
+      "ownership_tests": 33,
+      "ownership_pass": 33,
+      "existing_task_and_billing_records_unchanged": true,
+      "original_failed_M1_preserved": true,
+      "M1_v3": "failed_no_official_artifact",
+      "user_acceptance": false,
+      "production_deployed": false
+    },
+    "m1_v4": {
+      "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+      "state": "queued",
+      "snapshot_import": "in_progress",
+      "official_artifacts": 0
+    },
+    "user_acceptance": false,
+    "production_deployment": false
   }
 }
