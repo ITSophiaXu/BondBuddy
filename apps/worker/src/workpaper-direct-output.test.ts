@@ -29,3 +29,31 @@ test('one authoring output yields a grounded workpaper or a host-generated expla
   await write(result,{...coverage,reviewed_span_ids:['p0']});await assert.rejects(collectDirectWorkpaper(cwd,entry,source),CodexOutputValidationError);
  }finally{await rm(cwd,{recursive:true,force:true});}
 });
+
+test('collector diagnoses the exact missing file, JSON syntax, schema field and coverage rule',async()=>{
+ const cwd=await mkdtemp(join(tmpdir(),'bb-direct-diagnostics-'));
+ const entry={id:'one',code:'1-1',title:'资产分析',path:'x.docx',instructions:''} as WorkpaperEntry;
+ const source={spans:[{id:'p0',text:'资产100万元。',location:'段落1'}]} as ProjectFileText;
+ const result={item_id:'one',status:'generate',reason:'资产数据足以编制。',missing_materials:[],citations:[]};
+ const coverage={reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]};
+ const check=(code:string,file:string,field?:string)=>assert.rejects(collectDirectWorkpaper(cwd,entry,source),error=>{
+  assert.ok(error instanceof CodexOutputValidationError);assert.equal(error.collectionDiagnostic?.code,code);
+  assert.equal(error.collectionDiagnostic?.file,file);if(field)assert.equal(error.collectionDiagnostic?.field,field);return true;
+ });
+ try{
+  await mkdir(join(cwd,'output'));
+  await check('workpaper_file_missing','workpaper-result.json');
+  await writeFile(join(cwd,'output/workpaper-result.json'),JSON.stringify(result));
+  await check('workpaper_file_missing','workpaper-coverage.json');
+  await writeFile(join(cwd,'output/workpaper-coverage.json'),'{bad');
+  await check('workpaper_json_invalid','workpaper-coverage.json');
+  await writeFile(join(cwd,'output/workpaper-coverage.json'),JSON.stringify(coverage));
+  await writeFile(join(cwd,'output/workpaper-result.json'),JSON.stringify({...result,status:'private invalid content'}));
+  await check('workpaper_result_schema_invalid','workpaper-result.json','/status');
+  await writeFile(join(cwd,'output/workpaper-result.json'),JSON.stringify({...result,item_id:'wrong'}));
+  await check('workpaper_item_mismatch','workpaper-result.json','/item_id');
+  await writeFile(join(cwd,'output/workpaper-result.json'),JSON.stringify(result));
+  await writeFile(join(cwd,'output/workpaper-coverage.json'),JSON.stringify({...coverage,used_span_ids:[]}));
+  await check('workpaper_source_coverage_incomplete','workpaper-coverage.json','/reviewed_span_ids');
+ }finally{await rm(cwd,{recursive:true,force:true});}
+});

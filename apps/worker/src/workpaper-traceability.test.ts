@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workpaperFilenameTitle,defaultWorkpaperIds,type ProjectFileText,type ProjectFileLink} from '@bondbuddy/contracts';
 import {workpaperImpact} from './workpaper-changes.js';
-import {validateWorkpaperCoverage} from './workpaper-content.js';
+import {validateWorkpaperCoverage,WorkpaperCoverageError} from './workpaper-content.js';
+import {verifiedFileLinks} from './project-file-evidence.js';
 import {assessmentEvidence,groundWorkpaperDecision} from './workpaper-assessment-stage.js';
 const snapshot=(texts:string[],locations?:string[]):ProjectFileText=>({version:'project-file-text-v1',format:'docx',sha256:'a'.repeat(64),coverage:'complete',warnings:[],spans:texts.map((text,i)=>({id:'p'+i,text,location:locations?.[i]??'段落 '+i,sha256:'b'.repeat(64)}))});
 const link=(id:string):ProjectFileLink=>({source_span_id:id,source_quote:'100',target_span_id:'p1',target_quote:'100',source_location:'表格 1 / 行 1 / 列 1',target_location:'表格 2 / 行 3 / 列 2',field:'总资产',period:'2025年末',unit:'万元',source_sha256:'a'.repeat(64),target_sha256:'c'.repeat(64)});
@@ -41,4 +42,61 @@ test('full table coverage and nonempty output are enforced',()=>{
   assert.throws(()=>validateWorkpaperCoverage(source,target,[link('p0'),link('p1')],{...coverage,used_span_ids:['p0','p1'],excluded:[{span_id:'p2',reason:'不应遗漏的相关数据'}]}),/TABLE_INCOMPLETE/);
   assert.throws(()=>validateWorkpaperCoverage(source,{...target,spans:target.spans.map(s=>({...s,text:'[[内容1]]'}))},links,coverage),/EMPTY_OR_INTERNAL/);
   assert.throws(()=>validateWorkpaperCoverage(source,target,[],coverage),/LINKS_MISSING/);
+});
+
+
+test('final layout line breaks invalidate stale quotations until the actual final text is linked',()=>{
+ const source=snapshot(['营业收入100万元','负债50万元']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'营业收入\n100万元','负债50万元']);
+ const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:s.text}));
+ const coverage={reviewed_span_ids:['p0','p1'],used_span_ids:['p0','p1'],excluded:[]};
+ const partial=verifiedFileLinks(source,target,proposals);assert.equal(partial.length,1);
+ assert.throws(()=>validateWorkpaperCoverage(source,target,partial,coverage),error=>{
+  assert.ok(error instanceof WorkpaperCoverageError);assert.equal(error.message,'WORKPAPER_CONTENT_LINKS_MISSING');
+  assert.deepEqual(error.missingSourceSpanIds,['p0']);return true;
+ });
+ assert.deepEqual(coverage.used_span_ids,['p0','p1']);assert.deepEqual(coverage.excluded,[]);
+ proposals[0]!.target_quote=target.spans[1]!.text;
+ assert.equal(validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage).used,2);
+});
+
+
+test('one repair sees missing associations and both table coverage gates before another turn is spent',()=>{
+ const source=snapshot(['标题2025年末资产','100万元','200万元'],['表格 1 / 行 1 / 列 1','表格 1 / 行 2 / 列 1','表格 1 / 行 3 / 列 1']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'标题2025年末资产100万元'],['段落 1','表格 1 / 行 1 / 列 1']);
+ const proposals=source.spans.slice(0,2).map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p1',target_quote:i?'旧版100万元':s.text}));
+ const coverage={reviewed_span_ids:['p0','p1','p2'],used_span_ids:['p0','p1'],excluded:[{span_id:'p2',reason:'遗漏的表格尾部数据'}]};
+ assert.throws(()=>validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage),error=>{
+  assert.ok(error instanceof WorkpaperCoverageError);
+  assert.deepEqual(error.diagnostics.map(d=>d.code),['WORKPAPER_CONTENT_LINKS_MISSING','WORKPAPER_TABLE_INCOMPLETE','WORKPAPER_TABLE_OUTPUT_INCOMPLETE']);
+  assert.deepEqual(error.diagnostics.map(d=>d.file),['file-links.json','workpaper-coverage.json','file-links.json']);
+  assert.deepEqual(error.diagnostics[0]!.source_span_ids,['p1']);assert.deepEqual(error.diagnostics[1]!.source_span_ids,['p2']);return true;
+ });
+ const corrected=snapshot(['财务分析与口径说明。'.repeat(20),...source.spans.map(s=>s.text)],['段落 1',...source.spans.map(s=>s.location)]);
+ const complete=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:s.text}));
+ assert.equal(validateWorkpaperCoverage(source,corrected,verifiedFileLinks(source,corrected,complete),{...coverage,used_span_ids:['p0','p1','p2'],excluded:[]}).used,3);
+});
+
+
+test('host-proven full-width captions retain complete text outside the data grid without changing source coverage',()=>{
+ const source=snapshot(['报告期关联往来明细','单位：万元','年度','100万元'],['表格 1 / 行 1 / 列 1','表格 1 / 行 1 / 列 1','表格 1 / 行 2 / 列 1','表格 1 / 行 2 / 列 2']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),...source.spans.map(s=>s.text)],['段落 1','段落 2','段落 3','表格 1 / 行 1 / 列 1','表格 1 / 行 1 / 列 2']);
+ const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:'p'+(i+1),target_quote:s.text}));
+ const coverage={reviewed_span_ids:source.spans.map(s=>s.id),used_span_ids:source.spans.map(s=>s.id),excluded:[],full_width_span_ids:['p0','p1']};
+ const links=verifiedFileLinks(source,target,proposals),layout={source_sha256:source.sha256,full_width_span_ids:['p0','p1']};
+ assert.throws(()=>validateWorkpaperCoverage(source,target,links,coverage),/TABLE_OUTPUT_INCOMPLETE/,'model declarations grant no exception');
+ assert.equal(validateWorkpaperCoverage(source,target,links,coverage,layout).used,4);
+ assert.throws(()=>validateWorkpaperCoverage(source,target,links,coverage,{...layout,source_sha256:'b'.repeat(64)}),/INPUT_REVISION_CONFLICT/);
+ const partial=proposals.map((l,i)=>i===0?{...l,source_quote:'关联往来',target_quote:'关联往来'}:l);
+ assert.throws(()=>validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,partial),coverage,layout),/TABLE_OUTPUT_INCOMPLETE/,'a partial caption quotation is insufficient');
+ const outside={...target,spans:target.spans.map(s=>s.id==='p4'?{...s,location:'段落 5'}:s)};
+ assert.throws(()=>validateWorkpaperCoverage(source,outside,verifiedFileLinks(source,outside,proposals),coverage,layout),/TABLE_OUTPUT_INCOMPLETE/,'ordinary numeric cells stay in a table');
+});
+
+test('full-width captions cannot inflate the number of retained data cells',()=>{
+ const source=snapshot(['标题','单位万元','资产','100万元'],['表格 1 / 行 1 / 列 1','表格 1 / 行 1 / 列 1','表格 1 / 行 2 / 列 1','表格 1 / 行 2 / 列 2']);
+ const target=snapshot(['财务分析与口径说明。'.repeat(20),'标题','单位万元','资产100万元'],['段落 1','表格 1 / 行 1 / 列 1','表格 1 / 行 1 / 列 2','表格 1 / 行 2 / 列 1']);
+ const proposals=source.spans.map((s,i)=>({...link(s.id),source_quote:s.text,target_span_id:i<2?'p'+(i+1):'p3',target_quote:s.text}));
+ const coverage={reviewed_span_ids:source.spans.map(s=>s.id),used_span_ids:source.spans.map(s=>s.id),excluded:[]};
+ assert.throws(()=>validateWorkpaperCoverage(source,target,verifiedFileLinks(source,target,proposals),coverage,{source_sha256:source.sha256,full_width_span_ids:['p0','p1']}),/TABLE_OUTPUT_INCOMPLETE/);
 });

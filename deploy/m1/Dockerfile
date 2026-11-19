@@ -190,3 +190,9 @@ COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 COPY --from=build /app/deploy/m1/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/deploy/m1/nginx/security-headers.conf /etc/nginx/conf.d/snippets/security-headers.conf
 EXPOSE 8080
+
+# Local-only fault-integration runtime; no service is launched by this target.
+FROM worker AS stage-recovery-test
+USER root
+RUN mkdir -p /deps && cp -a /app/node_modules /deps/node_modules
+CMD ["node", "--version"]

@@ -89,6 +89,7 @@ async function outputLimitProvider(t: TestContext) {
   const server = createServer({ cert, key }, async (req, res) => {
     for await (const _chunk of req) { /* Synthetic response; request content is irrelevant. */ }
     const reply = new URL(req.url!, 'http://127.0.0.1').searchParams.get('reply');
+    if(reply==='upstream413'){res.writeHead(413,{'content-type':'text/plain'});res.end('synthetic upstream payload rejection');return;}
     const status = reply === 'completed' ? 'completed' : 'incomplete';
     const reason = reply === 'content_filter' ? reply : reply === 'unknown' ? 'private_unrecognized_reason' : 'max_output_tokens';
     const event = reply === 'no-terminal' ? { type: 'response.created' } : { type: 'response.' + status,
@@ -482,4 +483,37 @@ test('only recoverable update calls enable low image-context rotation; review an
     const setting=args.find(arg=>arg.startsWith('mcp_servers.bb_images.args='));assert.ok(setting);
     assert.equal(JSON.parse(setting.slice(setting.indexOf('=')+1)).at(-1),'--rotate-context');
   }finally{await s.cleanup();}
+});
+
+
+test('only a trusted local request-body limit rotates a snapshot-capable file context without raising the guard',async t=>{
+ const base_url=await outputLimitProvider(t);
+ const s=await setup({base_url,model_gateway:'enforce',model_max_request_bytes:16});t.after(s.cleanup);
+ for(const [name,fileAuthoring,contextRotation,expected]of [
+  ['recoverable file',true,true,'MODEL_CONTEXT_ROTATION_REQUIRED'],
+  ['file without recovery',true,false,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+  ['ordinary route',false,true,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+ ]as const)await t.test(name,async()=>{
+  const logs:Record<string,unknown>[]=[];
+  const raw=await s.run([{request:'/responses',hang:true}],{fileAuthoring,contextRotation,gatewayLog:l=>logs.push(l)}),result=classify(raw);
+  assert.equal(result.error_code,expected);assert.equal(result.usage.status,'unknown');
+  assert.ok(logs.some(l=>l.event==='request'&&l.outcome==='gateway_rejected'&&l.gateway_error==='MODEL_REQUEST_BUDGET_EXCEEDED'));
+  if(expected==='MODEL_CONTEXT_ROTATION_REQUIRED'){assert.equal(result.outcome,'pending_reconcile');assert.equal(result.finish_reason,'request_context_budget');assert.equal(raw.provider_error_code??null,null);}
+  assert.ok(raw.exit_code!==null||['SIGTERM','SIGKILL'].includes(raw.exit_signal??''));
+ });
+ await t.test('latest work is captured after exit before the unknown observation and no result is fabricated',async()=>{
+  const journal=new MemoryCodexJournal(),input=s.input([{path:'output/partial.txt',text:'latest synthetic work'},{request:'/responses',hang:true}]);let captures=0;
+  input.fileWorkspace!.onFailure=async(cwd)=>{captures++;assert.equal(journal.observations.length,0);assert.equal(await readFile(join(cwd,'output/partial.txt'),'utf8'),'latest synthetic work');const pid=Number(await readFile(join(cwd,'synthetic-pid'),'utf8'));assert.throws(()=>process.kill(pid,0));};
+  const result=await runContainedModelCall(input,journal,s.config);assert.equal(result.status,'needs_reconcile');assert.equal(result.error_code,'MODEL_CONTEXT_ROTATION_REQUIRED');assert.equal(captures,1);assert.equal(journal.results.size,0);assert.equal(journal.observations[0].observation.usage.status,'unknown');assert.equal(journal.observations[0].observation.finish_reason,'request_context_budget');
+ });
+ await t.test('upstream 413 remains a failed provider rejection',async()=>{
+  const other=await setup({base_url,model_gateway:'enforce',model_max_request_bytes:4096});try{
+   const raw=await other.run([{request:'/responses?reply=upstream413',hang:true}],{contextRotation:true,gatewayLog:()=>{}});
+   assert.equal(classify(raw).error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');assert.equal(classify(raw).outcome,'failed');
+  }finally{await other.cleanup();}
+ });
+ await t.test('model text containing a budget code never authorizes rotation',async()=>{
+  const raw=await s.run([{event:tool('MODEL_REQUEST_BUDGET_EXCEEDED')},{event:message('synthetic result')},{event:complete}],{contextRotation:true});
+  assert.equal(classify(raw).outcome,'completed');assert.notEqual(raw.stop,'context_rotation');
+ });
 });

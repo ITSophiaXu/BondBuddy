@@ -14,11 +14,12 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs,digest,transaction } from '@bondbuddy/api/data';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
-import { checkpointStage,resumePausedRun,action } from '@bondbuddy/api/queue';
+import { checkpointStage,resumePausedRun,action,recoverM4Collection,recoverM4TimedOutWorkspace,recordPotentialCall,claim } from '@bondbuddy/api/queue';
 import { publishM4BillingConfig,type M4BillingConfig } from '@bondbuddy/api/m4-billing';
 import { grantCredits,creditBalance } from '../../api/dist/billing.js';
 import { M4_BILLING_TASKS,type M4MaterialPin,type M4Artifact } from '@bondbuddy/contracts';
-import { loadCodexAdapterConfig } from './codex-adapter.js';
+import {recoverableM4Workspace} from './m4-workspace-recovery.js';
+import { runContainedModelCall,loadCodexAdapterConfig } from './codex-adapter.js';
 import type { ProviderUsage } from '@bondbuddy/api/provider-results';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -40,12 +41,19 @@ test('synthetic M4 document and QA pipeline: complete quote reservation, crash r
   const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as never,url,payload:payload as never,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const response=await send(method,url,payload);assert.equal(response.statusCode,200,response.body);return response.json();};
-  let modelCalls=0,unknown=false;
+  let modelCalls=0,unknown=false,collectionInterrupted=false;
   const config={...loadCodexAdapterConfig({}),model_id:'synthetic-m4-model',model_config_version:'synthetic-m4-config'};
   const syntheticModel:typeof codexModelStage=options=>({name:options.name,replay:true,run:async(ctx:StageContext)=>{
     const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
     const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:options.validate});
     const prior=await journal.latestAttempt(options.logicalCallId);
+    if(prior?.status==='pending_reconcile'){
+      await assert.rejects(recordPotentialCall(pool,ctx.lease,options.logicalCallId,2),/reuse-only/);
+      const restored=await options.fileWorkspace!.recoverCollection!(prior);assert.ok(restored);
+      const ref=await journal.storeResult(restored.evidence.observation,Buffer.from(JSON.stringify(restored.value)),options.resultSchemaVersion);
+      await journal.recordObservation({...restored.evidence.observation,...ref});
+      return {kind:'done',value:restored.value};
+    }
     if(prior){assert.equal(prior.status,'completed');const saved=await journal.readCompleted(options.logicalCallId,prior.attempt_no);assert.ok(saved);
       return {kind:'done',value:saved.value,checkpoint:{logical_call_id:options.logicalCallId,synthetic_model:true}};}
     const snapshotVersion=Number((await pool.query("SELECT COALESCE(max(version),0)+1 AS version FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'",[owner,ctx.run.project_id])).rows[0].version);
@@ -64,6 +72,19 @@ test('synthetic M4 document and QA pipeline: complete quote reservation, crash r
     }else{
       // Actual editable paragraphs and native tables; synthetic text is explicitly marked in both artifacts.
       await promisify(execFile)(python,['-B','-c',`from pathlib import Path\nfrom docx import Document\np=Path(${JSON.stringify(cwd)})/'output'\nfor name,title in [('document.docx','SYNTHETIC M4 summary'),('preparation-note.docx','SYNTHETIC preparation note')]:\n d=Document();d.add_heading(title,0);d.add_paragraph('Synthetic only; no professional acceptance.');t=d.add_table(rows=2,cols=2);t.cell(0,0).text='Item';t.cell(0,1).text='Amount';t.cell(1,0).text='Assets';t.cell(1,1).text='100';d.save(p/name)\n`],{cwd:root,timeout:30000});
+    }
+    if(task.kind==='document'&&!collectionInterrupted){
+      collectionInterrupted=true;
+      const observation={...intent,provider_request_id:null,finish_reason:'stop',outcome:'completed' as const,usage,error_code:null,
+        result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
+      const runtime={adapter:'codex_exec' as const,adapter_version:'codex-file-authoring-1',model_provider:'synthetic',model_config_version:config.model_config_version,
+        provider_request_id_status:'unknown' as const,framework_thread_id:null,started_at:new Date().toISOString(),duration_ms:1,exit_code:0,exit_signal:null,
+        finish_reason:'stop',error_code:null,tool_attempts:1,pricing_status:'unknown' as const};
+      await options.fileWorkspace.onExited!(cwd,intent,{observation,runtime,completed:true});
+      await rm(cwd,{recursive:true,force:true});
+      await journal.recordRuntime(intent,{...runtime,error_code:'MODEL_RESULT_STORE_FAILED'});
+      await journal.recordObservation({...observation,outcome:'pending_reconcile',error_code:'MODEL_RESULT_STORE_FAILED'});
+      return {kind:'stopped'};
     }
     const value=await options.fileWorkspace.collect(cwd,intent,{text:'Synthetic file authoring complete'});
     const ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),options.resultSchemaVersion);
@@ -128,6 +149,13 @@ test('synthetic M4 document and QA pipeline: complete quote reservation, crash r
     await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-complete-quote-fund',points:100000,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const first=await start();
     assert.equal((await creditBalance(pool,owner)).frozen,Number(first.q.quote.points),'the entire quote is reserved before generation');
+    assert.equal(await pipeline(),'stopped');assert.equal(modelCalls,1);
+    const recoveryJob=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[first.r.run_id])).rows[0].id;
+    await pool.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[recoveryJob]);
+    assert.equal(await recoverM4Collection(pool,owner,first.r.run_id,recoveryJob),false,'user pause wins');
+    await pool.query('UPDATE bb_jobs SET user_pause_requested=false WHERE id=$1',[recoveryJob]);
+    const recoveries=await Promise.all([recoverM4Collection(pool,owner,first.r.run_id,recoveryJob),recoverM4Collection(pool,owner,first.r.run_id,recoveryJob)]);
+    assert.deepEqual(recoveries.sort(),[false,true],'concurrent sweeps schedule exactly one recovery');
     await assert.rejects(pipeline(async stage=>{if(stage==='word_promoted')throw Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
     assert.equal(modelCalls,1);
     assert.equal((await ok('GET',path('workspace'))).artifacts.length,0,'saved files remain private before final delivery');
@@ -196,6 +224,128 @@ test('synthetic M4 document and QA pipeline: complete quote reservation, crash r
     assert.equal(await pipeline(),'succeeded');assert.equal(modelCalls,5);
     assert.equal((await ok('POST',path('messages'),semanticRequest)).run.run_id,semanticRun.run_id);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE quote_id=$1',[semanticQuote.quote.quote_id])).rows[0].n,1);
+    // A real private workspace survives a terminated timeout; only the second,
+    // bounded invocation continues it. Supplier answers remain synthetic here.
+    await reviseScope('Synthetic bounded M4 timeout continuation.');
+    const timed=await start();let timeoutCalls=0,keptHash='';
+    const deliveredBytes=await Promise.all(artifacts.map((a:M4Artifact)=>send('GET',`/api/v1/m4/artifacts/${a.artifact_id}/versions/${a.artifact_version}/bytes`)));
+    const timedModel:typeof codexModelStage=options=>({name:options.name,replay:true,run:async ctx=>{
+      const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:options.validate}),prior=await journal.latestAttempt(options.logicalCallId);
+      if(prior){assert.equal(prior.status,'failed');assert.equal(prior.operator_retry,true);
+        assert.match((await options.fileWorkspace!.prepareCollectionRepair!(prior))!,/只接续/);
+        assert.ok(Date.parse(options.fileWorkspace!.deadlineAt!)>Date.now());
+        const checkpoint=ctx.lease.checkpoint,marker=checkpoint.m4_timeout_recovery as Record<string,unknown>;
+        for(const patch of [{run_id:randomUUID()},{input_hash:'0'.repeat(64)},{attempt_id:randomUUID()},{evidence_sha256:'0'.repeat(64)},
+          {deadline_at:new Date(Date.now()-1000).toISOString()},{deadline_at:new Date(Date.now()+180*60*1000).toISOString()}]){
+          const rejected=recoverableM4Workspace({...ctx,lease:{...ctx.lease,checkpoint:{...checkpoint,m4_timeout_recovery:{...marker,...patch}}}},options.logicalCallId,
+            {prepare:async()=>{},collect:async()=>null});
+          await assert.rejects(rejected.prepareCollectionRepair!(prior),/WORKSPACE_RECOVERY_CONFLICT/);
+        }
+        const noAudit=recoverableM4Workspace({...ctx,lease:{...ctx.lease,checkpoint:{...checkpoint,operator_reconciliations:{}}}},options.logicalCallId,
+          {prepare:async()=>{},collect:async()=>null});
+        await assert.rejects(noAudit.prepareCollectionRepair!(prior),/WORKSPACE_RECOVERY_CONFLICT/);
+      }
+      const version=Number((await pool.query("SELECT COALESCE(max(version),0)+1 AS version FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'",[owner,ctx.run.project_id])).rows[0].version);
+      const prompt=await savePromptSnapshot(pool,blobs,{owner,projectId:ctx.run.project_id,runId:ctx.run.id,kind:'model_request',version,
+        body:await options.buildPrompt(ctx),inputRevision:ctx.run.input_revision,inputHash:ctx.run.input_hash,templateVersion:options.templateVersion});
+      const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,
+        logical_call_id:options.logicalCallId,call_id:randomUUID(),attempt_no:prior?2:1,model_id:config.model_id,model_config_version:config.model_config_version,prompt_snapshot_ref:prompt};
+      await journal.recordIntent(intent);const cwd=join(directory,intent.call_id);await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);timeoutCalls++;
+      if(!prior){
+        for(const [index,a] of artifacts.entries())await writeFile(join(cwd,'output',a.kind==='document'?'document.docx':'preparation-note.docx'),deliveredBytes[index].rawPayload);
+        await writeFile(join(cwd,'scratch/kept.json'),JSON.stringify({completed:'synthetic source extraction'}));keptHash=digest(await readFile(join(cwd,'output/document.docx')));
+        const observation={...intent,provider_request_id:null,finish_reason:'timeout',outcome:'pending_reconcile' as const,
+          usage:{status:'unknown' as const,input_tokens:null,cached_input_tokens:null,output_tokens:null,reasoning_tokens:null,total_tokens:null},
+          error_code:'MODEL_TIMEOUT',result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
+        const runtime={adapter:'codex_exec' as const,adapter_version:'codex-file-authoring-1',model_provider:'synthetic',model_config_version:config.model_config_version,
+          provider_request_id_status:'unknown' as const,framework_thread_id:null,started_at:new Date().toISOString(),duration_ms:5400001,exit_code:null,exit_signal:'SIGTERM',finish_reason:'timeout',error_code:'MODEL_TIMEOUT',tool_attempts:518,pricing_status:'unknown' as const};
+        await options.fileWorkspace!.onExited!(cwd,intent,{observation,runtime,completed:false});
+        await journal.recordRuntime(intent,runtime);await journal.recordObservation(observation);await rm(cwd,{recursive:true,force:true});return {kind:'stopped'};
+      }
+      assert.equal(digest(await readFile(join(cwd,'output/document.docx'))),keptHash,'saved Word is preserved before any resumed model edits');
+      assert.equal(JSON.parse(await readFile(join(cwd,'scratch/kept.json'),'utf8')).completed,'synthetic source extraction');
+      const value=await options.fileWorkspace!.collect(cwd,intent,{text:'synthetic remaining-stage completion'}),ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),options.resultSchemaVersion);
+      await journal.recordObservation({...intent,...ref,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage,error_code:null});
+      return {kind:'done',value};
+    }});
+    const timedPipeline=()=>runPipelineOnce({pool,blobs,leaseSeconds:60,runKinds:['generation'],
+      stages:defaultRunStages({model_generation:m4DocumentStage({config,model:timedModel}),word_delivery:historicalWordDeliveryStage()}),onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
+    assert.equal(await timedPipeline(),'stopped');assert.equal(timeoutCalls,1);
+    const timedJob=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[timed.r.run_id])).rows[0].id;
+    assert.equal(await recoverM4TimedOutWorkspace(pool,'other-owner',timed.r.run_id,timedJob),false);
+    for(const flag of ['user_pause_requested','credit_pause_requested']){
+      await pool.query(`UPDATE bb_jobs SET ${flag}=true WHERE id=$1`,[timedJob]);assert.equal(await recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),false);
+      await pool.query(`UPDATE bb_jobs SET ${flag}=false WHERE id=$1`,[timedJob]);
+    }
+    const timedProject=(await pool.query('SELECT project_id FROM bb_runs WHERE id=$1',[timed.r.run_id])).rows[0].project_id;
+    await pool.query('UPDATE bb_projects SET archived_at=now() WHERE id=$1',[timedProject]);
+    assert.equal(await recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),false);
+    await pool.query('UPDATE bb_projects SET archived_at=NULL WHERE id=$1',[timedProject]);
+    await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=now() WHERE id=$1',[timedJob]);
+    assert.equal(await recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),false);
+    await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=NULL WHERE id=$1',[timedJob]);
+    await pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '1 minute' WHERE id=$1",[timedJob,randomUUID()]);
+    assert.equal(await recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),false);
+    await pool.query('UPDATE bb_jobs SET lease_token=NULL,lease_until=NULL WHERE id=$1',[timedJob]);
+    assert.deepEqual((await Promise.all([recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob)])).sort(),[false,true]);
+    assert.equal(await timedPipeline(),'succeeded');assert.equal(timeoutCalls,2);
+    assert.equal(await recoverM4TimedOutWorkspace(pool,owner,timed.r.run_id,timedJob),false,'terminal success is never revived');
+    const timedArtifacts=(await ok('GET',path('workspace'))).artifacts.filter((a:M4Artifact)=>a.run_id===timed.r.run_id);
+    assert.equal(timedArtifacts.length,2);
+    const timedDocument=timedArtifacts.find((a:M4Artifact)=>a.kind==='document');
+    const downloaded=await send('GET',`/api/v1/m4/artifacts/${timedDocument.artifact_id}/versions/${timedDocument.artifact_version}/bytes`);
+    assert.equal(downloaded.statusCode,200);assert.equal(digest(downloaded.rawPayload),keptHash);
+    assert.deepEqual((await pool.query('SELECT a.attempt_no,u.usage_status,u.input_tokens FROM bb_model_call_attempts a JOIN bb_call_usage u ON u.attempt_id=a.id WHERE a.job_id=$1 ORDER BY a.attempt_no',[timedJob])).rows,
+      [{attempt_no:1,usage_status:'unknown',input_tokens:null},{attempt_no:2,usage_status:'measured',input_tokens:1000}]);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[timed.r.run_id])).rows[0].n,1);
+
+    // Shared, progressive and group planners must cross the same exit boundary.
+    // These are synthetic plan bytes; document rendering/download is covered above.
+    for(const logical of ['workpaper-shared-plan-v1','workpaper-progressive-item-v1','workpaper-group-'+ 'b'.repeat(40)]){
+      await reviseScope('Synthetic recovery coverage: '+logical);
+      const taskRun=await start(),lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,taskRun.r.run_id);
+      const row=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[lease.runId])).rows[0];
+      const context={pool,blobs,lease,run:row,signal:new AbortController().signal,checkpoint:{},values:new Map()} as StageContext;
+      const journal=new CodexDurableJournal({pool,blobs,lease,validateResult:()=>true});
+      const promptVersion=Number((await pool.query("SELECT COALESCE(max(version),0)+1 AS version FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'",[owner,row.project_id])).rows[0].version);
+      const prompt=await savePromptSnapshot(pool,blobs,{owner,projectId:row.project_id,runId:row.id,kind:'model_request',version:promptVersion,
+        body:'synthetic saved plan',inputRevision:row.input_revision,inputHash:row.input_hash,templateVersion:'synthetic-plan'});
+      const intent={owner_user_id:owner,project_id:row.project_id,job_id:lease.jobId,run_id:row.id,trace_id:row.id,
+        logical_call_id:logical,call_id:randomUUID(),attempt_no:1,model_id:config.model_id,model_config_version:config.model_config_version,prompt_snapshot_ref:prompt};
+      await journal.recordIntent(intent);
+      const base={prepare:async(cwd:string)=>{await mkdir(join(cwd,'scratch'));await mkdir(join(cwd,'output'));await writeFile(join(cwd,'input.json'),JSON.stringify({input_hash:row.input_hash,logical}));},
+        collect:async(cwd:string)=>{assert.equal(await readFile(join(cwd,'scratch/completed.txt'),'utf8'),'completed extraction');return JSON.parse(await readFile(join(cwd,'output/batch-plan.json'),'utf8'));}};
+      const workspace=recoverableM4Workspace(context,logical,base),cwd=join(directory,intent.call_id);await mkdir(cwd);await workspace.prepare(cwd);
+      await writeFile(join(cwd,'scratch/completed.txt'),'completed extraction');await writeFile(join(cwd,'output/batch-plan.json'),JSON.stringify({synthetic_plan:logical}));
+      const observation={...intent,provider_request_id:null,finish_reason:'stop',outcome:'completed' as const,usage,error_code:null,result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
+      const runtime={adapter:'codex_exec' as const,adapter_version:'codex-file-authoring-1',model_provider:'synthetic',model_config_version:config.model_config_version,
+        provider_request_id_status:'unknown' as const,framework_thread_id:null,started_at:new Date().toISOString(),duration_ms:13,exit_code:0,exit_signal:null,finish_reason:'stop',error_code:null,tool_attempts:2,pricing_status:'unknown' as const};
+      await workspace.onExited!(cwd,intent,{observation,runtime,completed:true});await rm(cwd,{recursive:true,force:true});
+      await assert.rejects(pool.query("DELETE FROM bb_model_workspace_evidence WHERE attempt_id=$1",[intent.call_id]),/immutable/);
+      assert.equal((await pool.query('SELECT 1 FROM bb_model_call_attempt_runtime WHERE attempt_id=$1',[intent.call_id])).rowCount,0,'crash preceded runtime persistence');
+      await journal.recordObservation({...observation,outcome:'pending_reconcile',error_code:'MODEL_PRIOR_ATTEMPT_UNRESOLVED'});
+      assert.equal(await recoverM4Collection(pool,owner,row.id,lease.jobId),true);
+      const resumed=await claim(pool,300);assert.ok(resumed);assert.equal(resumed.runId,row.id);
+      const active={...context,lease:resumed,run:(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[row.id])).rows[0]};
+      const replay=new CodexDurableJournal({pool,blobs,lease:resumed,validateResult:()=>true});
+      replay.acquireCallSlot=async()=>{throw Error('Recovery must not start a model');};
+      const result=await runContainedModelCall({...intent,prompt:'synthetic saved plan',output:{kind:'text'},result_schema_version:'synthetic-plan-v1',
+        fileWorkspace:recoverableM4Workspace(active,logical,base)},replay,config);
+      assert.equal(result.status,'reused');assert.deepEqual(result.value,{synthetic_plan:logical});
+      assert.deepEqual((await pool.query('SELECT duration_ms,tool_attempts FROM bb_model_call_attempt_runtime WHERE attempt_id=$1',[intent.call_id])).rows,[{duration_ms:13,tool_attempts:2}]);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].n,1);
+      await assert.rejects(recordPotentialCall(pool,resumed,logical,2),/reuse-only/);
+      if(logical.startsWith('workpaper-group-')){
+        // A recovered group-format fallback can proceed to its authorized item
+        // phase, but only after its original result is durably accepted.
+        const next={...intent,logical_call_id:'workpaper-progressive-item-v1',call_id:randomUUID()};
+        await replay.recordIntent(next);
+        const ref=await replay.storeResult(next,Buffer.from(JSON.stringify({synthetic_plan:'next-item'})),'synthetic-plan-v1');
+        await replay.recordObservation({...observation,...next,...ref});
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].n,2);
+      }
+      await action(pool,owner,row.id,'cancel');
+    }
     assert.equal((await creditBalance(pool,owner)).frozen,0);
   }finally{
     await app.close();await pool.end();

@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import {FILE_AUTHORING_SEED_STAGE,validFileAuthoringSeed} from './file-authoring-seed.js';
 import { lstat, mkdir, open, readdir, realpath, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -18,7 +19,7 @@ export type FileAuthoringRecovery = {
 type Limits = { files: number; fileBytes: number; totalBytes: number };
 const id = /^[A-Za-z0-9_-]{1,128}$/;
 const hash = /^[a-f0-9]{64}$/;
-const logical = /^file-authoring-(?:v1|size-repair-[1-9][0-9]*)$/;
+const logical = /^(?:file-authoring-(?:v1|size-repair-[1-9][0-9]*)|m4-document-v1|workpaper-shared-plan-v1|workpaper-progressive-item-v1|workpaper-group-[a-f0-9]{40})$/;
 class CaptureError extends Error {
   constructor(readonly captureFailure:FileAuthoringCaptureFailure,message:string){super(message);}
 }
@@ -62,10 +63,21 @@ function validate(ctx: StageContext, value: unknown, logicalCallId: string): ass
     if (seen.has(parent)) throw unsafe();
 }
 
+/** A seed is published only by the private new-run importer, before any provider
+ * attempt. It never grants extra time to its failed source run. */
+function authorizedSeed(ctx:StageContext){
+  const value=(ctx.lease.checkpoint.stages as Record<string,unknown>|undefined)?.[FILE_AUTHORING_SEED_STAGE];
+  if(value===undefined)return null;
+  if(!validFileAuthoringSeed(value,{owner:ctx.run.owner_user_id,project:ctx.run.project_id,run:ctx.run.id,job:ctx.lease.jobId,
+    revision:ctx.run.input_revision,inputHash:ctx.run.input_hash.trim()}))throw unsafe();
+  return value;
+}
+
 /** The first durable intent binds every later send, including operator retries. */
 export function fileAuthoringContextDeadline(ctx:StageContext,logicalCallId:string):string|undefined {
   const captures=Object.values(ctx.lease.checkpoint.file_authoring_recovery_captures??{}) as {logical_call_id?:string;deadline_at?:unknown}[];
   const bound=captures.filter(c=>c.logical_call_id===logicalCallId&&c.deadline_at!==undefined).map(c=>c.deadline_at);
+  const seed=authorizedSeed(ctx);if(logicalCallId==='file-authoring-v1'&&seed)bound.push(seed.deadline_at);
   if(bound.some(value=>!isFileAuthoringDeadline(value)||value!==bound[0]))throw unsafe();
   return bound[0] as string|undefined;
 }
@@ -73,8 +85,14 @@ export function fileAuthoringContextDeadline(ctx:StageContext,logicalCallId:stri
 /** A saved working directory alone never authorizes another model send. */
 export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId: string): FileAuthoringRecovery | null {
   const stages = ctx.lease.checkpoint.stages as Record<string, unknown> | undefined;
-  const saved = stages?.[FILE_AUTHORING_RECOVERY_STAGE] as FileAuthoringRecovery | undefined;
+  const seed=authorizedSeed(ctx);
+  const saved = (stages?.[FILE_AUTHORING_RECOVERY_STAGE]??seed?.snapshot) as FileAuthoringRecovery | undefined;
   if (!saved || saved.logical_call_id !== logicalCallId) return null;
+  if(seed&&isDeepStrictEqual(saved,seed.snapshot)){
+    validate(ctx,saved,logicalCallId);
+    if(fileAuthoringContextDeadline(ctx,logicalCallId)!==seed.deadline_at)throw unsafe();
+    return saved;
+  }
   const dispositions = ctx.lease.checkpoint.operator_reconciliations as Record<string, Record<string, unknown>> | undefined;
   const audit = dispositions?.[saved.attempt_id];
   if (!audit || !['file_authoring_payload_auto_retry', 'file_authoring_output_limit_auto_retry', 'file_authoring_timeout_auto_retry', 'file_authoring_context_rotation'].includes(String(audit.reason_code)) || audit.decision !== 'retry_unknown_usage'
@@ -90,6 +108,7 @@ export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId
  * call. Only a host-authored, authorized retry with the pinned deadline enables it. */
 export function fileAuthoringUsesSmallBatches(ctx: StageContext, recovery: FileAuthoringRecovery | null): boolean {
   if(!recovery?.deadline_at)return false;
+  const seed=authorizedSeed(ctx);if(seed?.small_batches&&seed.deadline_at===recovery.deadline_at)return true;
   const audits=(ctx.lease.checkpoint.operator_reconciliations??{}) as Record<string,Record<string,unknown>>;
   return Object.entries(audits).some(([attempt,audit])=>audit?.actor==='worker_file_authoring_recovery'&&
     audit.attempt_id===attempt&&audit.logical_call_id===recovery.logical_call_id&&audit.deadline_at===recovery.deadline_at&&
@@ -127,6 +146,7 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
   checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string;
+  persist?: (snapshot:FileAuthoringRecovery)=>Promise<void>;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
@@ -173,6 +193,7 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
     snapshot.files.push({ path, key, sha256, byte_size: bytes.length });
   }
   validate(ctx, snapshot, intent.logical_call_id); ctx.signal.throwIfAborted();
+  if(options.persist){await options.persist(snapshot);return snapshot;}
   await (options.checkpoint ?? checkpointStage)(ctx.pool, ctx.lease, FILE_AUTHORING_RECOVERY_STAGE, { ...snapshot }, false);
   ctx.checkpoint[FILE_AUTHORING_RECOVERY_STAGE] = { ...snapshot };
   await recordFileAuthoringCapture(ctx,intent,{state:'saved',failure_code:null},options.capture);

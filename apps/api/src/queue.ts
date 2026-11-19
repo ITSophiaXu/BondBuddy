@@ -152,7 +152,7 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
         return null;
       }
     }
-    if(await providerCallNeedsReconciliation(client,j.id)){
+    if(await providerCallNeedsReconciliation(client,j.id)&&!await m4CollectionRecoveryReady(client,r,j)){
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
       await event(client,r,'paused','provider_reconcile','provider_reconciliation_required');
       return null;
@@ -349,6 +349,17 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
       throw new Problem(409,'CAPABILITY_NOT_READY','AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
     // A private review reassembly may only read its completed durable call. This
     // check uses the locked database checkpoint, never a caller's stale lease copy.
+    if(j.checkpoint?.m4_collection_recovery){
+      const recovered=(await client.query(`SELECT a.logical_call_id,a.status,
+        EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=a.id) AS has_result
+        FROM bb_model_call_attempts a WHERE a.id=$1 AND a.job_id=$2 AND a.owner_user_id=$3`,
+        [j.checkpoint.m4_collection_recovery.attempt_id,j.id,r.owner_user_id])).rows[0];
+      // A recovered group may legitimately fall back to its single-item phase.
+      // Only a durably accepted result unlocks a DIFFERENT logical call. The
+      // interrupted invocation itself is always reuse-only.
+      if(!recovered||recovered.logical_call_id===logicalCallId||recovered.status!=='completed'||!recovered.has_result)
+        throw new Problem(409,'CAPABILITY_NOT_READY','M4 collection recovery is reuse-only');
+    }
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
     // Admission may wait on the shared model budget. Check again while holding
@@ -1147,9 +1158,11 @@ export async function recordProviderReconcileUnknown(
     // Only the no-lookup adapter can prove that another query adds no evidence.
     // A prepared/saved snapshot or conflicting/result evidence gets the full
     // reconciliation window; it is never discarded on a transient recovery miss.
+    const m4Saved=new Set((await client.query("SELECT attempt_id FROM bb_model_workspace_evidence WHERE owner_user_id=$1 AND run_id=$2 AND event='exit' AND payload#>>'{exit,completed}'='true'",[owner,runId])).rows.map(e=>e.attempt_id));
     const unrecoverable=reconciler==='codex_no_lookup'&&attempts.length>0&&attempts.every(a=>
       a.adapter==='codex_exec'&&(a.exit_code!==null||/^SIG[A-Z0-9]+$/.test(a.exit_signal??''))&&
       a.error_code&&a.observed_failure&&!a.conflicting&&!a.has_result&&
+      !(m4RecoverableCall.test(a.logical_call_id)&&Number(j.checkpoint?.m4_collection_recovery?.attempts??0)<2&&m4Saved.has(a.id))&&
       (!/^file-authoring-/.test(a.logical_call_id)||(!j.checkpoint?.stages?.file_authoring_recovery&&
         !['prepared','saved'].includes(j.checkpoint?.file_authoring_recovery_captures?.[a.id]?.state))));
     const [attempt]=attempts;
@@ -1183,6 +1196,103 @@ async function providerRecoveryAllowed(client:PoolClient,r:any,j:any){
   return j.checkpoint?.provider_reconcile_unknown?.exhausted!==true&&!!(await client.query(
     'SELECT 1 FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL',
     [r.project_id,r.owner_user_id])).rowCount;
+}
+
+const m4RecoverableCall=/^(?:m4-document-v1|workpaper-shared-plan-v1|workpaper-progressive-item-v1|workpaper-group-[a-f0-9]{40})$/;
+/** Exact, exited invocation only. A recovery claim cannot send another model call. */
+async function m4CollectionRecoveryReady(client:PoolClient,r:any,j:any){
+  const marker=j.checkpoint?.m4_collection_recovery;
+  if(!marker||marker.run_id!==r.id||marker.input_hash!==String(r.input_hash).trim()||j.subtype!=='m4_document_v1'
+    ||j.billing_cancel_requested_at||j.user_pause_requested||j.credit_pause_requested)return false;
+  const rows=(await client.query(`SELECT a.id,e.payload,e.payload_sha256 FROM bb_model_call_attempts a
+    JOIN bb_jobs j ON j.id=a.job_id LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+    LEFT JOIN bb_model_workspace_evidence e ON e.attempt_id=a.id AND e.event='exit'
+      AND e.owner_user_id=a.owner_user_id AND e.run_id=j.run_id AND e.input_hash=$3
+    WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[j.id,r.owner_user_id,r.input_hash])).rows;
+  if(rows.length!==1||rows[0].id!==marker.attempt_id)return false;
+  const e=rows[0].payload,obs=e?.exit?.observation;
+  return e?.version==='model-workspace-evidence-v1'&&inputManifestHash(e)===rows[0].payload_sha256?.trim()&&e.exit.completed===true&&e.exit.runtime.exit_code===0
+    &&obs?.call_id===marker.attempt_id&&obs.run_id===r.id&&obs.job_id===j.id&&obs.owner_user_id===r.owner_user_id
+    &&obs.project_id===r.project_id&&m4RecoverableCall.test(obs.logical_call_id)&&e.snapshot?.logical_call_id===obs.logical_call_id&&obs.finish_reason==='stop'
+    &&e.snapshot?.input_hash===String(r.input_hash).trim()&&e.snapshot?.attempt_id===marker.attempt_id
+    &&!(await client.query('SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND logical_call_id=$2 AND attempt_no>$3',
+      [j.id,obs.logical_call_id,obs.attempt_no])).rowCount;
+}
+
+/** Only requeue local collection, never convert unknown usage or resurrect a
+ * failed/cancelled run. A second persistent failure reaches the normal terminal
+ * reconciliation policy with its private snapshot retained. */
+export async function recoverM4Collection(pool:Pool,owner:string,runId:string,jobId:string){
+ return transaction(pool,async client=>{
+  const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+  if(!r||r.state!=='paused'||r.stage!=='provider_reconcile')return false;
+  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
+  if(!j||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until||j.subtype!=='m4_document_v1'
+    ||!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return false;
+  const count=Number(j.checkpoint?.m4_collection_recovery?.attempts??0);if(!Number.isSafeInteger(count)||count>=2)return false;
+  const saved=(await client.query(`SELECT a.id FROM bb_model_call_attempts a
+    JOIN bb_model_workspace_evidence e ON e.attempt_id=a.id AND e.event='exit'
+    WHERE a.owner_user_id=$1 AND a.job_id=$2 AND a.logical_call_id ~ '^(m4-document-v1|workpaper-shared-plan-v1|workpaper-progressive-item-v1|workpaper-group-[a-f0-9]{40})$'
+      AND a.status='pending_reconcile'
+      AND NOT EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)
+      AND NOT EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id
+        AND (o.outcome<>'pending_reconcile' OR o.error_code IS NULL OR o.error_code NOT IN ('MODEL_RESULT_STORE_FAILED','MODEL_PRIOR_ATTEMPT_UNRESOLVED')))
+      ORDER BY a.attempt_no DESC LIMIT 1`,[owner,jobId])).rows[0];
+  if(!saved)return false;
+  const marker={run_id:runId,input_hash:String(r.input_hash).trim(),attempt_id:saved.id,attempts:count+1,reuse_only:true};
+  if(!await m4CollectionRecoveryReady(client,r,{...j,checkpoint:{...j.checkpoint,m4_collection_recovery:marker}}))return false;
+  await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',checkpoint=jsonb_set(checkpoint,
+    '{m4_collection_recovery}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(marker)]);
+  await event(client,r,'queued','queued','m4_collection_recovery_scheduled',undefined,'run.state_changed',{attempt_id:saved.id});
+  return true;
+ });
+}
+
+/** One bounded continuation of an observed M4 timeout. The old invocation stays
+ * unknown-usage/failed; only its complete, exact workspace authorizes another send.
+ * This does not revive terminal runs or replace successful collection recovery. */
+export async function recoverM4TimedOutWorkspace(pool:Pool,owner:string,runId:string,jobId:string){
+ return transaction(pool,async client=>{
+  const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+  if(!r||r.task_kind!=='generation'||r.state!=='paused'||r.stage!=='provider_reconcile'||r.artifact_id)return false;
+  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
+  if(!j||j.subtype!=='m4_document_v1'||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until
+    ||j.user_pause_requested||j.credit_pause_requested||j.billing_cancel_requested_at||j.checkpoint?.m4_timeout_recovery)return false;
+  if(!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return false;
+  const billing=r.reservation_id?(await client.query('SELECT billing_policy FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2',[r.reservation_id,owner])).rows[0]:null;
+  if(r.billing_mode!=='fixed_credits'&&billing?.billing_policy!=='on_delivery')return false;
+  if(!(await client.query('SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',
+    [owner,r.project_id,r.input_revision,r.input_hash])).rowCount)return false;
+  const rows=(await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version,
+    e.payload,e.payload_sha256 FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
+    LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+    LEFT JOIN bb_model_workspace_evidence e ON e.attempt_id=a.id AND e.event='exit' AND e.owner_user_id=a.owner_user_id AND e.run_id=j.run_id AND e.input_hash=$3
+    WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner,r.input_hash])).rows;
+  if(rows.length!==1)return false;
+  const a=rows[0],e=a.payload,o=e?.exit?.observation,t=e?.exit?.runtime;
+  if(a.status!=='pending_reconcile'||a.attempt_no!==1||a.logical_call_id!=='m4-document-v1'||a.adapter!=='codex_exec'||a.adapter_version!=='codex-file-authoring-1'
+    ||a.observed_usage!=='unknown'||Number(a.conflicting_measurements)>0||a.error_code!=='MODEL_TIMEOUT'||!['SIGTERM','SIGKILL'].includes(a.exit_signal??''))return false;
+  if(e?.version!=='model-workspace-evidence-v1'||inputManifestHash(e)!==a.payload_sha256?.trim()||e.exit.completed!==false
+    ||o?.call_id!==a.id||o.attempt_no!==1||o.logical_call_id!==a.logical_call_id||o.owner_user_id!==owner||o.project_id!==r.project_id||o.run_id!==runId||o.job_id!==jobId
+    ||o.outcome!=='pending_reconcile'||o.error_code!=='MODEL_TIMEOUT'||o.finish_reason!=='timeout'||o.usage?.status!=='unknown'
+    ||t?.adapter!=='codex_exec'||t.adapter_version!=='codex-file-authoring-1'||t.error_code!=='MODEL_TIMEOUT'||t.exit_signal!==a.exit_signal
+    ||!validFileAuthoringRecovery(e.snapshot,{owner,project:r.project_id,run:runId,inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id})
+    ||!e.snapshot.files.some((f:{path:string})=>f.path==='output/document.docx'))return false;
+  if((await client.query(`SELECT 1 WHERE EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1)
+    OR EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND logical_call_id=$3 AND attempt_no>1)
+    OR NOT EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND outcome='pending_reconcile' AND error_code='MODEL_TIMEOUT' AND usage_status='unknown' AND result_id IS NULL)
+    OR EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND (outcome<>'pending_reconcile' OR error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR usage_status<>'unknown' OR result_id IS NOT NULL))`,[a.id,jobId,a.logical_call_id])).rowCount)return false;
+  const authorizedAt=new Date();
+  const marker={version:'m4-timeout-recovery-v1',run_id:runId,input_hash:String(r.input_hash).trim(),attempt_id:a.id,logical_call_id:a.logical_call_id,
+    evidence_sha256:a.payload_sha256.trim(),authorized_at:authorizedAt.toISOString(),deadline_at:new Date(authorizedAt.getTime()+90*60*1000).toISOString()};
+  const audit={actor:'worker_m4_timeout_recovery',reason_code:'m4_timeout_workspace_continuation',decision:'retry_unknown_usage',attempt_id:a.id,logical_call_id:a.logical_call_id,deadline_at:marker.deadline_at};
+  await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',checkpoint=jsonb_set(jsonb_set(checkpoint-'provider_reconcile_unknown',
+    '{m4_timeout_recovery}',$2::jsonb,true),'{operator_reconciliations}',COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($3::text,$4::jsonb),true),updated_at=now() WHERE id=$1`,
+    [jobId,JSON.stringify(marker),a.id,JSON.stringify(audit)]);
+  await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
+  await event(client,r,'queued','queued','m4_timeout_workspace_continuation',undefined,'run.state_changed',{attempt_id:a.id});
+  return true;
+ });
 }
 
 export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';

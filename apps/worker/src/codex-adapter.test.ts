@@ -378,6 +378,7 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
   assert.equal(config.credential.kind, 'command');
   const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
   assert.ok(args.includes('model_providers.copilot_enterprise.auth.command="/usr/local/bin/bb-copilot-token"'));
+  assert.ok(args.includes('model_providers.copilot_enterprise.http_headers.Editor-Version="vscode/1.109.2"'), 'Copilot rejects editor versions below 1.109.2 with HTTP 466');
   assert.ok(!args.some(a => a.includes('model_providers.copilot_enterprise.requires_openai_auth')));
   assert.ok(args.includes('model_context_window=1000000'));
   assert.ok(args.includes('model_auto_compact_token_limit=900000'));

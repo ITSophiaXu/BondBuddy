@@ -38,6 +38,7 @@ test('captured consumer ACL supports real admission, result persistence and term
     const sql=await readFile(new URL('../../../deploy/m1/security/'+name,import.meta.url),'utf8');
     await admin.query(sql.replaceAll(':"runtime_role"',ident(role)));
   };
+  await apply('managed-workspace-evidence-grants.sql');
   await apply('managed-model-activity-grants.sql');
   await apply('managed-capacity-settlement-grants.sql');
   const url=new URL(connection!);url.username=role;url.password=password;
@@ -208,6 +209,13 @@ test('captured consumer ACL supports real admission, result persistence and term
       output:{kind:'json' as const,schema:{type:'object',properties:{answer:{type:'string'}},required:['answer'],additionalProperties:false},validate}};
     assert.equal((await runContainedModelCall(call,journal,config)).status,'completed');
     assert.equal((await runContainedModelCall(call,journal,config)).status,'reused');
+    const attempt=(await worker.query('SELECT id FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].id;
+    await worker.query(`INSERT INTO bb_model_workspace_evidence(attempt_id,event,owner_user_id,run_id,input_hash,payload,payload_sha256)
+      VALUES($1,'capture_failure',$2,$3,$4,'{"code":"synthetic_capture_failure"}',$4)`,[attempt,owner,lease.runId,hash]);
+    assert.equal((await worker.query('SELECT payload FROM bb_model_workspace_evidence WHERE attempt_id=$1',[attempt])).rows[0].payload.code,'synthetic_capture_failure');
+    await assert.rejects(worker.query("UPDATE bb_model_workspace_evidence SET payload='{}' WHERE attempt_id=$1",[attempt]),{code:'42501'});
+    await assert.rejects(worker.query('DELETE FROM bb_model_workspace_evidence WHERE attempt_id=$1',[attempt]),{code:'42501'});
+
     assert.equal(await readFile(marker,'utf8'),'sent\n');
     assert.equal((await admin.query('SELECT count(*)::int n FROM bb_provider_result_refs WHERE job_id=$1',[lease.jobId])).rows[0].n,1);
     const artifact=await promoteWordArtifact(worker,lease,makeWorkerDocxFixture({externalLink:false}),blobs,'generated_pair_v1');

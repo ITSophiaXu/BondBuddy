@@ -25,7 +25,7 @@ test('global assistant CLI gets the selected context and proposes cards without 
 });
 
 import assert from 'node:assert/strict';
-import { mkdtemp,readFile,writeFile,rm,chmod,link,symlink } from 'node:fs/promises';
+import { mkdtemp,mkdir,readFile,writeFile,rm,chmod,link,symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join,resolve } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -66,8 +66,13 @@ async function fixture(kind:'document'|'qa'='document') {
     blobs:{put:async(key:string,bytes:Buffer)=>{store.set(key,bytes);},getIfExistsBounded:async(key:string)=>store.get(key)??null}} as unknown as StageContext;
   const query=async(sql:string,args?:unknown[])=>{
     persisted.push({sql,args});
+    if(sql.startsWith('SELECT e.payload,e.input_hash,e.payload_sha256')){
+      const saved=persisted.find(p=>p.sql.startsWith('INSERT INTO bb_model_workspace_evidence')&&p.args?.[0]===args?.[0]&&p.args?.[1]==='exit');
+      return {rows:saved?[{payload:JSON.parse(saved.args![2] as string),input_hash:ctx.run.input_hash,payload_sha256:saved.args![3]}]:[]};
+    }
     if(sql.startsWith('SELECT r.*'))return {rows:[{...ctx.run,state:'running',event_cursor:0}]};
     if(sql.startsWith('SELECT * FROM bb_jobs'))return {rows:[{id:'job',state:'running',lease_token:'lease',lease_until:new Date(Date.now()+60000)}]};
+    if(sql.includes('FROM bb_run_model_activity'))return {rows:[{waiting:0,active:0}]};
     if(sql.includes('FROM bb_authoring_progress'))return {rows:[{active_ms:0,work_bps:0,accrued_points:0,clock_at:new Date(),sampled_at:new Date(),lease_until:null}]};
     if(sql.includes('RETURNING checkpoint'))return {rows:[{checkpoint:{}}]};
     if(sql.startsWith('SELECT event_cursor'))return {rows:[{event_cursor:0}]};
@@ -156,10 +161,18 @@ test('workpaper CLI verifies source, coverage, template and links; the private n
       assert.equal(input.materials[0].purpose,'source_prospectus');await outputWords(f.directory);
       assert.equal(JSON.parse(await readFile(join(f.directory,'source-spans.json'),'utf8')).spans[0].text,text);
       assert.ok(input.knowledge.template_path);assert.ok((await readFile(join(f.directory,input.knowledge.template_path))).length>1000);
-      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),/WORKPAPER_COVERAGE_REQUIRED|ENOENT|M4_OUTPUT_MISSING/);
+      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),error=>{
+        assert.deepEqual((error as {collectionDiagnostic?:unknown}).collectionDiagnostic,{code:'workpaper_coverage_missing_or_invalid',file:'workpaper-coverage.json',rule:'safe_json_file'});return true;
+      });
       await runFile(python,['-B','-c',`from docx import Document\nfrom pathlib import Path\np=Path(${JSON.stringify(f.directory)})/'output/document.docx'\nd=Document(p);d.paragraphs[0].text=${JSON.stringify(text)};d.save(p)`],{cwd:root,timeout:30000});
       await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
       await writeFile(join(f.directory,'output/workpaper-coverage.json'),JSON.stringify({reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]}));
+      assert.match(await options.buildPrompt(f.ctx),/target-spans-final/);
+      await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:'stale final-document quote',field:'资产负债'}]}));
+      await assert.rejects(options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'}),error=>{
+        assert.deepEqual((error as {collectionDiagnostic?:unknown}).collectionDiagnostic,{code:'WORKPAPER_CONTENT_LINKS_MISSING',file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',source_span_ids:['p0'],source_span_count:1});return true;
+      });
+      await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
       return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-workpaper'} as never,{text:'synthetic'})};
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing result');
@@ -208,6 +221,60 @@ test(`direct workpaper ${status} uses one authoring call, publishes its result b
   }finally{await f.clean();}
 });
 
+// Regression uses the complete direct-workpaper workspace, including the host
+// source copy and selected template. A generic document fixture omitted both.
+for(const recovery of ['completed','timeout'] as const)
+test(`direct workpaper ${recovery} restores its real files and passes collection`,async()=>{
+ const f=await fixture();
+ try{
+  const m=f.input.manifest as M4DocumentManifest,text='合成发行人2025年末总资产100万元，负债50万元，资产负债率50%。偿债资金来源为本期营业回款和存量流动资产。合并口径与母公司口径分开列示，期末余额与期间发生额分开分析，未取得银行流水，尚不能确认实际账户收支。';
+  const source=makeSyntheticDocxFixture({text});f.store.set('source',source);f.pin.sha256=digest(source);
+  f.input.materials[0]!.filename='synthetic.docx';f.input.materials[0]!.mediaType='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  m.billing_task='m4_workpaper';m.input.document_type='workpaper';
+  m.input.workpaper={batch_id:'batch',catalogue_id:'catalogue',mode:'direct',entry:{id:'s1-r2',code:'1.1',title:'财务分析',folder:'主体',path:'主体/1.1 财务分析.docx',sheet:'目录',row:2,instructions:'基于披露编制分析稿',kind:'file'}};
+  m.template_material=f.pin;m.input.template={template_id:'template',template_version:1,sha256:f.pin.sha256};
+  m.knowledge=loadWorkpaperKnowledge('sse','private');f.ctx.run.input_hash=inputManifestHash(m);
+  let calls=0,originalWord='';
+  const intent={call_id:'saved-direct-workpaper',attempt_no:1,logical_call_id:'m4-document-v1',owner_user_id:'owner',project_id:'project',run_id:'run',job_id:'job'};
+  const stage=m4DocumentStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+   if(calls++){
+    const prior={call_id:intent.call_id,attempt_no:1,status:recovery==='timeout'?'failed' as const:'pending_reconcile' as const,observed:true,operator_retry:recovery==='timeout'};
+    if(recovery==='completed'){
+      const restored=await options.fileWorkspace!.recoverCollection!(prior);assert.ok(restored);return {kind:'done',value:restored.value};
+    }
+    assert.match((await options.fileWorkspace!.prepareCollectionRepair!(prior))!,/只接续/);
+    const restored=join(f.directory,'resumed');await mkdir(restored);await options.fileWorkspace!.prepare(restored);
+    assert.equal(digest(await readFile(join(restored,'output/document.docx'))),originalWord);
+    assert.equal(digest(await readFile(join(restored,'scratch/association-source.docx'))),f.pin.sha256);
+    assert.equal(await readFile(join(restored,'scratch/work-log.txt'),'utf8'),'synthetic completed extraction');
+    return {kind:'done',value:await options.fileWorkspace!.collect(restored,{...intent,call_id:'resumed-direct-workpaper',attempt_no:2} as never)};
+   }
+   await options.fileWorkspace!.prepare(f.directory);await outputWords(f.directory);
+   await runFile(python,['-B','-c',`from docx import Document\nimport sys\nd=Document(sys.argv[1]);d.paragraphs[0].text=sys.argv[2];d.save(sys.argv[1])`,join(f.directory,'output/document.docx'),text],{cwd:root,timeout:30000});
+   originalWord=digest(await readFile(join(f.directory,'output/document.docx')));
+   await writeFile(join(f.directory,'scratch/work-log.txt'),'synthetic completed extraction');
+   await writeFile(join(f.directory,'output/workpaper-result.json'),JSON.stringify({item_id:'s1-r2',status:'generate',reason:'披露支持编制分析稿。',missing_materials:[],citations:[{span_id:'p0',quote:text}]}));
+   await writeFile(join(f.directory,'output/file-links.json'),JSON.stringify({links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'资产负债',period:'2025年末',unit:'万元'}]}));
+   await writeFile(join(f.directory,'output/workpaper-coverage.json'),JSON.stringify({reviewed_span_ids:['p0'],used_span_ids:['p0'],excluded:[]}));
+   const timeout=recovery==='timeout';
+   await options.fileWorkspace!.onExited!(f.directory,intent as never,{completed:!timeout,
+    observation:{...intent,outcome:timeout?'pending_reconcile':'completed',error_code:timeout?'MODEL_TIMEOUT':null,finish_reason:timeout?'timeout':'stop',usage:{status:timeout?'unknown':'measured'}},
+    runtime:{adapter:'codex_exec',adapter_version:'codex-file-authoring-1',exit_code:timeout?null:0,exit_signal:timeout?'SIGTERM':null,error_code:timeout?'MODEL_TIMEOUT':null}} as never);
+   return {kind:'stopped'};
+  }})});
+  assert.equal((await stage.run(f.ctx)).kind,'stopped');
+  if(recovery==='timeout'){
+   const saved=f.persisted.find(p=>p.sql.startsWith('INSERT INTO bb_model_workspace_evidence')&&p.args?.[1]==='exit')!;
+   const deadline=new Date(Date.now()+90*60*1000).toISOString();
+   f.ctx.lease.checkpoint={m4_timeout_recovery:{version:'m4-timeout-recovery-v1',run_id:'run',input_hash:f.ctx.run.input_hash,attempt_id:intent.call_id,logical_call_id:intent.logical_call_id,evidence_sha256:saved.args![3],authorized_at:new Date().toISOString(),deadline_at:deadline},
+    operator_reconciliations:{[intent.call_id]:{decision:'retry_unknown_usage',reason_code:'m4_timeout_workspace_continuation',deadline_at:deadline}}};
+  }
+  const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('missing restored result');
+  assert.ok(validM4DocumentResult(result.value,f.ctx));assert.equal(result.value.files['document.docx']!.sha256,originalWord);
+  f.ctx.values.set('model_generation',result.value);assert.equal((await m4DocumentDeliveryStage().run(f.ctx)).kind,'deliver');
+ }finally{await f.clean();}
+});
+
 test('M4 missing output is honest, readonly input tampering fails and changed pinned method does not call CLI',async()=>{
   for(const action of ['missing','tamper','method'] as const){const f=await fixture();let calls=0;
     try{
@@ -218,9 +285,11 @@ test('M4 missing output is honest, readonly input tampering fails and changed pi
         return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-call'} as never,{text:''})};
       }})});
       if(action==='tamper')await assert.rejects(stage.run(f.ctx),/INPUT_REVISION_CONFLICT/);
-      else {const result=await stage.run(f.ctx);if(action==='method'){assert.equal(result.kind,'pause');assert.equal(calls,0);}
-        else{assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();f.ctx.values.set('model_generation',result.value);
-          assert.deepEqual(await m4DocumentDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'});}}
+      else if(action==='missing')await assert.rejects(stage.run(f.ctx),error=>{
+        assert.ok(error instanceof Error);assert.equal(error.message,'m4_document_missing_or_unsafe');
+        assert.equal((error as {collectionDiagnostic?:{file:string}}).collectionDiagnostic?.file,'document.docx');return true;
+      });
+      else {const result=await stage.run(f.ctx);assert.equal(result.kind,'pause');assert.equal(calls,0);}
     }finally{await f.clean();}
   }
 });

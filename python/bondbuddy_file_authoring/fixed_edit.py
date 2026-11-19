@@ -235,6 +235,7 @@ class Editor:
         self.inserted_rows = set()
         self.inserted_cells = set()
         self.deleted_tables = set()
+        self.image_edits = {}
         self.property_changes = {}
         self.changed_parts = set()
         self.operations = []
@@ -472,6 +473,24 @@ class Editor:
         parent.insert(parent.index(anchor) + (position == 'after'), table)
         self.changed_parts.add(part)
 
+    def remove_image(self, part, paragraph, operation):
+        from .embedded_images import single_image
+        if operation['node_id'] in self.image_edits or paragraph.tag != q('p'):
+            error('WORD_EDIT_IMAGE_UNSUPPORTED')
+        run, profile = single_image(self.parts, part, paragraph)
+        if operation.get('relationship_id') != profile['relationship_id'] or operation.get('image_sha256') != profile['sha256']:
+            error('WORD_EDIT_IMAGE_ANCHOR_MISMATCH')
+        after = text_value(operation.get('after'))
+        if not isinstance(operation.get('reason'), str) or not operation['reason'].strip():
+            error('WORD_EDIT_IMAGE_REASON_REQUIRED')
+        index = paragraph.index(run)
+        self.image_edits[operation['node_id']] = {'run_index': index, 'after': after}
+        paragraph.remove(run)
+        if after:
+            paragraph.insert(index, run_with_text(run, after))
+        self.touched.add(operation['node_id'])
+        self.changed_parts.add(part)
+
     def delete_table(self, part, table, operation):
         """Mark every row deleted; accept removes the rows/table, reject keeps it."""
         if table.tag != q('tbl'):
@@ -505,7 +524,8 @@ class Editor:
                   'insert_column': {'column_index', 'position', 'values'},
                   'insert_row': {'values', 'position'},
                   'insert_table': {'rows', 'style_node_id', 'position'},
-                  'delete_table': set(), 'add_comment': {'text'}}
+                  'delete_table': set(), 'add_comment': {'text'},
+                  'remove_image': {'relationship_id', 'image_sha256', 'after'}}
         if kind not in fields:
             error('WORD_EDIT_OPERATION_UNSUPPORTED')
         if set(operation) - common - fields[kind] or not {'id', 'kind', 'node_id', 'before'} <= set(operation):
@@ -518,6 +538,8 @@ class Editor:
             error('WORD_EDIT_ANCHOR_MISMATCH')
         if kind == 'replace_text':
             self.replace_paragraph(operation['node_id'], before, text_value(operation.get('after')))
+        elif kind == 'remove_image':
+            self.remove_image(part, node, operation)
         elif kind == 'replace_cell_text':
             self.target(operation['node_id'], 'tc')
             ps = node.findall(q('p'))
@@ -638,7 +660,16 @@ class Editor:
                 original = self.original_paragraphs[key]
                 final_node = self.nodes[key][1]
                 revised = copy.deepcopy(original)
-                patcher.patch(revised, paragraph_text(original), paragraph_text(final_node))
+                if key in self.image_edits:
+                    edit = self.image_edits[key]
+                    old_run = revised[edit['run_index']]
+                    revised.remove(old_run)
+                    revised.insert(edit['run_index'], patcher.revision_node(old_run, 'del'))
+                    after_text = paragraph_text(final_node)
+                    if after_text:
+                        revised.insert(edit['run_index'] + 1, patcher.revision_node(run_with_text(old_run, after_text), 'ins'))
+                else:
+                    patcher.patch(revised, paragraph_text(original), paragraph_text(final_node))
                 destination = destinations[key]
                 destination.getparent().replace(destination, revised)
                 destinations[key] = revised
@@ -751,7 +782,7 @@ class Editor:
         parts[comment_path] = serialized(comments)
 
     def has_changes(self):
-        return bool(self.inserted_paragraphs or self.inserted_rows or self.inserted_cells or self.deleted_tables or self.comments or any(
+        return bool(self.image_edits or self.inserted_paragraphs or self.inserted_rows or self.inserted_cells or self.deleted_tables or self.comments or any(
             paragraph_text(self.original_paragraphs[key]) != paragraph_text(self.nodes[key][1])
             for key in self.touched if key in self.original_paragraphs))
 
@@ -885,10 +916,13 @@ def main():
                     selected = editor.nodes
                 total = len(selected)
                 page = dict(list(selected.items())[args.offset:args.offset + args.limit])
-                nodes = describe_nodes(editor.nodes, selected=page)
+                nodes = describe_nodes(editor.nodes, selected=page, parts=editor.parts)
                 result = {'version': 'word-edit-inspect-v1', 'baseline_sha256': sha(raw),
                           'offset_unit': 'unicode_code_points', 'total': total,
                           'nodes': nodes}
+                if any(n.get('image_edit', {}).get('supported') for n in nodes):
+                    from .embedded_images import IMAGE_EDIT_GUIDANCE
+                    result['image_edit_guidance'] = IMAGE_EDIT_GUIDANCE
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception as exc:

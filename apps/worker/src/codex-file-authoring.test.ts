@@ -69,3 +69,48 @@ test('known-invalid file output is a measured failure; storage errors still requ
   }
  }finally{await rm(s.root,{recursive:true,force:true});}
 });
+
+test('measured collection failure preserves work and repairs at most once; exhausted repair stays failed',{skip:process.platform!=='linux'},async()=>{
+ for(const succeed of [true,false]){
+  const s=await setup();let collected=0,captured=0,restored=false,bytes:Buffer|undefined;
+  try{
+   const journal=new MemoryCodexJournal();
+   const input:ContainedCallInput={...s.input,logical_call_id:'m4-document-v1',fileWorkspace:{...s.input.fileWorkspace!,
+    prepare:async cwd=>{await s.input.fileWorkspace!.prepare(cwd);if(bytes){await writeFile(join(cwd,'scratch/saved.txt'),bytes);restored=true;}},
+    onExited:async(cwd,_intent,evidence)=>{captured++;assert.equal(evidence.completed,true);await writeFile(join(cwd,'scratch/saved.txt'),'prior-completed-work');bytes=await readFile(join(cwd,'scratch/saved.txt'));},
+    prepareCollectionRepair:async()=>null,
+    onCollectionFailure:async()=>bytes?'repair workpaper-result.json /status only':null,
+    collect:async cwd=>{collected++;if(collected===1||!succeed)throw new CodexOutputValidationError('synthetic_invalid');
+      assert.equal(await readFile(join(cwd,'scratch/saved.txt'),'utf8'),'prior-completed-work');return {repaired:true};}
+   }};
+   const result=await runContainedModelCall(input,journal,s.config);
+   assert.equal(result.status,succeed?'completed':'failed');assert.equal(result.attempts.length,2);
+   assert.equal(captured,2);assert.equal(restored,true);assert.equal(journal.observations[0].retryable,true);
+   assert.equal(journal.observations[1].retryable,false);
+  }finally{await rm(s.root,{recursive:true,force:true});}
+ }
+});
+test('exited cancellation is captured before cleanup and never authorizes collect or another send',{skip:process.platform!=='linux'},async()=>{
+ const s=await setup(),cancel=new AbortController();let captured=false;
+ try{
+  const journal=new MemoryCodexJournal();
+  const result=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_hang',signal:cancel.signal,
+   onEvent:event=>{if(event.type==='item.started')cancel.abort();},fileWorkspace:{...s.input.fileWorkspace!,
+    onExited:async(cwd,_intent,evidence)=>{assert.equal(cancel.signal.aborted,true);assert.equal(evidence.completed,false);
+      assert.ok(evidence.runtime.exit_code!==null||evidence.runtime.exit_signal);assert.equal(await readFile(join(cwd,'input.json'),'utf8'),'{}');captured=true;}
+   }},journal,s.config);
+  assert.equal(result.error_code,'MODEL_CANCELLED');assert.equal(captured,true);assert.equal(journal.intents.length,1);assert.equal(s.counts().collected,0);
+ }finally{await rm(s.root,{recursive:true,force:true});}
+});
+test('post-exit collection replay stores the same attempt without admission or model execution',{skip:process.platform!=='linux'},async()=>{
+ const s=await setup();let saved:import('./model-workspace-evidence.js').WorkspaceExit|undefined;
+ try{
+  const journal=new MemoryCodexJournal();
+  const input={...s.input,fileWorkspace:{...s.input.fileWorkspace!,onExited:async(_cwd:string,_intent:unknown,e:import('./model-workspace-evidence.js').WorkspaceExit)=>{saved=e;},collect:async()=>{throw Error('storage');}}};
+  const failed=await runContainedModelCall(input,journal,s.config);assert.equal(failed.status,'needs_reconcile');assert.ok(saved);
+  journal.prior={call_id:saved.observation.call_id,attempt_no:1,status:'pending_reconcile',observed:true};
+  const result=await runContainedModelCall({...s.input,fileWorkspace:{...s.input.fileWorkspace!,recoverCollection:async()=>({value:{file:'restored'},evidence:saved!})}},journal,s.config);
+  assert.equal(result.status,'reused');assert.equal(journal.intents.length,1);assert.equal(s.counts().prepared,1);
+  assert.equal(journal.observations[1].observation.call_id,saved.observation.call_id);
+ }finally{await rm(s.root,{recursive:true,force:true});}
+});

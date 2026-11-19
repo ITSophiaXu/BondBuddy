@@ -4,6 +4,9 @@ import type { Pool } from 'pg';
 export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void> {
   const result = await pool.query<{ name: string }>(`
     SELECT name FROM (VALUES
+      ('authoring_scope_reservation_insert',(SELECT bool_and(has_column_privilege(current_user,'public.bb_authoring_scope_reservations',col,'INSERT')) FROM unnest(ARRAY['owner_user_id','scope_quote_id','reservation_id']) AS columns(col))),
+      ('workspace_evidence_read',has_table_privilege(current_user,'public.bb_model_workspace_evidence','SELECT')),
+      ('workspace_evidence_insert',has_table_privilege(current_user,'public.bb_model_workspace_evidence','INSERT')),
       ('model_capacity_sequence', has_sequence_privilege(current_user,'public.bb_model_capacity_order','USAGE')),
       ('reservation_state', has_column_privilege(current_user,'public.bb_credit_reservations','state','UPDATE')),
       ('reservation_finalized_at', has_column_privilege(current_user,'public.bb_credit_reservations','finalized_at','UPDATE')),

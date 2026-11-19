@@ -76,6 +76,65 @@ def inspect(path, complete=False, packaged=None):
                 coverage='complete' if coverage_is_complete(warnings) else 'partial')
 
 
+
+def table_layout(path, packaged=None):
+    """Private host layout proof; keep the versioned text snapshot unchanged.
+
+    Only whole-width rows in a genuine multi-column grid qualify. A one-column
+    table, vertical merge, omitted grid positions, nested table or drawing stays
+    on the ordinary cell path. The collector still requires verbatim full text
+    before a proven whole-width paragraph may live outside a table.
+    """
+    path = Path(path)
+    if path.suffix.lower() not in ('.docx', '.pdf'):
+        raise ValueError('FILE_FORMAT_UNSUPPORTED')
+    # PDF conversion is not original OOXML grid evidence. Preserve the strict
+    # fallback and avoid a second potentially different Word conversion.
+    if path.suffix.lower() == '.pdf':
+        return dict(version='workpaper-table-layout-v1', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    full_width_span_ids=[])
+    if packaged is None:
+        with tempfile.TemporaryDirectory(prefix='bb-table-layout-') as tmp:
+            _, root, _ = package(path, Path(tmp))
+    else:
+        _, root, _ = packaged
+    full_cells = set()
+    blocked = {q('drawing'), q('pict'), q('object'), q('altChunk'), q('tbl')}
+    for table in root.iter(q('tbl')):
+        grid = table.find(q('tblGrid'))
+        columns = len(list(grid.iterchildren(q('gridCol')))) if grid is not None else 0
+        rows = list(table.iterchildren(q('tr')))
+        has_data_grid = any(sum(any(paragraph_text(p).strip() for p in c.iter(q('p')))
+                                   for c in r.iterchildren(q('tc'))) >= 2 for r in rows)
+        if columns < 2 or not has_data_grid:
+            continue
+        for row in rows:
+            cells = list(row.iterchildren(q('tc')))
+            if len(cells) != 1:
+                continue
+            cell = cells[0]
+            span = cell.find('./' + q('tcPr') + '/' + q('gridSpan'))
+            if span is None or span.get(q('val')) != str(columns):
+                continue
+            if any(cell.find('./' + q('tcPr') + '/' + q(name)) is not None
+                   for name in ('vMerge', 'hMerge')):
+                continue
+            offsets = [row.find('./' + q('trPr') + '/' + q(name))
+                       for name in ('gridBefore', 'gridAfter')]
+            if any(n is not None and n.get(q('val')) != '0' for n in offsets):
+                continue
+            if any(n.tag in blocked for n in cell.iter()):
+                continue
+            full_cells.add(cell)
+    ids = []
+    for index, paragraph in enumerate(root.iter(q('p'))):
+        cell = next((a for a in paragraph.iterancestors() if a.tag == q('tc')), None)
+        if cell in full_cells and paragraph_text(paragraph).strip():
+            ids.append(f'p{index}')
+    return dict(version='workpaper-table-layout-v1', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                full_width_span_ids=ids)
+
+
 def anchor(snapshot, paragraph_id, quote):
     """Match within one pinned paragraph, including its table/period context."""
     paragraph = next((p for p in snapshot['spans'] if p['id'] == paragraph_id), None)
@@ -202,6 +261,11 @@ def source_diff(before, after):
 if __name__ == '__main__':
     if sys.argv[1] in ('inspect', 'inspect-complete'):
         Path(sys.argv[3]).write_text(json.dumps(inspect(sys.argv[2], complete=sys.argv[1]=='inspect-complete'), ensure_ascii=False), encoding='utf8')
+    elif sys.argv[1] == 'normalize-workpaper-layout':
+        from .workpaper_layout import normalize_workpaper_layout
+        Path(sys.argv[4]).write_text(json.dumps(normalize_workpaper_layout(sys.argv[2], sys.argv[3])), encoding='utf8')
+    elif sys.argv[1] == 'table-layout':
+        Path(sys.argv[3]).write_text(json.dumps(table_layout(sys.argv[2]), ensure_ascii=False), encoding='utf8')
     elif sys.argv[1] == 'diff':
         before, after = [json.loads(Path(p).read_text(encoding='utf8')) for p in sys.argv[2:4]]
         Path(sys.argv[4]).write_text(json.dumps(source_diff(before, after), ensure_ascii=False), encoding='utf8')
