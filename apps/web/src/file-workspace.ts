@@ -1,3 +1,5 @@
+import { onTaskRestart } from './task-restart.js';
+import { taskRestartHtml } from './task-restart.js';
 import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
@@ -88,7 +90,7 @@ export class FileWorkspace {
   private entryIntent?:M4DocumentType;private entryWaiting=false;private entryAdopted?:M4DocumentType;private entryError='';
   private blankRow=false;private requirementsExpanded?:boolean;private supportExpanded?:boolean;private reusedExpanded=new Set<M4DocumentType>();
   private entry?:ProjectEntry;
-  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string,private owner?:string){
+  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string,private owner?:string){onTaskRestart(this.controller.signal,()=>this.refreshResults(true));
     this.m4=new M4Api(api,this.controller.signal);
     const params=new URLSearchParams(location.hash.split('?')[1]),requested=params.getAll('prepare_document');
     if(owner&&id&&params.get('project')===id&&!params.has('topic')&&requested.length===1&&PROJECT_DOCUMENT_CATALOG.some(d=>d.id===requested[0])){this.entryIntent=requested[0] as M4DocumentType;this.entryWaiting=params.get('prepare_wait')==='1';}
@@ -592,7 +594,7 @@ export class FileWorkspace {
       const task=w.tasks.find(t=>t.run.run_id===i.run_id),artifacts=task?.run.state==='succeeded'?task.artifacts.filter(a=>a.run_id===i.run_id&&a.document_type===i.document_type&&['document','preparation_note'].includes(a.kind)):[];
       const incomplete=!!i.run_id&&['succeeded','test_completed','failed','cancelled','rejected'].includes(i.state)&&(!task||task.run.state!==i.state||i.state==='succeeded'&&!['document','preparation_note'].every(kind=>artifacts.some(a=>a.kind===kind)));
       const label=i.run_id?(runStateLabel[i.state as keyof typeof runStateLabel]??i.state):b.state==='cancelled'?'本轮未启动，不会继续生成':b.state==='paused'?'本轮未启动，请先处理此文件包':'本轮尚未启动，等待前一份文件完成';
-      return `<div class="pf-template-row pf-result-row" data-pf-document="${i.document_type}" data-pf-run="${esc(i.run_id??'')}" data-pf-item-state="${esc(i.state)}"><div><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===i.document_type)?.name??''}</strong><small>${esc(label)}</small>${i.error?'<small class="pf-result-error">'+esc(i.error)+'</small>':''}${incomplete?'<small class="pf-result-sync">任务与成果尚未读取完整，可刷新生成状态或查看原任务。</small>':''}</div><div class="pf-result-actions">${artifacts.map(a=>`<button class="btn secondary" data-pf-download="${a.artifact_id}">${a.kind==='document'?'下载文件':'编制说明'}</button>`).join('')}${i.run_id?`<a class="btn secondary" href="${esc('#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:i.run_id})))}">查看任务</a>`:''}</div></div>`;
+      return `<div class="pf-template-row pf-result-row" data-pf-document="${i.document_type}" data-pf-run="${esc(i.run_id??'')}" data-pf-item-state="${esc(i.state)}"><div><strong>${PROJECT_DOCUMENT_CATALOG.find(d=>d.id===i.document_type)?.name??''}</strong><small>${esc(label)}</small>${i.error?'<small class="pf-result-error">'+esc(i.error)+'</small>':''}${incomplete?'<small class="pf-result-sync">任务与成果尚未读取完整，可刷新生成状态或查看原任务。</small>':''}</div><div class="pf-result-actions">${i.run_id?taskRestartHtml(task?.run??{run_id:i.run_id,state:i.state},{compact:true}):''}${artifacts.map(a=>`<button class="btn secondary" data-pf-download="${a.artifact_id}">${a.kind==='document'?'下载文件':'编制说明'}</button>`).join('')}${i.run_id?`<a class="btn secondary" href="${esc('#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:i.run_id})))}">查看任务</a>`:''}</div></div>`;
     }).join('')}</section>`).join('')||'<p>暂无文件生成任务。</p>'}</section><footer class="pf-footer"><p id="pf-status" role="status">${esc(this.message)}</p><div><a class="btn secondary" href="${esc(this.filesHref())}">查看项目文件</a><a class="btn primary" href="${esc('#consistency?'+withProjectContext(new URLSearchParams({project:this.id!})))}">检查文件一致性</a></div></footer>`,'generate');
     this.paintEntryIntent();document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
       if(b.dataset.batchRetry&&!window.confirm('重试仅处理原文件包未完成的文件，沿用原已确认范围与计费规则。是否继续？')){this.status('未重试，原任务状态保留。');return;}

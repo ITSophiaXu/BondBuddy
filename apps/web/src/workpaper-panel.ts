@@ -1,3 +1,5 @@
+import { restartBatchItems } from './task-restart.js';
+import { onTaskRestart } from './task-restart.js';
 import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
@@ -46,7 +48,7 @@ export class WorkpaperPanel {
   private chapterOrder:string[]=[];
   private uploadNeedsFile=new Set<string>();
   private importReview?:WorkpaperImportReview;private uploadContextSnapshot?:UploadRecoveryJson;
-  constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){}
+  constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){onTaskRestart(this.controller.signal,()=>this.refreshProgress(this.controller.signal,true));}
   private get price(){return this.data.price??WORKPAPER_PRICE;}
   private get automatic(){return isAutomaticPriceVersion(this.price.version)&&this.data.price?.auto_charge!==false;}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
@@ -300,6 +302,11 @@ export class WorkpaperPanel {
     this.pending=undefined;this.save();this.data.batches=[batch,...this.data.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='底稿文件包已提交，关闭页面后仍会继续。';this.view='results';this.progressBatch=batch.batch_id;this.expandedBatches.set(batch.batch_id,false);const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);history.replaceState(history.state,'','#generate?'+query);this.paint();this.poll();
   });}
   private async batchAction(batch:WorkpaperBatch,action:string){await this.act(async()=>{
+    if(action==='resume'){
+      if(!await restartBatchItems(this.api,batch.items,this.controller.signal,()=>this.live()))return;
+      batch=await this.request<WorkpaperBatch>('GET','/batches/'+encodeURIComponent(batch.batch_id));
+      if(['queued','running','complete','partial'].includes(batch.state)){this.data.batches=this.data.batches.map(b=>b.batch_id===batch.batch_id?batch:b);this.paintBatches();this.status='原批次状态已更新，已恢复的任务正在排队或执行。';return;}
+    }
     const billing=action==='resume'?batch.billing_resume:undefined;
     const request={action,expected_revision:batch.revision,...(action==='continue_remaining'?{request_id:`wp-continue:${batch.batch_id}:${batch.revision}`}:{}) ,...(billing?{billing_resume:true,request_id:`wp-billing:${batch.batch_id}:${batch.revision}`,price_version:billing.price_version,expected_points:billing.required_points}:{})};
     if(billing){
@@ -309,7 +316,7 @@ export class WorkpaperPanel {
       history.replaceState(history.state,'','#generate?'+query);
     }
     const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(batch.batch_id)}/actions`,request);
-    this.status=action==='continue_remaining'?'已确认继续，剩余文件将按章节顺序自动生成。':action==='pause'?'已暂停启动新文件，当前文件完成后会保留成果。':action==='cancel'?'已停止启动新文件，当前文件完成后会保留成果。':action==='retry_failed'?'正在重试失败文件，已完成成果保留。':'已继续原文件包。';
+    this.status=action==='continue_remaining'?'已确认继续，剩余文件将按章节顺序自动生成。':action==='pause'?'已暂停启动新文件，当前文件完成后会保留成果。':action==='cancel'?'已停止启动新文件，当前文件完成后会保留成果。':action==='retry_failed'?'正在重试失败文件，已完成成果保留。':'已重新启动原文件包，正在排队。';
     this.data.batches=this.data.batches.map(b=>b.batch_id===changed.batch_id?changed:b);this.paintBatches();this.poll();
   });}
   private paintBatches(){
@@ -322,7 +329,7 @@ export class WorkpaperPanel {
       const done=b.items.filter(i=>i.state==='succeeded').length,failed=b.items.filter(i=>['failed','rejected','cancelled'].includes(i.state)&&i.run_id).length;
       return `<article class="panel wp-batch" data-wp-batch-id="${esc(b.batch_id)}"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(stateNames[b.state])}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div>${b.template_mode?`<div><dt>本批模板</dt><dd>${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[b.template_mode]}</dd></div>`:''}<div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
       ${b.billing_resume?`<p>本批剩余文件需要 ${formatPoints(b.billing_resume.required_points)} 积分，当前可用 ${formatPoints(b.billing_resume.available_points)} 积分${int64(b.billing_resume.shortage)>0n?`，还差 ${formatPoints(b.billing_resume.shortage)} 积分`:''}。已完成文件保留。</p>`:''}
-      <div class="wp-actions">${done?`<button class="btn primary" data-wp-zip="${esc(b.batch_id)}">下载已完成文件（ZIP）</button>`:''}${(['queued','running'].includes(b.state)?['pause','cancel']:b.state==='paused'?['resume','cancel']:b.state==='partial'||b.state==='cancelled'?['retry_failed']:[]).map(action=>`<button class="btn secondary" data-wp-action="${action}" data-batch="${esc(b.batch_id)}">${action==='resume'&&int64(b.billing_resume?.shortage??'0')>0n?'继续本批（需足够积分）':({pause:'当前文件后暂停',resume:'继续文件包',cancel:'结束后续排队',retry_failed:'重试未完成项'} as Record<string,string>)[action]}</button>`).join('')}</div>
+      <div class="wp-actions">${done?`<button class="btn primary" data-wp-zip="${esc(b.batch_id)}">下载已完成文件（ZIP）</button>`:''}${(['queued','running'].includes(b.state)?['pause','cancel']:b.state==='paused'?['resume','cancel']:b.state==='partial'||b.state==='cancelled'?['retry_failed']:[]).map(action=>`<button class="btn secondary" data-wp-action="${action}" data-batch="${esc(b.batch_id)}">${action==='resume'&&int64(b.billing_resume?.shortage??'0')>0n?'继续本批（需足够积分）':({pause:'当前文件后暂停',resume:'重新启动本批',cancel:'结束后续排队',retry_failed:'重试未完成项'} as Record<string,string>)[action]}</button>`).join('')}</div>
       <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.batchAction(this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,el.dataset.wpAction!));

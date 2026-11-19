@@ -9,7 +9,7 @@ function controller(api: unknown, delivered: () => void) {
   const source=readFileSync(new URL('../src/project-execution.ts',import.meta.url),'utf8');
   const exports:Record<string,any>={};
   runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,
-    {exports,require:()=>({}),AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
+    {exports,require:()=>({onTaskRestart:()=>{}}),AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
   const execution=new exports.ProjectExecution(api,{project:{project_id:'synthetic'}},{},undefined,undefined,'',delivered);
   execution.render=()=>{};execution.loadCharge=async()=>{};
   return execution;
