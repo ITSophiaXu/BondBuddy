@@ -1,3 +1,5 @@
+import { onTaskRestart } from './task-restart.js';
+import { taskRestartHtml } from './task-restart.js';
 import {uploadFileDigest} from './upload-file-digest.js';
 import './upload-ux.css';
 import './upload-progress.css';
@@ -127,7 +129,7 @@ export class ProjectAssistant {
   private projects:Dto<'ProjectListResponse'>['items']=[];
   private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
     this.open=true;this.formOpen=false;this.changed();},'submit');};
-  constructor(private api:ApiClient,private owner:string){
+  constructor(private api:ApiClient,private owner:string){onTaskRestart(this.controller.signal,()=>this.poll());
     this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{signal:this.controller.signal,coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
     this.dock.type='button';this.dock.className='ba-dock';this.dock.dataset.assistantDock='';
     this.dock.setAttribute('aria-controls','ba-panel');
@@ -665,7 +667,7 @@ export class ProjectAssistant {
     const text=stop?.state==='pending'?'正在停止本次回答，等待确认任务结束。':stop?.state==='unknown'?'停止结果尚未确认，请刷新状态核对或重试停止。':state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
       :state==='queued'?(delayed?'排队时间较长，尚未开始回答。无需重复发送，可继续等待或停止本次回答。':'已收到，排队等待处理。')
       :state==='awaiting_input'?'回复任务等待补充信息。':state==='settlement_pending'?'正在核对本次回复与费用。':message.reply_status==='running'?'正在阅读并整理回复…':'已收到，正在读取任务状态…';
-    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)&&stop?.state!=='pending'?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
+    return `<div class="ba-reply-progress">${task?taskRestartHtml(task.run,{compact:true}):''}<p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)&&stop?.state!=='pending'?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
   }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;

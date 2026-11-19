@@ -1,3 +1,5 @@
+import { onTaskRestart } from './task-restart.js';
+import { taskRestartHtml } from './task-restart.js';
 import { MARKET_LABELS, OFFERING_LABELS, M4_DOCUMENT_LABELS, type M4DocumentType, PROJECT_FIELD_LIMITS } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
@@ -34,7 +36,7 @@ export class ProjectBrowser {
   private onOnline=()=>{if(this.live()){this.offline=false;this.refreshOnReturn();}};
   private onOffline=()=>{if(this.live()){this.offline=true;this.renderSync();}};
   private reviewHistory:ReviewHistory;
-  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){this.reviewHistory=new ReviewHistory(api);}
+  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){onTaskRestart(this.controller.signal,()=>this.load());this.reviewHistory=new ReviewHistory(api);}
   private live(){return !this.disposed&&this.current();}
   private viewKey(){return JSON.stringify([this.owner,this.q,this.group,this.archiveView,this.legacyKind]);}
   dispose(){
@@ -194,7 +196,7 @@ export class ProjectBrowser {
   }
   private taskRow(t:ProjectTask){
     const view=taskView(t);const label=t.document_type&&M4_DOCUMENT_LABELS[t.document_type as M4DocumentType]||taskLabel(t);
-    return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small></div><a class="btn ${this.hasResult(t)?'primary':'secondary'} small" href="${taskHref(t)}">${this.hasResult(t)?'查看结果':view.action} ${ico('chevron')}</a></article>`;
+    return `<article class="collection-task" data-run-id="${esc(t.run_id)}"><div><strong>${esc(label)}${t.operation==='revision'?' · 修订导出':''}</strong><time>${esc(date(t.created_at))}</time></div><div><span class="collection-state ${view.tone}">${view.label}</span><small>${esc(view.detail)}</small>${taskRestartHtml(t,{compact:true})}</div><a class="btn ${this.hasResult(t)?'primary':'secondary'} small" href="${taskHref(t)}">${this.hasResult(t)?'查看结果':view.action} ${ico('chevron')}</a></article>`;
   }
   private async loadTasks(id:string,reset:boolean){
     if(!this.live()||!this.items.some(p=>p.project_id===id))return;

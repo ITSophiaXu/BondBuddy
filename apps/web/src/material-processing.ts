@@ -3,7 +3,7 @@ import { ApiError, type ApiClient, type Dto } from './api.js';
 import { esc } from './ui.js';
 
 type Material = Dto<'MaterialResponse'>;
-type Reader = Pick<ApiClient, 'materialParseJob' | 'material'> & Partial<Pick<ApiClient, 'materialPdfQuality'>>;
+type Reader = Pick<ApiClient, 'materialParseJob' | 'material'> & Partial<Pick<ApiClient, 'materialPdfQuality'|'resumeMaterialParse'>>;
 type Entry = {
   material: Material; job?: MaterialParseJob; error?: string; loading: boolean; requested: boolean;
   retryQuality?: boolean; controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
@@ -112,6 +112,19 @@ export class MaterialProcessing {
     this.changed(); this.pump();
   }
 
+  async restart(key:string) {
+    const entry=this.entries.get(key),job=entry?.job;
+    if(this.disposed||!entry||!job||job.state!=='paused'||entry.controller||!this.api.resumeMaterialParse)return;
+    const controller=new AbortController();entry.controller=controller;entry.loading=true;this.changed();
+    try {
+      const current=await this.api.resumeMaterialParse(this.projectId,entry.material.material_id,{job_id:job.job_id,material_version:job.material_version,material_sha256:job.material_sha256},controller.signal);
+      if(this.disposed||this.entries.get(key)!==entry)return;
+      if(current.job_id!==job.job_id||current.material_version!==job.material_version||current.material_sha256!==job.material_sha256)throw new Error('Material parse identity changed');
+      entry.job=current;entry.error=undefined;
+    } catch(error) {if(!this.disposed&&this.entries.get(key)===entry)entry.error=readError(error);}
+    finally {if(!this.disposed&&this.entries.get(key)===entry){entry.controller=undefined;entry.loading=false;this.refresh(key);}}
+  }
+
   setVisible(visible: boolean) {
     this.visible = visible;
     if (visible) this.refresh();
@@ -138,6 +151,7 @@ export class MaterialProcessing {
     return `<div class="material-processing" data-material-processing="${esc(key)}" data-tone="${tone}">
       <p class="processing-title" role="status">${esc(title)}</p>${hint ? `<p class="processing-hint">${esc(hint)}</p>` : ''}
       ${qualityHint ? `<p class="processing-hint material-quality-warning" role="note">${esc(qualityHint)}</p>` : ''}
+      ${entry?.job?.state==='paused'&&this.api.resumeMaterialParse?`<button type="button" class="button primary" data-processing-resume="${esc(key)}" ${entry.loading?'disabled':''}>重新启动处理</button><p class="processing-hint">从已保存步骤重新排队；OCR 尚未就绪时会继续暂缓。</p>`:''}
       ${canRefresh ? `<button type="button" class="text-button" data-processing-retry="${esc(key)}" ${entry.loading ? 'disabled' : ''}>${entry.loading ? '正在刷新…' : '刷新状态'}</button>` : ''}
     </div>`;
   }

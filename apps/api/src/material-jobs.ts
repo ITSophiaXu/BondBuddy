@@ -247,6 +247,19 @@ export async function cancelMaterialParse(client: PoolClient, owner: string, pro
   return updated.rows[0];
 }
 
+/** Resume only the pinned current job; repeated clicks join its existing queue entry. */
+export async function resumeMaterialParse(client:PoolClient,owner:string,projectId:string,materialId:string,expected:Pick<MaterialParseJob,'job_id'|'material_version'|'material_sha256'>) {
+  const {job}=await currentJob(client,owner,projectId,materialId,true);
+  if(job.id!==expected.job_id||job.material_version!==expected.material_version||job.material_sha256.trim()!==expected.material_sha256)
+    throw new Problem(409,'INPUT_REVISION_CONFLICT','Material parse version changed');
+  if(['queued','running'].includes(job.state))return job;
+  if(finalStates.has(job.state))throw new Problem(409,'ALREADY_TERMINAL','Parse job already finished');
+  if(job.state!=='paused'||job.stage!=='awaiting_ocr')throw new Problem(409,'CAPABILITY_NOT_READY','Parse job is not resumable');
+  const updated=await client.query("UPDATE bb_jobs SET state='queued',attempts=GREATEST(attempts-1,0),error_code=NULL,updated_at=now() WHERE id=$1 RETURNING *",[job.id]);
+  await journal(client,updated.rows[0],'material_parse.resumed','queued',job.stage,{reason:'user_resumed'});
+  return updated.rows[0];
+}
+
 // ---------------------------------------------------------------- #17 worker runtime
 
 /** Graceful shutdown: expire our lease now so another worker resumes from the checkpoint immediately. */

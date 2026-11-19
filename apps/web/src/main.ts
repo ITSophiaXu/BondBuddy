@@ -1,3 +1,5 @@
+import './task-restart.css';
+import { installTaskRestart } from './task-restart.js';
 import {uploadFileSha256} from './upload-file-digest.js';
 import {paymentLoginReturn} from './payment-return-route';
 import {uploadPickerContent} from './upload-picker';
@@ -133,6 +135,7 @@ const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
 };
 const sessionChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('bondbuddy-session') : undefined;
 const api = new ApiClient(() => signedOut(identity ? '登录已失效。已保存的项目会在重新登录后恢复。' : ''));
+installTaskRestart(api,()=>identity);
 const accountPage: AccountContext = {
   api, shell, epoch: () => epoch, reload: () => { void renderRoute(); },
   closed: result => {
@@ -1394,6 +1397,8 @@ function bindMaterialWorkspace(projectId: string) {
       host.querySelector<HTMLInputElement>('[data-format-template]:checked')?.focus({ preventScroll: true });
       return;
     }
+    const resumeProcessing=(event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-resume]');
+    if(resumeProcessing){void materialProcessing?.restart(resumeProcessing.dataset.processingResume!);return;}
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
     if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry, true); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');

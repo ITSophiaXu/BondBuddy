@@ -439,6 +439,9 @@ export class ApiClient {
     if (sha256 !== material.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], { type: material.media_type });
   }
+  resumeMaterialParse(id:string,materialId:string,expected:Dto<'MaterialParseResumeRequest'>,signal?:AbortSignal) {
+    return this.request<Dto<'MaterialParseJobResponse'>>('POST', '/projects/'+encodeURIComponent(id)+'/materials/'+encodeURIComponent(materialId)+'/parse-job/resume',expected,{},signal);
+  }
   materialParseJob(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialParseJobResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/parse-job`, undefined, {}, signal);
   }
