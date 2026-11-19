@@ -28,6 +28,21 @@ export function collectionDiagnostic(error:unknown):CollectionDiagnostic {
  if(safe?.some(d=>!d)||count!==undefined&&(!Number.isSafeInteger(count)||count<(safe?.length??0)||count>1000000))return {code:'collection_failed'};
  return {...first,...(safe?{issues:safe as CodexCollectionDiagnosticDetails[]}:{}),...(count!==undefined?{issue_count:count}:{})};
 }
+// Older collectors persisted only a generic code/file/rule. Preserve that
+// immutable first receipt when a newer collector adds precise diagnostics for
+// the same rejection; it does not authorize execution or change the exit proof.
+function legacyDiagnosticUpgrade(previous:unknown,next:unknown){
+ const p=previous as Record<string,unknown>|null,n=collectionDiagnostic({collectionDiagnostic:next});
+ const rules:Record<string,[string,string,string]>={
+  WORKPAPER_SOURCE_COVERAGE_INCOMPLETE:['workpaper-coverage.json','/reviewed_span_ids','full_nonempty_source_partition'],
+  WORKPAPER_CONTENT_LINKS_MISSING:['file-links.json','/links','each_used_source_requires_verified_link'],
+  WORKPAPER_TABLE_INCOMPLETE:['workpaper-coverage.json','/used_span_ids','all_nonempty_cells_of_each_used_table'],
+  WORKPAPER_TABLE_OUTPUT_INCOMPLETE:['file-links.json','/links','complete_source_table_to_distinct_target_cells'],
+  WORKPAPER_EMPTY_OR_INTERNAL_CONTENT:['document.docx','/body','business_content_only']
+ };
+ if(!p||Object.keys(p).sort().join(',')!=='code,file,rule'||p.file!=='workpaper-coverage.json'||p.rule!=='validateWorkpaperCoverage'||p.code!==n.code)return false;
+ const expected=rules[n.code];return !!expected&&n.file===expected[0]&&n.field===expected[1]&&n.rule===expected[2]&&digest(n)===digest(next);
+}
 export async function writeWorkspaceEvidence(ctx:StageContext,intent:ProviderCallIntent,event:'exit'|'collection_failure'|'capture_failure',payload:unknown) {
  const hash=digest(payload);
  const result=await ctx.pool.query(`INSERT INTO bb_model_workspace_evidence(attempt_id,event,owner_user_id,run_id,input_hash,payload,payload_sha256)
@@ -40,9 +55,16 @@ export async function writeWorkspaceEvidence(ctx:StageContext,intent:ProviderCal
  [intent.call_id,event,JSON.stringify(payload),hash,ctx.run.owner_user_id,ctx.lease.jobId,ctx.run.id,ctx.run.project_id,
  ctx.run.input_hash.trim(),intent.logical_call_id,intent.attempt_no,intent.prompt_snapshot_ref]);
  if(!result.rowCount){
-  const saved=(await ctx.pool.query('SELECT payload_sha256 FROM bb_model_workspace_evidence WHERE attempt_id=$1 AND event=$2 AND owner_user_id=$3 AND run_id=$4',
-    [intent.call_id,event,ctx.run.owner_user_id,ctx.run.id])).rows[0];
-  if(saved?.payload_sha256.trim()!==hash)throw Error('WORKSPACE_EVIDENCE_CONFLICT');
+  const saved=(await ctx.pool.query(`SELECT e.payload_sha256,e.payload,e.input_hash FROM bb_model_workspace_evidence e
+    JOIN bb_model_call_attempts a ON a.id=e.attempt_id AND a.owner_user_id=e.owner_user_id
+    JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id AND j.run_id=e.run_id
+    JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id
+    WHERE e.attempt_id=$1 AND e.event=$2 AND e.owner_user_id=$3 AND e.run_id=$4
+      AND a.job_id=$5 AND a.logical_call_id=$6 AND a.attempt_no=$7 AND a.prompt_snapshot_id=$8
+      AND r.project_id=$9 AND r.input_hash=$10 AND e.input_hash=$10`,
+    [intent.call_id,event,ctx.run.owner_user_id,ctx.run.id,ctx.lease.jobId,intent.logical_call_id,intent.attempt_no,intent.prompt_snapshot_ref,ctx.run.project_id,ctx.run.input_hash.trim()])).rows[0];
+   if(saved?.payload_sha256.trim()!==hash&&!(event==='collection_failure'&&saved?.input_hash?.trim()===ctx.run.input_hash.trim()
+      &&digest(saved.payload)===saved.payload_sha256.trim()&&legacyDiagnosticUpgrade(saved.payload,payload)))throw Error('WORKSPACE_EVIDENCE_CONFLICT');
  }
 }
 /** Caller must have observed contained process exit. Independent cleanup

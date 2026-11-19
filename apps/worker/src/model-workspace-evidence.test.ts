@@ -8,7 +8,7 @@ import {digest} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import type {ProviderCallIntent} from '@bondbuddy/api/provider-results';
 import type {StageContext} from './run-pipeline.js';
-import {captureExitedWorkspace,collectionDiagnostic,type WorkspaceExit} from './model-workspace-evidence.js';
+import {captureExitedWorkspace,collectionDiagnostic,writeWorkspaceEvidence,type WorkspaceExit} from './model-workspace-evidence.js';
 import {m4CollectionRepairFeedback} from './m4-workspace-recovery.js';
 
 const intent={call_id:'call-capture',logical_call_id:'m4-document-v1',attempt_no:1,owner_user_id:'owner',
@@ -86,4 +86,22 @@ test('combined repair issues remain bounded and describe the document and metada
   assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...first,issues,issue_count:issues.length}}),{code:'collection_failed'});
  assert.deepEqual(collectionDiagnostic({collectionDiagnostic:{...first,issues:[first,second],issue_count:1}}),{code:'collection_failed'});
  assert.deepEqual(collectionDiagnostic(null),{code:'collection_failed'});
+});
+
+
+test('legacy collection diagnostics remain immutable across an upgrade but conflicting evidence still fails closed',async()=>{
+ const f=fixture(),old={code:'WORKPAPER_CONTENT_LINKS_MISSING',file:'workpaper-coverage.json',rule:'validateWorkpaperCoverage'};
+ const next={code:old.code,file:'file-links.json',field:'/links',rule:'each_used_source_requires_verified_link',source_span_ids:['p0'],source_span_count:1};
+ let saved:any={payload:old,payload_sha256:inputManifestHash(old),input_hash:'a'.repeat(64)};const calls:string[]=[];
+ f.ctx.pool.query=(async(sql:string,args:unknown[])=>{calls.push(sql);if(sql.startsWith('INSERT'))return{rowCount:0,rows:[]};
+  assert.match(sql,/a.prompt_snapshot_id=\$8/);assert.deepEqual(args,[intent.call_id,'collection_failure','owner','run','job','m4-document-v1',1,'prompt','project','a'.repeat(64)]);return{rows:[saved]};}) as never;
+ await writeWorkspaceEvidence(f.ctx,intent,'collection_failure',next);assert.equal(calls.length,2);
+ assert.deepEqual(saved.payload,old);assert.equal(saved.payload_sha256,inputManifestHash(old));assert.ok(calls.every(sql=>!/^UPDATE|^DELETE/.test(sql)));
+ for(const row of [{...saved,input_hash:'b'.repeat(64)},{...saved,payload_sha256:'b'.repeat(64)},
+  {payload:{...old,code:'WORKPAPER_TABLE_INCOMPLETE'},payload_sha256:inputManifestHash({...old,code:'WORKPAPER_TABLE_INCOMPLETE'}),input_hash:'a'.repeat(64)},
+  {payload:next,payload_sha256:inputManifestHash(next),input_hash:'a'.repeat(64)}]){
+  saved=row;await assert.rejects(writeWorkspaceEvidence(f.ctx,intent,'collection_failure',{...next,source_span_ids:['p1']}),/WORKSPACE_EVIDENCE_CONFLICT/);
+ }
+ saved={payload:old,payload_sha256:inputManifestHash(old),input_hash:'a'.repeat(64)};
+ await assert.rejects(writeWorkspaceEvidence(f.ctx,intent,'collection_failure',{...next,private_quote:'unbounded customer text'}),/WORKSPACE_EVIDENCE_CONFLICT/);
 });
