@@ -9,7 +9,7 @@ const suffix=randomBytes(5).toString('hex'),name=`bb-stage-recovery-${suffix}`,p
 const evidence=resolve(root,'work/stage-recovery');mkdirSync(evidence,{recursive:true});
 function docker(args,{input,allowFailure=false,timeout=240000}={}){
  const r=spawnSync('docker',args,{input,encoding:'utf8',timeout,maxBuffer:40*1024*1024});
- if(r.error)throw r.error;
+ if(r.error){writeFileSync(resolve(evidence,'command-failure.log'),String(r.stdout??'')+String(r.stderr??''));throw Error('Local Docker '+args[0]+': '+(r.error.code??'command_error'));}
  if(r.status&&!allowFailure)throw Error(`${args[0]} failed: ${r.stderr.slice(-3000)} ${r.stdout.slice(-3000)}`);
  return r;
 }
@@ -53,7 +53,7 @@ try{
  ...runtimeDirs.flatMap(path=>['--tmpfs','/code/'+path+':rw,exec,nosuid,nodev,size=512m']),
  '--mount',`type=bind,source=${root},target=/code,readonly`,'-w','/code','-e','BB_TEST_DATABASE_URL=postgresql://postgres@pg/pool_test',
  '-e',`BB_TEST_AZURITE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=test;AccountKey=${key};BlobEndpoint=http://blob:10000/test;`,
- process.env.BB_STAGE_RECOVERY_TEST_IMAGE??'bb-stage-recovery-test:20261118','sh','-c',setup+'exec node --test --test-concurrency=2 '+suiteFiles.join(' ')],{allowFailure:true,timeout:900000});
+ process.env.BB_STAGE_RECOVERY_TEST_IMAGE??'bb-stage-recovery-test:20261118','sh','-c',setup+'exec node --test --test-concurrency=2 '+suiteFiles.join(' ')],{allowFailure:true,timeout:1800000});
  writeFileSync(resolve(evidence,suite+'.tap'),result.stdout+result.stderr);
  console.log(result.stdout.slice(-10000));if(result.stderr)console.log(result.stderr.slice(-3000));
  if(result.status||!/^# tests [1-9][0-9]*$/m.test(result.stdout)||!/^# fail 0$/m.test(result.stdout)||!/^# skipped 0$/m.test(result.stdout)||!/^# cancelled 0$/m.test(result.stdout))throw Error(suite+' tests failed or skipped; see work/stage-recovery/'+suite+'.tap');

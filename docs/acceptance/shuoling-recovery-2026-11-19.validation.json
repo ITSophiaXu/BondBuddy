@@ -1,6 +1,6 @@
 {
   "code_commit": "6c4f5f90",
-  "integration_commit": "4b22f6a169458631f1678d81a7eadbe84e638757",
+  "integration_commit": "865c8037d40067834b74a475c4806e71ba112ce9",
   "isolated_regression": {
     "tests": 94,
     "pass": 94,
@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "failed_first_real_replay",
+  "real_task_delivery": "running_second_replay",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -74,12 +74,69 @@
   },
   "capture_budget_followup": {
     "issue": 1646,
-    "status": "testing",
+    "status": "scoped_regression_passed",
     "real_workspaces": 3,
     "real_files": 654,
     "real_bytes": 58331072,
     "real_snapshot_checks": "passed_independent_diagnostic",
-    "regression": "pending",
+    "regression": {
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "migrations": 196,
+      "tap_sha256": "9d8f3eb0a0e44e69803a49d106370a9984dcf5c8f8cc1edf8817b8b0f6aadfa6",
+      "provider_output": "synthetic"
+    },
+    "formal_delivery": "pending",
+    "code_commit": "be903e7e",
+    "integration_commit": "87d60ab9936dea7a4b20e0eb927fe82e5cd4718a"
+  },
+  "worker_commit": "87d60ab9936dea7a4b20e0eb927fe82e5cd4718a",
+  "api_commit": "865c8037d40067834b74a475c4806e71ba112ce9",
+  "explicit_retry_followup": {
+    "issue": 1650,
+    "code_commit": "ac27e204",
+    "integration_commit": "865c8037d40067834b74a475c4806e71ba112ce9",
+    "regression": {
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "0afd90f8676c1d25fc2dc368dc4f556d1025007127b8bfad1e8f7d1f2e55ed0f",
+      "provider_output": "synthetic"
+    },
+    "real_api_status": 200,
+    "old_unknown_usage": "unchanged",
     "formal_delivery": "pending"
+  },
+  "real_second_replay": {
+    "provider": "copilot_enterprise",
+    "model": "gpt-6-sol",
+    "reasoning_effort": "max",
+    "account": "yingx_microsoft",
+    "authoring_timeout_ms": 18000000,
+    "m1_run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+    "m1_input_revision": 2,
+    "m1_input_hash": "e1ca3c72893d78cc93b72e1771e3760547fbd0e29c776385543fefad621e2543",
+    "input_equivalent": true,
+    "input_hash_identical_to_first_replay": false,
+    "m4_batch": "7b8650e7-7f93-4961-99e0-6e8b93fccab6",
+    "m4_runs": [
+      "50cc2de4-345e-416e-8d68-3e1229d97684",
+      "a1ed96af-c205-4731-be6a-fd37af303680",
+      "79aa03ad-278b-46b3-8d56-7ff7f7c6840c"
+    ],
+    "formal_delivery": "pending"
+  },
+  "source_audit_pdf_checks": {
+    "pages_extracted": 109,
+    "financial_pages_visually_reviewed": 8,
+    "key_figures": 28,
+    "tie_outs": 12,
+    "passed": 12,
+    "output_comparison": "pending_actual_delivery"
   }
 }
