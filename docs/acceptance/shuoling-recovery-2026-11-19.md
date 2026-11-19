@@ -2,7 +2,7 @@
 
 2026-11-19 接手“排查shuoling任务重复排队”。本记录区分已合并、实际线上运行、自动回归和原输入交付验收；不代表用户验收或生产发布。
 
-## 当前验收状态（2026-11-20 00:10）
+## 当前验收状态（2026-11-20 00:20）
 
 muhualing 的排队领取恢复证据仍为 [#1361 20:01真实回执](https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7008512587)：两项排队被领取、候选为零。下列原输入成果验收分别记录，用户尚未验收，没有生产变更。
 
@@ -12,7 +12,9 @@ muhualing 的排队领取恢复证据仍为 [#1361 20:01真实回执](https://gi
 - 受控新任务导入精确允许已退出的payload拒绝来源，仍验证终态deadline耗尽审计、完整快照、同owner/project/input/channel、原净收费0和目标从未领取；每次新任务独立正常报价预留，幂等不延时，不复活旧终态。
 - 固定组合0d5b4ea3：worker编译通过，199个全新隔离迁移、三个定向worker套件52/52，0fail/skip/cancel，TAP SHA256 12761509aae1877ac2f74a63a9f6d40e143be406dc9d53dbdcf4551ed49f2d62。
 - 最小实际M1候选1d51b2a8：相对f25c仅4个worker文件，API/contracts/Python/db不变；452基线编译文件逐一hash后仅覆盖4个对应JS。以旧API865c/196迁移组合验证同3套件52/52，0fail/skip/cancel，TAP SHA256 4d0b755c27642ee142732ec02f84e6b51f7e510f4f011bf7f0b1c42bee0af9d5。两轮供应商均synthetic，不能替代真实交付。
-- 本地新v4 run a2d48641-1637-4050-b8b8-2704d5061b4f 已由正常API创建，仍为相同input revision2/hash e1ca3c72893d78cc93b72e1771e3760547fbd0e29c776385543fefad621e2543。独立M1保持停止，正在从v3导入1103文件/68,354,844字节及3889项修改；尚未称真实续跑或正式交付成功。切换保护API/M4/parser/web/PG，保留API布局后继overlay和197迁移。
+- 本地新v4 run a2d48641-1637-4050-b8b8-2704d5061b4f 已由正常API创建，仍为相同input revision2/hash e1ca3c72893d78cc93b72e1771e3760547fbd0e29c776385543fefad621e2543。已从v3逐文件hash导入1103文件/68,354,844字节及3889项修改，并启动最小M1候选；452实际编译文件hash通过，API/M4/parser/web/PG的容器ID和StartedAt前后完全一致，API布局后继overlay及197迁移保留。任务running，尚无正式双Word。
+
+导入客户端曾在600秒等待超时，但数据库收据已提交；先核对收据，再通过同一幂等CLI取回既有结果（idempotent=true），原authorized_at=2026-11-19T16:14:52.892Z、deadline_at=17:44:52.892Z不变，没有重新导入或新建第二任务。两个旧来源的12表共24组摘要在启用后逐字段复查不变。
 
 剩余：M1真实正式双Word、7章18处、财务数据、接受修订与清洁稿等价、全页和下载/唯一计费；用户验收仍待办。代码完成，尚未部署，待统一发布。
 

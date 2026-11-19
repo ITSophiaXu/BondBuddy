@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "M4_formal_verified_M1_v4_seed_in_progress",
+  "real_task_delivery": "M4_formal_verified_M1_v4_running",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -853,6 +853,251 @@
       "state": "queued",
       "snapshot_import": "in_progress",
       "official_artifacts": 0
+    },
+    "user_acceptance": false,
+    "production_deployment": false
+  },
+  "latest_20261120_0020": {
+    "at": "2026-11-19T16:20:14.247Z",
+    "activation": {
+      "at": "2026-11-19T16:03:06.123Z",
+      "state": "verified",
+      "commit": "1d51b2a8c83ea19e9174510241f232d3d0354da1",
+      "volume": "bb-shuoling-m1-request-1d51b2a8",
+      "old": {
+        "id": "0260d2fafcd55ead5497f576b30bb3acdb03e0f9f076b5dcc33b55421d7a38ae",
+        "name": "/bb-original-delivery-20261118-m1-recovery-1",
+        "started_at": "2026-11-19T13:44:32.501326694Z",
+        "running": true,
+        "dist": "bb-shuoling-m1-f25c2114",
+        "role": "update"
+      },
+      "protected": [
+        {
+          "id": "f8a0e9ba892315e6123dfa25d8f6b9e52b921f191f5ceeec11369e96be7c6eb9",
+          "name": "/bb-original-delivery-20261118-api-1",
+          "started_at": "2026-11-19T15:15:06.692704834Z",
+          "running": true
+        },
+        {
+          "id": "853ad052a69b41ca930c327b3373f63fafc25623bc45dc222ba219fbf8df0f8b",
+          "name": "/bb-original-delivery-20261118-worker-1",
+          "started_at": "2026-11-19T10:16:44.299161432Z",
+          "running": true,
+          "dist": "bb-shuoling-worker-77310bdb",
+          "role": "generation"
+        },
+        {
+          "id": "b49a622ef50f0f1800cc4b3265063586ce118c8af89b1157bf91273d547ebfbc",
+          "name": "/bb-original-delivery-20261118-parser-1",
+          "started_at": "2026-11-19T06:57:34.221530707Z",
+          "running": true,
+          "dist": "bb-shuoling-worker-87d60ab9"
+        },
+        {
+          "id": "3f4149ec2b80a5fb4761de72d5db4a7abad0092fa1e4a5ef230500083b45f9f8",
+          "name": "/bb-original-delivery-20261118-web-1",
+          "started_at": "2026-11-19T04:48:15.712609606Z",
+          "running": true
+        },
+        {
+          "id": "c695c5f1d963c0430c6fbce25ca418b4f9e604ace16d857e3c123788c74f1161",
+          "name": "/bb-original-delivery-20261118-postgres-1",
+          "started_at": "2026-11-18T15:00:34.240680807Z",
+          "running": true
+        }
+      ],
+      "compose_path": "C:/Users/yingx/AppData/Local/BondBuddy/original-delivery-20261118/compose.json",
+      "production_connections": false,
+      "seed": {
+        "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+        "source_run_id": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+        "files": 1103,
+        "deadline_at": "2026-11-19T17:44:52.892Z",
+        "idempotent": true
+      },
+      "runtime_verification": {
+        "files": 452,
+        "all_hashes_match": true
+      },
+      "new_worker": {
+        "id": "f2a3ebca69fc7a3e9ae9fb28b37c78eaaccb0c6d22c8f45362b216107c02f979",
+        "name": "/bb-original-delivery-20261118-m1-recovery-1",
+        "started_at": "2026-11-19T16:17:06.441371525Z",
+        "running": true,
+        "dist": "bb-shuoling-m1-request-1d51b2a8",
+        "role": "update"
+      },
+      "activated_at": "2026-11-19T16:17:36.941Z"
+    },
+    "seed": {
+      "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+      "source_run_id": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+      "files": 1103,
+      "deadline_at": "2026-11-19T17:44:52.892Z",
+      "idempotent": true
+    },
+    "source_preservation": {
+      "at": "2026-11-19T16:19:47.710Z",
+      "all_unchanged": true,
+      "checks": [
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_runs",
+          "count": 1,
+          "hash": "586b76e5dc179e54715760d0a3f98a1c"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_jobs",
+          "count": 1,
+          "hash": "6836e66aebb0950e5c7a3d688de79789"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_credit_reservations",
+          "count": 1,
+          "hash": "e923845bc0305cf516f3896736ea6fac"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_credit_events",
+          "count": 2,
+          "hash": "43d3be6968aa9699f373bb1ce8cd28e1"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_run_events",
+          "count": 2942,
+          "hash": "7278fdb113de388636b69dfbb0254a03"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_model_call_attempts",
+          "count": 13,
+          "hash": "dbdbdb9d13cd67961689e7ca1ba0d444"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_model_call_attempt_runtime",
+          "count": 13,
+          "hash": "fb688d11d64176fdb95860da9c1928d7"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_usage_observations",
+          "count": 13,
+          "hash": "615de33f030d87bf9efd008d4e9d33ad"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_provider_call_observations",
+          "count": 13,
+          "hash": "db38681cb444cda103e0396f292b4a4f"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_call_usage",
+          "count": 13,
+          "hash": "fa12ce9bdf5e0ff7cbb9b03b1d2f0471"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_provider_result_refs",
+          "count": 0,
+          "hash": "d751713988987e9331980363e24189ce"
+        },
+        {
+          "run": "6a9af7f5-824f-46fd-bb81-b1d18eb8b396",
+          "table": "bb_artifact_versions",
+          "count": 0,
+          "hash": "d751713988987e9331980363e24189ce"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_runs",
+          "count": 1,
+          "hash": "0157799da11191418ebe83490f23a8be"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_jobs",
+          "count": 1,
+          "hash": "0d0b872df6756b5ac344d836a31dfe62"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_credit_reservations",
+          "count": 1,
+          "hash": "70aa8e2ac4351cddbbfa3a24f0976980"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_credit_events",
+          "count": 2,
+          "hash": "29385cb98f99b7c5f13c0e6b55d9fe1c"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_run_events",
+          "count": 832,
+          "hash": "2064f5231202c51f4cfd689a68f69561"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_model_call_attempts",
+          "count": 2,
+          "hash": "932d814e0a0eed0aea811bd3959520cd"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_model_call_attempt_runtime",
+          "count": 2,
+          "hash": "b5e9d67c645643ebc2e8ca57c5ccf594"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_usage_observations",
+          "count": 2,
+          "hash": "1b20c3a4b374b7808a5fee88f96ef7c9"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_provider_call_observations",
+          "count": 2,
+          "hash": "8e7866d039076824983172837f966fa3"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_call_usage",
+          "count": 2,
+          "hash": "df6009c88b953753671543c887b87af9"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_provider_result_refs",
+          "count": 0,
+          "hash": "d751713988987e9331980363e24189ce"
+        },
+        {
+          "run": "1b5d5601-279c-4a9e-9c05-c3525310513a",
+          "table": "bb_artifact_versions",
+          "count": 0,
+          "hash": "d751713988987e9331980363e24189ce"
+        }
+      ]
+    },
+    "m1": {
+      "at": "2026-11-19T16:19:50.182Z",
+      "run_id": "a2d48641-1637-4050-b8b8-2704d5061b4f",
+      "m1": {
+        "state": "running",
+        "stage": "file_authoring_v1_resume_2f5e6f92ce60_prompt",
+        "artifact_id": null
+      },
+      "m4": "formally_verified",
+      "user_acceptance": false,
+      "production_deployment": false
     },
     "user_acceptance": false,
     "production_deployment": false
