@@ -59,11 +59,17 @@ test('seed cannot import a foreign run or reset an expired or current budget by 
  ]){const seed=structuredClone(f.seed);change(seed);assert.equal(validFileAuthoringSeed(seed,f.scope),false);const ctx={...f.ctx,lease:{...f.ctx.lease,checkpoint:{stages:{[FILE_AUTHORING_SEED_STAGE]:seed}}}};assert.throws(()=>fileAuthoringContextDeadline(ctx,'file-authoring-v1'),/AUTHORING_RECOVERY_UNSAFE/);}
 });
 
-test('seed cannot waive a prior charge, reuse a settled reservation, or reinterpret an unknown billing policy',()=>{
+test('seed requires zero net charge proven by the original exact failure refund ledger',()=>{
+ const zero={ledger_settled:'0',ledger_refunded:'0',refund_complete:false};
  for(const policy of ['on_delivery','authoring_balance_v2'])for(const state of ['released','held'] as const){
-  assert.equal(zeroChargeSeedReservation({state,billing_policy:policy,charged_points:'0'},state),true);
-  for(const charged of ['1','-1',null,undefined])assert.equal(zeroChargeSeedReservation({state,billing_policy:policy,charged_points:charged},state),false);
-  assert.equal(zeroChargeSeedReservation({state:'settled',billing_policy:policy,charged_points:'0'},state),false);
+  assert.equal(zeroChargeSeedReservation({...zero,state,billing_policy:policy,charged_points:'0'},state),true);
+  for(const charged of ['1','-1',undefined])assert.equal(zeroChargeSeedReservation({...zero,state,billing_policy:policy,charged_points:charged},state),false);
+  assert.equal(zeroChargeSeedReservation({...zero,state,billing_policy:policy,charged_points:null},state),policy==='on_delivery'&&state==='held');
+  assert.equal(zeroChargeSeedReservation({...zero,state:'settled',billing_policy:policy,charged_points:'0'},state),false);
  }
- assert.equal(zeroChargeSeedReservation({state:'released',billing_policy:'unknown',charged_points:'0'},'released'),false);
+ const refunded={state:'released',billing_policy:'authoring_balance_v2',charged_points:'20',ledger_settled:'20',ledger_refunded:'20',refund_complete:true};
+ assert.equal(zeroChargeSeedReservation(refunded,'released'),true);
+ for(const change of [{ledger_refunded:'19'},{ledger_refunded:'21'},{ledger_settled:'0'},{refund_complete:false},{state:'held'},{billing_policy:'on_delivery'},{billing_policy:'unknown'}])
+  assert.equal(zeroChargeSeedReservation({...refunded,...change},'released'),false);
+ assert.equal(zeroChargeSeedReservation({...zero,state:'released',billing_policy:'unknown',charged_points:'0'},'released'),false);
 });

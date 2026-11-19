@@ -470,6 +470,8 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       assert.deepEqual(await row(rotatingPaid.lease.runId),{state:'failed',stage:'failed'});
       const released=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows;
       assert.equal(released.length,1);assert.equal(released[0].id,held.id);assert.equal(released[0].state,'released');assert.ok(released[0].finalized_at);
+      assert.ok(BigInt(released[0].charged_points)>0n,'the existing dynamic fixture retains its historical debit counter');
+      assert.equal((await pool.query("SELECT coalesce(sum(points),0)::text amount FROM bb_credit_events WHERE reservation_id=$1 AND kind='correction' AND reason='authoring_platform_failure_refund'",[held.id])).rows[0].amount,released[0].charged_points,'the ordinary terminal transaction has already refunded that exact amount');
       assert.equal(await creditBalanceExact(pool,owner).then(x=>x.available),balanceBefore.available,'the ordinary failure transaction releases/refunds authoring credits');
       assert.deepEqual(await usageRows(rotatingPaid.attempt),disposedUsage,'terminal settlement cannot change the prior disposed attempt or its unknown usage');
       assert.deepEqual(await usageRows(next.attempt),nextUsageBefore.map(value=>({...value,call_status:'failed'})),

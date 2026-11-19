@@ -11,11 +11,18 @@ export type FileAuthoringSeed={version:'file-authoring-new-run-seed-v1';owner_us
  input_revision:number;input_hash:string;source_run_id:string;source_job_id:string;source_attempt_id:string;source_snapshot_sha256:string;
  actor:string;authorized_at:string;deadline_at:string;budget_ms:number;small_batches:boolean;snapshot:FileAuthoringRecovery;snapshot_sha256:string};
 const field=/^[A-Za-z0-9_.@-]{1,128}$/;
-const conflict=()=>new Error('AUTHORING_SEED_CONFLICT');
-/** Both existing policies may start a separately quoted execution, but the
- * source must have released with zero charged points and the target be unused. */
-export function zeroChargeSeedReservation(r:{state:string;billing_policy:string;charged_points:unknown},state:'released'|'held'){
- return r.state===state&&['on_delivery','authoring_balance_v2'].includes(r.billing_policy)&&String(r.charged_points)==='0';
+const conflict=(reason='SCOPE')=>new Error('AUTHORING_SEED_CONFLICT:'+reason);
+/** A released dynamic reservation retains its cumulative debit; only its exact
+ * immutable platform-failure refunds prove a zero net charge. A new held
+ * on-delivery reservation legitimately has a NULL pre-settlement counter. */
+export function zeroChargeSeedReservation(r:{state:string;billing_policy:string;charged_points:unknown;
+ ledger_settled:unknown;ledger_refunded:unknown;refund_complete:boolean},state:'released'|'held'){
+ if(r.state!==state||!['on_delivery','authoring_balance_v2'].includes(r.billing_policy))return false;
+ const decimal=(x:unknown)=>typeof x==='string'&&/^(0|[1-9][0-9]*)$/.test(x)?BigInt(x):typeof x==='number'&&Number.isSafeInteger(x)&&x>=0?BigInt(x):null;
+ const charged=r.charged_points===null&&state==='held'&&r.billing_policy==='on_delivery'?0n:decimal(r.charged_points),settled=decimal(r.ledger_settled),refunded=decimal(r.ledger_refunded);
+ if(charged===null||settled===null||refunded===null)return false;
+ if(charged===0n)return settled===0n&&refunded===0n;
+ return state==='released'&&r.billing_policy==='authoring_balance_v2'&&r.refund_complete===true&&settled===charged&&refunded===charged;
 }
 const prefix=(r:{owner_user_id:string;project_id:string;id:string})=>`owners/${r.owner_user_id}/projects/${r.project_id}/runs/${r.id}/file-authoring/recovery/`;
 
@@ -58,9 +65,17 @@ export async function seedFileAuthoringRun(pool:Pool,blobs:PrivateBlobs,input:{s
    ||new Date(source.created_at).getTime()>=new Date(target.created_at).getTime()||old.job_type!=='update'||old.subtype!=='update_pipeline_v1'||old.state!=='failed'||old.lease_token||old.lease_until||old.billing_cancel_requested_at)throw conflict();
   const project=(await client.query('SELECT archived_at,deleted_at FROM bb_projects WHERE id=$1 AND owner_user_id=$2',[scope.project,scope.owner])).rows[0];
   if(!project||project.archived_at||project.deleted_at)throw conflict();
-  const reservations=(await client.query('SELECT * FROM bb_credit_reservations WHERE id=ANY($1::text[]) AND owner_user_id=$2 FOR UPDATE',[[source.reservation_id,target.reservation_id],scope.owner])).rows;
+  const reservations=(await client.query(`SELECT r.*,
+   (SELECT coalesce(sum(e.points),0)::text FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.run_id AND e.reservation_id=r.id AND e.kind='settle') AS ledger_settled,
+   (SELECT coalesce(sum(e.points),0)::text FROM bb_credit_events e WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.run_id AND e.reservation_id=r.id AND e.kind='correction') AS ledger_refunded,
+   (r.finalized_at IS NOT NULL AND coalesce(r.charged_points,0)=(SELECT coalesce(sum(a.charged_points),0) FROM bb_credit_allocations a WHERE a.reservation_id=r.id)
+    AND NOT EXISTS(SELECT 1 FROM bb_credit_allocations a WHERE a.reservation_id=r.id AND a.charged_points>0 AND NOT EXISTS(
+     SELECT 1 FROM bb_credit_events e WHERE e.event_key='dynamic-failure:'||r.id||':'||a.lot_id AND e.owner_user_id=r.owner_user_id AND e.run_id=r.run_id
+      AND e.reservation_id=r.id AND e.kind='correction' AND e.actor='system' AND e.reason='authoring_platform_failure_refund'
+      AND e.lot_id=e.event_key AND e.points=a.charged_points))) AS refund_complete
+   FROM bb_credit_reservations r WHERE r.id=ANY($1::text[]) AND r.owner_user_id=$2 FOR UPDATE OF r`,[[source.reservation_id,target.reservation_id],scope.owner])).rows;
   if(source.reservation_id===target.reservation_id||reservations.length!==2||!reservations.some(r=>r.id===source.reservation_id&&r.run_id===source.id&&zeroChargeSeedReservation(r,'released'))
-   ||!reservations.some(r=>r.id===target.reservation_id&&r.run_id===target.id&&zeroChargeSeedReservation(r,'held')))throw conflict();
+   ||!reservations.some(r=>r.id===target.reservation_id&&r.run_id===target.id&&zeroChargeSeedReservation(r,'held')))throw conflict('RESERVATION');
   const exists=await client.query(`SELECT 1 WHERE EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1)
     OR EXISTS(SELECT 1 FROM bb_artifact_versions WHERE run_id=ANY($2::text[]))`,[job.id,[source.id,target.id]]);
   if(exists.rowCount)throw conflict();
