@@ -29,7 +29,7 @@
     "http_status": 200,
     "output": "OK"
   },
-  "real_task_delivery": "m1_second_and_m4_third_replay_running_no_formal_delivery",
+  "real_task_delivery": "first_m4_delivered_and_reviewed_three_m4_and_m1_still_running",
   "user_acceptance": false,
   "production_deployment": false,
   "web": {
@@ -188,8 +188,8 @@
     "material_source_discrepancy": "preserved_for_output_comparison",
     "output_comparison": "pending_actual_delivery"
   },
-  "latest_development_code_commit": "5d0854a576448dcdadaaaecd412527e947627a59",
-  "next_integration_commit": null,
+  "latest_development_code_commit": "abd534696cdd6e3c0a8e7fd54d4c05bc0c0d71a5",
+  "next_integration_commit": "6bc4ac8eb547f5423062fffac42db0ec4c21fe8d",
   "active_runtime": {
     "api": "865c8037d40067834b74a475c4806e71ba112ce9",
     "worker": "77310bdb2304ee395406e990b5432afded46daaf",
@@ -197,7 +197,8 @@
     "new_link_diagnostic_patch_active": true,
     "activated_at": "2026-11-19T10:16:51.895Z",
     "worker_files_verified": 450,
-    "protected_services_unchanged": true
+    "protected_services_unchanged": true,
+    "new_full_width_patch_active": false
   },
   "link_repair_followup": {
     "issue": 1656,
@@ -507,5 +508,78 @@
       "status": "not_started_billing_or_spending_limit",
       "proof_sha256": "20958dbc1390c2a52417154c610f284d24a9d71b40186d9f008f1a4e6f5ff6af"
     }
+  },
+  "full_width_followup": {
+    "issue": 1660,
+    "development_commits": [
+      "426da18639ba7b17e20af0f94f60b5f378f7bcc9",
+      "abd534696cdd6e3c0a8e7fd54d4c05bc0c0d71a5"
+    ],
+    "integration_commit": "6bc4ac8eb547f5423062fffac42db0ec4c21fe8d",
+    "worker": {
+      "tests": 100,
+      "pass": 100,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "tap_sha256": "93afaa15337afc0db6e4a87e1043deecb1a699da9c48112bafd91bcf31ed7688"
+    },
+    "python": {
+      "at": "2026-11-19T11:20:12.081432+00:00",
+      "commit": "6bc4ac8eb547f5423062fffac42db0ec4c21fe8d",
+      "tests": 17,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 17,
+      "active_runtime_changed": false
+    },
+    "migrations": 198,
+    "verified_source_files": 995,
+    "worker_files": 450,
+    "source_snapshot_bytes_unchanged": true,
+    "source_spans_json_sha256": "f98f8dbeec02c967a21a47b926f2d17b472b03422e1d727705567e2ed3413780",
+    "real_failed_word_replay": {
+      "cases": 7,
+      "only_complete_caption_case_accepted": true,
+      "other_real_gaps_still_rejected": 6,
+      "report_sha256": "00371de37b8e879dd9f337bb50edb1e02d9c0ff3c4f7453e4eea5927247f361b",
+      "formal_delivery": false
+    },
+    "python_runtime_must_match_worker": true,
+    "active": false,
+    "production_deployment": false
+  },
+  "first_formal_m4_delivery": {
+    "run_id": "84e9a410-6947-45be-b2c9-ed17e20b6017",
+    "artifact_id": "word-645ccb97e43b79c1ded0d329723ec181e202615385496ee367d9cda4bf5eb649",
+    "sha256": "fa49d8960d0271e30696d487d9bd6a7760004fb9dba34adb52388d94f0d9bec2",
+    "formal_download": true,
+    "agent_review": "passed_with_preserved_source_rounding",
+    "pages_reviewed": 14,
+    "numeric_source_cells": 204,
+    "all_data_cell_values_preserved": true,
+    "arithmetic_checks": 10,
+    "strict_equal": 9,
+    "source_rounding_preserved": true,
+    "owner_download": 200,
+    "other_owner_download": 404,
+    "reserve": 1,
+    "settle": 1,
+    "release": 0,
+    "points": 3458,
+    "original_quote_total": 13832,
+    "batch_items": 4,
+    "qa_report_sha256": "75920e4a454fd1d5e17a1fbb939f374b583fae4eb09c9b3a737cbadc02bce3b5",
+    "user_acceptance": false
+  },
+  "production_pool_latest_readonly_receipt": {
+    "comment_url": "https://github.com/ITSophiaXu/BondBuddy/issues/1361#issuecomment-7006077170",
+    "receipt_at": "2026-11-19T10:11:05Z",
+    "one_node_ready": true,
+    "model_holders_renewing": 2,
+    "another_node_artifact_verification_failed": true,
+    "natural_business_first_claim_acceptance": "pending",
+    "production_changed_by_this_chat": false
   }
 }
