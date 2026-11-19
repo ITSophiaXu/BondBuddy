@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "before_free": 2626314240,
+  "after_free": 2723479552,
+  "archived": 15,
+  "metadata_root": "/var/lib/bondbuddy/audit-pdf1627-preparation-20261119"
+}
