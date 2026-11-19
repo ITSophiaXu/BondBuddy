@@ -108,8 +108,8 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
     g.oldest_wait_seconds >= config.scale_up_wait_seconds &&
     g.available_run_slots === 0);
   const hasBudgetSlots = snapshot.active_model_calls < limit;
-  if (hasBudgetSlots && (live.length < config.min_running ||
-    ((live.length===0||config.phase !== 'single_node_validation') && unsupplied.length))) {
+  if (live.length < config.min_running ||
+    ((live.length===0||config.phase !== 'single_node_validation') && unsupplied.length && hasBudgetSlots)) {
     const spare = inventory.find(x => x.instance_state === 'STOPPED');
     if (live.length >= 2 || (!spare && inventory.length >= 2)) return hold('max_owned');
     if ((live.length + 1) * config.compute_cny_per_hour > config.compute_cap_cny_per_hour) return hold('compute_cap');
