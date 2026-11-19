@@ -1,3 +1,6 @@
+import {seedFileAuthoringRun,FILE_AUTHORING_SEED_STAGE} from './file-authoring-seed.js';
+import {authorizedFileAuthoringRecovery,fileAuthoringContextDeadline} from './file-authoring-recovery.js';
+import type {StageContext} from './run-pipeline.js';
 import { inspectAndIsolateBillingScope } from '../../api/dist/billing-safety.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -27,7 +30,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
   const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
   const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
-  type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
+  type Options={paid?:boolean;runtime?:boolean;seedWork?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
     observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;
     result?:boolean;deadline?:string;runtimeFinishReason?:string|null;observationFinishReason?:string|null;conflictingTerminal?:boolean;
     capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure};
@@ -64,8 +67,14 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       const bytes=Buffer.from(JSON.stringify({input_hash:inputHash})),sha256=digest(bytes),path='input.json';
       const key=`owners/${owner}/projects/${project}/runs/${lease.runId}/file-authoring/recovery/${attempt}/${sha256}/${path}`;
       await blobs.put(key,bytes,'application/json');
+      const files=[{path,key,sha256,byte_size:bytes.length}];
+      if(options.seedWork){
+        const work=Buffer.from(JSON.stringify({version:'synthetic-operations',operations:[{id:'preserved-edit'}]})),workHash=digest(work),workPath='output/operations.json';
+        const workKey=key.replace(sha256+'/'+path,workHash+'/'+workPath);await blobs.put(workKey,work,'application/json');
+        files.push({path:workPath,key:workKey,sha256:workHash,byte_size:work.length});
+      }
       await checkpointStage(pool,lease,'file_authoring_recovery',{version:'file-authoring-recovery-v1',input_hash:options.snapshot==='bad'?'bad':inputHash,
-        attempt_id:attempt,logical_call_id:logical,files:[{path,key,sha256,byte_size:bytes.length}],
+        attempt_id:attempt,logical_call_id:logical,files,
         ...(options.deadline!==undefined?{deadline_at:options.deadline}:{})},false);
     }
     if(options.capture&&options.capture!=='prepared'){
@@ -453,7 +462,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows,[held],
         'normal rotation does not release, replace, reset or charge the original reservation');
       const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
-      const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
+      const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_TIMEOUT',capture:'saved',deadline,seedWork:true});
       const nextUsageBefore=await usageRows(next.attempt),nextEvidenceBefore=await evidenceRows(next.attempt);
       assert.equal(nextUsageBefore.length,1);assert.equal(nextUsageBefore[0].call_status,'pending_reconcile');
       const clock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);
@@ -470,6 +479,44 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       assert.deepEqual(await recoveryAudit(rotatingPaid.attempt),rotationAudit,'terminal settlement cannot replace the earlier rotation authorization');
       assert.deepEqual(await recoveryAudit(next.attempt),{actor:'worker_file_authoring_recovery',reason_code:'file_authoring_context_deadline_exhausted',
         attempt_id:next.attempt,logical_call_id:next.logical,decision:'fail_run',recovery_state:'failed',deadline_at:deadline});
+      // A fresh normal execution may explicitly import the terminal source's
+      // work with a NEW bounded budget. It never revives or edits that source.
+      const quote=await paidApp.inject({method:'POST',url:'/api/v1/projects/'+rotatingPaid.project+'/credit-quote',headers:{origin:'http://bondbuddy.test'},payload:{input_revision:1,input_hash:rotatingPaid.inputHash}});
+      assert.equal(quote.statusCode,200,quote.body);
+      const started=await paidApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{execution_request_id:uid(),project_id:rotatingPaid.project,input_revision:1,input_hash:rotatingPaid.inputHash,quote_id:quote.json().quote.quote_id,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'}});
+      assert.equal(started.statusCode,202,started.body);const target=started.json().run_id;
+      const targetJob=(await pool.query('SELECT * FROM bb_jobs WHERE run_id=$1',[target])).rows[0];
+      const sourceBefore=(await pool.query('SELECT to_jsonb(r) AS run,to_jsonb(j) AS job FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1',[rotatingPaid.lease.runId])).rows;
+      const creditBefore=(await pool.query('SELECT * FROM bb_credit_events WHERE run_id=ANY($1::text[]) ORDER BY id',[[target,rotatingPaid.lease.runId]])).rows;
+      const seedArgs={sourceRunId:rotatingPaid.lease.runId,targetRunId:target,actor:'synthetic',budgetMs:60_000};
+      await assert.rejects(seedFileAuthoringRun(pool,blobs,{...seedArgs,actor:''}),/AUTHORING_SEED_CONFLICT/);
+      await assert.rejects(seedFileAuthoringRun(pool,blobs,{...seedArgs,budgetMs:91*60000}),/AUTHORING_SEED_CONFLICT/);
+      await assert.rejects(seedFileAuthoringRun(pool,blobs,seedArgs),/AUTHORING_SEED_CONFLICT/,'unexpired source cannot get a new budget');
+      const seedClock=t.mock.method(Date,'now',()=>Date.parse(deadline)+1);
+      try{
+        await pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '1 minute' WHERE id=$1",[targetJob.id,uid()]);
+        await assert.rejects(seedFileAuthoringRun(pool,blobs,seedArgs),/AUTHORING_SEED_CONFLICT/);
+        await pool.query('UPDATE bb_jobs SET lease_token=NULL,lease_until=NULL WHERE id=$1',[targetJob.id]);
+        await assert.rejects(seedFileAuthoringRun(pool,blobs,{...seedArgs,sourceRunId:f.lease.runId}),/AUTHORING_SEED_CONFLICT/,'foreign project rejected');
+        const corrupt={...blobs,getIfExistsBounded:async(key:string,max:number)=>key.endsWith('/output/operations.json')?Buffer.from('corrupt'):blobs.getIfExistsBounded(key,max)};
+        await assert.rejects(seedFileAuthoringRun(pool,corrupt,seedArgs),/WORD_OUTPUT_BLOB_MISMATCH/);
+        assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[targetJob.id])).rows[0].checkpoint,{},'failed copy publishes no partial seed');
+        const outcomes=await Promise.all([seedFileAuthoringRun(pool,blobs,seedArgs),seedFileAuthoringRun(pool,blobs,seedArgs)]);
+        assert.deepEqual(outcomes.map(x=>x.idempotent).sort(),[false,true]);assert.equal(outcomes[0].deadline_at,outcomes[1].deadline_at);
+        assert.ok(Date.parse(outcomes[0].deadline_at)>Date.parse(deadline));
+        const checkpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[targetJob.id])).rows[0].checkpoint;
+        const ctx={run:{id:target,owner_user_id:owner,project_id:rotatingPaid.project,input_revision:1,input_hash:rotatingPaid.inputHash},lease:{jobId:targetJob.id,checkpoint}} as StageContext;
+        const saved=authorizedFileAuthoringRecovery(ctx,'file-authoring-v1');assert.ok(saved);assert.equal(saved.files.length,2);
+        assert.equal(fileAuthoringContextDeadline(ctx,'file-authoring-v1'),outcomes[0].deadline_at);
+        assert.ok(saved.files.every(f=>f.key.includes('/runs/'+target+'/')));
+        await assert.rejects(seedFileAuthoringRun(pool,blobs,{...seedArgs,budgetMs:120_000}),/AUTHORING_SEED_CONFLICT/,'repeating command cannot reset or extend budget');
+        assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='file_authoring_prior_work_seeded'",[target])).rows[0].n,1);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[targetJob.id])).rows[0].n,0,'seeding sends no model call');
+        assert.deepEqual((await pool.query('SELECT to_jsonb(r) AS run,to_jsonb(j) AS job FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1',[rotatingPaid.lease.runId])).rows,sourceBefore);
+        assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE run_id=ANY($1::text[]) ORDER BY id',[[target,rotatingPaid.lease.runId]])).rows,creditBefore,'seeding neither recharges nor edits either ledger');
+        assert.equal(checkpoint.stages[FILE_AUTHORING_SEED_STAGE].source_attempt_id,next.attempt);
+      }finally{seedClock.mock.restore();}
+      await action(pool,owner,target,'cancel');
       for(const attempt of [rotatingPaid.attempt,next.attempt]){
         assert.deepEqual((await pool.query('SELECT status,usage_status FROM bb_model_call_attempts WHERE id=$1',[attempt])).rows,
           [{status:'failed',usage_status:'unknown'}]);
