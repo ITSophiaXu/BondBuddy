@@ -157,3 +157,24 @@ test('real PG completes twelve warm cycles with positive Stop proofs and unexpir
     assert.equal(f.calls.filter(a=>a==='DeleteSecretVersion').length,11);
     assert.equal((await executionCloudExpenseLedger(pool)).operations.filter(op=>op.action==='stop'&&op.state==='completed').length,12);
   });
+
+
+test('enrollment recovery keeps all predecessor versions, fits the existing 34-call fee bound, retires only after Stop',async t=>{
+ const directory=await fixture(t),values=new Map(),operations=[],f=ssm(values);let at=Date.now();
+ const op=issued({...identity,epoch:randomUUID()},'recovering-op');
+ const options={operation:op,slot:0,config:{...identity,registration_directory:directory,role_names:['role-a'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'own-slot'}]},
+   transport:f.transport,bind:async()=>{},serviceTemplate:{},retirement:async()=>({operations,nodes:[]}),now:()=>at};
+ await issueNodeEnrollment(options);
+ for(let generation=1;generation<=3;generation++){
+   let n=0;while(values.size<10){const old=issued({...identity,epoch:randomUUID()},`retired-${generation}-${n++}`);
+     operations.push(old,stopped(old));values.set(old.operation_id,canonical(envelope(old)));}
+   at+=600001;f.calls.length=0;
+   assert.equal((await issueNodeEnrollment(options)).recovery_generation,generation);
+   assert.equal(f.calls.length,34-2*generation);
+   assert.equal(values.size,generation+1,'same-epoch enrollment bytes survive until exact Stop');
+ }
+ operations.push(op,stopped(op));
+ const fresh=issued({...identity,epoch:randomUUID()},'after-stop');
+ await issueNodeEnrollment({...options,operation:fresh});
+ assert.deepEqual([...values.keys()],['after-stop']);
+});
