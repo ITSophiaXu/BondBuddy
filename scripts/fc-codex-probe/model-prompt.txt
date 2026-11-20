@@ -1,0 +1,3 @@
+This is a synthetic connectivity probe for BondBuddy. Use only these invented facts:
+The fictional issuer has total assets of CNY 120 million and total liabilities of CNY 45 million at 2025 year end. No other facts are available.
+Answer in Chinese: What is the asset-liability ratio? Show the arithmetic and state that the issuer and figures are synthetic. Do not use tools or external sources.

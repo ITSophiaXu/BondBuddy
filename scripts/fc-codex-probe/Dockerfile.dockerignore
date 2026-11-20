@@ -2,5 +2,6 @@
 !scripts/
 !scripts/fc-codex-probe/
 !scripts/fc-codex-probe/server.mjs
+!scripts/fc-codex-probe/model-prompt.txt
 !scripts/local-integration/
 !scripts/local-integration/diagnose-file-sandbox.mjs
