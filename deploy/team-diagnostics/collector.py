@@ -13,6 +13,53 @@ import archive
 from common import ENV, canonical, command, digest, identifier, scrub, trusted_file, SECRET_NAME, DiagnosticFailure, failure_details
 
 DOCKER = ['/usr/bin/docker', '--config', '/etc/bondbuddy-diagnostics/docker']
+NODE_CONFIG = pathlib.Path('/etc/bondbuddy/elastic-node.json')
+
+
+def safe_node_config(raw):
+    """Fixed RCA projection. Never return service environments, role bindings or credentials."""
+    value = json.loads(raw)
+    if not isinstance(value, dict): raise ValueError('Invalid node configuration')
+    result = {'source_sha256': digest(raw)}
+    for key in ('pool_tag', 'region', 'image_sha256', 'compose_sha256',
+                'seccomp_sha256', 'apparmor_sha256', 'business_overlay_sha256'):
+        item = value.get(key)
+        if item is not None:
+            if not isinstance(item, str) or len(item) > 128 or not re.fullmatch(r'[A-Za-z0-9_.:-]+', item):
+                raise ValueError('Invalid projected node configuration')
+            result[key] = item
+    result['runtime_uid'] = value.get('runtime_uid') if type(value.get('runtime_uid')) is int else None
+    services = value.get('services', [])
+    if not isinstance(services, list) or len(services) > 8: raise ValueError('Invalid node services')
+    result['services'] = []
+    for service in services:
+        if not isinstance(service, dict): raise ValueError('Invalid node service')
+        name = identifier(service.get('service_id'))
+        capabilities = service.get('capabilities', [])
+        if not isinstance(capabilities, list) or len(capabilities) > 16: raise ValueError('Invalid node capabilities')
+        result['services'].append({'service_id': name, 'capabilities': [identifier(v) for v in capabilities]})
+    proxy = value.get('private_proxy', {})
+    if not isinstance(proxy, dict): raise ValueError('Invalid node proxy')
+    result['proxy_ports'] = {key: proxy[key] for key in ('local_port', 'remote_port')
+                             if type(proxy.get(key)) is int and 1 <= proxy[key] <= 65535}
+    slots = value.get('node_slots', [])
+    result['slot_count'] = len(slots) if isinstance(slots, list) else None
+    return result
+
+
+def capture_node_config(db, config):
+    if not config.get('node_config_snapshot', False): return None
+    with trusted_file(NODE_CONFIG).open('rb') as source:
+        raw = source.read(256*1024+1)
+    if len(raw) > 256*1024: raise ValueError('Node configuration exceeds snapshot bound')
+    summary = safe_node_config(raw)
+    previous = archive.checkpoint(db, 'node-config-sha256')
+    if previous != summary['source_sha256']:
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+        with db:
+            archive.record(db, config['node'], 'node-config', 'node-config', stamp, 1, canonical(summary))
+            archive.set_checkpoint(db, 'node-config-sha256', summary['source_sha256'])
+    return summary
 
 
 def discover(config, run=command):
@@ -219,6 +266,9 @@ def collect(config, require_synced=False):
                 if not headroom: break
                 try: status['backlog'] |= capture_journal(db, config, unit)
                 except Exception: status['errors'].append({'source': unit, 'code': 'JOURNAL_CAPTURE_FAILED'})
+            if config.get('node_config_snapshot', False):
+                try: status['node_config'] = capture_node_config(db, config)
+                except Exception: status['errors'].append({'source': 'node-config', 'code': 'CONFIG_SNAPSHOT_FAILED'})
             with db:
                 status['last_sequence'] = archive.checkpoint(db, 'sequence:' + config['node'], 0)
                 db.execute('INSERT INTO source_status VALUES(?,?) ON CONFLICT(source) DO UPDATE SET body=excluded.body', (config['node'], canonical(status)))

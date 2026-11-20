@@ -155,7 +155,7 @@ def dispatch(config, actor, args, stdin=None):
         return database.page(options['collection'], filters, options['limit'], options['cursor'])
     if action in ('run','attempt'):
         key = 'run' if action == 'run' else 'attempt'
-        collections = ('runs','jobs','attempts','runtime','usage','observations','errors','events','run-events','job-events','prompts','submissions','results','exec-logs','credits','reservations') if action == 'run' else ('attempts','runtime','usage','observations','errors','results','exec-logs')
+        collections = ('runs','jobs','attempts','runtime','usage','observations','errors','events','run-events','job-events','prompts','submissions','results','exec-logs','credits','reservations','performance-sessions','performance-spans') if action == 'run' else ('attempts','runtime','usage','observations','errors','results','exec-logs')
         available = {x['kind'] for x in database.available() if x['available']}
         pages = {}
         for kind in collections:

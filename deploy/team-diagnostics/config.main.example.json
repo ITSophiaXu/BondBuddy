@@ -4,7 +4,7 @@
   "state_directory": "/var/lib/bondbuddy-diagnostics",
   "compose_projects": ["bb-main"],
   "explicit_containers": ["bb-elastic-execution-egress"],
-  "journal_units": [],
+  "journal_units": ["bondbuddy-elastic-control-authority.service", "bondbuddy-elastic-pg-mtls.service", "bondbuddy-elastic-proxy-mtls.service", "bondbuddy-integrity-egress.service", "bondbuddy-integrity-proxy-mtls.service", "bondbuddy-pg-mtls.service"],
   "database": "bondbuddy",
   "check_execution_registry": true,
   "expected_sources": ["main", "azure"],
