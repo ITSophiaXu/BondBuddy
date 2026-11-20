@@ -12,7 +12,7 @@ import { schemas, ReviewDraftInputSchema, ReviewDraftRequestSchema, ReviewEditor
   type ReviewWorkspace, type Run } from '@bondbuddy/contracts';
 import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
-import { assertDownloadProgress, checkedDownloadProgress, type DownloadProgressDiagnostic } from './integrity-delivery-fixtures';
+import { assertDownloadProgress, checkedDownloadProgress, type DownloadProgressDiagnostic } from './artifact-download-diagnostic-fixture';
 
 // Public HTTP fixtures exercise the real UI. Synthetic Word bytes do not establish
 // document generation, professional review, worker execution or billing acceptance.

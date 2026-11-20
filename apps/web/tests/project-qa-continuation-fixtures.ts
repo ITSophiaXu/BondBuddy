@@ -1,6 +1,6 @@
 import {fixtureBody,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
-import {expect,type Page,type Route} from '@playwright/test';
+import {expect,test,type Page,type Route} from '@playwright/test';
 import {PROJECT_QA_PRICE,schemas,type ProjectFileAsset,type QaDraft,type QaInput,type QaQuestion,type QaResult,type QaRun,type QaWorkspace} from '@bondbuddy/contracts';
 import {FormatRegistry} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
+import {checkedDownloadProgress,assertDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // Synthetic public HTTP fixtures. These tests do not generate, inspect or deliver
 // Word bytes, call a model, settle credits, or assert a production worker result.
@@ -63,6 +64,17 @@ export function fixture(){
 }
 export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
+type BinaryRead={id:string;sha256:string;byte_size:number};
+type DownloadEvidence={metadata:Map<string,Dto<'ArtifactResponse'>>;binaries:BinaryRead[];pending:Promise<void>[];progress:DownloadProgressDiagnostic[]};
+const downloadEvidence=new WeakMap<State,DownloadEvidence>();
+async function settleDownloads(state:State){
+  const evidence=downloadEvidence.get(state);if(!evidence)return;await Promise.all(evidence.pending);
+  const successful=evidence.binaries.filter(read=>state.workspace.runs.some(run=>run.artifact_id===read.id&&run.result?.document.sha256===read.sha256&&run.result.document.byte_size===read.byte_size)).length;
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='verified').length,{message:'Each exact QA Word GET has verified progress.'}).toBe(successful);
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='auto_save_requested').length,{message:'Each exact QA Word reaches browser save handoff.'}).toBe(successful);
+  assertDownloadProgress(evidence.progress);
+}
+test.afterEach(async({page})=>{const state=installed.get(page);if(state){await settleDownloads(state);expect(state.unexpected).toEqual([]);expect(state.errors).toEqual([]);}});
 export function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],value)])}`).toBe(true);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});}
 const problem=(route:Route,status:number,code:string)=>route.fulfill({status,json:fixtureBody(route,{code})});
@@ -80,6 +92,12 @@ function queued(state:State,body:AnswerRequest|PrepareRequest,operation:'answer'
   state.workspace.runs.unshift(run);return {body:structuredClone(body),run,generic};
 }
 export async function install(page:Page,state=fixture()){
+  const evidence:DownloadEvidence={metadata:new Map(),binaries:[],pending:[],progress:[]};downloadEvidence.set(state,evidence);
+  page.on('response',response=>{
+    const request=response.request(),match=new URL(response.url()).pathname.match(/^\/api\/v1\/artifacts\/([^/]+)(\/download)?$/);
+    if(request.method()!=='GET'||response.status()!==200||!match)return;
+    evidence.pending.push((async()=>{if(match[2]){const bytes=await response.body();evidence.binaries.push({id:match[1],sha256:createHash('sha256').update(bytes).digest('hex'),byte_size:bytes.length});}else evidence.metadata.set(match[1],await response.json());})().catch(error=>{if(!page.isClosed())state.errors.push('Artifact response evidence: '+String(error));}));
+  });
   installed.set(page,state);page.on('pageerror',error=>state.errors.push(error.message));
   await page.context().route('**/synthetic-qa-upload',async route=>{
     if(state.allowUploads&&route.request().method()==='PUT'){state.uploadBytes++;return route.fulfill({status:204,body:''});}
@@ -89,6 +107,18 @@ export async function install(page:Page,state=fixture()){
   await page.context().route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(request.postDataJSON());await Promise.all(evidence.pending);
+        const run=state.workspace.runs.find(value=>value.artifact_id===diagnostic.detail.artifact_id),metadata=evidence.metadata.get(diagnostic.detail.artifact_id);
+        expect(state.owner).toBe(ownerId);expect(run?.operation).toBe('answer');expect(run?.state).toBe('succeeded');expect(run?.result).not.toBeNull();
+        expect(metadata).toMatchObject({artifact_id:run!.artifact_id,run_id:run!.run_id,version:1,sha256:run!.result!.document.sha256});
+        expect(diagnostic.detail).toMatchObject({run_id:run!.run_id,version:1,received_bytes:run!.result!.document.byte_size});
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(projectId);
+        expect(evidence.binaries.some(read=>read.id===run!.artifact_id&&read.sha256===run!.result!.document.sha256&&read.byte_size===diagnostic.detail.received_bytes),'QA progress requires the actual exact Word bytes.').toBe(true);
+        evidence.progress.push(diagnostic);return reply(route,'BrowserErrorReportResponse',{report_id:'qa-download-report',deduplicated:false,received_at:now},201);
+      }catch(error){state.errors.push('Rejected artifact diagnostic: '+String(error));}
+    }
     const body:unknown=request.postData()&&request.headers()['content-type']?.includes('application/json')?fixtureRequest(request):undefined;
     state.calls.push({method,path,search:url.search,...(body===undefined?{}:{body:structuredClone(body)})});
     if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});

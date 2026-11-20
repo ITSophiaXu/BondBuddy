@@ -8,6 +8,7 @@ import { ReviewDraftInputSchema, ReviewReadableReportSchema, schemas, type Revie
 import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { docx, downloadBytes } from './word-roundtrip-fixtures';
+import { assertDownloadProgress, checkedDownloadProgress, type DownloadProgressDiagnostic } from './artifact-download-diagnostic-fixture';
 export { downloadBytes };
 
 // Closed synthetic public HTTP data and minimal stored OOXML. These journeys do
@@ -33,6 +34,7 @@ function input(draft: ReviewWorkspace['draft']) { const { version: _version, ...
 function checked<K extends keyof typeof schemas>(name: K, value: unknown): asserts value is Dto<K> {
   expect(Value.Check(schemas[name], value), `${name}: ${JSON.stringify([...Value.Errors(schemas[name], value)])}`).toBe(true);
 }
+
 
 export function fixture(options: { other?: boolean; revision?: boolean } = {}) {
   const source = docx('合成只读原募集书。'), material: Dto<'MaterialResponse'> = { material_id: 'reader-source', material_version: 1,
@@ -72,7 +74,8 @@ export function fixture(options: { other?: boolean; revision?: boolean } = {}) {
     input_revision: active.input_revision, finding_ids: [], plan: null, artifacts: [], created_at: now });
   return { project, material, draft, history, metadata, bytes, readable, active, revision: Boolean(options.revision), failReadable: false,
     calls: [] as { method: string; path: string }[], unexpected: [] as string[], errors: [] as string[],
-    readableReads: [] as string[], metadataReads: [] as string[], byteReads: [] as string[] };
+    readableReads: [] as string[], metadataReads: [] as string[], byteReads: [] as string[],
+    downloadDiagnostics: [] as DownloadProgressDiagnostic[] };
 }
 export type State = ReturnType<typeof fixture>;
 export const writes = (state: State) => state.calls.filter(call => call.method !== 'GET');
@@ -102,6 +105,21 @@ export async function install(page: Page, state = fixture()) {
   await page.route('**/api/v1/**', async route => {
     if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method();
+    if (method === 'POST' && path === '/browser-errors' && !url.search) {
+      try {
+        const body: unknown = request.postDataJSON(); checked('BrowserErrorReportRequest', body);
+        const diagnostic = checkedDownloadProgress(body), artifact = state.metadata.get(diagnostic.detail.artifact_id);
+        expect(artifact, 'Download progress must bind an explicitly registered artifact.').toBeDefined();
+        expect(diagnostic.detail).toMatchObject({ run_id: artifact!.run_id, version: artifact!.version, received_bytes: state.bytes.get(artifact!.artifact_id)!.length });
+        expect(hash(state.bytes.get(artifact!.artifact_id)!)).toBe(artifact!.sha256);
+        if (body.project_id !== undefined) expect(body.project_id).toBe(projectId);
+        expect(state.byteReads).toContain(artifact!.artifact_id); state.downloadDiagnostics.push(diagnostic);
+        const receipt = { report_id: 'reader-download-report', deduplicated: false, received_at: now }; checked('BrowserErrorReportResponse', receipt);
+        return route.fulfill({ status: 201, json: fixtureBody(route, receipt) });
+      } catch (error) {
+        state.unexpected.push(method + ' ' + path + url.search); state.errors.push(error instanceof Error ? error.message : String(error)); return failure(route);
+      }
+    }
     state.calls.push({ method, path });
     if (method === 'GET') {
       if (path === '/me') return dto(route, 'MeResponse', { user_id: owner, session_status: 'active' });
@@ -139,8 +157,11 @@ export async function open(page: Page, state = fixture(), version = 1) {
   await page.goto(`/#/projects/${projectId}/review?tab=results&run=${runId(version)}`);
   await expect(page.locator('.readable-body')).toContainText(`V${version === 4 ? 1 : version} 财务核对事项1`); return state;
 }
-export function assertFixture(page: Page) {
+export async function assertFixture(page: Page) {
   const state = installed.get(page); if (!state) return;
+  await expect.poll(() => state.downloadDiagnostics.filter(entry => entry.detail.event === 'auto_save_requested').map(entry => entry.detail.artifact_id).sort(), { timeout: 5000 }).toEqual([...state.byteReads].sort());
+  assertDownloadProgress(state.downloadDiagnostics);
+  expect(state.downloadDiagnostics.filter(entry => entry.detail.event === 'verified').map(entry => entry.detail.artifact_id).sort()).toEqual([...state.byteReads].sort());
   expect(state.unexpected, 'Closed public HTTP fixture must account for every request.').toEqual([]);
   expect(state.errors, 'The real browser page must not throw.').toEqual([]); expect(writes(state)).toEqual([]);
 }

@@ -8,6 +8,7 @@ import { isReviewReport, ReviewDraftInputSchema, ReviewEditorResponseSchema, sch
   type ReviewWorkspace, type Run } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
 import { taskPage } from './collection-fixtures';
+import { assertDownloadProgress, checkedDownloadProgress, type DownloadProgressDiagnostic } from './artifact-download-diagnostic-fixture';
 
 // Owner-aware synthetic HTTP data exercises the real browser UI and download hash checks.
 // The synthetic Word payloads are not document-generation or professional-review acceptance.
@@ -19,6 +20,9 @@ const runId = (version: number) => `continuity-run-${version}`;
 const reportId = (version: number) => `continuity-report-${version}`;
 const marker = (version: number) => `合成历史 V${version} 专属正文`;
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: body });
+type ArtifactMetadataRead = { artifact: Dto<'ArtifactResponse'>; callIndex: number };
+type ArtifactTransfer = { artifact: Dto<'ArtifactResponse'>; metadataCall: number; binaryCall: number;
+  sha256: string; byteSize: number; downloadId?: string };
 
 function fixture(mode: 'editor' | 'structured' = 'editor', includeTimeline = true) {
   const material: Dto<'MaterialResponse'> = { material_id: 'continuity-source', material_version: 1,
@@ -39,7 +43,8 @@ function fixture(mode: 'editor' | 'structured' = 'editor', includeTimeline = tru
   const state = { project, draft, material, history, reports, editors, metadata, bytes, includeTimeline,
     activeRun: null as Run | null, unexpected: [] as string[], requests: [] as string[],
     workspaceReads: [] as (string | null)[], editorReads: [] as string[], artifactReads: [] as string[],
-    downloads: [] as string[], readableReads: [] as string[] };
+    downloads: [] as string[], readableReads: [] as string[], artifactMetadataReads: [] as ArtifactMetadataRead[],
+    artifactTransfers: [] as ArtifactTransfer[], downloadDiagnostics: [] as DownloadProgressDiagnostic[] };
   const makeRun = (version: number, state: Run['state'] = 'succeeded'): Run => ({ run_id: runId(version),
     execution_request_id: `continuity-request-${version}`, project_id: projectId, input_revision: 1,
     input_hash: hash('input'), channel: 'production', test_grant_id: null, uncovered_items: [], state,
@@ -113,7 +118,40 @@ async function setup(page: Page, state = fixture(), selectedRun = runId(1), tab 
   fixtures.set(page, state);
   await page.route('**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length);
-    const method = request.method(); state.requests.push(`${method} ${path}${url.search}`);
+    const method = request.method();
+    if (method === 'POST' && path === '/browser-errors' && !url.search) {
+      try {
+        const diagnostic = checkedDownloadProgress(request.postDataJSON());
+        const artifact = state.metadata.get(diagnostic.detail.artifact_id);
+        expect(artifact, 'Progress must identify an artifact in this owned fixture.').toBeDefined();
+        const payload = state.bytes.get(artifact!.artifact_id)!;
+        expect(hash(payload)).toBe(artifact!.sha256);
+        expect(diagnostic.detail).toMatchObject({ artifact_id: artifact!.artifact_id, run_id: artifact!.run_id,
+          version: artifact!.version, received_bytes: Buffer.byteLength(payload, 'utf8') });
+        if (diagnostic.report.project_id !== undefined) expect(diagnostic.report.project_id).toBe(projectId);
+        const previous = state.downloadDiagnostics.filter(entry => entry.detail.download_id === diagnostic.detail.download_id);
+        expect(previous.some(entry => entry.detail.event === diagnostic.detail.event), 'Each controlled event occurs once.').toBe(false);
+        const transfer = diagnostic.detail.event === 'verified'
+          ? state.artifactTransfers.find(entry => !entry.downloadId && entry.artifact.artifact_id === artifact!.artifact_id)
+          : state.artifactTransfers.find(entry => entry.downloadId === diagnostic.detail.download_id);
+        expect(transfer, 'Progress requires its actual metadata read and binary GET.').toBeDefined();
+        expect(transfer!.artifact).toEqual(artifact); expect(transfer!.sha256).toBe(artifact!.sha256);
+        expect(transfer!.byteSize).toBe(diagnostic.detail.received_bytes);
+        expect(transfer!.metadataCall).toBeLessThan(transfer!.binaryCall); expect(transfer!.binaryCall).toBeLessThan(state.requests.length);
+        if (diagnostic.detail.event === 'verified') { expect(previous).toEqual([]); transfer!.downloadId = diagnostic.detail.download_id; }
+        else expect(previous.map(entry => entry.detail.event)).toEqual(diagnostic.detail.event === 'auto_save_requested'
+          ? ['verified'] : ['verified', 'auto_save_requested']);
+        state.downloadDiagnostics.push(diagnostic);
+        const response: Dto<'BrowserErrorReportResponse'> = { report_id: 'continuity-download-report', deduplicated: false, received_at: now };
+        expect(Value.Check(schemas.BrowserErrorReportResponse, response)).toBe(true);
+        return json(route, response, 201);
+      } catch (error) {
+        state.requests.push(`${method} ${path}${url.search}`);
+        state.unexpected.push(`${method} ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        return json(route, { code: 'UNEXPECTED_SYNTHETIC_REQUEST' }, 500);
+      }
+    }
+    state.requests.push(`${method} ${path}${url.search}`);
     // This suite is read-only. Any mutation, including quote/execution/adoption, is a fixture failure.
     if (method === 'GET') {
       if (path === '/me') return json(route, { user_id: owner, session_status: 'active' });
@@ -170,8 +208,17 @@ async function setup(page: Page, state = fixture(), selectedRun = runId(1), tab 
       }
       const artifact = path.match(/^\/artifacts\/([^/]+)(\/download)?$/);
       if (artifact && state.metadata.has(artifact[1])) {
-        if (artifact[2]) { state.downloads.push(artifact[1]); return route.fulfill({ status: 200, contentType: mime, body: state.bytes.get(artifact[1])! }); }
-        state.artifactReads.push(artifact[1]); return json(route, state.metadata.get(artifact[1]));
+        const metadata = state.metadata.get(artifact[1])!, payload = state.bytes.get(artifact[1])!;
+        expect(Value.Check(schemas.ArtifactResponse, metadata)).toBe(true); expect(hash(payload)).toBe(metadata.sha256);
+        if (artifact[2]) {
+          const read = state.artifactMetadataReads.filter(entry => entry.artifact.artifact_id === artifact[1]).at(-1);
+          expect(read, 'A binary download must follow its exact artifact metadata.').toBeDefined(); expect(read!.artifact).toEqual(metadata);
+          state.artifactTransfers.push({ artifact: structuredClone(metadata), metadataCall: read!.callIndex,
+            binaryCall: state.requests.length - 1, sha256: hash(payload), byteSize: Buffer.byteLength(payload, 'utf8') });
+          state.downloads.push(artifact[1]); return route.fulfill({ status: 200, contentType: mime, body: payload });
+        }
+        state.artifactMetadataReads.push({ artifact: structuredClone(metadata), callIndex: state.requests.length - 1 });
+        state.artifactReads.push(artifact[1]); return json(route, metadata);
       }
     }
     state.unexpected.push(`${method} ${path}${url.search}`);
@@ -182,7 +229,16 @@ async function setup(page: Page, state = fixture(), selectedRun = runId(1), tab 
 }
 
 test.afterEach(async ({ page }) => {
-  const state = fixtures.get(page); if (state) expect(state.unexpected, 'Every API request must be explicitly handled by this read-only fixture.').toEqual([]);
+  const state = fixtures.get(page); if (!state) return;
+  expect(state.unexpected, 'Every API request must be explicitly handled by this read-only fixture.').toEqual([]);
+  for (const event of ['verified', 'auto_save_requested']) await expect.poll(
+    () => state.downloadDiagnostics.filter(entry => entry.detail.event === event).length,
+    { timeout: 5000, message: 'Each actual artifact transfer must receive its ' + event + ' diagnostic before teardown.' }
+  ).toBe(state.artifactTransfers.length);
+  assertDownloadProgress(state.downloadDiagnostics);
+  expect(state.downloadDiagnostics.filter(entry => entry.detail.event === 'verified').map(entry => entry.detail.artifact_id))
+    .toEqual(state.artifactTransfers.map(transfer => transfer.artifact.artifact_id));
+  expect(state.unexpected, 'Every API request must be explicitly handled by this read-only fixture.').toEqual([]);
 });
 
 async function expectRunInUrl(page: Page, selectedRun: string, tab = 'results', returnProject = projectId) {

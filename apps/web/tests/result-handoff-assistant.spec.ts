@@ -8,6 +8,7 @@ import {AssistantCardRequestSchema,M4_DOCUMENT_TYPES,M4DocumentManifestSchema,M4
   type AssistantCard,type M4Artifact,type M4Draft,type M4Task,type M4Workspace,type ReviewHistoryEntry,type ReviewReport,type ReviewWorkspace,type Run} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {taskPage} from './collection-fixtures';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // Synthetic owner-scoped HTTP data, real main.ts navigation and result consumers.
 // This does not execute a model, prove DOCX quality, settle credits or contact a service.
@@ -90,9 +91,17 @@ function fixture(operation:Operation,oldState:Run['state']='succeeded'){
     target:{issuer_name:'合成发行人',market:'sse',offering:'private',reporting_cutoff:'2026-09-30'},requirements:marker(run.run_id===old.run_id?1:2),material_names:[material.filename],
     baseline:null,quote:null,balance:{available:100000,frozen:0},run,...(operation==='generation'?{document_type:'private_summary' as const,expected_draft_version:run.input_revision}:operation==='update'?{input_revision:run.input_revision,input_hash:run.input_hash}:{expected_input_version:run.input_revision})}));
   return {operation,project,scope,old,latest,runs,workspace,cards,history,reports,reviewDraft,material,metadata,bytes,active,
-    calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],previewReads:[] as string[],reportReads:[] as string[],downloadReads:[] as string[]};
+    calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],previewReads:[] as string[],reportReads:[] as string[],downloadReads:[] as string[],diagnosticReads:[] as string[],downloadDiagnostics:[] as DownloadProgressDiagnostic[]};
 }
 type State=ReturnType<typeof fixture>;
+const installed=new WeakMap<Page,State>();
+test.afterEach(async({page})=>{
+  const s=installed.get(page);if(!s)return;
+  await expect.poll(()=>s.downloadDiagnostics.filter(entry=>entry.detail.event==='auto_save_requested').map(entry=>entry.detail.artifact_id).sort(),{timeout:5000}).toEqual([...s.diagnosticReads].sort());
+  assertDownloadProgress(s.downloadDiagnostics);
+  expect(s.downloadDiagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id).sort()).toEqual([...s.diagnosticReads].sort());
+  expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);
+});
 
 function validate(s:State){
   check(schemas.ProjectResponse,s.project);check(schemas.ProjectResponse,s.scope);check(schemas.MaterialResponse,s.material);
@@ -107,9 +116,19 @@ function validate(s:State){
 }
 
 async function install(page:Page,s:State){
-  validate(s);page.on('pageerror',error=>s.errors.push(error.message));
+  validate(s);installed.set(page,s);page.on('pageerror',error=>s.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
-    const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();s.calls.push({method,path,search:url.search});
+    const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(request.postDataJSON()),metadata=s.metadata.get(diagnostic.detail.artifact_id);expect(metadata).toBeDefined();
+        expect(diagnostic.detail).toMatchObject({run_id:metadata!.run_id,version:metadata!.version,received_bytes:s.bytes.get(metadata!.artifact_id)!.length});
+        expect(hash(s.bytes.get(metadata!.artifact_id)!)).toBe(metadata!.sha256);expect(s.diagnosticReads).toContain(metadata!.artifact_id);
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(s.project.project_id);
+        s.downloadDiagnostics.push(diagnostic);const receipt={report_id:'assistant-handoff-download-report',deduplicated:false,received_at:now};check(schemas.BrowserErrorReportResponse,receipt);return json(route,receipt,201);
+      }catch(error){s.unexpected.push(`${method} ${path}${url.search}`);s.errors.push(error instanceof Error?error.message:String(error));return json(route,{code:'DATA_UNAVAILABLE'},500);}
+    }
+    s.calls.push({method,path,search:url.search});
     if(method==='GET'){
       if(path==='/me')return json(route,{user_id:ids.owner,session_status:'active'});
       if(path==='/account')return json(route,{user_id:ids.owner,username:'synthetic_handoff_owner',phone_masked:null,status:'active',created_at:now,accepted_terms_version:'terms-1',current_terms_version:'terms-1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
@@ -156,7 +175,7 @@ async function install(page:Page,s:State){
       const artifact=path.match(/^\/artifacts\/([^/]+)$/);
       if(artifact){const value=s.metadata.get(artifact[1]);return json(route,value??{code:'NOT_FOUND'},value?200:404);}
       const download=path.match(/^\/artifacts\/([^/]+)\/download$/);
-      if(download){s.downloadReads.push(download[1]);return route.fulfill({contentType:mime,body:s.bytes.get(download[1])!});}
+      if(download){s.downloadReads.push(download[1]);s.diagnosticReads.push(download[1]);return route.fulfill({contentType:mime,body:s.bytes.get(download[1])!});}
       const preview=path.match(/^\/m4\/artifacts\/([^/]+)\/versions\/1\/preview$/);
       if(preview){s.previewReads.push(preview[1]);const artifact=s.workspace.artifacts.find(item=>item.artifact_id===preview[1]);return json(route,{artifact,content:marker(artifact!.revision_number!)});}
       const m4Download=path.match(/^\/m4\/artifacts\/([^/]+)\/versions\/1\/bytes$/);

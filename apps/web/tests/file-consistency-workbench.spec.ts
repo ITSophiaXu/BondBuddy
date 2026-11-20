@@ -2,10 +2,12 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {resultFilename,PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
+import {Value} from '@sinclair/typebox/value';
+import {resultFilename,PROJECT_FILE_UPDATE_PRICE,schemas,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileSource,type ProjectFileVersion,type ProjectFileWorkspace,type ProjectFileUpdateBatches} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {installConsistencyFreshnessReference} from './consistency-freshness-reference';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // Synthetic HTTP projections test the page's confirmation and recovery behavior.
 // No model, wallet, private storage or real Word generation is involved.
@@ -43,6 +45,10 @@ type UpdateBody=Dto<'ProjectFileUpdateRequest'>;
 type CheckBody=Dto<'ProjectFileCheckRequest'>;
 type UpdatePost={checkId:string;body:UpdateBody};
 type Call={method:string;path:string;body:unknown};
+type ArtifactMetadataRead={artifact:Dto<'ArtifactResponse'>;callIndex:number};
+type ArtifactTransfer={artifact:Dto<'ArtifactResponse'>;metadataCall:number;binaryCall:number;sha256:string;byteSize:number;downloadId?:string};
+type DownloadState={metadataReads:ArtifactMetadataRead[];transfers:ArtifactTransfer[];diagnostics:DownloadProgressDiagnostic[];errors:string[]};
+const downloadStates=new WeakMap<Page,DownloadState>();
 type FixtureOptions={
   shortageOnce?:boolean;dropUpdateOnce?:boolean;unpreparedWorkspace?:boolean;workspaceFailure?:boolean;
   changed?:'source-version'|'source-revision'|'file-version';missingRun?:boolean;delivered?:boolean;
@@ -57,6 +63,7 @@ async function setup(page:Page,options:FixtureOptions={}){
   const checks=[check(checkId,files,basis),check(olderCheckId,files,basis)];
   const batches:ProjectFileUpdateBatches['batches']=[];
   const calls:Call[]=[],updates:UpdatePost[]=[],receipts=new Map<string,{post:UpdatePost;batchId:string}>();
+  const downloads:DownloadState={metadataReads:[],transfers:[],diagnostics:[],errors:[]};downloadStates.set(page,downloads);
   const checkPosts:CheckBody[]=[],checkReceipts=new Map<string,{body:CheckBody;runId:string}>();
   const flags={shortage:!!options.shortageOnce,drop:!!options.dropUpdateOnce,prepared:!options.unpreparedWorkspace,
     transient:options.transientOnce,dropCheck:!!options.dropCheckOnce};
@@ -99,6 +106,35 @@ async function setup(page:Page,options:FixtureOptions={}){
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api/v1',''),method=req.method();
     const body=method==='POST'||method==='PATCH'?req.postDataJSON() as unknown:null;
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(body),match=diagnostic.detail.artifact_id.match(/^delivered-(revision|clean)$/);
+        expect(options.delivered,'Progress requires an actually delivered file.').toBe(true);expect(match).not.toBeNull();
+        const variant=match![1] as 'revision'|'clean',bytes=deliveredBytes[variant];
+        const pin=files.find(file=>file.version_id==='issuer-delivered-v2')![variant==='revision'?'revision_asset':'asset'];
+        expect(pin?.kind).toBe('artifact');if(pin?.kind!=='artifact')throw new Error('Missing delivered artifact pin.');
+        expect(pin.pin).toMatchObject({source_project_id:projectId,artifact_id:diagnostic.detail.artifact_id,artifact_version:1,sha256:hash(bytes)});
+        expect(diagnostic.detail).toMatchObject({run_id:'delivered-run',version:pin.pin.artifact_version,received_bytes:bytes.byteLength});
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(projectId);
+        const previous=downloads.diagnostics.filter(entry=>entry.detail.download_id===diagnostic.detail.download_id);
+        expect(previous.some(entry=>entry.detail.event===diagnostic.detail.event),'Each controlled event occurs once.').toBe(false);
+        const transfer=diagnostic.detail.event==='verified'
+          ?downloads.transfers.find(entry=>!entry.downloadId&&entry.artifact.artifact_id===diagnostic.detail.artifact_id)
+          :downloads.transfers.find(entry=>entry.downloadId===diagnostic.detail.download_id);
+        expect(transfer,'Progress requires its actual metadata read and binary GET.').toBeDefined();
+        expect(transfer!.artifact).toMatchObject({artifact_id:pin.pin.artifact_id,run_id:'delivered-run',version:pin.pin.artifact_version,sha256:pin.pin.sha256});
+        expect(transfer!.sha256).toBe(pin.pin.sha256);expect(transfer!.byteSize).toBe(diagnostic.detail.received_bytes);
+        expect(transfer!.metadataCall).toBeLessThan(transfer!.binaryCall);expect(transfer!.binaryCall).toBeLessThan(calls.length);
+        if(diagnostic.detail.event==='verified'){expect(previous).toEqual([]);transfer!.downloadId=diagnostic.detail.download_id;}
+        else expect(previous.map(entry=>entry.detail.event)).toEqual(diagnostic.detail.event==='auto_save_requested'?['verified']:['verified','auto_save_requested']);
+        downloads.diagnostics.push(diagnostic);
+        const response:Dto<'BrowserErrorReportResponse'>={report_id:'workbench-download-report',deduplicated:false,received_at:now};
+        expect(Value.Check(schemas.BrowserErrorReportResponse,response)).toBe(true);return json(route,201,response);
+      }catch(error){
+        calls.push({method,path,body});downloads.errors.push(error instanceof Error?error.message:String(error));
+        return json(route,500,{code:'NOT_FOUND'});
+      }
+    }
     calls.push({method,path,body});
     if(path==='/me')return json(route,200,{user_id:'synthetic-consistency-owner',session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:'synthetic-consistency-owner',username:'sample_user'});
@@ -150,11 +186,19 @@ async function setup(page:Page,options:FixtureOptions={}){
     }
     const artifact=path.match(/^\/artifacts\/delivered-(revision|clean)(\/download)?$/);
     if(artifact){
+      expect(method,'Artifact receipts must come from actual GET requests.').toBe('GET');
       const variant=artifact[1] as 'revision'|'clean',bytes=deliveredBytes[variant],id='delivered-'+variant;
-      if(artifact[2])return route.fulfill({status:200,contentType:mime,body:bytes});
       const value:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'delivered-run',version:1,filename:resultFilename({project:'发行人基本情况',kind:variant==='revision'?'修订版':'清洁版',version:3,createdAt:now,mediaType:mime}),display_version:3,
         media_type:mime,sha256:hash(bytes),quality_status:'passed',delivery_status:'available',
         download_url:`/api/v1/artifacts/${id}/download?grant=synthetic`,expires_at:'2099-01-01T00:00:00Z'};
+      expect(Value.Check(schemas.ArtifactResponse,value)).toBe(true);expect(hash(bytes)).toBe(value.sha256);
+      if(artifact[2]){
+        const metadata=downloads.metadataReads.filter(entry=>entry.artifact.artifact_id===id).at(-1);
+        expect(metadata,'A binary download must follow its exact artifact metadata.').toBeDefined();expect(metadata!.artifact).toEqual(value);
+        downloads.transfers.push({artifact:structuredClone(value),metadataCall:metadata!.callIndex,binaryCall:calls.length-1,sha256:hash(bytes),byteSize:bytes.byteLength});
+        return route.fulfill({status:200,contentType:mime,body:bytes});
+      }
+      downloads.metadataReads.push({artifact:structuredClone(value),callIndex:calls.length-1});
       return json(route,200,value);
     }
     return json(route,404,{code:'NOT_FOUND'});
@@ -166,6 +210,19 @@ async function setup(page:Page,options:FixtureOptions={}){
   else await expect(page.locator('.fc-results')).toBeVisible();
   return {basis,files,checks,calls,updates,batches,receipts,checkPosts,checkReceipts};
 }
+test.afterEach(async({context})=>{
+  for(const page of context.pages()){
+    const downloads=downloadStates.get(page);if(!downloads)continue;expect(downloads.errors).toEqual([]);
+    for(const event of ['verified','auto_save_requested'])await expect.poll(
+      ()=>downloads.diagnostics.filter(entry=>entry.detail.event===event).length,
+      {timeout:5000,message:'Each actual artifact transfer must receive its '+event+' diagnostic before teardown.'}
+    ).toBe(downloads.transfers.length);
+    assertDownloadProgress(downloads.diagnostics);
+    expect(downloads.diagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id))
+      .toEqual(downloads.transfers.map(transfer=>transfer.artifact.artifact_id));
+    expect(downloads.errors).toEqual([]);
+  }
+});
 const row=(page:Page,versionId:string)=>page.locator(`article.fc-file:has([data-fc-select="${versionId}"])`);
 async function selectTwo(page:Page){
   await page.locator('[data-fc-select="issuer-v1"]').check();

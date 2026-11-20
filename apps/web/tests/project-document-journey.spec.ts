@@ -4,6 +4,7 @@ import {expect,test,type Page,type Route} from '@playwright/test';
 import {PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileSource,type ProjectFileUpdateBatches,type ProjectFileVersion,type ProspectusVersions} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // One synthetic backend state serves the real application routes throughout this journey.
 // These bytes and receipts verify UI ownership, version pins and delivery behavior only;
@@ -36,6 +37,8 @@ type Call={method:string;path:string;body:unknown};
 type CheckBody=Dto<'ProjectFileCheckRequest'>;
 type UpdateBody=Dto<'ProjectFileUpdateRequest'>;
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const diagnosticChecks=new WeakMap<Page,()=>Promise<void>>();
+test.afterEach(async({page})=>{await diagnosticChecks.get(page)?.();});
 
 async function setupJourney(page:Page){
   const versions:ProspectusVersions={project_id:sourceId,current_version_id:'source-v1',selection_revision:2,
@@ -43,6 +46,13 @@ async function setupJourney(page:Page){
   const files=[initialFile('issuer','发行人基本情况.docx'),initialFile('financial','财务情况.docx')];
   const checks:ProjectFileCheck[]=[],batches:ProjectFileUpdateBatches['batches']=[];
   const calls:Call[]=[],checkPosts:CheckBody[]=[],updatePosts:UpdateBody[]=[],unexpected:Call[]=[];
+  const downloadDiagnostics:DownloadProgressDiagnostic[]=[],byteReads:string[]=[],diagnosticErrors:string[]=[];
+  diagnosticChecks.set(page,async()=>{
+    await expect.poll(()=>downloadDiagnostics.filter(entry=>entry.detail.event==='auto_save_requested').map(entry=>entry.detail.artifact_id).sort(),{timeout:5000}).toEqual([...byteReads].sort());
+    assertDownloadProgress(downloadDiagnostics);
+    expect(downloadDiagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id).sort()).toEqual([...byteReads].sort());
+    expect(diagnosticErrors).toEqual([]);expect(unexpected).toEqual([]);
+  });
   let upload:Dto<'UploadCreateRequest'>|undefined,received=false,completed=false;
   const currentSource=():ProjectFileSource=>{
     const v=versions.versions.find(v=>v.version_id===versions.current_version_id)!;
@@ -83,9 +93,21 @@ async function setupJourney(page:Page){
       {file_version_id:'financial-v1',filename:'财务情况.docx',run_id:'journey-financial-run',error:'合成财务文件更新失败，等待处理'}];
   };
   await page.route('**/api/v1/**',async route=>{
-    const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1',''),method=req.method();
+    const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api/v1',''),method=req.method();
     const body=method==='POST'||method==='PATCH'?req.postDataJSON() as unknown:null;
-    const call={method,path,body};calls.push(call);
+    const call={method,path,body};
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(body),match=diagnostic.detail.artifact_id.match(/^journey-(revision|clean)$/);expect(match).not.toBeNull();
+        const variant=match![1] as 'revision'|'clean',asset=artifactAsset(variant);expect(asset.kind).toBe('artifact');
+        expect(diagnostic.detail).toMatchObject({artifact_id:'journey-'+variant,run_id:'journey-issuer-run',version:1,received_bytes:deliveredBytes[variant].length});
+        if(asset.kind==='artifact')expect(hash(deliveredBytes[variant])).toBe(asset.pin.sha256);
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(projectId);
+        expect(byteReads).toContain(diagnostic.detail.artifact_id);downloadDiagnostics.push(diagnostic);
+        return json(route,201,{report_id:'journey-download-report',deduplicated:false,received_at:now});
+      }catch(error){diagnosticErrors.push(error instanceof Error?error.message:String(error));unexpected.push(call);return json(route,500,{code:'DATA_UNAVAILABLE'});}
+    }
+    calls.push(call);
     if(method==='GET'&&path==='/me')return json(route,200,{user_id:'synthetic-journey-owner',session_status:'active'});
     if(method==='GET'&&path==='/account')return json(route,200,{user_id:'synthetic-journey-owner',username:'sample_user'});
     if(method==='GET'&&path==='/credits/balance')return json(route,200,{enabled:true,available:18000,frozen:0});
@@ -148,7 +170,7 @@ async function setupJourney(page:Page){
     const artifact=path.match(/^\/artifacts\/journey-(revision|clean)(\/download)?$/);
     if(method==='GET'&&artifact){
       const variant=artifact[1] as 'revision'|'clean',id='journey-'+variant;
-      if(artifact[2])return route.fulfill({status:200,contentType:mime,body:deliveredBytes[variant]});
+      if(artifact[2]){byteReads.push(id);return route.fulfill({status:200,contentType:mime,body:deliveredBytes[variant]});}
       const response:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'journey-issuer-run',version:1,filename:'发行人基本情况.docx',
         media_type:mime,sha256:hash(deliveredBytes[variant]),quality_status:'passed',delivery_status:'available',
         download_url:`/api/v1/artifacts/${id}/download?grant=synthetic`,expires_at:'2099-01-01T00:00:00Z'};

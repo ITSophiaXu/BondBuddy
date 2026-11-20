@@ -10,6 +10,7 @@ import {createHash} from 'node:crypto';
 import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
 import {docx,downloadBytes} from './word-roundtrip-fixtures';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 export {downloadBytes};
 
 // Closed public HTTP projections and minimal stored OOXML. No model, worker,
@@ -43,7 +44,7 @@ export function fixture(){
   const versions:Dto<'ProspectusVersionsResponse'>={project_id:ids.project,current_version_id:'result-handoff-version-3',selection_revision:3,inactive_material_ids:[],versions:[
     {version_id:'result-handoff-version-1',sequence:1,origin:'upload',filename:materials[0].filename,sha256:materials[0].sha256,created_at:oldTime,material_id:ids.source,material_version:1,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null},
     ...([2,3] as const).map(round=>({version_id:'result-handoff-version-'+round,sequence:round,origin:'generated' as const,filename:`合成第${round}轮清洁版.docx`,sha256:artifacts.get(artifactId(round,'clean'))!.metadata.sha256,created_at:round===2?oldTime:newTime,material_id:null,material_version:null,artifact_id:artifactId(round,'clean'),artifact_version:round+5,revision_artifact_id:artifactId(round,'revision'),run_id:round===2?ids.oldRun:ids.newRun}))]};
-  return {project,materials,runs,artifacts,versions,inputs:new Map([[2,input(2,materials)],[3,input(3,materials)]]),allowPatch:false,failNextPatch:false,patches:[] as Dto<'ProjectPatchRequest'>[],calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],metadataReads:[] as string[],byteReads:[] as string[]};
+  return {project,materials,runs,artifacts,versions,inputs:new Map([[2,input(2,materials)],[3,input(3,materials)]]),allowPatch:false,failNextPatch:false,patches:[] as Dto<'ProjectPatchRequest'>[],calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],metadataReads:[] as string[],byteReads:[] as string[],downloadDiagnostics:[] as DownloadProgressDiagnostic[]};
 }
 export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
@@ -67,7 +68,17 @@ export async function install(page:Page,s=fixture()){
     if(await serveDisabledBillingCatalog(route))return;
     if(await serveAuditPdfQuality(route,ids.project,s.materials))return;
     try{
-      const req=route.request(),url=new URL(req.url()),method=req.method(),path=url.pathname.slice('/api/v1'.length),body:unknown=req.postData()?fixtureRequest(req):null;s.calls.push({method,path,body:structuredClone(body)});
+      const req=route.request(),url=new URL(req.url()),method=req.method(),path=url.pathname.slice('/api/v1'.length),body:unknown=req.postData()?fixtureRequest(req):null;
+      if(method==='POST'&&path==='/browser-errors'&&!url.search){
+        const diagnostic=checkedDownloadProgress(body),stored=s.artifacts.get(diagnostic.detail.artifact_id);
+        expect(stored,'Diagnostics must bind an explicitly registered artifact.').toBeDefined();
+        expect(diagnostic.detail).toMatchObject({run_id:stored!.metadata.run_id,version:stored!.metadata.version,received_bytes:stored!.bytes.length});
+        expect(hash(stored!.bytes)).toBe(stored!.metadata.sha256);expect(s.byteReads).toContain(stored!.metadata.artifact_id);
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(ids.project);
+        s.downloadDiagnostics.push(diagnostic);const receipt={report_id:'authoring-download-report',deduplicated:false,received_at:newTime};
+        checked('BrowserErrorReportResponse',receipt);return route.fulfill({status:201,json:fixtureBody(route,receipt)});
+      }
+      s.calls.push({method,path,body:structuredClone(body)});
       if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
       if(method==='GET'&&path==='/account')return dto(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_authoring_owner',phone_masked:null,status:'active',created_at:oldTime,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
       if(method==='GET'&&path==='/credits/balance')return dto(route,'CreditBalanceResponse',{enabled:true,available:100000,frozen:0});
@@ -91,4 +102,9 @@ export async function install(page:Page,s=fixture()){
 }
 export const routeFor=(step:'materials'|'details'='materials')=>`/#/projects/${ids.project}?step=${step}&run=${ids.oldRun}&from=projects`;
 export async function open(page:Page,s=fixture(),url=routeFor()){await page.setViewportSize({width:1440,height:900});await page.goto('about:blank');await install(page,s);await page.goto(url);await expect(page.locator('.artifact-download-panel')).toBeVisible();return s;}
-export async function assertFixture(page:Page,s=installed.get(page)){if(s){expect(s.unexpected,'Closed synthetic HTTP allow-list').toEqual([]);expect(s.errors,'No page or fixture errors').toEqual([]);}}
+export async function assertFixture(page:Page,s=installed.get(page)){if(s){
+  await expect.poll(()=>s.downloadDiagnostics.filter(entry=>entry.detail.event==='auto_save_requested').map(entry=>entry.detail.artifact_id).sort(),{timeout:5000}).toEqual([...s.byteReads].sort());
+  assertDownloadProgress(s.downloadDiagnostics);
+  expect(s.downloadDiagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id).sort()).toEqual([...s.byteReads].sort());
+  expect(s.unexpected,'Closed synthetic HTTP allow-list').toEqual([]);expect(s.errors,'No page or fixture errors').toEqual([]);
+}}

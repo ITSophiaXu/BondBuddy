@@ -10,7 +10,7 @@ import {resultFilename,M4_DOCUMENT_TYPES,M4DraftInputSchema,M4ViewStateSchema,PR
   type ProjectFileSource,type ProjectFileUpdateBatches,type ProjectFileVersion} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
 import {docx,downloadBytes} from './word-roundtrip-fixtures';
-import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './integrity-delivery-fixtures';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 export {docx,downloadBytes};
 
 // Closed, owner-scoped synthetic HTTP. The normal projections follow the public
