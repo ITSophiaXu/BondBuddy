@@ -2,7 +2,6 @@ ARG BASE_IMAGE=bb-fc-worker-base:local
 FROM ${BASE_IMAGE}
 
 COPY --chown=node:node scripts/fc-codex-probe/server.mjs /opt/fc-codex-probe/server.mjs
-COPY --chown=node:node scripts/fc-codex-probe/model-prompt.txt /opt/fc-codex-probe/model-prompt.txt
 COPY --chown=node:node scripts/local-integration/diagnose-file-sandbox.mjs /opt/fc-codex-probe/diagnose-file-sandbox.mjs
 
 ENV PORT=9000

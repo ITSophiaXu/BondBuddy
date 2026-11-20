@@ -56,12 +56,8 @@ const server = http.createServer(async (req, res) => {
     }
     const input = body ? JSON.parse(body) : {};
     const mode = input.mode || 'platform';
-    if (!['platform', 'sandbox', 'model'].includes(mode))
+    if (!['platform', 'sandbox'].includes(mode))
       return respond(res, 400, { error: 'invalid_mode' });
-
-    if (mode === 'model' && (process.env.BB_FC_PROBE_ALLOW_MODEL !== '1' || !process.env.DEEPSEEK_API_KEY))
-      return respond(res, 412, { error: 'model_probe_not_configured',
-        required_environment: ['BB_FC_PROBE_ALLOW_MODEL=1', 'DEEPSEEK_API_KEY'] });
 
     const results = {};
     if (mode === 'platform') {
@@ -73,12 +69,6 @@ const server = http.createServer(async (req, res) => {
         '--', '/bin/true'], 10_000);
     } else if (mode === 'sandbox') {
       results.file_sandbox = await run('node', ['/opt/fc-codex-probe/diagnose-file-sandbox.mjs'], 35_000);
-    } else if (mode === 'model') {
-      results.model_runtime = await run('node', [
-        '/app/apps/worker/dist/codex-probe-cli.js',
-        '--prompt-file', '/opt/fc-codex-probe/model-prompt.txt',
-        '--timeout-ms', '90000',
-      ], 100_000);
     }
     respond(res, Object.values(results).every(result => result.ok) ? 200 : 500,
       { mode, results });
