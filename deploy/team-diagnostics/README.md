@@ -62,6 +62,13 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 
 新增服务只要属于已登记的Compose项目便自动采集；新增物理节点必须经过上述受控身份登记和采集就绪检查。已经禁用的日志（例如配置为 `access_log none` 或 `StandardOutput=null`）没有可读取的历史，本组件不会伪造补录。
 
+## 历史 RCA 的扩展读取范围
+
+- 重新安装本版本的数据库视图 SQL 后，`bb-logs` 可按 `db performance-sessions --run RUN_ID` 和 `db performance-spans --run RUN_ID` 分页读取性能会话、步骤时长及经固定白名单筛选的诊断属性。`run RUN_ID` 也列出这两类数据。只授予 `bb_diagnostics` 视图 SELECT，不授予业务表或任意 SQL 权限；缺表时 `collections` 明确显示 unavailable。发布者须用实际 `bb-logs` 身份核对读取成功和原表访问被拒绝。
+- 主站现有 `journal_units` 已包含 `bondbuddy-elastic-proxy-mtls.service` 和 `bondbuddy-integrity-egress.service`；新增实测存在但未登记的 `bondbuddy-integrity-proxy-mtls.service`，以 `logs 服务名 --source main` 查询。Compose 的 `egress` 与 `bb-elastic-execution-egress` 容器日志沿用现有范围。发布者须合并现有配置并核对采集结果，不能用通配 journal 或整个宿主日志代替。
+- 执行节点启用 `node_config_snapshot` 后，`sources` 显示当前安全摘要，`logs node-config --source INSTANCE_ID` 保留每次配置哈希变更的摘要。摘要只含版本哈希、服务能力、运行 UID、代理端口和槽数，不含原始 env、角色绑定、私钥或完整配置。首次采集时间以前的配置不能凭当前文件倒推；已有备份应由获授权运维按原时间戳脱敏导出。
+- 生产升级必须使用统一发布锁、保存当前诊断配置和 ACL 前像，并在独立测试环境验证后由指定发布 chat 执行。代码提交、安装 SQL 的语法通过与生产账号实际读取成功是三个不同状态。
+
 ## 撤销与回滚
 
 - 撤销个人：从root配置的 `actors` 删除该账号并删除对应 `/etc/bondbuddy-diagnostics/keys/账号` 公钥文件；下一条命令即被拒绝，不修改历史审计，不删除人员的其他账号。

@@ -6,6 +6,7 @@
   "compose_projects": ["bondbuddy-execution"],
   "explicit_containers": [],
   "journal_units": ["bondbuddy-execution-bootstrap.service", "bondbuddy-execution-pg.service", "bondbuddy-execution-transport-renewal.service"],
+  "node_config_snapshot": true,
   "expected_sources": [],
   "actors": {},
   "ingest_sources": {},

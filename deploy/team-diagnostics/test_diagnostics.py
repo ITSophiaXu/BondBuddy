@@ -30,6 +30,21 @@ class ArchiveTests(unittest.TestCase):
         with self.db:
             for i in range(start, start+n):
                 archive.record(self.db,'main','a'*64,'api',STAMP,i,'line '+str(i))
+    def test_node_config_changes_are_retained_without_raw_values(self):
+        with tempfile.TemporaryDirectory(dir=pathlib.Path(__file__).parent) as tmp:
+            path=pathlib.Path(tmp)/'elastic-node.json'
+            data={'pool_tag':'bondbuddy-execution','services':[],
+                  'service_environments':{'authoring':{'DEEPSEEK_API_KEY':'SECRET'}}}
+            path.write_text(json.dumps(data))
+            with mock.patch.object(collector,'NODE_CONFIG',path):
+                config={'node':'synthetic','node_config_snapshot':True}
+                collector.capture_node_config(self.db,config)
+                collector.capture_node_config(self.db,config)
+                data['region']='ap-beijing';path.write_text(json.dumps(data))
+                collector.capture_node_config(self.db,config)
+        rows=self.db.execute("SELECT message FROM records WHERE service='node-config' ORDER BY id").fetchall()
+        self.assertEqual(len(rows),2)
+        self.assertTrue(all('SECRET' not in row['message'] for row in rows))
     def test_paginate_every_same_timestamp_record_and_freeze_ceiling(self):
         self.add(1205)
         first = archive.page(self.db,{},100)
@@ -227,6 +242,23 @@ class SecurityTests(unittest.TestCase):
         self.assertIn('NOBYPASSRLS',sql)
         self.assertIn('security_barrier=true',sql)
         self.assertIn('bb_log_content_tombstones',sql)
+        self.assertIn('bb_diagnostics.performance_sessions',sql)
+        self.assertIn('bb_diagnostics.performance_spans',sql)
+        self.assertIn("d->>'span_id'",sql)
+        self.assertNotIn("'object_ref'",sql)
+
+    def test_node_config_snapshot_never_exports_private_bindings_or_env(self):
+        source={'pool_tag':'bondbuddy-execution','region':'ap-beijing','runtime_uid':1000,
+                'services':[{'service_id':'authoring','capabilities':['authoring']}],
+                'private_proxy':{'local_port':15434,'remote_port':15434,'remote_host':'secret-host'},
+                'node_slots':[{'role_name':'private-role','secret_name':'private-secret'}],
+                'service_environments':{'authoring':{'DEEPSEEK_API_KEY':'SECRET'}}}
+        result=collector.safe_node_config(json.dumps(source).encode())
+        rendered=json.dumps(result)
+        self.assertEqual(result['slot_count'],1)
+        self.assertNotIn('SECRET',rendered)
+        self.assertNotIn('private-role',rendered)
+        self.assertNotIn('secret-host',rendered)
 
 
 class ExportTests(unittest.TestCase):

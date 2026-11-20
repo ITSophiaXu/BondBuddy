@@ -32,7 +32,24 @@ SPECS = {
     'sessions': ('bb_execution_node_sessions', 'session_id service_id node_id epoch state native_processes unpersisted_results ready heartbeat_at finished_at'),
     'heartbeats': ('bb_worker_heartbeats', 'worker_id worker_kind worker_version started_at last_seen_at stopped_at active_jobs'),
     'browser-errors': ('bb_browser_error_reports', 'id owner_user_id project_id job_id fingerprint error_type message route_id frontend_version client_time received_at purged_at'),
+    'performance-sessions': ('bb_performance_sessions', 'session_id owner_user_id project_id run_id job_id trace_id run_execution_id task_kind service_role worker_instance_id release_sha started_at ended_at last_flush_at closed generated acknowledged dropped invalid_attributes flush_errors last_sequence complete purged_at purged_span_count purge_reason purge_policy_version'),
+    'performance-spans': ('bb_performance_spans', 'span_id owner_user_id run_id session_id run_execution_id trace_id job_id parent_span_id stage step_key step_version status started_at ended_at duration_ms last_activity_at clock_source sequence'),
 }
+
+# Only diagnostic timing and bounded enum/count attributes cross the reader view.
+# Raw attributes can contain future fields that have not been reviewed for export.
+PERFORMANCE_ATTRIBUTE_KEYS = (
+    'stage', 'wait_reason', 'error_code', 'logical_call_id', 'call_id',
+    'model_id', 'model_provider', 'adapter', 'adapter_version',
+    'model_config_version', 'cache_status', 'cache_kind', 'cache_reason',
+    'tool_type', 'tool_name', 'event_kind', 'result_status', 'operation',
+    'outcome', 'measurement_source', 'attempt_no', 'bytes', 'byte_size',
+    'bytes_expected', 'bytes_read', 'bytes_written', 'input_bytes',
+    'output_bytes', 'input_tokens', 'output_tokens', 'cached_input_tokens',
+    'reasoning_tokens', 'retry_count', 'poll_count', 'duration_ms',
+    'elapsed_ms', 'first_stdout_ms', 'first_event_ms', 'ttft_ms',
+    'timing_complete', 'tool_timing_complete', 'cache_hit', 'reused',
+)
 
 
 def view_name(kind):
@@ -84,7 +101,7 @@ def install_sql():
     for kind, (table, fields) in SPECS.items():
         view = view_name(kind)
         field_sql = ','.join("'" + f + "'" for f in fields.split())
-        key = "COALESCE(d->>'id',d->>'attempt_id',d->>'session_id',d->>'worker_id',d->>'run_id',d->>'job_id') || COALESCE(':'||(d->>'seq'),'')"
+        key = "COALESCE(d->>'id',d->>'attempt_id',d->>'session_id',d->>'span_id',d->>'worker_id',d->>'run_id',d->>'job_id') || COALESCE(':'||(d->>'seq'),'')"
         owner = "COALESCE(d->>'owner_user_id',j.owner_user_id,r.owner_user_id)"
         if kind == 'users': owner = "d->>'id'"
         attempt = "d->>'id'" if kind == 'attempts' else "d->>'attempt_id'"
@@ -96,12 +113,16 @@ def install_sql():
             job = "COALESCE(d->>'job_id',a.job_id,e.job_id,CASE WHEN d->>'aggregate_type'='job' THEN d->>'aggregate_id' END)"
             run = "COALESCE(d->>'run_id',j.run_id,e.run_id,CASE WHEN d->>'aggregate_type'='run' THEN d->>'aggregate_id' END)"
         # Fixed whitelist leaves raw snapshot keys and secret-bearing provider payloads out.
+        body = f'(SELECT jsonb_object_agg(k,v) FROM jsonb_each(d) item(k,v) WHERE k IN ({field_sql}))'
+        if kind == 'performance-spans':
+            allowed = ','.join("'" + name + "'" for name in PERFORMANCE_ATTRIBUTE_KEYS)
+            body = f"jsonb_set({body}, '{{attributes}}', COALESCE((SELECT jsonb_object_agg(k,v) FROM jsonb_each(COALESCE(d->'attributes','{{}}'::jsonb)) item(k,v) WHERE k IN ({allowed})), '{{}}'::jsonb))"
         sql = f'''CREATE OR REPLACE VIEW bb_diagnostics.{view} WITH(security_barrier=true) AS
           SELECT {key} AS key,
           COALESCE(d->>'created_at',d->>'occurred_at',d->>'observed_at',d->>'recorded_at',d->>'received_at',d->>'started_at','1970-01-01T00:00:00Z')::timestamptz AS at,
           {owner} AS owner_id, COALESCE(d->>'project_id',j.project_id,r.project_id) AS project_id,
           {run} AS run_id,{job} AS job_id,{attempt} AS attempt_id,
-          (SELECT jsonb_object_agg(k,v) FROM jsonb_each(d) item(k,v) WHERE k IN ({field_sql})) AS body
+          {body} AS body
           FROM (SELECT to_jsonb(t) AS d FROM public.{table} t) src
           {extra_join}
           LEFT JOIN public.bb_model_call_attempts a ON a.id={attempt}

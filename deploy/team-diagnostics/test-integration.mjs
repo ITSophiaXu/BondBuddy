@@ -45,6 +45,9 @@ try {
   pass(`${migrations.length} current application migrations on isolated PG16`);
   const install=run(['run','--rm','--network','none','--mount',mount,'-w','/code','python:3.11-slim','python','-B','database.py']).stdout;
   sql(install);sql(install);pass('diagnostic views install and repeat installation');
+  assert.equal(sql('SELECT count(*) FROM bb_diagnostics.performance_sessions, bb_diagnostics.performance_spans',{role:'bb_diagnostics_reader'}).stdout.trim(),'0');
+  assert.notEqual(sql('SELECT count(*) FROM public.bb_performance_spans',{role:'bb_diagnostics_reader',allowFailure:true}).status,0);
+  pass('performance views readable while raw performance tables remain denied');
   sql(`INSERT INTO bb_users(id,phone_e164,created_at) SELECT 'diag-user-'||lpad(i::text,3,'0'),'+199900'||lpad(i::text,5,'0'),'2026-01-01T00:00:00Z' FROM generate_series(1,125) i;`);
   sql(`INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES('diag-project','diag-user-001','Synthetic diagnostic fixture','bond');
     INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,snapshot_kind,version,object_key,content_sha256,redaction_version)

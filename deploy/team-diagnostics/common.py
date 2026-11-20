@@ -47,6 +47,8 @@ def load_config(path=CONFIG):
         identifier(project)
     for unit in config.get('journal_units', []):
         identifier(unit)
+    if not isinstance(config.get('node_config_snapshot', False), bool):
+        raise ValueError('Invalid node config snapshot setting')
     if not config.get('compose_projects') and not config.get('explicit_containers'):
         raise ValueError('An explicit BondBuddy container scope is required')
     for name in config.get('explicit_containers', []):
