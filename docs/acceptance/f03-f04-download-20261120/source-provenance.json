@@ -71,7 +71,7 @@
   ],
   "approval": "Existing prototype component comparison only; no new product sign-off or business acceptance.",
   "implementation_diff_scope": {
-    "description": "Exact tracked paths and base at screenshot capture; excludes evidence directory and files that were untracked at capture. Per-source SHA256/Git blob identities bind the implementation component.",
+    "description": "Exact tracked paths and base at screenshot capture; immutable snapshot ends at first implementation commit f0c2ed9. Excludes evidence directory and files that were untracked at capture. Later HTTP fixture fixes do not rewrite this historical screenshot snapshot. Per-source SHA256/Git blob identities bind the implementation component.",
     "base_commit": "4b83c8b3afd93365e8aafaf1631dc5d10bb51cbf",
     "tracked_paths_at_capture": [
       "apps/api/src/artifact-reader.ts",
@@ -106,6 +106,7 @@
       "diff",
       "--binary",
       "4b83c8b3afd93365e8aafaf1631dc5d10bb51cbf",
+      "f0c2ed924dc459048dbf8f9df0bd345f1db8c0d5",
       "--",
       "apps/api/src/artifact-reader.ts",
       "apps/api/src/server.ts",
@@ -133,7 +134,8 @@
       "deploy/tencent-elasticity/node-adapter.mjs",
       "docs/runbooks/f03-f04-recovery.md",
       "python/bondbuddy_file_authoring/document_size.py"
-    ]
+    ],
+    "snapshot_commit": "f0c2ed924dc459048dbf8f9df0bd345f1db8c0d5"
   },
   "comparison_scope": "Existing download feedback component only: status copy and explicit save link. Prototype page and implementation page have different purposes.",
   "limitations": [

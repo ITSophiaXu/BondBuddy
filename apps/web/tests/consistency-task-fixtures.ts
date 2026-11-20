@@ -10,6 +10,7 @@ import {resultFilename,M4_DOCUMENT_TYPES,M4DraftInputSchema,M4ViewStateSchema,PR
   type ProjectFileSource,type ProjectFileUpdateBatches,type ProjectFileVersion} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
 import {docx,downloadBytes} from './word-roundtrip-fixtures';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './integrity-delivery-fixtures';
 export {docx,downloadBytes};
 
 // Closed, owner-scoped synthetic HTTP. The normal projections follow the public
@@ -93,7 +94,7 @@ export function fixture(options:Options={}){
   for(const document_type of M4_DOCUMENT_TYPES)drafts[document_type]={document_type,project_file:{project_id:ids.root,source_version_id:source.version_id,source_selection_revision:source.selection_revision},source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[],supplemental_requirements:'',version:0,sha256:hash('empty-'+document_type),updated_at:null};
   const workspace:M4Workspace={topic:{topic_id:ids.topic,project_id:ids.workspace,source_project_id:ids.root,name:workspaceProject.name,created_at:now,updated_at:now},project:workspaceProject,drafts,materials:[],material_details:[],templates:[],messages:[],tasks:[],artifacts:[],pending_requirements:[],view:{version:0,selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null}},active_run:null};
   const s={options,rootProject,source,oldSource,workspace,files,checks,tasks,batches,artifacts,
-    calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],metadataReads:[] as string[],byteReads:[] as string[],checkReads:0,
+    calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],downloadDiagnostics:[] as DownloadProgressDiagnostic[],metadataReads:[] as string[],byteReads:[] as string[],checkReads:0,
     runActions:[] as {run:string;action:string;body:unknown}[],updatePosts:[] as {checkId:string;body:Dto<'ProjectFileUpdateRequest'>}[],
     allowResume:false,pending:undefined as Pending|undefined,workspaceUnavailable:false,
     metadataFault:undefined as {artifact:string;field:'id'|'run'|'version'|'hash'}|undefined,projectionFaults:[] as string[]};
@@ -141,7 +142,18 @@ export async function install(page:Page,s=fixture()){
   await page.context().route('**/api/v1/**',async route=>{
     try{
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method();
-    const body:unknown=req.postData()?fixtureRequest(req):null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    const body:unknown=req.postData()?fixtureRequest(req):null;
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      const diagnostic=checkedDownloadProgress(body),stored=s.artifacts.get(diagnostic.detail.artifact_id);
+      expect(stored,'Diagnostics must refer to an explicitly registered artifact.').toBeDefined();
+      expect(diagnostic.detail).toMatchObject({run_id:stored!.metadata.run_id,version:stored!.metadata.version,received_bytes:stored!.bytes.byteLength});
+      if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(ids.root);
+      expect(s.byteReads,'Verified progress requires an actual binary read.').toContain(diagnostic.detail.artifact_id);
+      s.downloadDiagnostics.push(diagnostic);
+      const receipt:Dto<'BrowserErrorReportResponse'>={report_id:'consistency-task-download-report',deduplicated:false,received_at:now};
+      checked(schemas.BrowserErrorReportResponse,receipt,'Download diagnostic receipt');return route.fulfill({status:201,json:fixtureBody(route,receipt)});
+    }
+    s.calls.push({method,path,search:url.search,body:structuredClone(body)});
     if(method==='GET'&&path===`/projects/${ids.root}/workpapers/library`)return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});
     if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});
     if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
@@ -189,4 +201,6 @@ export function pendingRequest(s:State):Pending{
 }
 export async function assertFixture(page:Page,s=installed.get(page)){
   if(!s)return;expect(s.unexpected,'Only the explicit synthetic HTTP allow-list may be used.').toEqual([]);expect(s.errors,'No browser page errors.').toEqual([]);
+  assertDownloadProgress(s.downloadDiagnostics);
+  expect(s.downloadDiagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id).sort()).toEqual([...s.byteReads].sort());
 }
