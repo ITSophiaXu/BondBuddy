@@ -56,3 +56,63 @@ export async function readVerifiedArtifact(blobs: PrivateBlobs, artifact: Stored
   if (!bytes || (bounded && bytes.length !== expectedSize) || digest(bytes) !== artifact.sha256.trim()) throw integrityFailure();
   return bytes;
 }
+
+type CacheableArtifact = StoredArtifact & { owner_user_id?: unknown; run_id?: unknown; id?: unknown; version?: unknown };
+type ArtifactCacheOptions = { ttlMs?: number; maxBytes?: number; maxEntries?: number; now?: () => number };
+
+/** Server-local checked bytes. A trusted storage HEAD and current route authorization
+ * are still required for every delivery; a digest alone is never a cache receipt. */
+export function createCachedArtifactReader(blobs: PrivateBlobs, options: ArtifactCacheOptions = {}) {
+  const ttl = options.ttlMs ?? 60_000, maximum = options.maxBytes ?? 64 * 1024 * 1024, count = options.maxEntries ?? 16;
+  if ([ttl, maximum, count].some(value => !Number.isSafeInteger(value) || value <= 0)) throw new RangeError('Invalid artifact cache limit');
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, { bytes: Buffer; etag: string; expires: number }>();
+  const pending = new Map<string, Promise<Buffer>>();
+  let retained = 0, generation = 0;
+  const remove = (key: string) => { const entry = entries.get(key); if (entry) { retained -= entry.bytes.length; entries.delete(key); } };
+  const prune = () => { for (const [key, entry] of entries) if (entry.expires <= now()) remove(key); };
+  const head = async (artifact: CacheableArtifact, size: number) => {
+    let value: Awaited<ReturnType<NonNullable<PrivateBlobs['headVersion']>>>;
+    try { value = await blobs.headVersion!(artifact.object_key); } catch { throw integrityFailure(); }
+    if (!value || typeof value.etag !== 'string' || !value.etag || value.etag.length > 1024 || value.byteSize !== size) throw integrityFailure();
+    return value;
+  };
+  return {
+    clear() { generation++; entries.clear(); pending.clear(); retained = 0; },
+    async read(artifact: CacheableArtifact): Promise<Buffer> {
+      const size = Number(artifact.delivery_evidence_byte_size);
+      if (!blobs.headVersion || !Number.isSafeInteger(size) || size <= 0 || size > maximum ||
+          ![artifact.owner_user_id, artifact.run_id, artifact.id].every(value => typeof value === 'string' && value.length > 0) ||
+          !Number.isSafeInteger(artifact.version) || Number(artifact.version) <= 0 || !/^[a-f0-9]{64}$/.test(artifact.sha256.trim()))
+        return readVerifiedArtifact(blobs, artifact);
+      const key = JSON.stringify([artifact.owner_user_id, artifact.run_id, artifact.id, artifact.version, artifact.object_key, artifact.sha256.trim(), artifact.media_type, size]);
+      prune();
+      const version = await head(artifact, size);
+      const existing = entries.get(key);
+      if (existing && existing.etag === version.etag && existing.expires > now()) {
+        entries.delete(key); entries.set(key, existing);
+        return Buffer.from(existing.bytes);
+      }
+      remove(key);
+      const flightKey = JSON.stringify([key, version.etag]);
+      const inflight = pending.get(flightKey);
+      if (inflight) return Buffer.from(await inflight);
+      const startedGeneration = generation;
+      const read = (async () => {
+        const bytes = Buffer.from(await readVerifiedArtifact(blobs, artifact));
+        if (bytes.length !== size) throw integrityFailure();
+        const after = await head(artifact, size);
+        if (after.etag !== version.etag) throw integrityFailure();
+        if (generation === startedGeneration) {
+          prune(); remove(key);
+          while (entries.size >= count || retained + bytes.length > maximum) remove(entries.keys().next().value!);
+          entries.set(key, { bytes, etag: version.etag, expires: now() + ttl }); retained += bytes.length;
+        }
+        return bytes;
+      })();
+      pending.set(flightKey, read);
+      try { return Buffer.from(await read); }
+      finally { if (pending.get(flightKey) === read) pending.delete(flightKey); }
+    },
+  };
+}

@@ -12,7 +12,7 @@ export type Kind='company'|'person';
 export type Fault='artifact_id'|'version'|'run_id'|'comparison_cross_run';
 export type Payload={synthetic:true;kind:Kind;run_id:string;round_id:string;operation:'check'|'export';input_hash:string;draft:IntegrityDraft;records:IntegrityRecord[];evidence_ids:string[];evidence:IntegrityEvidence[]};
 export type Word={kind:Kind;run_id:string;artifact_id:string;version:number;bytes:Buffer;payload:Payload;metadata:Dto<'ArtifactResponse'>};
-type Words={artifacts:Map<string,Word>;metadata:string[];responses:Dto<'ArtifactResponse'>[];downloads:string[];fault?:Fault};
+type Words={artifacts:Map<string,Word>;metadata:string[];responses:Dto<'ArtifactResponse'>[];downloads:string[];diagnostics:unknown[];fault?:Fault};
 export type State=BaseState&{words:Words};
 export const route=(run:string|null=exportId)=>`/#integrity?project=${projectId}${run?`&run=${run}`:''}`;
 export const historical=(s:State,runId=exportId)=>s.workspace.rounds.find(round=>round.run_id===runId)!;
@@ -45,7 +45,7 @@ export function registerWords(s:State,runId=exportId){
 }
 
 export function fixture(){
-  const s=Object.assign(baseFixture(),{words:{artifacts:new Map(),metadata:[],responses:[],downloads:[]} as Words});
+  const s=Object.assign(baseFixture(),{words:{artifacts:new Map(),metadata:[],responses:[],downloads:[],diagnostics:[]} as Words});
   // Current worker uses a distinct artifact ID per run and version 1. Normalize
   // this extension's copied DTOs without changing the sealed continuation fixture.
   for(const round of s.workspace.rounds){
@@ -79,6 +79,10 @@ export function readPayload(bytes:Buffer):Payload{
 
 export async function install(page:Page,s=fixture()){
   await installBase(page,s);checked('IntegrityWorkspaceResponse',s.workspace);
+  await page.context().route('**/api/v1/browser-errors',async intercepted=>{
+    const body=intercepted.request().postDataJSON();checked('BrowserErrorReportRequest',body);s.words.diagnostics.push(body);
+    return intercepted.fulfill({status:201,json:{report_id:'synthetic-download-report',deduplicated:false,received_at:'2026-11-20T00:00:00Z'}});
+  });
   // Last context route runs first. Preserve the old fixture's allow-list and
   // error checks for every request this narrow artifact extension does not own.
   await page.context().route('**/api/v1/artifacts/**',async intercepted=>{

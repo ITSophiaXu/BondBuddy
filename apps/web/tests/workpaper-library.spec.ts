@@ -6,6 +6,7 @@ import {fixture,install,openFiles,ids,now,hash,docx} from './word-roundtrip-fixt
 
 async function setup(page:Page){
   const s=fixture();await install(page,s);
+  await page.route('**/api/v1/browser-errors',route=>route.fulfill({status:201,json:{report_id:'synthetic-download-report',deduplicated:false,received_at:'2026-11-20T00:00:00Z'}}));
   const bytes=docx('合成资产核查：2025年末总资产为200万元。'),sha=hash(bytes),source=s.source!;
   const entries:WorkpaperLibraryItem[]=Array.from({length:61},(_,i)=>({
     entry:{id:'wp-'+i,code:'1-'+i,title:'资产核查'+i,folder:'1 尽职调查文件',kind:'file',row:i+2,sheet:'1 尽职调查文件',instructions:'',path:`1 尽职调查文件/1-${i} 资产核查${i}.docx`},
@@ -63,6 +64,7 @@ test('legacy library download uses the corrected metadata filename and retains d
   entry.entry.title='资产说明（包括明细、原因及偿债影响）';
   entry.entry.path='1 尽职调查文件/1-0 资产说明及明细、原因及偿债影响.docx';
   const expected='1-0 资产说明.docx',bytes=docx('Synthetic retained document bytes.'),sha=hash(bytes);
+  entry.artifacts[0]!.pin.sha256=sha;
   await page.route('**/api/v1/artifacts/artifact-0**',route=>route.request().url().includes('/download')
     ?route.fulfill({body:bytes,contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})
     :route.fulfill({json:{artifact_id:'artifact-0',run_id:entry.run_id,version:1,filename:expected,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',sha256:sha,quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/artifact-0/download',expires_at:'2099-01-01T00:00:00Z'}}));

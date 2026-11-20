@@ -1,0 +1,162 @@
+{
+  "prototype_commit": "73f3cb60c362b1ed77329f1c0e5124415c9ba791",
+  "prototype_sources": [
+    {
+      "path": "product-prototype/public/workpaper-batch.html",
+      "sha256": "6ccbbae99a55df6e7d36160aeb2475fb2b5d94ecd5f29933c60e1418a0941ff0"
+    },
+    {
+      "path": "product-prototype/public/styles.css",
+      "sha256": "ed88d321eb5b12bac8aee0d3e066c2321a49d0373e5562c97228926fa844c9a6"
+    },
+    {
+      "path": "product-prototype/public/workpaper-batch.css",
+      "sha256": "aadb8dbebfa7e2431af447d9240d8c6878b69639b99784e2e99c5348a74edd34"
+    },
+    {
+      "path": "product-prototype/public/file-generation-ux.css",
+      "sha256": "61f502ce101903a06a5c604b9b48565a69c105b16d6d8b89664b55185f7e39cd"
+    },
+    {
+      "path": "product-prototype/public/workpaper-entry.css",
+      "sha256": "0791b20bbda4476b282e8df3f96e46ecf54c85240645e11d5718b2a1d1d134c0"
+    },
+    {
+      "path": "product-prototype/public/workpaper-download-progress.css",
+      "sha256": "4aa5ce0136e9802e8e1e87b40e87f9de38f88b0e16f6c818db56a070ea0d7d5d"
+    },
+    {
+      "path": "product-prototype/public/workpaper-import-preview.js",
+      "sha256": "6c19c0546e3b9f92f65b50935eac5ca85e1b49123bd2389f98c8bd5eb77fd2cb"
+    },
+    {
+      "path": "product-prototype/public/workpaper-download-preview.js",
+      "sha256": "06228fad7571e6e293a16e7855bc0b8ab1e723f894f576a35506635a55307843"
+    }
+  ],
+  "implementation": "working-tree",
+  "implementation_head": "4b83c8b3afd93365e8aafaf1631dc5d10bb51cbf",
+  "implementation_tracked_diff_sha256": "c84cad73e9d0d61e50c51cfa171457d87447bd6a7039422000b45751c3028f83",
+  "implementation_sources": [
+    {
+      "path": "apps/web/src/artifact-download.ts",
+      "sha256": "838dfa12e6bc7a77e3608367f5376cccf311cdf45213af64bdc5a388309471a0",
+      "git_blob_oid": "b2e8e2279a4c965c4b0b27afdbfa69e1c939f385"
+    },
+    {
+      "path": "apps/web/src/integrity-workspace.ts",
+      "sha256": "d86e9ee36e8bae8a9f9e7345dcc3541213d6d181e440365b0516ef583f0fd648",
+      "git_blob_oid": "0e918d511ef3da5d68fc7dd63702ea4d4987b188"
+    },
+    {
+      "path": "apps/web/src/integrity-workspace.css",
+      "sha256": "1a9aec21aa71963b32b119c4da183690353ab65be42a814bdbf1b692a0497bac",
+      "git_blob_oid": "cdeee3795c02429ca8792d33f32661249cde4f57"
+    },
+    {
+      "path": "apps/web/src/download-progress.ts",
+      "sha256": "717d45c342235090f281d1bca34cb59c5b63928eae21f00ade446107d28765c2",
+      "git_blob_oid": "97e1682ded8dca492db0175531dee9e247080448"
+    },
+    {
+      "path": "apps/web/src/download-timeout.ts",
+      "sha256": "77cb0d9271571aefc89199f9ced1ef5a4787a7f631b24c2f9857b96107bb4288",
+      "git_blob_oid": "fbe0dd9e004566234d48fe9787fe3f6cbf5384bb"
+    },
+    {
+      "path": "apps/web/src/api.ts",
+      "sha256": "51344e0e22301bfcb4ced0ab2e594241c150382ba6c2f045736f250a323d6af1",
+      "git_blob_oid": "fe698af62c8d445d7af0c7a673b3976090cdfd52"
+    }
+  ],
+  "approval": "Existing prototype component comparison only; no new product sign-off or business acceptance.",
+  "implementation_diff_scope": {
+    "description": "Exact tracked paths and base at screenshot capture; excludes evidence directory and files that were untracked at capture. Per-source SHA256/Git blob identities bind the implementation component.",
+    "base_commit": "4b83c8b3afd93365e8aafaf1631dc5d10bb51cbf",
+    "tracked_paths_at_capture": [
+      "apps/api/src/artifact-reader.ts",
+      "apps/api/src/server.ts",
+      "apps/web/src/api.ts",
+      "apps/web/src/artifact-download.ts",
+      "apps/web/src/download-progress.ts",
+      "apps/web/src/download-timeout.ts",
+      "apps/web/src/integrity-workspace.ts",
+      "apps/web/src/workpaper-library.ts",
+      "apps/web/src/workpaper-panel.ts",
+      "apps/web/tests/integrity-delivery-fixtures.ts",
+      "apps/web/tests/integrity-delivery.spec.ts",
+      "apps/web/tests/workpaper-library.spec.ts",
+      "apps/worker/src/codex-adapter.ts",
+      "apps/worker/src/codex-file-output-limits.test.ts",
+      "apps/worker/src/execution-node-drain-runtime.pg.test.ts",
+      "apps/worker/src/file-authoring-format.test.ts",
+      "apps/worker/src/file-authoring-recovery.test.ts",
+      "apps/worker/src/file-authoring-stage.ts",
+      "apps/worker/src/runtime.ts",
+      "deploy/m1/Dockerfile",
+      "deploy/tencent-elasticity/bootstrap.mjs",
+      "deploy/tencent-elasticity/compose.yaml",
+      "deploy/tencent-elasticity/integrity-deployment.test.mjs",
+      "deploy/tencent-elasticity/node-adapter.mjs",
+      "docs/runbooks/f03-f04-recovery.md",
+      "python/bondbuddy_file_authoring/document_size.py"
+    ],
+    "argv": [
+      "git",
+      "diff",
+      "--binary",
+      "4b83c8b3afd93365e8aafaf1631dc5d10bb51cbf",
+      "--",
+      "apps/api/src/artifact-reader.ts",
+      "apps/api/src/server.ts",
+      "apps/web/src/api.ts",
+      "apps/web/src/artifact-download.ts",
+      "apps/web/src/download-progress.ts",
+      "apps/web/src/download-timeout.ts",
+      "apps/web/src/integrity-workspace.ts",
+      "apps/web/src/workpaper-library.ts",
+      "apps/web/src/workpaper-panel.ts",
+      "apps/web/tests/integrity-delivery-fixtures.ts",
+      "apps/web/tests/integrity-delivery.spec.ts",
+      "apps/web/tests/workpaper-library.spec.ts",
+      "apps/worker/src/codex-adapter.ts",
+      "apps/worker/src/codex-file-output-limits.test.ts",
+      "apps/worker/src/execution-node-drain-runtime.pg.test.ts",
+      "apps/worker/src/file-authoring-format.test.ts",
+      "apps/worker/src/file-authoring-recovery.test.ts",
+      "apps/worker/src/file-authoring-stage.ts",
+      "apps/worker/src/runtime.ts",
+      "deploy/m1/Dockerfile",
+      "deploy/tencent-elasticity/bootstrap.mjs",
+      "deploy/tencent-elasticity/compose.yaml",
+      "deploy/tencent-elasticity/integrity-deployment.test.mjs",
+      "deploy/tencent-elasticity/node-adapter.mjs",
+      "docs/runbooks/f03-f04-recovery.md",
+      "python/bondbuddy_file_authoring/document_size.py"
+    ]
+  },
+  "comparison_scope": "Existing download feedback component only: status copy and explicit save link. Prototype page and implementation page have different purposes.",
+  "limitations": [
+    "Prototype is the batch workpaper page; implementation is the integrity review page. These images do not certify whole-page layout parity.",
+    "Synthetic local fixtures only. No new product sign-off, original online case rerun or business acceptance."
+  ],
+  "screenshots": [
+    {
+      "file": "prototype-ready-1440x900.png",
+      "sha256": "d6b54cc4b53eefd9ef407daa6820d1be5693cbe22eb582cca2aa8f11539fea6c",
+      "width": 1440,
+      "height": 900,
+      "state": "ready",
+      "synthetic": true
+    },
+    {
+      "file": "implementation-ready-1440x900.png",
+      "sha256": "697117cfef9c1ffc947f683e8ac2f6e4d03f9c39c5e198f893c22c6fae692587",
+      "width": 1440,
+      "height": 900,
+      "state": "ready",
+      "synthetic": true
+    }
+  ],
+  "implementation_source_hash_convention": "sha256 is the raw Windows working-tree bytes at capture; git_blob_oid uses repository clean filters and matches the committed Git blob."
+}

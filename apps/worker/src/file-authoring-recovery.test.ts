@@ -9,6 +9,7 @@ import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import type { StageContext } from './run-pipeline.js';
 import type { UnifiedInput } from './unified-input.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
+import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { authorizedFileAuthoringRecovery, fileAuthoringContextDeadline, recoverFileAuthoringInput, restoreFileAuthoringWork,
   saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_STAGE, FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringRecovery } from './file-authoring-recovery.js';
 
@@ -152,7 +153,9 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
       model_config_version: 'test', reasoning_effort: null, credential: { kind: 'env' as const, name: 'SYNTHETIC_TOKEN' }, work_root: root,
       timeout_ms: 10000, kill_grace_ms: 100, max_output_bytes: 4096, max_schema_reasks: 0, disabled_features: [], path_env: '' };
     let turns = 0;
-    const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint, model: options => ({ name: 'model_generation', run: async () => {
+    // This fixture deliberately uses opaque pinned bytes; it exercises snapshot
+    // restoration only. Renderer capability has separate real-DOCX regressions.
+    const stage = () => fileAuthoringStage({ load: async () => input, renderer:async()=>{}, config, checkpoint: f.checkpoint, model: options => ({ name: 'model_generation', run: async () => {
       turns++; const cwd = join(root, `attempt-${turns}`); await mkdir(cwd);
       await options.fileWorkspace!.prepare(cwd);
       assert.equal(typeof options.config,'object');
@@ -191,6 +194,38 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+
+for (const mode of ['transient', 'persistent', 'lease_lost'] as const)
+test(`capture ${mode} failure retries only transient storage within the original lease`, async () => {
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-recovery-retry-'));
+  try {
+    const input:UnifiedInput={requirements:[],materials:[],manifest:{issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[],
+      update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'},
+      authoring:{version:'unified_v1',requirements:[],source_prospectuses:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}}};
+    f.ctx.lease.checkpoint.file_authoring_recovery_captures={[intent.call_id]:{logical_call_id:intent.logical_call_id,state:'pending'}};
+    const savedPut=f.ctx.blobs.put.bind(f.ctx.blobs),outcomes:unknown[]=[];
+    let failedPuts=0,checkpointCalls=0,modelTurns=0;
+    f.ctx.blobs.put=async(...args)=>{
+      if(mode==='persistent'||mode==='transient'&&failedPuts<2){failedPuts++;throw Error('synthetic_blob_transient_failure');}
+      return savedPut(...args);
+    };
+    const stage=fileAuthoringStage({load:async()=>input,config:{...loadCodexAdapterConfig({}),work_root:root},
+      checkpoint:async(...args)=>{checkpointCalls++;if(mode==='lease_lost')throw Object.assign(Error('Worker lease expired'),{code:'ALREADY_TERMINAL'});await f.checkpoint!(...args);},
+      capture:async(_pool,_lease,_attempt,_logical,outcome)=>{outcomes.push(outcome);},
+      model:options=>({name:'model_generation',run:async()=>{
+        modelTurns++;const cwd=join(root,'cwd');await mkdir(cwd);await options.fileWorkspace!.prepare(cwd);
+        await writeFile(join(cwd,'output/operations.json'),'{"saved":"same lease work"}');
+        const capture=()=>options.fileWorkspace!.onFailure!(cwd,intent as Parameters<NonNullable<NonNullable<typeof options.fileWorkspace>['onFailure']>>[1]);
+        if(mode==='transient')await capture();else await assert.rejects(capture());
+        return {kind:'stopped'};
+      }})});
+    assert.equal((await stage.run(f.ctx)).kind,'stopped');assert.equal(modelTurns,1,'snapshot retries never send another model turn');
+    assert.equal(failedPuts,mode==='persistent'?3:mode==='transient'?2:0);
+    assert.equal(checkpointCalls,mode==='persistent'?0:1,'lease loss is never retried');
+    assert.deepEqual(outcomes,mode==='transient'?[{state:'saved',failure_code:null}]:[{state:'failed',failure_code:mode==='persistent'?'storage_failed':'capture_failed'}]);
+    assert.equal(f.writes(),mode==='transient'?1:0);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('1271-file workspaces save and restore completely while 4097 files cannot publish a checkpoint', async () => {
   const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-recovery-many-files-'));

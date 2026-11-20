@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { filePermissionArgs, verifyFilePermissions } from './codex-file-permissions.js';
+import { markFileWorkspaceActive, recordFileWorkspaceRetention } from './codex-file-retention.js';
 import { fileCompletionArgs } from './file-authoring-completion.js';
 import { reviewFileCompletionArgs } from './review-file-completion.js';
 import { FILE_AUTHORING_HOST_RENDER_HANDOFF } from './file-authoring-instructions.js';
@@ -948,11 +949,26 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       });
       const executionSignal = permit?.signal ?? input.signal;
       let attemptDir: string | undefined;
+      let releaseActiveWorkspace: (() => void) | undefined, retainAttempt = false;
+      let retainAfterCommit = false, captureAttempted = false, retentionRecorded = false;
+      const retainLocally = async (reason: string, captureFailure: string) => {
+        retainAttempt = retainAfterCommit = true;
+        releaseActiveWorkspace?.();
+        if (retentionRecorded) return;
+        retentionRecorded = true;
+        let markerSaved = false;
+        try { await recordFileWorkspaceRetention(attemptDir!,intent,reason,captureFailure); markerSaved = true; }
+        catch { /* The directory itself remains the fail-closed inventory. */ }
+        process.stderr.write(JSON.stringify({event:'file_authoring_candidate_retained',run_id:intent.run_id,
+          call_id:intent.call_id,logical_call_id:intent.logical_call_id,reason,capture_failure:captureFailure,
+          attempt_dir:attemptDir,retention_marker_saved:markerSaved})+'\n');
+      };
       try {
         if (executionSignal?.aborted) return cancelAttempt();
         await withPerformanceSpan('model.admission.check', {}, () => input.beforeIntent?.());
         const { cwd, home, attemptHome, schemaFile, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile } = await withPerformanceSpan('model.workspace.initialize', {}, async () => {
         attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
+        if (input.fileWorkspace) releaseActiveWorkspace = markFileWorkspaceActive(attemptDir);
         const cwd = join(attemptDir, 'cwd'), home = join(attemptDir, 'home');
         await mkdir(cwd, { mode: 0o700 }); await mkdir(home, { mode: 0o700 });
         const attemptHome = codexHome ?? join(attemptDir, 'codex-home');
@@ -995,6 +1011,9 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
         await withPerformanceSpan('model.intent.persist', {}, () => journal.recordIntent(intent)); // durable before spawn
+        // A provider-result blob is not a committed observation/checkpoint.
+        // Keep the last local copy until every journal acknowledgement succeeds.
+        retainAttempt = !!input.fileWorkspace?.onFailure;
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
@@ -1052,9 +1071,31 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         return classified;
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
+        const captureWorkspace = async (reason: string) => {
+          // Until both private objects and their complete checkpoint are durable,
+          // this directory may be the only copy of the user's completed work.
+          retainAttempt = true;
+          captureAttempted = true;
+          if (input.signal?.aborted || executionSignal?.aborted) {
+            await retainLocally('MODEL_CANCELLED','context_aborted'); return;
+          }
+          if (raw.exit_code === null && !['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? '')) {
+            await retainLocally(reason,'native_exit_unproven'); return;
+          }
+          try { await input.fileWorkspace!.onFailure!(cwd,intent); retainAttempt = retainAfterCommit = false; }
+          catch (error) {
+            // Make the last copy visible to admission and draining before the
+            // model permit/run lease can be released. A marker is diagnostic;
+            // even a full disk or failed marker write cannot permit deletion.
+            const reportedFailure = error && typeof error === 'object' && 'captureFailure' in error ? error.captureFailure : undefined;
+            const captureFailure = ['storage_failed','unsafe_workspace','capacity_exceeded'].includes(String(reportedFailure)) ? String(reportedFailure)
+              : error instanceof Error && error.message === 'INPUT_REVISION_CONFLICT' ? 'input_conflict' : 'capture_failed';
+            await retainLocally(reason,captureFailure);
+          }
+        };
         if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_OUTPUT_LIMIT','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
             !input.signal?.aborted && !executionSignal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
-          try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
+          await captureWorkspace(cls.error_code!);
         }
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
@@ -1068,14 +1109,34 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
             obs = error instanceof CodexOutputValidationError
               ? { ...obs, outcome:'failed',error_code:'MODEL_OUTPUT_SCHEMA_INVALID' }
               : { ...obs, outcome:'pending_reconcile',error_code:'MODEL_RESULT_STORE_FAILED' };
+            if (!(error instanceof CodexOutputValidationError) && input.fileWorkspace?.onFailure && !input.signal?.aborted && !executionSignal?.aborted)
+              await captureWorkspace('MODEL_RESULT_STORE_FAILED');
           }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
         if (input.signal?.aborted || executionSignal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
+        if (obs.error_code === 'MODEL_CANCELLED' && input.fileWorkspace?.onFailure &&
+            !(raw.duration_ms === 0 && raw.exit_code === null && raw.stop === 'cancelled'))
+          await retainLocally('MODEL_CANCELLED','context_aborted');
+        // A terminal/stream failure may still have substantive file work. A
+        // journal observation alone does not checkpoint those bytes. Preserve
+        // unhandled outcomes locally without inventing recovery authorization.
+        if (input.fileWorkspace?.onFailure && !obs.result_ref && !captureAttempted && !retentionRecorded &&
+            !(raw.duration_ms === 0 && raw.exit_code === null && raw.stop === 'cancelled'))
+          await retainLocally(obs.error_code ?? 'MODEL_ATTEMPT_STORE_FAILED','outcome_not_checkpointed');
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.reviewCompletionCheck ? 'codex-review-file-2' : input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
-        await withPerformanceSpan('model.runtime.persist', {}, () => journal.recordRuntime(intent, runtime));
-        await withPerformanceSpan('model.observation.persist', {}, () => journal.recordObservation(obs, { retryable }));
+        try {
+          await withPerformanceSpan('model.runtime.persist', {}, () => journal.recordRuntime(intent, runtime));
+          await withPerformanceSpan('model.observation.persist', {}, () => journal.recordObservation(obs, { retryable }));
+        } catch (error) {
+          if (input.fileWorkspace?.onFailure && !captureAttempted && !retentionRecorded) {
+            if (input.signal?.aborted || executionSignal?.aborted) await retainLocally('MODEL_CANCELLED','context_aborted');
+            else await captureWorkspace('MODEL_ATTEMPT_STORE_FAILED');
+          }
+          throw error;
+        }
+        retainAttempt = retainAfterCommit;
         attempts.push(attemptRecord(intent, c, runtime, obs));
         if (retryable) {
           if (input.signal?.aborted) return cancelAttempt();
@@ -1091,10 +1152,16 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         attemptAttributes = { result_status: status, ...(obs.error_code ? { error_code: obs.error_code } : {}) };
         return { status, value: status === 'completed' ? cls.value : null, ...(status==='completed' && reviewToolTrace?{reviewToolTrace}:{}), error_code: obs.error_code as ModelAdapterErrorCode | null, attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
       } finally {
-        await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
-        if (attemptDir) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
-        if (attemptStatus) attemptSpan.end(attemptStatus, attemptAttributes);
-        else if (executionSignal?.aborted) attemptSpan.end('cancelled');
+        if (retainAttempt && !retentionRecorded) await retainLocally('MODEL_ATTEMPT_STORE_FAILED','journal_unacknowledged');
+        if (retainAttempt) releaseActiveWorkspace?.();
+        try {
+          await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
+          if (attemptDir && !retainAttempt) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
+        } finally {
+          releaseActiveWorkspace?.();
+          if (attemptStatus) attemptSpan.end(attemptStatus, attemptAttributes);
+          else if (executionSignal?.aborted) attemptSpan.end('cancelled');
+        }
       }
       });
       if (attemptResult) return attemptResult;

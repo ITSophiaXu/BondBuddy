@@ -11,6 +11,7 @@ services:
         format: raw
     environment:
       BB_WORKER_JOB_KINDS: run
+      BB_FILE_AUTHORING_WORK_ROOT: /var/lib/bondbuddy/authoring-work
       BB_INTEGRITY_EGRESS_PROXY_URL: http://172.28.61.1:15435
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/authoring.json
       BB_EXECUTION_TRANSPORT_SOCKET: /run/bondbuddy/service/transport.sock
@@ -31,6 +32,12 @@ services:
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
+      - type: bind
+        source: /var/lib/bondbuddy/authoring-work
+        target: /var/lib/bondbuddy/authoring-work
+        read_only: false
+        bind:
+          create_host_path: false
     mem_limit: 6g
     cpus: 2
     pids_limit: 512
