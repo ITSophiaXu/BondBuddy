@@ -40,8 +40,16 @@ export async function registerReviewReport(ctx:Pick<StageContext,'pool'|'run'|'l
 export function reviewWordDeliveryStage(): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
     const value = ctx.values.get('model_generation') as { report?: ReviewReport; input_hash?: string } | undefined;
-    const report = value?.report ? structuredClone(value.report) : undefined;
+    let report = value?.report ? structuredClone(value.report) : undefined;
     if (!isReviewReport(report) || value?.input_hash !== ctx.run.input_hash.trim() || report.run_id !== ctx.run.id || report.project_id !== ctx.run.project_id) return { kind: 'fail', code: 'VALIDATION_FAILED' };
+    const saved=(await ctx.pool.query(`SELECT content_sha256,report FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3`,
+      [ctx.run.owner_user_id,ctx.run.project_id,ctx.run.id])).rows[0];
+    if(saved){
+      const persisted=saved.report as ReviewReport,hash=isReviewReport(persisted)?inputManifestHash(persisted):'';
+      if(!isReviewReport(persisted)||persisted.report_id!==report.report_id||persisted.version!==report.version||
+        persisted.input_revision!==ctx.run.input_revision||hash!==String(saved.content_sha256).trim())return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      report=structuredClone(persisted);
+    }
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;
     // Lock the actual report completion time once, so recovery produces identical report bytes.
     let completedAt = ctx.checkpoint.review_completion?.completed_at;
