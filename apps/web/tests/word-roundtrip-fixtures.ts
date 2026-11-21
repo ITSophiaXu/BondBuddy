@@ -3,14 +3,16 @@ import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {expect,type Download,type Page,type Route} from '@playwright/test';
+import {expect,test,type Download,type Page,type Route} from '@playwright/test';
+import {Type} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {M4_DOCUMENT_TYPES,M4_DOCUMENT_BILLING_TASKS,M4_DOCUMENT_FIXED_PRICE,M4DraftRequestSchema,
-  M4ViewRequestSchema,M4ExecuteRequestSchema,projectFileSchemas,schemas,
+  M4ViewRequestSchema,M4ExecuteRequestSchema,projectFileSchemas,schemas,BROWSER_ERROR_LIMIT,
   type M4Artifact,type M4ArtifactPin,type M4DocumentType,type M4Draft,type M4DraftRequest,
   type M4ExecuteRequest,type M4QuoteRequest,type M4QuoteResponse,type M4Task,type M4ViewRequest,
   type ProjectFileCheck,type ProjectFileVersion,type ProjectFileWorkspace,type Run} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
+import {checkedDownloadProgress,assertDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // A synthetic owner-scoped HTTP server projection. All UI uses the real main.ts
 // route and native controls. It models immutable bytes, imports CAS/idempotency,
@@ -80,6 +82,25 @@ export function fixture(options:Options={}){
   return state;
 }
 export type State=ReturnType<typeof fixture>;
+type BinaryRead={id:string;bytes:Buffer;sha256:string;knownHashFault:boolean};
+type DownloadEvidence={metadata:Map<string,Dto<'ArtifactResponse'>>;binaries:BinaryRead[];pending:Promise<void>[];progress:DownloadProgressDiagnostic[];failures:unknown[]};
+const downloadEvidence=new WeakMap<State,DownloadEvidence>(),installedDownloads=new Map<Page,State>();
+const hashFailureSchema=Type.Object({
+  download_id:Type.String({pattern:'^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$'}),
+  artifact_id:Type.Literal(ids.originalArtifact),run_id:Type.Literal(ids.originalRun),version:Type.Literal(1),
+  phase:Type.Literal('hash'),received_bytes:Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER}),elapsed_ms:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}),
+  completed:Type.Tuple(['headers','body','assembly','hash'].map(phase=>Type.Literal(phase))),request_ids:Type.Object({},{additionalProperties:false}),
+  event:Type.Literal('failed'),code:Type.Literal('DATA_UNAVAILABLE'),
+},{additionalProperties:false});
+function artifactFor(s:State,id:string){return s.workspace.artifacts.find(artifact=>artifact.artifact_id===id);}
+async function settleDownloads(page:Page,s:State){
+  const evidence=downloadEvidence.get(s);if(!evidence)return;await Promise.all(evidence.pending);
+  const successful=evidence.binaries.filter(read=>artifactFor(s,read.id)?.sha256===read.sha256).length;
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='verified').length,{message:'Every successful artifact GET records verified progress.'}).toBe(successful);
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='auto_save_requested').length,{message:'Every verified Word reaches the browser save handoff.'}).toBe(successful);
+  assertDownloadProgress(evidence.progress);
+}
+test.afterEach(async()=>{for(const [page,s]of installedDownloads){if(!page.isClosed())await settleDownloads(page,s);assertFixture(s);}installedDownloads.clear();});
 export const writeCalls=(s:State)=>s.calls.filter(c=>c.method!=='GET');
 export const importCalls=(s:State)=>s.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/project-files/imports'));
 export const businessCalls=(s:State)=>s.calls.filter(c=>c.method!=='GET'&&/\/(?:quote|execute|checks|updates|credit-quote|answer)(?:\/|$)/.test(c.path));
@@ -101,10 +122,41 @@ function collection(s:State):Dto<'ProjectFilesResponse'>{
     ...s.registry.map(v=>({file_id:v.asset.kind==='material'?v.asset.pin.material_id:v.asset.pin.artifact_id,file_key:'project-file:'+v.file_id,project_id:v.asset.pin.source_project_id,source:v.asset.kind,filename:v.filename,version:v.asset.kind==='material'?v.asset.pin.material_version:v.asset.pin.artifact_version,display_version:v.sequence,sha256:v.asset.pin.sha256,created_at:v.created_at,folder:v.document_type==='init'?'1' as const:'4.1' as const,run_id:v.run_id,current:false,latest:v.latest,version_count:v.version_count}))]};
 }
 export async function install(page:Page,s=fixture()){
+  const evidence:DownloadEvidence={metadata:new Map(),binaries:[],pending:[],progress:[],failures:[]};downloadEvidence.set(s,evidence);installedDownloads.set(page,s);
+  page.on('response',response=>{
+    const request=response.request(),match=new URL(response.url()).pathname.match(/^\/api\/v1\/artifacts\/([^/]+)(\/download)?$/);
+    if(request.method()!=='GET'||response.status()!==200||!match)return;
+    const knownHashFault=(s as State&{faults?:{artifact?:string}}).faults?.artifact==='bytes';
+    evidence.pending.push((async()=>{if(match[2]){const bytes=await response.body();evidence.binaries.push({id:match[1],bytes,sha256:hash(bytes),knownHashFault});}else evidence.metadata.set(match[1],await response.json());})().catch(error=>{if(!page.isClosed())s.errors.push('Artifact response evidence: '+String(error));}));
+  });
   page.on('pageerror',error=>s.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method(),owner=s.owner;
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const report:unknown=req.postDataJSON();await Promise.all(evidence.pending);
+        if((report as {error_type?:unknown}).error_type==='ArtifactDownloadProgress'){
+          const diagnostic=checkedDownloadProgress(report),expected=artifactFor(s,diagnostic.detail.artifact_id),metadata=evidence.metadata.get(diagnostic.detail.artifact_id);
+          expect(owner).toBe(ids.owner);expect(expected,'Progress must identify a fixture artifact.').toBeDefined();
+          expect(metadata).toMatchObject({artifact_id:expected!.artifact_id,run_id:expected!.run_id,version:expected!.artifact_version,sha256:expected!.sha256});
+          expect(diagnostic.detail).toMatchObject({run_id:expected!.run_id,version:expected!.artifact_version,received_bytes:expected!.byte_size});
+          if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(ids.root);
+          expect(evidence.binaries.some(read=>read.id===expected!.artifact_id&&read.sha256===expected!.sha256&&read.bytes.length===diagnostic.detail.received_bytes),'Progress requires the actual authorized bytes and hash.').toBe(true);
+          evidence.progress.push(diagnostic);
+        }else{
+          expect(Value.Check(schemas.BrowserErrorReportRequest,report)).toBe(true);const failure=report as Dto<'BrowserErrorReportRequest'>;
+          expect(owner).toBe(ids.owner);
+          expect(failure.error_type).toBe('ArtifactDownloadFailed');expect(failure.route_id).toBe('artifact_download');expect(failure.project_id).toBeUndefined();expect(failure.job_id).toBeUndefined();
+          expect(Buffer.byteLength(JSON.stringify(failure))).toBeLessThanOrEqual(BROWSER_ERROR_LIMIT.bodyBytes);
+          const detail=JSON.parse(failure.message!);expect(Value.Check(hashFailureSchema,detail),'Only the explicit corrupt-original hash failure is permitted.').toBe(true);
+          const metadata=evidence.metadata.get(ids.originalArtifact);expect(metadata).toMatchObject({artifact_id:ids.originalArtifact,run_id:ids.originalRun,version:1,sha256:s.artifact.sha256});
+          expect(evidence.binaries.some(read=>read.id===ids.originalArtifact&&read.knownHashFault&&read.sha256!==s.artifact.sha256&&read.bytes.length===detail.received_bytes)).toBe(true);
+          expect(failure.fingerprint).toBe(hash(`${failure.frontend_version}:${detail.download_id}:${detail.phase}:${detail.code}:${detail.artifact_id}`));evidence.failures.push(structuredClone(failure));
+        }
+        return json(route,201,{report_id:'word-roundtrip-download-report',deduplicated:false,received_at:now});
+      }catch(error){s.errors.push('Rejected artifact diagnostic: '+String(error));}
+    }
     const body=method!=='GET'&&method!=='PUT'||method==='PUT'&&!path.endsWith('/bytes')?req.postData()?fixtureRequest(req):null:null;
     s.calls.push({owner,method,path,search:url.search,body});
     if(path==='/me')return json(route,200,{user_id:owner,session_status:'active'});
@@ -212,5 +264,5 @@ export async function install(page:Page,s=fixture()){
   return s;
 }
 export async function openFiles(page:Page,root=ids.root){await page.goto(`/#/projects/${root}/files`);await expect(page.locator('#file-list')).toBeVisible();}
-export async function downloadBytes(download:Download){expect(await download.failure()).toBeNull();const path=await download.path();expect(path).not.toBeNull();return readFile(path!);}
+export async function downloadBytes(download:Download){expect(await download.failure()).toBeNull();const path=await download.path();expect(path).not.toBeNull();const bytes=await readFile(path!);const page=download.page(),s=installedDownloads.get(page);if(s)await settleDownloads(page,s);return bytes;}
 export function assertFixture(s:State){expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);}

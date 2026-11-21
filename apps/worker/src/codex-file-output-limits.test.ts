@@ -305,7 +305,15 @@ test(`${failure} recovery excludes cancellation, lease loss and unrelated unknow
       assert.equal(result.error_code, mode === 'snapshot_failure' ? failure : mode === 'broken_stream' ? 'MODEL_STREAM_BROKEN' : 'MODEL_CANCELLED');
       assert.equal(snapshots, mode === 'snapshot_failure' ? 1 : 0); assert.equal(result.attempts[0].usage.status, 'unknown');
       assert.equal(journal.intents.length, 1); assert.equal(journal.observations.length, 1); assert.equal(journal.results.size, 0);
-      assert.deepEqual(await readdir(s.config.work_root), []);
+      const directories=await readdir(s.config.work_root);
+      {
+        assert.equal(directories.length,1);assert.match(directories[0]!,/^attempt-/);
+        const marker=JSON.parse(await readFile(join(s.config.work_root,directories[0]!,'retention.json'),'utf8'));
+        assert.equal(marker.state,'operator_action_required');
+        assert.equal(marker.reason,result.error_code);
+        assert.equal(marker.capture_failure,mode==='snapshot_failure'?'capture_failed':mode==='broken_stream'?'outcome_not_checkpointed':'context_aborted');
+        assert.ok((await readdir(join(s.config.work_root,directories[0]!,'cwd'))).includes('input.json'));
+      }
     } finally { await s.cleanup(); }
   }
 });

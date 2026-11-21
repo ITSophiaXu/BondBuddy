@@ -5,6 +5,7 @@ import {ManagedRunRetries} from './managed-run-retries.js';
 import {assertTaskExecution,initializeTaskExecution,taskNativeProcesses,taskReleaseProof,retireTaskExecution,sweepCompletedTaskExecutions,withBackgroundTaskExecution} from './task-execution.js';
 import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
 import { modelCallConcurrency } from './model-call-budget.js';
+import { createFileWorkspaceRetention } from './codex-file-retention.js';
 // #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
 // General slots claim run and parse jobs through PostgreSQL leases; dedicated parse slots
 // keep uploads moving while long runs occupy every general slot. A sweep loop re-queues paused work
@@ -76,6 +77,8 @@ export type WorkerRuntimeOptions = {
   workerId?: string; heartbeatMs?: number;
   /** Trusted private transport health, independent of job lease renewal. */
   executionTransport?:ExecutionTransportHealth;
+  /** Authoring candidate bytes must be durable before this process can admit more model work or finish. */
+  candidateRetention?: { pendingCount(): Promise<number> };
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
   /** M3 discussions use their own leases and never create document runs. */
@@ -114,11 +117,18 @@ export class WorkerRuntime {
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
   private readonly providerRecovery: ProviderReconciliationSweep;
+  private readonly candidateRetention: NonNullable<WorkerRuntimeOptions['candidateRetention']>;
+  private candidateScan?: Promise<number>;
+  private candidateInventoryFault = false;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'candidateRetention' | 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
     & Pick<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
+    // Parser-only deployments never create authoring workspaces. Their independent
+    // upload lane must keep operating when an authoring node retains a candidate.
+    this.candidateRetention = options.candidateRetention ?? (!options.kinds || options.kinds.includes('run')
+      ? createFileWorkspaceRetention() : { pendingCount: async () => 0 });
     this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
@@ -176,9 +186,40 @@ export class WorkerRuntime {
 
   private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
 
+  private async retainedCandidateCount(): Promise<number> {
+    if (this.candidateScan) return this.candidateScan;
+    const scan = (async () => {
+      try {
+        const count = await this.candidateRetention.pendingCount();
+        if (!Number.isSafeInteger(count) || count < 0) throw Error('Invalid candidate inventory');
+        if (this.candidateInventoryFault) this.emit({ kind: 'candidate_retention_inventory', outcome: 'recovered' });
+        this.candidateInventoryFault = false;
+        return count;
+      } catch (error) {
+        if (!this.candidateInventoryFault) {
+          this.counters.errors++;
+          const code = (error as NodeJS.ErrnoException)?.code;
+          const reason = typeof code === 'string' && /^[A-Z0-9_]{1,64}$/.test(code) ? code
+            : error instanceof Error && /^[A-Z0-9_]{1,64}$/.test(error.message) ? error.message : 'unavailable';
+          this.emit({ kind: 'candidate_retention_inventory', outcome: 'blocked', reason });
+        }
+        this.candidateInventoryFault = true;
+        // Unknown disk state cannot become positive evidence of zero local work.
+        return 1;
+      }
+    })();
+    this.candidateScan = scan;
+    try { return await scan; } finally { if (this.candidateScan === scan) this.candidateScan = undefined; }
+  }
+
   private enterExecution(){return executionNodeForPool(this.o.pool)?this.retries.enter():()=>{};}
   private async flushRetries(){
-    try{await this.retries.flush();}catch{this.counters.errors++;this.emit({kind:'run_retry_release',outcome:'blocked'});}
+    try{
+      // Releasing this lease would let another node repeat the model call while
+      // the original result still exists only in this process's retained files.
+      if(this.retries.pendingCount&&await this.retainedCandidateCount()!==0)return;
+      await this.retries.flush();
+    }catch{this.counters.errors++;this.emit({kind:'run_retry_release',outcome:'blocked'});}
   }
 
   /** General slots alternate claims; dedicated slots claim only their assigned work. */
@@ -188,6 +229,7 @@ export class WorkerRuntime {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
+        if (kind === 'run' && await this.retainedCandidateCount() !== 0) continue;
         void this.flushRetries();
         const leave=this.enterExecution();if(!leave)break;
         let completedLease:Lease|null=null;
@@ -222,6 +264,8 @@ export class WorkerRuntime {
   /** One probe at a time, outside the run/parse slots, so a probe never takes a user job's slot. */
   private async probeLoop(probe: NonNullable<WorkerRuntimeOptions['platformProbe']>) {
     while (!this.stopping) {
+      if (await this.retainedCandidateCount() !== 0) { await sleep(this.o.pollMs, this.stopSignal.signal); continue; }
+      if (this.stopping) break;
       const leave=this.enterExecution();if(!leave){await sleep(this.o.pollMs,this.stopSignal.signal);continue;}
       let outcome = 'idle';
       try { outcome = await runPlatformProbeOnce({ pool: this.o.pool, blobs: this.o.blobs, config: probe.config }); }
@@ -233,6 +277,8 @@ export class WorkerRuntime {
 
   private async assistantLoop(options: NonNullable<WorkerRuntimeOptions['reviewAssistant']>) {
     while (!this.stopping) {
+      if (await this.retainedCandidateCount() !== 0) { await sleep(this.o.pollMs, this.stopSignal.signal); continue; }
+      if (this.stopping) break;
       const leave=this.enterExecution();if(!leave){await sleep(this.o.pollMs,this.stopSignal.signal);continue;}
       let outcome = 'idle';
       try { outcome = await runReviewAssistantOnce({ pool: this.o.pool, blobs: this.o.blobs, signal: this.workAbort.signal, config: options.config }); }
@@ -265,6 +311,8 @@ export class WorkerRuntime {
 
   private async formatDiagnosticLoop() {
     while (!this.stopping) {
+      if (await this.retainedCandidateCount() !== 0) { await sleep(this.o.pollMs, this.stopSignal.signal); continue; }
+      if (this.stopping) break;
       let outcome = 'idle';
       try { outcome = await runFormatDiagnosticOnce({ pool: this.o.pool, blobs: this.o.blobs, signal: this.workAbort.signal }); }
       catch { outcome = 'error'; }
@@ -301,8 +349,8 @@ export class WorkerRuntime {
           this.transportRefreshTask=refresh;
           void refresh.finally(()=>{if(this.transportRefreshTask===refresh)this.transportRefreshTask=null;}).catch(()=>{});
         }
-        const native=await nativeExecutionChildren();
-        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:!this.stopping&&!!transport?.ready(),finished:stopped});
+        const [native,retained]=await Promise.all([nativeExecutionChildren(),this.retainedCandidateCount()]);
+        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size+retained,ready:!this.stopping&&retained===0&&!!transport?.ready(),finished:stopped});
       } await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
     catch { this.counters.errors++; }
   }
@@ -313,9 +361,9 @@ export class WorkerRuntime {
       if(managed)await this.flushRetries();
       await this.heartbeat();
       if(managed){
-        if(this.drainWorkSettled&&!this.retries.pendingCount){
+        if(this.drainWorkSettled&&!this.retries.pendingCount&&await this.retainedCandidateCount()===0){
           try{
-            await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size,ready:false,finished:true});
+            await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size+await this.retainedCandidateCount(),ready:false,finished:true});
             this.sessionFinished=true;this.o.executionTransport?.close();this.finishSession();return;
           }catch{this.counters.errors++;this.emit({kind:'execution_session_finish_retry'});}
         }else if(!this.stopping){
@@ -393,6 +441,11 @@ export class WorkerRuntime {
       this.workAbort.abort();
       await Promise.race([Promise.all([...this.loops,...(this.heartbeatTask?[this.heartbeatTask]:[])]), sleep(5000)]);
     }
+    // A non-managed process also cannot report a safe stop or release its leases
+    // while an unacknowledged result survives only on its local filesystem.
+    let retained = await this.retainedCandidateCount();
+    if (retained) this.emit({ kind: 'candidate_retention_drain', outcome: 'blocked' });
+    while (retained) { await sleep(this.o.heartbeatMs); retained = await this.retainedCandidateCount(); }
     for (const lease of this.runLeases.values()) await releaseLease(this.o.pool, lease).catch(() => undefined);
     for (const lease of this.parseLeases.values()) await releaseMaterialParse(this.o.pool, lease).catch(() => undefined);
     await Promise.all(this.confirmationLoops);

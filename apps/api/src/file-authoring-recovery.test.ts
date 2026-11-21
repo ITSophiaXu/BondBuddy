@@ -10,6 +10,8 @@ const snapshot=()=>({version:'file-authoring-recovery-v1',input_hash:scope.input
 
 test('recovery metadata binds the original input, attempt and private file namespace',()=>{
   assert.equal(validFileAuthoringRecovery(snapshot(),scope),true);
+  assert.equal(validFileAuthoringRecovery({...snapshot(),controlled_replay:true},scope),true);
+  assert.equal(validFileAuthoringRecovery({...snapshot(),controlled_replay:true,files:[file('input.json')]},scope),false);
   for(const field of ['input_hash','attempt_id','logical_call_id','version'])
     assert.equal(validFileAuthoringRecovery({...snapshot(),[field]:'different'},scope),false,field);
   for(const field of ['owner','project','run','inputHash','attempt','logical'])

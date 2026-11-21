@@ -9,6 +9,7 @@ import {requireThat, canonical, sha256} from './policy.mjs';
 import {installPrivateTransport, ensurePrivateExecutionNetwork, validateTransportCredentials} from './private-transport.mjs';
 import {replacePrivateJson} from './transport-renewal.mjs';
 import {renderPrivateTransportConfig} from './private-egress.mjs';
+import {prepareAuthoringWorkspace} from './authoring-workspace.mjs';
 import {prepareTaskCgroups,bindTaskCgroups,loadTaskCgroupSecurity,assertTaskCgroupServiceIdle} from './task-cgroups.mjs';
 
 const exec = promisify(execFile);
@@ -32,8 +33,7 @@ export async function verifyInstalledExecutionImage(image, runDocker=docker) {
     requireThat(Array.isArray(inspected)&&inspected.includes(image),'NODE_IMAGE_NOT_INSTALLED');
   }
 }
-/** Public selection is initialization only. The existing broker still verifies
- * STS, the exact instance/role/operation and that role's exclusive secret. */
+// The broker verifies STS, the exact role, instance and operation.
 export function selectExecutionNodeConfig(config, publicManifest) {
   requireThat(config&&typeof config==='object'&&!Array.isArray(config),'NODE_SLOT_TEMPLATE_INVALID');
   const validBinding=value=>value&&typeof value==='object'&&!Array.isArray(value)&&
@@ -119,9 +119,11 @@ const runtime = {
     for (const service of e.services) {
       await verifyInstalledExecutionImage(config.images[service.service_id],runDocker);
     }
+    if (e.services.some(service => service.service_id === 'authoring')) await prepareAuthoringWorkspace();
     for (const service of e.services) {
       await verifyTaskExecutionImage(config.images[service.service_id],runDocker);
     }
+    if (e.services.some(service => service.service_id === 'authoring')) await prepareAuthoringWorkspace();
     await mkdir('/run/bondbuddy',{recursive:true,mode:0o755});
     const runtimeParent=await lstat('/run/bondbuddy');
     requireThat(process.getuid()===0&&runtimeParent.isDirectory()&&!runtimeParent.isSymbolicLink()&&runtimeParent.uid===0&&(runtimeParent.mode&0o022)===0,'NODE_PRIVATE_PARENT');

@@ -12,6 +12,7 @@ import { schemas, ReviewDraftInputSchema, ReviewDraftRequestSchema, ReviewEditor
   type ReviewWorkspace, type Run } from '@bondbuddy/contracts';
 import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
+import { assertDownloadProgress, checkedDownloadProgress, type DownloadProgressDiagnostic } from './artifact-download-diagnostic-fixture';
 
 // Public HTTP fixtures exercise the real UI. Synthetic Word bytes do not establish
 // document generation, professional review, worker execution or billing acceptance.
@@ -48,7 +49,7 @@ export function fixture(mode: 'editor' | 'readable' | 'structured' = 'editor') {
   const catalog: Dto<'ProspectusVersionsResponse'> = { project_id: projectId, current_version_id: 'followup-clean-version-2',
     selection_revision: 9, inactive_material_ids: [], versions: [] };
   const state = { mode, project, draft, history, editors, reports, materials, materialBytes, metadata, bytes, catalog,
-    activeRun: null as Run | null, calls: [] as Call[], unexpected: [] as string[], errors: [] as string[],
+    activeRun: null as Run | null, calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], downloadDiagnostics: [] as DownloadProgressDiagnostic[],
     drafts: [] as ReviewDraftRequest[], quotes: [] as ReviewExecutionRequest[], executions: [] as ReviewExecutionRequest[],
     exports: [] as ReviewExportRequest[], sources: [] as { version_id: string }[], failDraft: false,
     importedMismatch: undefined as 'sha256' | 'role' | 'media_type' | 'state' | undefined,
@@ -157,6 +158,20 @@ export async function install(page: Page, state = fixture()) {
     if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method();
     const body = ['POST', 'PUT', 'PATCH'].includes(method) && path !== '/synthetic-review-followup-upload' && request.postData() ? fixtureRequest(request) : undefined;
+    if (method === 'POST' && path === '/browser-errors' && !url.search) {
+      try {
+        const diagnostic = checkedDownloadProgress(body), artifact = state.metadata.get(diagnostic.detail.artifact_id);
+        expect(artifact, 'Diagnostics must refer to an explicitly registered artifact.').toBeDefined();
+        expect(diagnostic.detail).toMatchObject({ run_id: artifact!.run_id, version: artifact!.version });
+        if (diagnostic.report.project_id !== undefined) expect(diagnostic.report.project_id).toBe(projectId);
+        expect(state.calls.some(call => call.method === 'GET' && call.path === `/artifacts/${diagnostic.detail.artifact_id}/download`), 'Verified progress requires an actual binary read.').toBe(true);
+        state.downloadDiagnostics.push(diagnostic);
+        return reply(route, 'BrowserErrorReportResponse', { report_id: 'followup-download-report', deduplicated: false, received_at: now }, 201);
+      } catch (error) {
+        state.unexpected.push(`${method} ${path}${url.search}`); state.errors.push(error instanceof Error ? error.message : String(error));
+        return problem(route, 500, 'DATA_UNAVAILABLE');
+      }
+    }
     state.calls.push({ method, path, search: url.search, ...(body ? { body } : {}) });
     if (method === 'GET') {
       if (path === '/me') return reply(route, 'MeResponse', { user_id: owner, session_status: 'active' });
@@ -275,5 +290,8 @@ export function assertFixture(page: Page) {
   const state = installed.get(page); if (!state) return;
   expect(state.unexpected, 'All HTTP requests must use the explicitly allowed public fixture routes.').toEqual([]);
   expect(state.errors, 'The real browser page must not throw.').toEqual([]);
+  assertDownloadProgress(state.downloadDiagnostics);
+  expect(state.downloadDiagnostics.filter(entry => entry.detail.event === 'verified').map(entry => `/artifacts/${entry.detail.artifact_id}/download`).sort())
+    .toEqual(state.calls.filter(call => call.method === 'GET' && /^\/artifacts\/[^/]+\/download$/.test(call.path)).map(call => call.path).sort());
 }
 export const mutations = (state: State) => state.calls.filter(c => c.method !== 'GET');

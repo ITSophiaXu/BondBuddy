@@ -9,7 +9,7 @@ import {INTEGRITY_TRANSPORT_SECTION} from './private-egress.mjs';
 /** Install only public, pinned code. Private Blob capability arrives after enrollment. */
 function businessBootstrap(config) {
   if(config.business_overlay_sha256)requireThat(/^[a-f0-9]{64}$/.test(config.business_overlay_sha256),'BUSINESS_OVERLAY_PIN');
-  const files=Object.fromEntries(['node-adapter.mjs','business-overlay.mjs','task-cgroups.mjs','task-cgroup-broker.py','task-cgroup-broker.profile','task-runner.py','task-chromium'].map(name=>{
+  const files=Object.fromEntries(['node-adapter.mjs','business-overlay.mjs','authoring-workspace.mjs','task-cgroups.mjs','task-cgroup-broker.py','task-cgroup-broker.profile','task-runner.py','task-chromium'].map(name=>{
     const bytes=readFileSync(new URL(name,import.meta.url));
     return [name,{source:`/app/deploy/tencent-elasticity/${name}`,sha256:sha256(bytes)}];
   }));
