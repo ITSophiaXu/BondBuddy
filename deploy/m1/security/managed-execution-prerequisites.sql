@@ -29,4 +29,9 @@ GRANT SELECT, DELETE ON public.bb_run_model_activity TO :"runtime_role";
 GRANT INSERT(request_id,owner_user_id,run_id,job_id,lease_token,state),
       UPDATE(state,updated_at)
  ON public.bb_run_model_activity TO :"runtime_role";
+-- Fixed evidence only; no prompt, environment map, raw output or exception text.
+GRANT INSERT ON public.bb_model_attempt_execution_configs TO :"runtime_role";
+GRANT INSERT ON public.bb_model_result_failure_diagnostics TO :"runtime_role";
+GRANT INSERT(exit_capture_status,finish_reason_capture_status)
+ ON public.bb_model_call_attempt_runtime TO :"runtime_role";
 COMMIT;

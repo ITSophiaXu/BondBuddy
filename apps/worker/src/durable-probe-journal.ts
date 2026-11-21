@@ -6,10 +6,16 @@ import { latestProviderAttempt, persistProviderResultObject, readCheckpointedPro
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import { recordCodexExecLog } from '@bondbuddy/api/exec-logs';
 import type { ProbeJournal } from './deepseek-probe.js';
-import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
+import type { CodexJournal, ModelExecutionConfigEvidence, ModelResultFailureEvidence, PriorAttempt } from './codex-adapter.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { Problem, transaction, run as getRun } from '@bondbuddy/api/data';
 import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
+
+export class ModelResultStoreFailure extends Error {
+  constructor(readonly substage:ModelResultFailureEvidence['substage'],readonly error_class:ModelResultFailureEvidence['error_class']) {
+    super('RESULT_STORE_FAILED');
+  }
+}
 
 // This is an internal worker seam. It never accepts a browser principal and is not
 // installed by the production worker entry point until the live release gates pass.
@@ -36,11 +42,14 @@ export class DurableProbeJournal implements ProbeJournal {
 
   async storeResult(intent: ProviderCallIntent, bytes: Buffer, schemaVersion: string): Promise<ProviderResultReference> {
     this.assertLeaseIdentity(intent);
+    let substage:ModelResultFailureEvidence['substage']='validate';
+    let errorClass:ModelResultFailureEvidence['error_class']='unknown';
     try {
-      return await persistProviderResultObject({blobs:this.input.blobs,intent,bytes,resultSchemaVersion:schemaVersion,validate:this.input.validateResult});
+      return await persistProviderResultObject({blobs:this.input.blobs,intent,bytes,resultSchemaVersion:schemaVersion,validate:this.input.validateResult,
+        onFailure:(stage,kind)=>{substage=stage;errorClass=kind;}});
     } catch {
       // Keep raw provider output and internal storage errors out of errors/logs.
-      throw new Error('RESULT_STORE_FAILED');
+      throw new ModelResultStoreFailure(substage,errorClass);
     }
   }
 
@@ -53,6 +62,47 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+
+  async recordResultFailure(intent:ProviderCallIntent,evidence:ModelResultFailureEvidence):Promise<void> {
+    const {pool,lease}=this.codexInput;
+    if(intent.owner_user_id!==lease.owner||intent.job_id!==lease.jobId||intent.run_id!==lease.runId)throw new Error('RESULT_DIAGNOSTIC_SCOPE_MISMATCH');
+    await guardEvidenceWrite(pool,'model_result_failure_not_persisted',()=>pool.query(`INSERT INTO bb_model_result_failure_diagnostics
+      (id,attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,substage,error_class,error_code)
+      SELECT $1,a.id,a.owner_user_id,j.project_id,j.run_id,a.job_id,a.logical_call_id,a.attempt_no,$2,$3,$4
+      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
+      WHERE a.id=$5 AND a.owner_user_id=$6 AND a.job_id=$7 AND a.logical_call_id=$8 AND a.attempt_no=$9 AND j.run_id=$10
+      ON CONFLICT(attempt_id,substage) DO NOTHING`,[randomUUID(),evidence.substage,evidence.error_class,evidence.error_code,
+      intent.call_id,intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no,intent.run_id]));
+  }
+
+  async recordExecutionConfig(intent: ProviderCallIntent, evidence: ModelExecutionConfigEvidence): Promise<void> {
+    const {pool,lease}=this.codexInput;
+    if(intent.owner_user_id!==lease.owner||intent.job_id!==lease.jobId||intent.run_id!==lease.runId||
+      !Number.isSafeInteger(evidence.effective_timeout_ms)||evidence.effective_timeout_ms<1||
+      Number.isNaN(Date.parse(evidence.timeout_deadline_at))||
+      evidence.model_config_version!==intent.model_config_version||
+      ![evidence.loaded_adapter_sha256,evidence.selected_config_sha256].every(v=>/^[a-f0-9]{64}$/.test(v))||
+      evidence.overlay_sha256!==null&&!/^[a-f0-9]{64}$/.test(evidence.overlay_sha256)||
+      evidence.release_sha!==null&&!/^[A-Za-z0-9._-]{1,128}$/.test(evidence.release_sha)) throw new Error('Invalid model execution config evidence');
+    await guardEvidenceWrite(pool,'model_execution_config_not_persisted',()=>transaction(pool,async client=>{
+      const inserted=await client.query(`INSERT INTO bb_model_attempt_execution_configs
+        (attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,execution_session_id,execution_node_epoch,
+         effective_timeout_ms,timeout_deadline_at,timeout_source,timeout_branch,model_config_version,loaded_adapter_sha256,
+         selected_config_sha256,release_sha,overlay_sha256)
+        SELECT a.id,a.owner_user_id,j.project_id,j.run_id,a.job_id,a.logical_call_id,a.attempt_no,
+          j.execution_session_id,j.execution_node_epoch,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
+        WHERE a.id=$1 AND a.owner_user_id=$2 AND a.job_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5
+          AND j.run_id=$15 AND j.state='running' AND j.lease_token=$16 AND j.lease_until>clock_timestamp()
+        ON CONFLICT(attempt_id) DO NOTHING`,[intent.call_id,intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no,
+        evidence.effective_timeout_ms,evidence.timeout_deadline_at,evidence.timeout_source,evidence.timeout_branch,
+        evidence.model_config_version,evidence.loaded_adapter_sha256,evidence.selected_config_sha256,
+        evidence.release_sha,evidence.overlay_sha256,intent.run_id,lease.token]);
+      // An existing pre-spawn receipt may correspond to an already-sent process.
+      // Never use an idempotent retry of this write as permission to spawn again.
+      if(inserted.rowCount!==1)throw new Error('MODEL_EXECUTION_CONFIG_ALREADY_RECORDED_OR_LEASE_LOST');
+    }));
+  }
 
   async acquireCallSlot(signal?: AbortSignal) {
     const {pool,lease}=this.codexInput, requestId=randomUUID();

@@ -45,6 +45,21 @@ try {
   pass(`${migrations.length} current application migrations on isolated PG16`);
   const install=run(['run','--rm','--network','none','--mount',mount,'-w','/code','python:3.11-slim','python','-B','database.py']).stdout;
   sql(install);sql(install);pass('diagnostic views install and repeat installation');
+  // Exercise the reviewed worker ACL under a non-owner role. Empty SELECT
+  // inserts still undergo PostgreSQL's real column/table privilege checks.
+  sql('CREATE ROLE bb_diag_worker_test;');
+  const workerAcl=readFileSync(resolve(repository,'deploy/m1/security/managed-execution-prerequisites.sql'),'utf8')
+    .replaceAll(':"runtime_role"','bb_diag_worker_test');
+  sql(workerAcl);
+  const workerWrites=[
+    "INSERT INTO bb_model_attempt_execution_configs(attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,effective_timeout_ms,timeout_deadline_at,timeout_source,timeout_branch,model_config_version,loaded_adapter_sha256,selected_config_sha256) SELECT 'a','u','p','r','j','l',1,1,now(),'default','ordinary','v',repeat('a',64),repeat('b',64) WHERE false",
+    "INSERT INTO bb_model_result_failure_diagnostics(id,attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,substage,error_class,error_code) SELECT 'f','a','u','p','r','j','l',1,'collect','unknown','MODEL_RESULT_STORE_FAILED' WHERE false",
+    "INSERT INTO bb_model_call_attempt_runtime(exit_capture_status,finish_reason_capture_status) SELECT 'captured','captured' WHERE false"
+  ];
+  for(const statement of workerWrites)sql('SET ROLE bb_diag_worker_test; '+statement);
+  for(const statement of ['SELECT * FROM bb_model_attempt_execution_configs','UPDATE bb_model_attempt_execution_configs SET effective_timeout_ms=1','DELETE FROM bb_model_result_failure_diagnostics'])
+    assert.notEqual(sql('SET ROLE bb_diag_worker_test; '+statement,{allowFailure:true}).status,0,statement);
+  pass('restricted worker can insert fixed evidence columns but cannot read or mutate evidence');
   assert.equal(sql('SELECT count(*) FROM bb_diagnostics.performance_sessions, bb_diagnostics.performance_spans',{role:'bb_diagnostics_reader'}).stdout.trim(),'0');
   assert.notEqual(sql('SELECT count(*) FROM public.bb_performance_spans',{role:'bb_diagnostics_reader',allowFailure:true}).status,0);
   pass('performance views readable while raw performance tables remain denied');
