@@ -3,6 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
@@ -15,6 +16,9 @@ import type { UnifiedInput } from './unified-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FILE_AUTHORING_OUTPUT_LIMIT_RETRY } from './file-authoring-instructions.js';
+import { loadCodexAdapterConfig, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
+import { MemoryCodexJournal } from './codex-memory-journal.js';
+import { HostWordRendererError } from './file-authoring-renderer.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
 function fixture(controlled = true, text = '截至2024年净资产100万元。') {
@@ -39,6 +43,46 @@ function fixture(controlled = true, text = '截至2024年净资产100万元。')
   const delivery=(options:Parameters<typeof fileAuthoringDeliveryStage>[0]={})=>fileAuthoringDeliveryStage({...options,checkpoint});
   return { source, input, objects, ctx, blobs, persisted, delivery };
 }
+
+for(const mode of ['controlled_docx','legacy_docx','reconstructed_pdf'] as const)
+test(`host renderer failure for ${mode} prevents both provider intent and execution`, async t => {
+  const f=fixture(mode==='controlled_docx'),root=await mkdtemp(join(tmpdir(),'bb-renderer-before-intent-'));
+  try{
+    if(mode==='reconstructed_pdf'){
+      // Only the immutable-media handoff is under test; the trusted probe must
+      // render its own DOCX and never attempt to parse these PDF bytes as DOCX.
+      const pdf=Buffer.from('%PDF-1.4\n% synthetic preflight handoff fixture\n');
+      f.objects.set('source',pdf);f.input.materials[0]!.mediaType='application/pdf';f.input.materials[0]!.filename='source.pdf';
+      f.input.materials[0]!.pin.sha256=digest(pdf);
+    }
+    const journal=new MemoryCodexJournal(),marker=join(root,'provider-executed');let checked=0;
+    const diagnostics:string[]=[];
+    t.mock.method(process.stderr,'write',(chunk:unknown)=>{diagnostics.push(String(chunk));return true;});
+    const config={...loadCodexAdapterConfig({}),work_root:root,
+      credential:{kind:'env' as const,name:'SYNTHETIC_RENDERER_TOKEN'},
+      command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-retention.mjs',import.meta.url)),'--synthetic-provider-marker',marker]};
+    const stage=fileAuthoringStage({load:async()=>f.input,config,
+      renderer:async(path,signal)=>{
+        checked++;assert.equal(signal,f.ctx.signal);
+        if(mode==='reconstructed_pdf')assert.equal(path,undefined,'PDF sources require a synthetic renderer probe');
+        else{
+          assert.ok(path);assert.equal(digest(await readFile(path)),f.input.materials[0]!.pin.sha256);
+        }
+        throw new HostWordRendererError('WORD_RENDERER_UNAVAILABLE','renderer_process_failed',{stderr_category:'proc_access_denied',exit_code:1});
+      },
+      model:options=>({name:'model_generation',run:async()=>{
+        const result=await runContainedModelCall({owner_user_id:'owner',project_id:'project',job_id:'job',run_id:'run',trace_id:'run',
+          logical_call_id:'file-authoring-v1',prompt_snapshot_ref:'snapshot',prompt:'completed',output:{kind:'text'},
+          result_schema_version:'codex-file-word-v1',fileWorkspace:options.fileWorkspace},journal,options.config as CodexAdapterConfig);
+        return {kind:'done',value:result.value};
+      }})});
+    await assert.rejects(stage.run(f.ctx),/WORD_RENDERER_UNAVAILABLE/);
+    assert.equal(checked,1);assert.equal(journal.intents.length,0);assert.equal(journal.results.size,0);
+    await assert.rejects(readFile(marker),{code:'ENOENT'},'provider.execute must not run when host preflight fails');
+    assert.deepEqual(diagnostics.map(line=>JSON.parse(line)),[{event:'word_renderer_preflight_failed',run_id:'run',logical_call_id:'file-authoring-v1',
+      code:'WORD_RENDERER_UNAVAILABLE',reason:'renderer_process_failed',diagnostic:{stderr_category:'proc_access_denied',exit_code:1}}]);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('real first, repair and recovery prompts retain full instructions within the byte budget', async () => {
   const task = await readFile(new URL('../../../python/bondbuddy_file_authoring/task.md', import.meta.url), 'utf8');

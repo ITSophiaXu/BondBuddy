@@ -9,7 +9,7 @@ import {installIntegrityDeliveryReference} from './integrity-delivery-reference'
 // Desktop 1440 only. HTTP/OOXML fixtures do not execute a worker, official query,
 // production content, private storage, credit settlement or a Word application.
 const mismatch='所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。';
-const success='底稿已交给浏览器下载，请在浏览器下载列表查看。';
+const success='文件已准备好。如未自动下载，请点击：保存文件';
 const modal=(page:Page)=>page.locator('.integrity-modal[open]');
 const panel=(page:Page)=>page.locator('.integrity-panel').first();
 const button=(page:Page,s:State,run=exportId,kind:Kind='company')=>page.locator(`[data-integrity-download="${word(s,run,kind).artifact_id}"]`);
@@ -22,7 +22,7 @@ async function exactWord(page:Page,s:State,run=exportId,kind:Kind='company'){
   const expected=word(s,run,kind),pending=page.waitForEvent('download');await button(page,s,run,kind).click();const receipt=await pending,bytes=await downloadBytes(receipt);
   expect(receipt.suggestedFilename()).toBe(expected.metadata.filename);expect(bytes).toEqual(expected.bytes);expect(hash(bytes)).toBe(expected.metadata.sha256);expect(bytes.subarray(0,4)).toEqual(Buffer.from([0x50,0x4b,0x03,0x04]));
   expect(readPayload(bytes)).toEqual(expected.payload);expect(expected.metadata.run_id).toBe(run);expect(expected.metadata.artifact_id).toBe(expected.artifact_id);expect(expected.metadata.version).toBe(expected.version);
-  await expect(page.locator('#integrity-status')).toHaveText(success);return {bytes,payload:readPayload(bytes),filename:receipt.suggestedFilename()};
+  await expect(page.locator('#integrity-status')).toHaveText(success);await expect(page.locator('#integrity-status').getByRole('link',{name:'保存文件'})).toBeVisible();return {bytes,payload:readPayload(bytes),filename:receipt.suggestedFilename()};
 }
 async function saveEvidence(page:Page,s:State,note:string,index=0,site='credit-china'){
   const count=s.manuals.length,action=page.locator(`[data-evidence="${index}:${site}"]`);await action.locator('xpath=ancestor::details').evaluate((node:HTMLDetailsElement)=>{node.open=true;});await action.click();
@@ -82,8 +82,22 @@ for(const fault of ['artifact_id','version','run_id'] as const)test(`integrity d
   const metadata=s.words.responses[0],expected=word(s).metadata;expect(metadata.artifact_id).toBe(fault==='artifact_id'?word(s,exportId,'person').artifact_id:expected.artifact_id);
   expect(metadata.run_id).toBe(fault==='run_id'?checkId:exportId);expect(metadata.version).toBe(fault==='version'?expected.version+1:expected.version);
   if(fault==='artifact_id')expect(metadata).toEqual(word(s,exportId,'person').metadata);
+  await expect.poll(()=>s.words.diagnostics.length).toBe(1);
   expect(await page.evaluate(()=>new URLSearchParams(location.hash.split('?')[1]).get('run'))).toBe(exportId);expect(word(s).metadata.run_id).not.toBe(checkId);
   s.words.fault=undefined;await exactWord(page,s);await expectNearDownloadFeedback(page,success);expect(downloads).toEqual([word(s).metadata.filename]);expect(s.words.downloads).toEqual([word(s).artifact_id]);expect(writes(s)).toEqual([]);
+});
+
+test('integrity delivery: an explicit save link survives a suppressed automatic download without repeating network reads',async({page})=>{
+  await page.addInitScript(()=>{HTMLAnchorElement.prototype.click=function(){};});
+  const s=await open(page),expected=word(s);await button(page,s).click();
+  const link=page.locator('#integrity-status').getByRole('link',{name:'保存文件'});await expect(link).toBeVisible();
+  const pending=page.waitForEvent('download');await link.click();const downloaded=await pending;
+  expect(downloaded.suggestedFilename()).toBe(expected.metadata.filename);expect(await downloadBytes(downloaded)).toEqual(expected.bytes);
+  const details=()=>s.words.diagnostics.map(item=>JSON.parse((item as {message:string}).message));
+  await expect.poll(()=>details().map(item=>item.event)).toEqual(['verified','auto_save_requested','save_link_clicked']);
+  expect(new Set(details().map(item=>item.download_id)).size).toBe(1);
+  expect(details().every(item=>item.completed.includes('hash')&&item.received_bytes===expected.bytes.length)).toBe(true);
+  expect(s.words.metadata).toEqual([expected.artifact_id]);expect(s.words.downloads).toEqual([expected.artifact_id]);expect(writes(s)).toEqual([]);
 });
 
 test('integrity delivery: ambiguous same-ID descriptors are rejected before metadata without borrowing either kind or the latest round',async({page})=>{

@@ -198,7 +198,7 @@ export class WorkpaperPanel {
       else button.removeAttribute('aria-busy');
     });
   }
-  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>){
+  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>,managedArtifact=false){
     if(this.busy||this.downloading)return;this.downloading=true;
     const feedback=this.downloadFeedback?.node??document.createElement('div');
     feedback.id='wp-download-feedback';feedback.setAttribute('role','status');
@@ -212,7 +212,7 @@ export class WorkpaperPanel {
       feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
     }};
     const preparation=(state:WorkpaperZipPreparation)=>{if(this.live())activity?.prepare(state);};
-    try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress,preparation),button.hasAttribute('data-wp-zip')?20*60_000:120_000);activity?.stop();if(this.live()){feedback.setAttribute('role','status');this.downloads.save(file.bytes,file.filename,feedback);}}
+    try{const file=await (managedArtifact?read(this.controller.signal,progress,preparation):boundedDownload(this.controller.signal,signal=>read(signal,progress,preparation),button.hasAttribute('data-wp-zip')?20*60_000:120_000));activity?.stop();if(this.live()){feedback.setAttribute('role','status');this.downloads.save(file.bytes,file.filename,feedback);}}
     catch(e){activity?.stop();if(this.live()){feedback.setAttribute('role','status');feedback.textContent=artifactError(e);}}
     finally{activity?.stop();this.downloading=false;if(this.live())this.paintBatches();}
   }
@@ -342,7 +342,7 @@ export class WorkpaperPanel {
       const batch=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,item=batch.items.find(i=>i.entry.id===el.dataset.wpExplanation)!;
       return {bytes:await this.api.workpaperExplanation(this.project,batch.batch_id,item.entry.id,signal),filename:item.explanation!.filename};
     }));
-    node.querySelectorAll<HTMLButtonElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const metadata=await this.api.request<import('./api').Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(artifact.pin.artifact_id)}?version=${artifact.pin.artifact_version}`,undefined,{},signal);return {bytes:await this.api.artifactBytes(metadata,signal),filename:artifact.filename};}));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.download(el,async(signal,progress)=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const result=await this.api.downloadArtifact({artifact_id:artifact.pin.artifact_id,version:artifact.pin.artifact_version,sha256:artifact.pin.sha256,project_id:artifact.pin.source_project_id},signal,progress);return {bytes:result.bytes,filename:artifact.filename};},true));
     const feedback=this.downloadFeedback;
     if(feedback){const button=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(feedback.target).every(([key,value])=>b.dataset[key]===value));button?.closest('.wp-actions')?.append(feedback.node);}
     this.syncDownloadButtons();

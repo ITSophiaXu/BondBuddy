@@ -48,7 +48,7 @@ import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
 import { installAdminInspectionRoutes } from './admin-inspection.js';
 import { installPerformanceRoutes } from './performance-routes.js';
-import { readVerifiedArtifact } from './artifact-reader.js';
+import { createCachedArtifactReader } from './artifact-reader.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
@@ -178,6 +178,8 @@ export function createServer(settings: Settings = {}) {
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
+  const artifactReader = blobs ? createCachedArtifactReader(blobs) : null;
+  app.addHook('onClose', async () => { artifactReader?.clear(); });
   // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
   app.setErrorHandler(async (error, request, reply) => {
@@ -303,7 +305,8 @@ export function createServer(settings: Settings = {}) {
   }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
-    return readVerifiedArtifact(blob(),artifact);
+    if (!artifactReader) throw unavailable();
+    return artifactReader.read(artifact);
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installAdminDashboardRoutes(app,{db,owner});
@@ -1604,7 +1607,8 @@ export function createServer(settings: Settings = {}) {
     if(!queueEnabled)throw unavailable();
     return queueAction(db(),user,id,kind,request.id);
   });
-  app.get('/api/v1/artifacts/:artifact_id',async request=>{
+  app.get('/api/v1/artifacts/:artifact_id',async(request,reply)=>{
+    reply.header('x-bb-request-id',request.id);
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
@@ -1638,6 +1642,7 @@ export function createServer(settings: Settings = {}) {
     return {...artifactDownloadName(a,pair),artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString(),...(wordDelivery?{word_delivery:wordDelivery}:{})};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
+    reply.header('x-bb-request-id',request.id);
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id

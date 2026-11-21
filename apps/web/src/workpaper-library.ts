@@ -90,7 +90,7 @@ export class WorkpaperLibraryPanel {
     if(this.live())this.paint();
   }
   private async act(button:HTMLButtonElement,action:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;button.disabled=true;try{await action();}catch(e){this.message(friendlyError(e,'read'));}finally{this.busy=false;this.poller.start();button.disabled=false;}}
-  private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false){
+  private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false,managedArtifact=false){
     const feedback=this.downloadFeedback?.node??document.createElement('p');
     feedback.className='wl-download-feedback';feedback.setAttribute('role','status');
     this.downloadFeedback={node:feedback,key:button.closest<HTMLElement>('[data-key]')!.dataset.key!};button.closest('.wl-actions')!.append(feedback);
@@ -100,7 +100,7 @@ export class WorkpaperLibraryPanel {
       button.textContent='正在下载…';
       feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
     }};
-    try{const file=await boundedDownload(this.abort.signal,signal=>read(signal,progress),archive?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
+    try{const file=await (managedArtifact?read(this.abort.signal,progress):boundedDownload(this.abort.signal,signal=>read(signal,progress),archive?20*60_000:120_000));if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
     catch(e){if(this.live())feedback.textContent=artifactError(e);}
     finally{button.textContent=text;button.removeAttribute('aria-busy');}
   }
@@ -125,9 +125,9 @@ export class WorkpaperLibraryPanel {
       document.body.append(d);d.querySelector('button')!.onclick=()=>d.close();d.onclose=()=>{if(this.live())void this.refresh();};d.showModal();return;
     }
     if(action==='zip'){await this.saveFile(button,async (signal,progress)=>({bytes:await this.api.workpaperZip(this.project,item.batch_id,signal,progress),filename:'尽职调查底稿.zip'}),true);return;}
-    if(action==='original'&&item.file?.original.asset.kind==='artifact'){const original=item.file.original;await this.saveFile(button,async signal=>{const pin=(original.asset as Extract<typeof original.asset,{kind:'artifact'}>).pin;const meta=await this.api.request<Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(pin.artifact_id)}?version=${pin.artifact_version}`,undefined,{},signal);return {bytes:await this.api.artifactBytes(meta,signal),filename:original.filename};});return;}
+    if(action==='original'&&item.file?.original.asset.kind==='artifact'){const original=item.file.original;await this.saveFile(button,async(signal,progress)=>{const pin=(original.asset as Extract<typeof original.asset,{kind:'artifact'}>).pin;const result=await this.api.downloadArtifact({artifact_id:pin.artifact_id,version:pin.artifact_version,sha256:pin.sha256,project_id:pin.source_project_id},signal,progress);return {bytes:result.bytes,filename:original.filename};},false,true);return;}
     if(item.explanation){await this.saveFile(button,async signal=>({bytes:await this.api.workpaperExplanation(this.project,item.batch_id,item.entry.id,signal),filename:item.explanation!.filename}));return;}
-    await this.saveFile(button,async signal=>{const a=item.artifacts[0]!;const meta=await this.api.request<Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(a.pin.artifact_id)}?version=${a.pin.artifact_version}`,undefined,{},signal);
-      return {bytes:await this.api.artifactBytes(meta,signal),filename:meta.filename??workpaperDownloadFilename(item.entry)};});
+    await this.saveFile(button,async(signal,progress)=>{const a=item.artifacts[0]!;const result=await this.api.downloadArtifact({artifact_id:a.pin.artifact_id,version:a.pin.artifact_version,sha256:a.pin.sha256,project_id:a.pin.source_project_id},signal,progress);
+      return {bytes:result.bytes,filename:result.artifact.filename??workpaperDownloadFilename(item.entry)};},false,true);
   }
 }

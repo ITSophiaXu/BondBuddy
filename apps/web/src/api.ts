@@ -2,7 +2,8 @@ import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-tas
 import {uploadTransfers} from './upload-scheduler.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
-import {boundedDownload} from './download-timeout.js';
+import {boundedDownload,withArtifactDownload,ArtifactDownloadTimeout,observeArtifactHandoff,type ArtifactDownloadLifecycle,type ArtifactDownloadHandoffEvent} from './download-timeout.js';
+import {sha256 as diagnosticSha256} from '@noble/hashes/sha2.js';
 import {Value} from '@sinclair/typebox/value';
 import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER, type UploadTransport, isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
@@ -14,6 +15,7 @@ import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest
 import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, isAuditReportRequiredFieldError, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
+export type ArtifactDownloadPin = {artifact_id:string;version:number;project_id?:string} & ({run_id:string;sha256?:string}|{run_id?:string;sha256:string});
 const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
@@ -339,7 +341,26 @@ export class ApiClient {
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
-  artifact(id: string, signal?: AbortSignal) { return boundedDownload(signal ?? this.controller.signal, activeSignal => this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, activeSignal)); }
+  artifact(id: string, signal?: AbortSignal) {
+    return withArtifactDownload(signal ?? this.controller.signal, download => this.readArtifactMetadata(id, download));
+  }
+  private readArtifactMetadata(id:string,download:ArtifactDownloadLifecycle) {
+    return download.stage('metadata',async()=>{
+      const response=await this.response('GET',`/artifacts/${encodeURIComponent(id)}`,undefined,{[BILLING_WIRE_HEADER]:BILLING_WIRE_VERSION},download.signal);
+      download.request('metadata',response.headers.get('x-bb-request-id'));
+      return await response.json() as Dto<'ArtifactResponse'>;
+    });
+  }
+  async downloadArtifact(pin:ArtifactDownloadPin,signal?:AbortSignal,progress?:DownloadProgress):Promise<{artifact:Dto<'ArtifactResponse'>;bytes:Blob;downloadId:string}> {
+    return this.runArtifactDownload(pin,signal??this.controller.signal,async(download,downloadId)=>{
+      const artifact=await this.readArtifactMetadata(pin.artifact_id,download);
+      if(artifact.artifact_id!==pin.artifact_id||artifact.version!==pin.version||pin.run_id!==undefined&&artifact.run_id!==pin.run_id||pin.sha256!==undefined&&artifact.sha256!==pin.sha256)
+        throw new UserFacingError('所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。');
+      const bytes=await this.readArtifactBytes(artifact,download,progress);
+      this.observeVerifiedArtifact(pin,downloadId,download,bytes);
+      return {artifact,bytes,downloadId};
+    });
+  }
   runAction(id: string, action: 'cancel' | 'resume' | 'pause', signal?: AbortSignal) {
     return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal);
   }
@@ -374,25 +395,76 @@ export class ApiClient {
     return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }
   async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal, progress?: DownloadProgress): Promise<Blob> {
-    return boundedDownload(signal ?? this.controller.signal, async activeSignal => {
+    return this.runArtifactDownload(artifact,signal??this.controller.signal,async(download,downloadId)=>{
+      const bytes=await this.readArtifactBytes(artifact,download,progress);
+      this.observeVerifiedArtifact(artifact,downloadId,download,bytes);return bytes;
+    });
+  }
+  private async readArtifactBytes(artifact:Dto<'ArtifactResponse'>,download:ArtifactDownloadLifecycle,progress?:DownloadProgress):Promise<Blob> {
+    const activeSignal=download.signal;
     const url = new URL(artifact.download_url, location.origin);
     const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
     if (url.origin !== location.origin || url.pathname !== path || url.username || url.password || url.hash) {
       throw new ApiError(0, 'DATA_UNAVAILABLE');
     }
-    const response = await this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, activeSignal);
-    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await readDownloadBytes(response, activeSignal, progress);
+    const response = await download.stage('headers',()=>this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, activeSignal));
+    download.request('headers',response.headers.get('x-bb-request-id'));
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) {
+      void response.body?.cancel().catch(()=>{});
+      throw new ApiError(0, 'DATA_UNAVAILABLE');
+    }
+    const bytes = await readDownloadBytes(response, activeSignal, progress, download);
     activeSignal.throwIfAborted();
     if (!bytes.byteLength) throw new ApiError(0, 'DATA_UNAVAILABLE');
     // Check the bytes received by the browser against the freshly authorized metadata.
     // A matching MIME type alone cannot detect truncation or same-length corruption.
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const digest = await download.stage('hash',()=>crypto.subtle.digest('SHA-256', bytes));
     activeSignal.throwIfAborted();
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (sha256 !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], { type: artifact.media_type });
-    });
+  }
+  private downloadReports=0;
+  private downloadProgressReports=0;
+  private downloadReportsSince=Date.now();
+  private observeVerifiedArtifact(pin:ArtifactDownloadPin,downloadId:string,download:ArtifactDownloadLifecycle,bytes:Blob) {
+    this.reportArtifactDownload(pin,downloadId,download,'verified');
+    const recorded=new Set<ArtifactDownloadHandoffEvent>();
+    observeArtifactHandoff(bytes,event=>{if(!recorded.has(event)){recorded.add(event);this.reportArtifactDownload(pin,downloadId,download,event);}});
+  }
+  private async runArtifactDownload<T>(pin:ArtifactDownloadPin,parent:AbortSignal,read:(download:ArtifactDownloadLifecycle,downloadId:string)=>Promise<T>):Promise<T> {
+    let active:ArtifactDownloadLifecycle|undefined;
+    const downloadId=crypto.randomUUID();
+    try { return await withArtifactDownload(parent,download=>{active=download;return read(download,downloadId);}); }
+    catch(error) {
+      if(!parent.aborted&&active){
+        if(error instanceof ApiError&&error.details.correlationId){const phase=active.snapshot().phase;if(phase==='metadata'||phase==='headers')active.request(phase,error.details.correlationId);}
+        this.reportArtifactDownload(pin,downloadId,active,'failed',error);
+      }
+      throw error;
+    }
+  }
+  private reportArtifactDownload(pin:ArtifactDownloadPin,downloadId:string,download:ArtifactDownloadLifecycle,event:'failed'|'verified'|ArtifactDownloadHandoffEvent,error?:unknown) {
+    // Reporting never delays or changes the original download result, and never
+    // includes a signed URL, native error text, document bytes or stack.
+    try {
+      if(Date.now()-this.downloadReportsSince>=300_000){this.downloadReportsSince=Date.now();this.downloadReports=0;this.downloadProgressReports=0;}
+      if(event==='failed'||event==='handoff_failed'){if(this.downloadReports>=5)return;this.downloadReports++;}
+      else {if(this.downloadProgressReports>=10)return;this.downloadProgressReports++;}
+      const state=download.snapshot(),code=event==='failed'?(error instanceof ArtifactDownloadTimeout?`timeout_${error.kind}`:error instanceof ApiError?error.code:'download_failed'):event;
+      const entry=document.querySelector?.('script[type="module"][src]') as HTMLScriptElement|null|undefined;
+      const candidate=entry?.src?new URL(entry.src,location.origin).pathname.split('/').pop()?.replace(/\.js$/,''):undefined;
+      const frontendVersion=candidate&&/^[A-Za-z0-9._-]{1,64}$/.test(candidate)?candidate:'unknown';
+      const fingerprint=Array.from(diagnosticSha256(new TextEncoder().encode(`${frontendVersion}:${downloadId}:${state.phase}:${code}:${pin.artifact_id}`)),byte=>byte.toString(16).padStart(2,'0')).join('');
+      const report={error_type:event==='failed'?(error instanceof ArtifactDownloadTimeout?'ArtifactDownloadTimeout':'ArtifactDownloadFailed'):event==='handoff_failed'?'ArtifactDownloadHandoffFailed':'ArtifactDownloadProgress',fingerprint,
+        message:JSON.stringify({download_id:downloadId,artifact_id:pin.artifact_id.slice(0,128),run_id:pin.run_id?.slice(0,128),version:pin.version,...state,event,code}),
+        route_id:'artifact_download',frontend_version:frontendVersion,client_time:new Date().toISOString(),
+        ...(pin.project_id&&/^[A-Za-z0-9_-]{1,128}$/.test(pin.project_id)?{project_id:pin.project_id}:{})};
+      void boundedDownload(this.controller.signal,async signal=>{
+        const response=await this.send('POST','/browser-errors',report,{},signal);
+        void response.body?.cancel().catch(()=>{});
+      },5_000).catch(()=>{});
+    } catch { /* Diagnostics cannot replace the original failure. */ }
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }

@@ -1,5 +1,6 @@
 import { ApiError, friendlyError, type Dto } from './api.js';
 import { resultFilename } from '@bondbuddy/contracts';
+import { recordArtifactHandoff } from './download-timeout.js';
 export { boundedDownload } from './download-timeout.js';
 
 export function artifactFilename(artifact: Dto<'ArtifactResponse'>): string {
@@ -30,8 +31,12 @@ export class ArtifactDownloads {
       fallbackHost.replaceChildren(document.createTextNode('文件已准备好。如未自动下载，请点击：'));
       link.className='text-button';link.textContent='保存文件';fallbackHost.append(link);
     }else document.body.append(link);
-    link.click();if(!fallbackHost)link.remove();
     this.objectUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); this.objectUrls.delete(url);if(fallbackHost?.contains(link))fallbackHost.replaceChildren(document.createTextNode('保存链接已过期，请重新点击下载。')); }, fallbackHost?300_000:60_000));
+    if(fallbackHost)link.addEventListener('click',event=>{if(event.isTrusted)recordArtifactHandoff(bytes,'save_link_clicked');});
+    // Neither click returning nor a trusted link click proves a disk write.
+    try { link.click();recordArtifactHandoff(bytes,'auto_save_requested'); }
+    catch(error) { recordArtifactHandoff(bytes,'handoff_failed');throw error; }
+    finally { if(!fallbackHost)link.remove(); }
   }
 
   dispose() {

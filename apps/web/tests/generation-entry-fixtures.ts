@@ -2,12 +2,26 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
 import {clearRows,addDocuments,selectedRows} from './file-generation-rows';
-import {expect,type Page,type Route} from '@playwright/test';
+import {expect,test,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,m4Schemas,projectFileSchemas,type M4DocumentType,type M4Draft,type M4DraftRequest,type M4Template,type ProjectFileBatch,type ProjectFileWorkspace} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
+import {checkedDownloadProgress,assertDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
+
+type BinaryRead={id:string;sha256:string;byte_size:number};
+type DownloadEvidence={metadata:Map<string,Dto<'ArtifactResponse'>>;binaries:BinaryRead[];pending:Promise<void>[];progress:DownloadProgressDiagnostic[]};
+const downloadEvidence=new WeakMap<State,DownloadEvidence>(),installedDownloads=new Map<Page,State>();
+function artifactFor(state:State,id:string){return [...state.workspaces.values()].flatMap(value=>value.workspace.artifacts).find(artifact=>artifact.artifact_id===id);}
+async function settleDownloads(state:State){
+  const evidence=downloadEvidence.get(state);if(!evidence)return;await Promise.all(evidence.pending);
+  const successful=evidence.binaries.filter(read=>artifactFor(state,read.id)?.sha256===read.sha256).length;
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='verified').length,{message:'Every generated Word GET has verified progress.'}).toBe(successful);
+  await expect.poll(()=>evidence.progress.filter(item=>item.detail.event==='auto_save_requested').length,{message:'Every generated Word reaches browser save handoff.'}).toBe(successful);
+  assertDownloadProgress(evidence.progress);
+}
+test.afterEach(async()=>{for(const [page,state]of installedDownloads){if(!page.isClosed())await settleDownloads(state);assertFixture(state);}installedDownloads.clear();});
 
 // Owner-scoped synthetic HTTP, real main.ts routes and native controls. These
 // fixtures do not execute a model, settle credits or prove external persistence.
@@ -59,9 +73,27 @@ export async function fixture(page:Page){
     failDraft:undefined as M4DocumentType|undefined,dropDraft:undefined as M4DocumentType|undefined,dropTemplate:false,
     sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),templates:new Map<string,M4Template>(),puts:0};
   page.on('pageerror',error=>state.errors.push(error.message));
+  const evidence:DownloadEvidence={metadata:new Map(),binaries:[],pending:[],progress:[]};downloadEvidence.set(state,evidence);installedDownloads.set(page,state);
+  page.on('response',response=>{
+    const request=response.request(),match=new URL(response.url()).pathname.match(/^\/api\/v1\/artifacts\/([^/]+)(\/download)?$/);
+    if(request.method()!=='GET'||response.status()!==200||!match)return;
+    evidence.pending.push((async()=>{if(match[2]){const bytes=await response.body();evidence.binaries.push({id:match[1],sha256:hash(bytes),byte_size:bytes.length});}else evidence.metadata.set(match[1],await response.json());})().catch(error=>{if(!page.isClosed())state.errors.push('Artifact response evidence: '+String(error));}));
+  });
   await page.route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api/v1',''),method=req.method();
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(req.postDataJSON());await Promise.all(evidence.pending);
+        const expected=artifactFor(state,diagnostic.detail.artifact_id),metadata=evidence.metadata.get(diagnostic.detail.artifact_id);
+        expect(state.owner).toBe(ids.owner);expect(expected,'Progress identifies an existing generated artifact.').toBeDefined();
+        expect(metadata).toMatchObject({artifact_id:expected!.artifact_id,run_id:expected!.run_id,version:expected!.artifact_version,sha256:expected!.sha256});
+        expect(diagnostic.detail).toMatchObject({run_id:expected!.run_id,version:expected!.artifact_version,received_bytes:expected!.byte_size});
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(ids.api);
+        expect(evidence.binaries.some(read=>read.id===expected!.artifact_id&&read.sha256===expected!.sha256&&read.byte_size===diagnostic.detail.received_bytes),'Progress requires the actual generated Word GET and hash.').toBe(true);
+        evidence.progress.push(diagnostic);return json(route,201,{report_id:'generation-download-report',deduplicated:false,received_at:now});
+      }catch(error){state.errors.push('Rejected artifact diagnostic: '+String(error));}
+    }
     const body=method==='PUT'&&path.endsWith('/bytes')?undefined:req.postData()?fixtureRequest(req):undefined;
     state.calls.push({path,method,body});
     if(path==='/me')return json(route,200,{user_id:state.owner,session_status:'active'});

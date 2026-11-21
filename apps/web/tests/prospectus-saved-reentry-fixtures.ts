@@ -10,6 +10,7 @@ import {M4_DOCUMENT_TYPES,M4DocumentManifestSchema,M4DraftInputSchema,M4ViewStat
   type M4DraftInput,type M4Workspace,type ProjectFileSource,type ProjectFileVersion,
   type ProjectFileWorkspace,type ProspectusVersion,type ProspectusVersions,type Run} from '@bondbuddy/contracts';
 import type {Dto} from './billing-fixture-wire';
+import {assertDownloadProgress,checkedDownloadProgress,type DownloadProgressDiagnostic} from './artifact-download-diagnostic-fixture';
 
 // One closed synthetic HTTP producer serves the actual main.ts routes throughout
 // each desktop journey. No root HTML override, component mount, worker or ledger.
@@ -40,6 +41,8 @@ type Selection=Dto<'ProspectusVersionSelectRequest'>;
 type Call={method:string;path:string;search:string;body:unknown};
 type Material={dto:Dto<'MaterialResponse'>;bytes:Buffer};
 type Session={declaration:Dto<'UploadCreateRequest'>;bytes?:Buffer;material?:Dto<'MaterialResponse'>};
+type ArtifactMetadataRead={artifact:Dto<'ArtifactResponse'>;callIndex:number};
+type ArtifactTransfer={artifact:Dto<'ArtifactResponse'>;metadataCall:number;binaryCall:number;sha256:string;byteSize:number;downloadId?:string};
 type Options={noCurrent?:boolean;sameName?:boolean;candidate?:boolean;rollback?:boolean;currentLatest?:boolean;generated?:boolean};
 const makeVersion=(id:string,sequence:number,materialId:string,materialVersion:number,filename:string,bytes:Buffer):ProspectusVersion=>({version_id:id,sequence,origin:'upload',filename,sha256:hash(bytes),created_at:now,material_id:materialId,material_version:materialVersion,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null});
 export function fixture(options:Options={}){
@@ -61,7 +64,7 @@ export function fixture(options:Options={}){
   const workspace:M4Workspace={topic:{topic_id:ids.topic,project_id:ids.execution,source_project_id:ids.project,name:project.name,surface:'materials',created_at:now,updated_at:now},project:{...project,project_id:ids.execution},drafts,materials:[oldPin],material_details:[{...oldPin,filename:old.filename,state:'persisted',media_type:mime}],templates:[],messages:[],tasks:[{run,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:ids.topic,execution_scope_project_id:ids.project,draft_version:1,input:historical,template_material:null,market:'sse',offering:'private',billing_task:'m4_G01'},created_at:now,events:[],artifacts:[]}],artifacts:[],pending_requirements:[],view:{version:0,selected_document_type:'init',open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:'init',draft_version:3,source_material:oldPin,citations:[],reading_artifact:null}},active_run:null};
   const files:ProjectFileVersion[]=[];
   for(const type of ['issuer','financial'] as const){const bytes=docx('合成已有'+type+'文件，原版本必须保留。'),id='saved-reentry-'+type+'-material';const dto:Dto<'MaterialResponse'>={material_id:id,material_version:1,upload_id:'prior-'+id,role:'other',filename:type==='issuer'?'合成发行人基本情况.docx':'合成财务情况.docx',media_type:mime,byte_size:bytes.length,sha256:hash(bytes),state:'persisted',persisted_at:now,error:null};materials.set(id,{dto,bytes});files.push({version_id:'saved-reentry-'+type+'-v1',file_id:'saved-reentry-'+type+'-family',document_type:type,filename:dto.filename,sequence:1,asset:{kind:'material',pin:{source_project_id:ids.project,material_id:id,material_version:1,sha256:dto.sha256}},revision_asset:null,source_version_id:old.version_id,template_id:null,template_version:null,source_name:old.filename,source_sequence:1,created_at:now,run_id:null,links:[],latest:true,version_count:1,consistency:{status:'unchecked',count:0,check_run_id:null}});}
-  return{options,project,old,candidate,versions,workspace,files,materials,register,sessions:new Map<string,Session>(),receipts:new Map<string,{request:Selection;response:ProspectusVersions}>(),calls:[] as Call[],selections:[] as Selection[],puts:0,completions:0,appliedSelections:0,versionReads:0,filesReads:0,unexpected:[] as string[],errors:[] as string[],balance:{enabled:true,available:100000,frozen:0} satisfies Dto<'CreditBalanceResponse'>};
+  return{options,project,old,candidate,versions,workspace,files,materials,register,sessions:new Map<string,Session>(),receipts:new Map<string,{request:Selection;response:ProspectusVersions}>(),calls:[] as Call[],selections:[] as Selection[],puts:0,completions:0,appliedSelections:0,versionReads:0,filesReads:0,unexpected:[] as string[],errors:[] as string[],artifactMetadataReads:[] as ArtifactMetadataRead[],artifactTransfers:[] as ArtifactTransfer[],downloadDiagnostics:[] as DownloadProgressDiagnostic[],balance:{enabled:true,available:100000,frozen:0} satisfies Dto<'CreditBalanceResponse'>};
 }
 export type State=ReturnType<typeof fixture>;
 export function projection(s:State):ProspectusVersions{const current=s.versions.versions.find(v=>v.version_id===s.versions.current_version_id);return{...structuredClone(s.versions),inactive_material_ids:current?s.versions.versions.filter(v=>v.material_id&&v.material_id!==current.material_id).map(v=>v.material_id!):[]};}
@@ -74,6 +77,12 @@ const registrySchema=Type.Object({files:Type.Array(ProjectFileVersionSchema)},{a
 function assertState(s:State){check('ProjectResponse',s.project);check('ProspectusVersionsResponse',projection(s));check('ProjectFilesResponse',collection(s));for(const m of s.materials.values()){check('MaterialResponse',m.dto);expect(hash(m.bytes)).toBe(m.dto.sha256);expect(m.bytes.length).toBe(m.dto.byte_size);}for(const draft of Object.values(s.workspace.drafts))expect([...Value.Errors(M4DraftInputSchema,inputOf(draft))]).toEqual([]);for(const task of s.workspace.tasks)expect([...Value.Errors(M4DocumentManifestSchema,task.manifest)]).toEqual([]);const{version:_v,...view}=s.workspace.view;expect([...Value.Errors(M4ViewStateSchema,view)]).toEqual([]);expect([...Value.Errors(registrySchema,{files:s.files})]).toEqual([]);const source=currentSource(s);if(source)expect([...Value.Errors(ProjectFileSourceSchema,source)]).toEqual([]);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){check(name,value);return route.fulfill({status,json:fixtureBody(route,structuredClone(value))});}
 const failure=(route:Route,status=409)=>route.fulfill({status,json:fixtureBody(route,{code:status===409?'INPUT_REVISION_CONFLICT':'NOT_FOUND',message:'Synthetic saved-source response',retryable:false,correlation_id:'saved-reentry',field_errors:[]})});
+function generatedArtifact(s:State):Dto<'ArtifactResponse'>{
+  expect(s.candidate.origin).toBe('generated');expect(hash(newBytes)).toBe(s.candidate.sha256);
+  expect(s.versions.versions.filter(version=>version.version_id===s.candidate.version_id)).toEqual([s.candidate]);
+  const artifact:Dto<'ArtifactResponse'>={artifact_id:s.candidate.artifact_id!,run_id:s.candidate.run_id!,version:s.candidate.artifact_version!,filename:s.candidate.filename,media_type:mime,sha256:s.candidate.sha256,quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/'+s.candidate.artifact_id+'/download',expires_at:'2099-01-01T00:00:00Z'};
+  check('ArtifactResponse',artifact);return artifact;
+}
 const installed=new WeakMap<Page,State>();
 export async function install(page:Page,s=fixture()){
   assertState(s);installed.set(page,s);page.on('pageerror',error=>s.errors.push(error.message));
@@ -81,7 +90,27 @@ export async function install(page:Page,s=fixture()){
   await page.route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
-    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?fixtureRequest(request):null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?fixtureRequest(request):null;
+    if(method==='POST'&&path==='/browser-errors'&&!url.search){
+      try{
+        const diagnostic=checkedDownloadProgress(body),artifact=generatedArtifact(s);
+        expect(diagnostic.detail).toMatchObject({artifact_id:artifact.artifact_id,run_id:artifact.run_id,version:artifact.version,received_bytes:newBytes.byteLength});
+        if(diagnostic.report.project_id!==undefined)expect(diagnostic.report.project_id).toBe(ids.project);
+        const previous=s.downloadDiagnostics.filter(entry=>entry.detail.download_id===diagnostic.detail.download_id);
+        expect(previous.some(entry=>entry.detail.event===diagnostic.detail.event),'Each controlled event is recorded only once.').toBe(false);
+        const transfer=diagnostic.detail.event==='verified'
+          ?s.artifactTransfers.find(entry=>!entry.downloadId&&entry.artifact.artifact_id===artifact.artifact_id)
+          :s.artifactTransfers.find(entry=>entry.downloadId===diagnostic.detail.download_id);
+        expect(transfer,'Verified progress requires its actual metadata read and binary GET.').toBeDefined();
+        expect(transfer!.artifact).toEqual(artifact);expect(transfer!.sha256).toBe(artifact.sha256);expect(transfer!.byteSize).toBe(diagnostic.detail.received_bytes);
+        expect(transfer!.metadataCall).toBeLessThan(transfer!.binaryCall);expect(transfer!.binaryCall).toBeLessThan(s.calls.length);
+        if(diagnostic.detail.event==='verified'){expect(previous).toEqual([]);transfer!.downloadId=diagnostic.detail.download_id;}
+        else expect(previous.map(entry=>entry.detail.event)).toEqual(diagnostic.detail.event==='auto_save_requested'?['verified']:['verified','auto_save_requested']);
+        s.downloadDiagnostics.push(diagnostic);
+        return reply(route,'BrowserErrorReportResponse',{report_id:'saved-reentry-download-report',deduplicated:false,received_at:now},201);
+      }catch(error){s.unexpected.push(method+' '+path);s.errors.push(error instanceof Error?error.message:String(error));return failure(route,500);}
+    }
+    s.calls.push({method,path,search:url.search,body:structuredClone(body)});
     if(method==='GET'&&path==='/me')return reply(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
     if(method==='GET'&&path==='/account')return reply(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_saved_source',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(method==='GET'&&path==='/credits/balance')return reply(route,'CreditBalanceResponse',s.balance);
@@ -114,8 +143,12 @@ export async function install(page:Page,s=fixture()){
     }
     const material=path.match(new RegExp('^'+base+'/materials/([^/]+)(/download)?$'));
     if(method==='GET'&&material){const stored=s.materials.get(decodeURIComponent(material[1]));if(!stored||url.searchParams.has('version')&&Number(url.searchParams.get('version'))!==stored.dto.material_version)return failure(route,404);return material[2]?route.fulfill({contentType:mime,body:stored.bytes}):reply(route,'MaterialResponse',stored.dto);}
-    if(method==='GET'&&s.candidate.origin==='generated'&&path==='/artifacts/'+s.candidate.artifact_id)return reply(route,'ArtifactResponse',{artifact_id:s.candidate.artifact_id!,run_id:s.candidate.run_id!,version:s.candidate.artifact_version!,filename:s.candidate.filename,media_type:mime,sha256:s.candidate.sha256,quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/'+s.candidate.artifact_id+'/download',expires_at:'2099-01-01T00:00:00Z'});
-    if(method==='GET'&&s.candidate.origin==='generated'&&path==='/artifacts/'+s.candidate.artifact_id+'/download')return route.fulfill({contentType:mime,body:newBytes});
+    if(method==='GET'&&s.candidate.origin==='generated'&&path==='/artifacts/'+s.candidate.artifact_id){const artifact=generatedArtifact(s);s.artifactMetadataReads.push({artifact:structuredClone(artifact),callIndex:s.calls.length-1});return reply(route,'ArtifactResponse',artifact);}
+    if(method==='GET'&&s.candidate.origin==='generated'&&path==='/artifacts/'+s.candidate.artifact_id+'/download'){
+      const artifact=generatedArtifact(s),metadata=s.artifactMetadataReads.at(-1);expect(metadata,'A binary download must follow its exact metadata.').toBeDefined();expect(metadata!.artifact).toEqual(artifact);
+      s.artifactTransfers.push({artifact:structuredClone(artifact),metadataCall:metadata!.callIndex,binaryCall:s.calls.length-1,sha256:hash(newBytes),byteSize:newBytes.byteLength});
+      return route.fulfill({contentType:mime,body:newBytes});
+    }
     s.unexpected.push(method+' '+path);return failure(route,501);
   });return s;
 }
@@ -139,4 +172,12 @@ export async function uploadJournal(page:Page){return page.evaluate(()=>Object.f
 export function assertFixture(s:State){assertState(s);expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);expect(s.appliedSelections).toBe(s.receipts.size);}
 export function noBusiness(s:State){const allowed=new RegExp('^/projects/'+ids.project+'/(?:materials/uploads(?:/[^/]+/(?:bytes|complete))?|prospectus-versions/current)$');expect(writes(s).filter(c=>!allowed.test(c.path))).toEqual([]);expect(s.calls.filter(c=>c.method!=='GET'&&/\/(?:execute|quote|credit-quote|checks|updates|batches|preflight|input-revisions)(?:\/|$)|^\/credits\//.test(c.path))).toEqual([]);expect(s.balance).toEqual({enabled:true,available:100000,frozen:0});assertFixture(s);}
 export function fixedUnchanged(s:State,before:ReturnType<typeof fixedSnapshot>){expect(fixedSnapshot(s)).toEqual(before);noBusiness(s);}
-export async function verifyInstalled(page:Page){const s=installed.get(page);if(s)assertFixture(s);}
+export async function verifyInstalled(page:Page){
+  const s=installed.get(page);if(!s)return;assertFixture(s);
+  // The page clock is deliberately frozen and diagnostics use fire-and-forget
+  // fetches. Await actual route receipts with the runner clock before teardown.
+  for(const event of ['verified','auto_save_requested'])await expect.poll(()=>s.downloadDiagnostics.filter(entry=>entry.detail.event===event).length,{timeout:5000,message:'Each real artifact transfer must reach '+event+' diagnostics.'}).toBe(s.artifactTransfers.length);
+  assertDownloadProgress(s.downloadDiagnostics);
+  expect(s.downloadDiagnostics.filter(entry=>entry.detail.event==='verified').map(entry=>entry.detail.artifact_id)).toEqual(s.artifactTransfers.map(transfer=>transfer.artifact.artifact_id));
+  assertFixture(s);
+}
