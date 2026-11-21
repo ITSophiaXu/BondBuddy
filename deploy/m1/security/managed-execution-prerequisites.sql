@@ -34,4 +34,22 @@ GRANT INSERT ON public.bb_model_attempt_execution_configs TO :"runtime_role";
 GRANT INSERT ON public.bb_model_result_failure_diagnostics TO :"runtime_role";
 GRANT INSERT(exit_capture_status,finish_reason_capture_status)
  ON public.bb_model_call_attempt_runtime TO :"runtime_role";
+-- v1 enrollment and immutable candidate evidence. This grants neither cloud
+-- mutation nor provider-completed/settlement authority for an expired lease.
+GRANT INSERT(workflow_protocol_version) ON public.bb_execution_node_sessions TO :"runtime_role";
+GRANT SELECT ON public.bb_model_attempt_execution_configs,public.bb_execution_cloud_operations,
+ public.bb_sealed_model_captures,public.bb_recovered_capture_evidence TO :"runtime_role";
+GRANT INSERT(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,
+ execution_node_id,execution_node_epoch,execution_session_id,lease_token,spool_id,manifest_sha256,
+ call_exit_proof,raw_usage,raw_outcome,evidence_sha256)
+ ON public.bb_sealed_model_captures TO :"runtime_role";
+GRANT INSERT(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,
+ original_node_id,original_epoch,original_session_id,recovery_session_id,capture_ref,capture_sha256,
+ byte_size,manifest_sha256,evidence_sha256)
+ ON public.bb_recovered_capture_evidence TO :"runtime_role";
+-- Normal consumers can verify recovery scope, never manufacture control receipts.
+GRANT SELECT ON public.bb_database_restore_quarantines,public.bb_database_restore_reconciliations,
+ public.bb_database_restore_fence_releases TO :"runtime_role";
+GRANT EXECUTE ON FUNCTION public.bb_restore_account_permitted(text),public.bb_workflow_run_eligible(text),
+ public.bb_workflow_preparation_calls_safe(text,jsonb) TO :"runtime_role";
 COMMIT;

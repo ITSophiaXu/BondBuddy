@@ -51,6 +51,14 @@ def main():
         result = json.loads(data)
         if result.get("status") != "ok" or result.get("key") != key or result.get("identity") != identity or result.get("sealed"):
             raise RuntimeError("TASK_RUNNER_ADMISSION_REFUSED")
+        if result.get("callBinding") is not None:
+            binding = result["callBinding"]
+            if (binding.get("kind") != "call" or
+                    binding.get("parentKey") != os.environ.get("BB_TASK_CALL_PARENT_KEY") or
+                    binding.get("parentIdentity") != os.environ.get("BB_TASK_CALL_PARENT_IDENTITY") or
+                    binding.get("logicalCallId") != os.environ.get("BB_TASK_CALL_LOGICAL_ID") or
+                    str(binding.get("generation")) != os.environ.get("BB_TASK_CALL_GENERATION")):
+                raise RuntimeError("TASK_RUNNER_CALL_BINDING_REFUSED")
     os.execvpe(command, [command, *args], os.environ)
 
 

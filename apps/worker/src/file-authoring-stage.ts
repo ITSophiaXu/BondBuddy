@@ -20,6 +20,7 @@ import { buildFileAuthoringInstructions, FILE_AUTHORING_HOST_RENDER_HANDOFF, FIL
 import { authorizedFileAuthoringRecovery, fileAuthoringContextDeadline, recoverFileAuthoringInput, restoreFileAuthoringWork, saveFileAuthoringRecovery,
   recordFileAuthoringCaptureFailure, fileAuthoringUsesSmallBatches, FILE_AUTHORING_RECOVERY_PROMPT } from './file-authoring-recovery.js';
 import { deliverWithSizeRepair, readAuthoringFile, type SizeRepair } from './file-authoring-repair.js';
+import {readCommittedEditorOperations} from './committed-editor-files.js';
 
 const repo=resolve(fileURLToPath(import.meta.url),'../../../..');
 const helpers=join(repo,'python/bondbuddy_file_authoring');
@@ -58,7 +59,7 @@ export function editingSource(input:UnifiedInput){
   return matches[0]!;
 }
 
-function qualityContext(input:UnifiedInput,source:ReturnType<typeof editingSource>){
+export function qualityContext(input:UnifiedInput,source:ReturnType<typeof editingSource>){
   const authoring=input.manifest.authoring;
   const info=authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id
     && s.material_version===source.pin.material_version && s.sha256===source.pin.sha256);
@@ -239,6 +240,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
           else if(name==='input.json')bytes=lockedInput!;
           else if(controlled && name==='template-manifest.json')bytes=await checkedFile(cwd,name,FORMAT_JSON_MAX);
           else if(!controlled && ['operations.json','template-manifest.json'].includes(name))continue;
+          else if(controlled&&name==='operations.json')bytes=await readCommittedEditorOperations(join(cwd,'output'),FORMAT_JSON_MAX);
           else bytes=await checkedFile(join(cwd,'output'),name,name==='delivery.md'?256*1024:name.endsWith('.json')?FORMAT_JSON_MAX:MAX);
         }catch{continue;}
         const sha256=digest(bytes),key=`${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
@@ -346,7 +348,7 @@ type DeliveryOptions={quality?:typeof verifyWordQuality;load?:typeof loadUnified
 export function fileAuthoringDeliveryStage(options:DeliveryOptions={}):RunStage{
   return {name:'word_delivery',replay:true,run:ctx=>deliverWithSizeRepair(ctx,{
     attempt:(context,round)=>fileAuthoringDeliveryAttempt(options,round).run(context),
-    repair:options.repair??((context,repair)=>fileAuthoringStage({load:options.load,repair}).run(context)),
+    repair:options.repair??((context,repair)=>context.lease.checkpoint.workflow_v1?Promise.resolve({kind:'fail' as const,code:'WORD_QUALITY_REJECTED'}):fileAuthoringStage({load:options.load,repair}).run(context)),
     checkpoint:options.checkpoint,pause:options.pause})};
 }
 

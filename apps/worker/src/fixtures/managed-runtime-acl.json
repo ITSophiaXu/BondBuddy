@@ -1,6 +1,6 @@
 {
   "version": "managed-runtime-acl-fixture-v1",
-  "source": "2026-11-16 schema188 authoring role, structure only; not a new provisioning policy",
+  "source": "2026-11-16 schema188 authoring role plus versioned workflow enrollment; structure only, explicit middle grants remain separate",
   "tables": [
 {"columns":{"UPDATE":["delivery_status","word_delivery_evidence_id"],"INSERT":["delivery_status","id","media_type","object_key","owner_user_id","quality_status","review_pdf_delivery_evidence_id","run_id","sha256","version","word_delivery_evidence_id"]},"privileges":["SELECT"],"name":"bb_artifact_versions"},
 {"columns":{"UPDATE":["accrued_points","active_ms","clock_at","last_activity_at","lease_until","work_bps"],"INSERT":["owner_user_id","run_id"]},"privileges":["SELECT"],"name":"bb_authoring_progress"},
@@ -21,7 +21,7 @@
 {"columns":{},"privileges":["SELECT"],"name":"bb_current_fact_evidence_reviews"},
 {"columns":{"INSERT":["actor_type","alert_id","id","reason_code","state"]},"privileges":["SELECT"],"name":"bb_evidence_gate_events"},
 {"columns":{"UPDATE":["singleton"]},"privileges":["SELECT"],"name":"bb_execution_capacity_policy"},
-{"columns":{"UPDATE":["finished_at","heartbeat_at","native_processes","ready","state","unpersisted_results"],"INSERT":["epoch","node_id","process_identity","service_id","session_id","state"]},"privileges":["SELECT"],"name":"bb_execution_node_sessions"},
+{"columns":{"UPDATE":["finished_at","heartbeat_at","native_processes","ready","state","unpersisted_results"],"INSERT":["epoch","node_id","process_identity","service_id","session_id","state","workflow_protocol_version"]},"privileges":["SELECT"],"name":"bb_execution_node_sessions"},
 {"columns":{"UPDATE":["id","idle_since","last_heartbeat_at","revision","state"]},"privileges":["SELECT"],"name":"bb_execution_nodes"},
 {"columns":{"UPDATE":["id"],"INSERT":["entity_id","evidence","fact_key","fact_key_hash","id","material_id","material_version","owner_user_id","project_id","source_kind","source_observed_at","source_ref","source_valid_as_of","status","uncertainty","value_decimal","value_kind","value_text","verification_actor_id","verification_actor_kind","verification_at"]},"privileges":["SELECT"],"name":"bb_fact_candidates"},
 {"columns":{},"privileges":["SELECT"],"name":"bb_fact_decisions"},

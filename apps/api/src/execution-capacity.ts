@@ -20,7 +20,9 @@ const cas=()=>{throw new Error('EXECUTION_CAPACITY_CAS_CONFLICT');};
 export function executionNodeForPool(pool:Pool){return contexts.get(pool);}
 /** Set only after trusted registration succeeded. No runtime env controls global capacity. */
 function bind(pool:Pool,context:ExecutionNodeContext){if(!Value.Check(ExecutionNodeContextSchema,context))throw Error('EXECUTION_NODE_IDENTITY_INVALID');contexts.set(pool,context);}
-function policyDto(p:any):ExecutionCapacityPolicy{return {revision:Number(p.revision),managed_nodes:p.managed_nodes,global_model_limit:p.global_model_limit,node_model_limit:p.node_model_limit,max_nodes:p.max_nodes,budget_available:p.budget_available,provider_concurrency_limit:p.provider_concurrency_limit,provider_policy_sha256:p.provider_policy_sha256?.trim()??null,expense_policy_sha256:p.expense_policy_sha256?.trim()??null,cooldown_until:p.cooldown_until?.toISOString()??null,launch_blocked_by_operation_id:p.launch_blocked_by_operation_id??null};}
+function policyDto(p:any):ExecutionCapacityPolicy{return {revision:Number(p.revision),managed_nodes:p.managed_nodes,global_model_limit:p.global_model_limit,node_model_limit:p.node_model_limit,max_nodes:p.max_nodes,budget_available:p.budget_available,provider_concurrency_limit:p.provider_concurrency_limit,provider_policy_sha256:p.provider_policy_sha256?.trim()??null,expense_policy_sha256:p.expense_policy_sha256?.trim()??null,cooldown_until:p.cooldown_until?.toISOString()??null,launch_blocked_by_operation_id:p.launch_blocked_by_operation_id??null,
+ ...(p.workflow_slots_enabled?{workflow_slots_enabled:true,authoring_slots:p.authoring_slots,postprocess_slots:p.postprocess_slots}:{}),
+ ...(p.max_nodes>2?{expansion_budget_review_sha256:p.expansion_budget_review_sha256?.trim()??null}:{})};}
 async function node(client:PoolClient|Pool,i:ExecutionNodeIdentity,lock=false){
  const row=(await client.query(`SELECT * FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 ${lock?'FOR UPDATE':''}`,[i.account_id,i.region,i.instance_id])).rows[0];
  if(!row||row.epoch!==i.epoch)throw Error('EXECUTION_NODE_EPOCH_MISMATCH');return row;
@@ -35,7 +37,15 @@ async function dto(client:PoolClient|Pool,row:any,freshServices?:ExecutionNode['
  (SELECT count(*) FROM bb_model_capacity_holders WHERE execution_node_id=$1) AS calls`,[row.id])).rows[0];
  const readyServices=freshServices??await freshExecutionServices(client,row);
  const allReady=readyServices.length>0&&readyServices.length===row.expected_services.length;
- return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,Number((await client.query('SELECT node_model_limit FROM bb_execution_capacity_policy WHERE singleton')).rows[0].node_model_limit)-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id};
+ const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton')).rows[0];
+ const phase=policy.workflow_slots_enabled?(await client.query(`SELECT count(*) FILTER(WHERE execution_admission_phase='authoring')::int AS authoring,
+  count(*) FILTER(WHERE execution_admission_phase='postprocess')::int AS postprocess,count(*) FILTER(WHERE execution_admission_phase='legacy')::int AS legacy
+  FROM bb_jobs WHERE execution_node_id=$1 AND lease_token IS NOT NULL`,[row.id])).rows[0]:undefined;
+ const legacy=phase?Number(active.leases)-phase.authoring-phase.postprocess:0;
+ const free=(capability:'authoring'|'postprocess')=>row.state==='ready'&&readyServices.some(s=>s.workflow_protocol_version===1&&s.capabilities.includes(capability))?
+  Math.max(0,policy[capability+'_slots']-phase[capability]-legacy):0;
+ return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,Number(policy.node_model_limit)-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id,
+ ...(phase?{active_authoring_leases:phase.authoring,active_postprocess_leases:phase.postprocess,active_legacy_leases:legacy,ready_authoring_slots:free('authoring'),ready_postprocess_slots:free('postprocess')}: {})};
 }
 function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:['run','start'].includes(row.action)?row.request:null,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,...(row.action==='stop'?{stop_authorization:row.request??(row.legacy_drain_proof?{kind:'graceful-drain',proof:row.legacy_drain_proof}:null)}:{}),run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null,authorization_denial:row.authorization_denial??null};}
 async function operation(client:PoolClient|Pool,id:string,lock=false){
@@ -65,10 +75,12 @@ async function validatePersistedStop(client:PoolClient,n:any,op:any){
 }
 
 /** Called inside every model-job/assistant/probe claim transaction, before job locks. */
-export async function executionClaimGate(client:PoolClient,pool:Pool){
+export async function executionClaimGate(client:PoolClient,pool:Pool,workflowPhase?:'authoring'|'postprocess'){
  const c=contexts.get(pool);
+ if(workflowPhase&&!c)throw Error('WORKFLOW_RUNTIME_REGISTRATION_REQUIRED');
  const policy=(await client.query('SELECT managed_nodes FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];
  if(c){const n=await node(client,c.identity,true);await client.query("SELECT set_config('bb.execution_node_id',$1,true),set_config('bb.execution_node_epoch',$2,true),set_config('bb.execution_session_id',$3,true)",[n.id,c.identity.epoch,c.session_id]);}
+ await client.query("SELECT set_config('bb.execution_workflow_phase',$1,true)",[workflowPhase??'']);
  if(c||policy.managed_nodes)await client.query('SELECT bb_execution_claim_context()');
 }
 /** All claimers rank accounts against the same committed lease inventory. This
@@ -103,15 +115,15 @@ export async function lockExecutionReleaseContext(client:PoolClient,pool:Pool,jo
 
 /** Bootstrap secret is pre-bound by the trusted controller after cloud Describe.
  * It is not a metadata assertion, machine-id, or credential copied into an image. */
-export async function registerExecutionRuntime(pool:Pool,c:ExecutionNodeContext,input:{source_sha256:string;image_sha256:string;registration_token:string;launch_manifest_sha256:string;service_id:string;capabilities:string[];process_identity:Record<string,string>}){
+export async function registerExecutionRuntime(pool:Pool,c:ExecutionNodeContext,input:{source_sha256:string;image_sha256:string;registration_token:string;launch_manifest_sha256:string;service_id:string;capabilities:string[];process_identity:Record<string,string>;workflow_protocol_version?:1}){
  if(!Value.Check(ExecutionNodeContextSchema,c))throw Error('EXECUTION_NODE_IDENTITY_INVALID');
  if(contexts.has(pool)&&sha(contexts.get(pool))!==sha(c))throw Error('EXECUTION_REGISTRATION_REJECTED');
  await transaction(pool,async client=>{
   const n=await node(client,c.identity,true);
-  if(!['starting','ready'].includes(n.state)||n.source_sha256.trim()!==input.source_sha256||n.image_sha256.trim()!==input.image_sha256||n.registration_token_sha256?.trim()!==sha(input.registration_token)||n.launch_manifest_sha256.trim()!==input.launch_manifest_sha256||!n.expected_services.some((s:any)=>s.service_id===input.service_id&&sha([...s.capabilities].sort())===sha([...input.capabilities].sort())))throw Error('EXECUTION_REGISTRATION_REJECTED');
+  if(!['starting','ready'].includes(n.state)||n.source_sha256.trim()!==input.source_sha256||n.image_sha256.trim()!==input.image_sha256||n.registration_token_sha256?.trim()!==sha(input.registration_token)||n.launch_manifest_sha256.trim()!==input.launch_manifest_sha256||!n.expected_services.some((s:any)=>s.service_id===input.service_id&&sha([...s.capabilities].sort())===sha([...input.capabilities].sort())&&(s.workflow_protocol_version??0)===(input.workflow_protocol_version??0)))throw Error('EXECUTION_REGISTRATION_REJECTED');
   const prior=(await client.query('SELECT * FROM bb_execution_node_sessions WHERE session_id=$1',[c.session_id])).rows[0];
-  if(prior&&(prior.node_id!==n.id||prior.epoch!==n.epoch||sha(prior.process_identity)!==sha(input.process_identity)||prior.service_id!==input.service_id||prior.state!=='active'))throw Error('EXECUTION_REGISTRATION_REJECTED');
-  await client.query("INSERT INTO bb_execution_node_sessions(session_id,node_id,epoch,state,service_id,process_identity) VALUES($1,$2,$3,'active',$4,$5) ON CONFLICT DO NOTHING",[c.session_id,n.id,n.epoch,input.service_id,input.process_identity]);
+  if(prior&&(prior.node_id!==n.id||prior.epoch!==n.epoch||sha(prior.process_identity)!==sha(input.process_identity)||prior.service_id!==input.service_id||prior.state!=='active'||prior.workflow_protocol_version!==(input.workflow_protocol_version??0)))throw Error('EXECUTION_REGISTRATION_REJECTED');
+  await client.query("INSERT INTO bb_execution_node_sessions(session_id,node_id,epoch,state,service_id,process_identity,workflow_protocol_version) VALUES($1,$2,$3,'active',$4,$5,$6) ON CONFLICT DO NOTHING",[c.session_id,n.id,n.epoch,input.service_id,input.process_identity,input.workflow_protocol_version??0]);
  });bind(pool,c);
 }
 export async function bindExecutionRegistration(pool:Pool,i:ExecutionNodeIdentity,operationId:string,token:string){
@@ -341,8 +353,21 @@ export async function submitFencedExecutionStop(pool:Pool,i:ExecutionNodeIdentit
  });
 }
 export async function markExecutionNodeLost(pool:Pool,i:ExecutionNodeIdentity,revision:number){return transaction(pool,async client=>{const n=await node(client,i,true);if(Number(n.revision)!==revision||!['starting','ready','draining'].includes(n.state))cas();await client.query("UPDATE bb_execution_nodes SET state='lost',revision=revision+1 WHERE id=$1",[n.id]);return dto(client,await node(client,i));});}
-export async function configureExecutionCapacity(pool:Pool,revision:number,input:{managed_nodes:boolean;global_model_limit:number;max_nodes:number;budget_available:boolean;node_model_limit?:number;provider_concurrency_limit?:number;provider_policy_sha256?:string;expense_policy_sha256?:string}){
- return transaction(pool,async client=>{const row=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];if(Number(row.revision)!==revision)cas();await client.query('UPDATE bb_execution_capacity_policy SET managed_nodes=$1,global_model_limit=$2,max_nodes=$3,budget_available=$4,provider_concurrency_limit=$5,provider_policy_sha256=$6,expense_policy_sha256=$7,node_model_limit=$8,revision=revision+1 WHERE singleton',[input.managed_nodes,input.global_model_limit,input.max_nodes,input.budget_available,input.provider_concurrency_limit??4,input.provider_policy_sha256??null,input.expense_policy_sha256??null,input.node_model_limit??row.node_model_limit]);});
+export async function configureExecutionCapacity(pool:Pool,revision:number,input:{managed_nodes:boolean;global_model_limit:number;max_nodes:number;budget_available:boolean;node_model_limit?:number;provider_concurrency_limit?:number;provider_policy_sha256?:string;expense_policy_sha256?:string;workflow_slots_enabled?:boolean;authoring_slots?:number;postprocess_slots?:number;expansion_budget_review_sha256?:string}){
+ return transaction(pool,async client=>{const row=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];if(Number(row.revision)!==revision)cas();await client.query(`UPDATE bb_execution_capacity_policy SET managed_nodes=$1,global_model_limit=$2,max_nodes=$3,budget_available=$4,provider_concurrency_limit=$5,provider_policy_sha256=$6,expense_policy_sha256=$7,node_model_limit=$8,workflow_slots_enabled=$9,authoring_slots=$10,postprocess_slots=$11,expansion_budget_review_sha256=$12,revision=revision+1 WHERE singleton`,[input.managed_nodes,input.global_model_limit,input.max_nodes,input.budget_available,input.provider_concurrency_limit??4,input.provider_policy_sha256??null,input.expense_policy_sha256??null,input.node_model_limit??row.node_model_limit,input.workflow_slots_enabled??row.workflow_slots_enabled,input.authoring_slots??row.authoring_slots,input.postprocess_slots??row.postprocess_slots,input.expansion_budget_review_sha256??row.expansion_budget_review_sha256]);});
+}
+
+/** Only trusted registered v1 services can initialize the new workflow. */
+export async function workflowExecutionEnabled(pool:Pool,phase:'authoring'|'postprocess'='authoring'){
+ const c=contexts.get(pool);if(!c)return false;
+ const q=await pool.query(`SELECT 1 FROM bb_execution_capacity_policy p,bb_execution_nodes n
+  JOIN bb_execution_node_sessions s ON s.node_id=n.id AND s.epoch=n.epoch
+  WHERE p.singleton AND p.managed_nodes AND p.workflow_slots_enabled AND p.budget_available
+  AND n.account_id=$1 AND n.region=$2 AND n.instance_id=$3 AND n.epoch=$4 AND n.state IN ('ready','draining')
+  AND s.session_id=$5 AND s.state='active' AND s.workflow_protocol_version=1
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(n.expected_services) svc WHERE svc->>'service_id'=s.service_id
+   AND svc->>'workflow_protocol_version'='1' AND svc->'capabilities' ? $6)`,[c.identity.account_id,c.identity.region,c.identity.instance_id,c.identity.epoch,c.session_id,phase]);
+ return !!q.rowCount;
 }
 
 export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapacitySnapshot>{
@@ -356,9 +381,11 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
    const current=await dto(client,row,services);
    nodes.push(current);
    if(current.state!=='ready')continue;
-   const free=Math.max(0,Number(p.node_model_limit)-current.active_leases);
-   for(const capability of new Set(services.flatMap(service=>service.capabilities)))
+   for(const capability of new Set(services.flatMap(service=>service.capabilities))){
+    const free=p.workflow_slots_enabled&&capability==='authoring'?current.ready_authoring_slots??0:
+     p.workflow_slots_enabled&&capability==='postprocess'?current.ready_postprocess_slots??0:Math.max(0,Number(p.node_model_limit)-current.active_leases);
     availableRunSlots.set(capability,(availableRunSlots.get(capability)??0)+free);
+   }
   }
   const holders=Number((await client.query('SELECT count(*) AS n FROM bb_model_capacity_holders')).rows[0].n);
   // Already-admitted jobs only. Expiry alone does not turn an owned job into
@@ -373,7 +400,7 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
    WHERE j.job_type<>'parse' AND j.state IN ('queued','running','paused') AND r.state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')
    AND p.archived_at IS NULL AND p.deleted_at IS NULL ORDER BY j.created_at,j.id`)).rows;
   const excluded={shared_plan_waiter:0,paused:0,payment_blocked:0,unknown_call:0,active_lease:0,unready_input:0,batch_window:0};
-  const work:{capability:'authoring'|'review'|'assistant'|'probe';created:Date;key:string}[]=[];
+  const work:{capability:'authoring'|'review'|'assistant'|'probe'|'postprocess';created:Date;key:string}[]=[];
   const batches=new Map<string,ExecutionBatchDemand>(),batchUsed=new Map<string,number>();
   for(const row of rows){
    if(await providerCallNeedsReconciliation(client,row.id)){excluded.unknown_call++;continue;}
@@ -403,7 +430,7 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
     key=demand.key;batchUsed.set(row.batch_id,(batchUsed.get(row.batch_id)??0)+1);
    }
    if(work.some(w=>w.key===key)){excluded.shared_plan_waiter++;continue;}
-   work.push({capability:row.job_type==='platform_probe'?'probe':row.task_kind==='review'?'review':'authoring',created:new Date(),key});
+   work.push({capability:row.checkpoint?.workflow_v1?.protocol_version===1&&row.checkpoint.workflow_v1.phase==='postprocess'?'postprocess':row.job_type==='platform_probe'?'probe':row.task_kind==='review'?'review':'authoring',created:new Date(),key});
   }
   const messages=(await client.query(`SELECT m.*,EXISTS(SELECT 1 FROM bb_review_assistant_attempts a WHERE a.message_id=m.id AND a.status='pending_reconcile') AS unknown,
    EXISTS(SELECT 1 FROM bb_billing_safety_blocks l WHERE l.scope_key='wallet:'||m.owner_user_id AND l.resume_event_id IS NULL) AS payment_blocked
@@ -423,9 +450,9 @@ export async function executionCapacitySnapshot(pool:Pool):Promise<ExecutionCapa
   await client.query('DELETE FROM bb_execution_work_readiness WHERE NOT (work_key=ANY($1::text[]))',[keys]);
   for(const w of work){const r=(await client.query('INSERT INTO bb_execution_work_readiness(work_key,capability) VALUES($1,$2) ON CONFLICT(work_key) DO UPDATE SET capability=EXCLUDED.capability RETURNING ready_since',[w.key,w.capability])).rows[0];w.created=r.ready_since;}
   const oldest=(w:typeof work)=>w.length?Math.max(0,Math.floor((Date.now()-Math.min(...w.map(x=>x.created.getTime())))/1000)):null;
-  const capabilities=['authoring','review','assistant','probe'] as const;
+  const capabilities:ExecutionNode['capabilities']=p.workflow_slots_enabled?['authoring','review','assistant','probe','postprocess']:['authoring','review','assistant','probe'];
   return {version:'execution-capacity-v1',observed_at:new Date().toISOString(),policy:policyDto(p),nodes,
-   pending_cloud_reservations:Number((await client.query("SELECT count(*) AS n FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown')")).rows[0].n),active_model_calls:holders,available_model_slots:p.budget_available?Math.max(0,p.global_model_limit-holders):0,effective_queued_work:work.length,oldest_wait_seconds:oldest(work),groups:capabilities.map(capability=>({capability,effective_queued_work:work.filter(w=>w.capability===capability).length,oldest_wait_seconds:oldest(work.filter(w=>w.capability===capability)),occupied_run_slots:nodes.filter(n=>n.capabilities.includes(capability)).reduce((s,n)=>s+n.active_leases,0),available_run_slots:availableRunSlots.get(capability)??0})),excluded};
+   pending_cloud_reservations:Number((await client.query("SELECT count(*) AS n FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown')")).rows[0].n),active_model_calls:holders,available_model_slots:p.budget_available?Math.max(0,p.global_model_limit-holders):0,effective_queued_work:work.length,oldest_wait_seconds:oldest(work),groups:capabilities.map(capability=>({capability,effective_queued_work:work.filter(w=>w.capability===capability).length,oldest_wait_seconds:oldest(work.filter(w=>w.capability===capability)),occupied_run_slots:nodes.filter(n=>n.capabilities.includes(capability)).reduce((s,n)=>s+(p.workflow_slots_enabled&&capability==='authoring'?(n.active_authoring_leases??0)+(n.active_legacy_leases??0):p.workflow_slots_enabled&&capability==='postprocess'?(n.active_postprocess_leases??0)+(n.active_legacy_leases??0):n.active_leases),0),available_run_slots:availableRunSlots.get(capability)??0})),excluded};
  });
 }
 

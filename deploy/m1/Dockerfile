@@ -182,6 +182,9 @@ RUN /usr/local/bin/bb-verify-ocr-runtime
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
 # #17 disk-backed parse staging (BB_PARSE_STAGING_DIR); also inherited by a fresh named volume.
 RUN mkdir -p /var/lib/bondbuddy/parse-staging && chown node:node /var/lib/bondbuddy/parse-staging && chmod 0700 /var/lib/bondbuddy/parse-staging
+RUN install -d -o node -g node -m 0700 /var/lib/bondbuddy/authoring-state \
+    /var/lib/bondbuddy/authoring-state/attempts /var/lib/bondbuddy/authoring-state/spool \
+    /var/lib/bondbuddy/authoring-state/workflows
 USER node
 # #17 long-lived WorkerRuntime: leased parse/run slots, sweep, heartbeat (readiness) and, only with
 # BB_PLATFORM_PROBE_ENABLED=1, the operator probe loop. PID 1 is node, so SIGTERM drains and releases leases.

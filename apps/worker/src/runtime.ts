@@ -2,6 +2,11 @@ import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren,nativeExecutionProcesses} from './execution-node-runtime.js';
 import {ManagedRunRetries} from './managed-run-retries.js';
+import {needsLeaseRelease} from './lease-outcome.js';
+import {durableSpoolRoot,durableSpoolHealth} from './durable-spool.js';
+import {runDurableSpoolPass} from './durable-spool-consumer.js';
+import {boundedPrivateBlobs} from './bounded-private-blobs.js';
+import {mkdir} from 'node:fs/promises';
 import {assertTaskExecution,initializeTaskExecution,taskNativeProcesses,taskReleaseProof,retireTaskExecution,sweepCompletedTaskExecutions,withBackgroundTaskExecution} from './task-execution.js';
 import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
 import { modelCallConcurrency } from './model-call-budget.js';
@@ -52,6 +57,7 @@ export type WorkerRuntimeOptions = {
   /** Private scheduling filter; task kinds come from the shared contract. */
   runKinds?: readonly RunKind[];
   runStages?: RunStage[];
+  workflowPhase?:import('@bondbuddy/contracts').WorkflowPhase|'mixed';
   /** Trusted #15 producer binding. With runStages, only the environment factory's materials stage may be replaced. */
   factCandidateProducer?: ParsedFactProducer;
   /** #15/#19 reviewed context loader; production env options install the existing fail-closed implementation. */
@@ -116,13 +122,15 @@ export class WorkerRuntime {
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
+  private spoolPending=0;
+  private spoolUnsafe=false;
   private readonly providerRecovery: ProviderReconciliationSweep;
   private readonly candidateRetention: NonNullable<WorkerRuntimeOptions['candidateRetention']>;
   private candidateScan?: Promise<number>;
   private candidateInventoryFault = false;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'candidateRetention' | 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
-    & Pick<WorkerRuntimeOptions, 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'candidateRetention' | 'workflowPhase' | 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
+    & Pick<WorkerRuntimeOptions, 'workflowPhase' | 'executionTransport' | 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
     // Parser-only deployments never create authoring workspaces. Their independent
@@ -130,7 +138,7 @@ export class WorkerRuntime {
     this.candidateRetention = options.candidateRetention ?? (!options.kinds || options.kinds.includes('run')
       ? createFileWorkspaceRetention() : { pendingCount: async () => 0 });
     this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
-      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
+      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,workflowEnabled:!!options.workflowPhase,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       uploadConfirmationEnabled: false, uploadConfirmationLane: 'general', uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
@@ -163,6 +171,7 @@ export class WorkerRuntime {
   }
 
   private get dedicatedInteractiveSlots() {
+    if(this.o.workflowPhase)return 0;
     return this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='qa'||kind==='generation') ? this.o.interactiveSlots : 0;
   }
 
@@ -177,6 +186,7 @@ export class WorkerRuntime {
     if(this.o.uploadConfirmationSmallSlot)this.confirmationLoops.push(this.uploadConfirmationLoop('small'));
     this.loops.push(this.sweepLoop());
     this.heartbeatTask=this.heartbeatLoop();
+    if(executionNodeForPool(this.o.pool))this.loops.push(this.spoolLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
     if (this.o.reviewAssistant && this.o.kinds.includes('run') && this.o.runKinds.includes('review'))
@@ -226,6 +236,7 @@ export class WorkerRuntime {
   private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false) {
     let turn = slot;
     while (!this.stopping) {
+      if(executionNodeForPool(this.o.pool)){await this.refreshSpoolHealth();if(this.spoolUnsafe){await sleep(this.o.pollMs,this.stopSignal.signal);continue;}}
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
@@ -240,7 +251,7 @@ export class WorkerRuntime {
           }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              runKinds: this.o.runKinds, interactiveOnly, workerInstanceId:this.o.workerId, reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds: this.o.runKinds, interactiveOnly,workflowPhase:this.o.workflowPhase==='mixed'?(slot===0?'authoring':'postprocess'):this.o.workflowPhase, workerInstanceId:this.o.workerId, reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
@@ -248,7 +259,7 @@ export class WorkerRuntime {
               onLease: lease => { if (lease) {completedLease=lease;this.runLeases.set(slot, lease);} else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
-          if(outcome==='retry'&&completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
+          if(needsLeaseRelease(outcome)&&completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
           if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
         } catch (error) {
           if(completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
@@ -350,7 +361,8 @@ export class WorkerRuntime {
           void refresh.finally(()=>{if(this.transportRefreshTask===refresh)this.transportRefreshTask=null;}).catch(()=>{});
         }
         const [native,retained]=await Promise.all([nativeExecutionChildren(),this.retainedCandidateCount()]);
-        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size+retained,ready:!this.stopping&&retained===0&&!!transport?.ready(),finished:stopped});
+        await this.refreshSpoolHealth();
+        await heartbeatExecutionRuntime(this.o.pool,{native_processes:native,unpersisted_results:this.runLeases.size+this.parseLeases.size+retained+this.spoolPending,ready:!this.stopping&&retained===0&&!this.spoolUnsafe&&!!transport?.ready(),finished:stopped&&retained===0&&this.spoolPending===0});
       } await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
     catch { this.counters.errors++; }
   }
@@ -361,9 +373,9 @@ export class WorkerRuntime {
       if(managed)await this.flushRetries();
       await this.heartbeat();
       if(managed){
-        if(this.drainWorkSettled&&!this.retries.pendingCount&&await this.retainedCandidateCount()===0){
+        if(this.drainWorkSettled&&!this.retries.pendingCount&&!this.spoolPending&&await this.retainedCandidateCount()===0){
           try{
-            await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size+await this.retainedCandidateCount(),ready:false,finished:true});
+            await heartbeatExecutionRuntime(this.o.pool,{native_processes:await nativeExecutionChildren(),unpersisted_results:this.runLeases.size+this.parseLeases.size+this.spoolPending+await this.retainedCandidateCount(),ready:false,finished:true});
             this.sessionFinished=true;this.o.executionTransport?.close();this.finishSession();return;
           }catch{this.counters.errors++;this.emit({kind:'execution_session_finish_retry'});}
         }else if(!this.stopping){
@@ -372,6 +384,27 @@ export class WorkerRuntime {
       }
       await sleep(this.o.heartbeatMs,this.stopping?undefined:this.stopSignal.signal);
     }
+  }
+
+  private async refreshSpoolHealth(){
+    try{
+      const workRoot=process.env.BB_CODEX_WORK_ROOT??process.env.BB_PARSE_STAGING_DIR??'/tmp/bondbuddy-codex';
+      await mkdir(workRoot,{recursive:true,mode:0o700});
+      const health=await durableSpoolHealth(durableSpoolRoot(workRoot),workRoot);
+      this.spoolPending=health.pending+health.retained;this.spoolUnsafe=health.unsafe>0||health.lowDisk;
+    }catch{this.spoolPending=Math.max(1,this.spoolPending);this.spoolUnsafe=true;}
+  }
+  private async spoolLoop(){
+    do{
+      await this.refreshSpoolHealth();
+      if(this.spoolPending){
+        try{const result=await runDurableSpoolPass(this.o.pool,durableSpoolRoot(process.env.BB_CODEX_WORK_ROOT??process.env.BB_PARSE_STAGING_DIR));this.emit({kind:'durable_spool',registered:result.registered,pending:result.pending,failed:result.failed});}
+        catch{this.counters.errors++;this.emit({kind:'durable_spool',outcome:'blocked'});}
+      }
+      await this.refreshSpoolHealth();
+      if(this.stopping&&!this.spoolPending)break;
+      await sleep(Math.max(this.o.pollMs,10000),this.stopping?undefined:this.stopSignal.signal);
+    }while(!this.stopping||this.spoolPending>0);
   }
 
   /** One pass over paused work. Safe to run from several workers: every transition re-checks under row locks. */
@@ -390,10 +423,10 @@ export class WorkerRuntime {
         if(run.pause_reason!=='material_parse_pending')continue;
         const readiness = await materialsReadiness(pool, run);
         // A failed material is decided on the next claim (the stage fails the run with its code).
-        if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
+        if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready',{blobs:this.o.blobs});
       }
-      for (const r of await pausedRuns(pool, 'credits_exhausted', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'credits_recharged');
-      for (const r of await pausedRuns(pool, 'billing_reconcile', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'billing_reconciled');
+      for (const r of await pausedRuns(pool, 'credits_exhausted', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'credits_recharged',{blobs:this.o.blobs});
+      for (const r of await pausedRuns(pool, 'billing_reconcile', 20, this.o.runKinds)) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'billing_reconciled',{blobs:this.o.blobs});
       for (const r of await pausedRuns(pool, 'trial_limit', 20, this.o.runKinds)) {
         const client = await pool.connect();
         let ready = false;
@@ -405,7 +438,7 @@ export class WorkerRuntime {
           if (error instanceof TrialLimitProblem) ready = error.limit === 'operator_deny';
           else throw error;
         } finally { client.release(); }
-        if (ready) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'trial_limit_cleared');
+        if (ready) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'trial_limit_cleared',{blobs:this.o.blobs});
       }
     }
     if (this.o.kinds.includes('parse') && this.o.ocrEnabled && this.o.parse?.ocr) await requeueAwaitingOcrParseJobs(pool, { minPausedSeconds: this.o.ocrRetrySeconds });
@@ -484,6 +517,8 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   const group = env.BB_WORKER_GROUP;
   if (group !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(group)) throw new Error('Invalid BB_WORKER_GROUP');
   const ocrEnabled = env.BB_OCR_ENABLED === '1';
+  const workflowEnabled=env.BB_WORKFLOW_V1==='1';
+  if(workflowEnabled&&env.AZURE_STORAGE_CONNECTION_STRING)blobs=boundedPrivateBlobs(blobs,{connectionString:env.AZURE_STORAGE_CONNECTION_STRING,containerName:env.AZURE_STORAGE_CONTAINER});
   const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions(env)) : undefined;
   let platformProbe: WorkerRuntimeOptions['platformProbe'];
   if (env.BB_PLATFORM_PROBE_ENABLED === '1') {
@@ -494,8 +529,11 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   // #15/#31: the fact evidence review guard stays off unless the deployment explicitly enables it.
   const factEvidenceReviewGate = env.BB_FACT_EVIDENCE_REVIEW_GATE === '1'
     ? { enabled: () => true } : undefined;
+  const workflowPhase=env.BB_WORKFLOW_PHASE;
+  if(workflowEnabled&&(!['authoring','postprocess','mixed'].includes(workflowPhase??'')||!env.BB_DURABLE_SPOOL_ROOT||!env.BB_WORKFLOW_WORK_ROOT||!Number.isSafeInteger(Number(env.BB_WORKFLOW_TOKEN_LIMIT))||Number(env.BB_WORKFLOW_TOKEN_LIMIT)<1))throw Error('WORKFLOW_RUNTIME_CONFIGURATION_REQUIRED');
+  if(!workflowEnabled&&workflowPhase)throw Error('WORKFLOW_RUNTIME_CONFIGURATION_CONFLICT');
   const runStages = defaultRunStages({ model_generation: modelGenerationRouter(
-    factEvidenceReviewGate ? { factEvidenceReviewGate } : {}),
+    {workflowEnabled,...(factEvidenceReviewGate ? { factEvidenceReviewGate } : {})}),
     word_delivery: historicalWordDeliveryStage() });
   const testChannelEnabled = env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
   // #76 target-period candidate producer: off unless the deployment explicitly enables the call.
@@ -506,6 +544,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
+    ...(workflowEnabled?{workflowPhase:workflowPhase as 'authoring'|'postprocess'|'mixed'}:{}),
     ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
     ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: { slots: intEnv(env, 'BB_REVIEW_ASSISTANT_SLOTS', 1, 1, 8) } } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
@@ -514,11 +553,11 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
       { await produceTargetPeriodCandidateSnapshot({ pool, blobs }, request); } } : {}),
     ...(testChannelEnabled ? { testRuleCapabilityLoader: createSsePrivateTestRuleCapabilityLoader(pool) } : {}),
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
-    interactiveSlots: intEnv(env, 'BB_WORKER_INTERACTIVE_SLOTS', 1, 0, 4),
+    interactiveSlots: workflowEnabled?0:intEnv(env, 'BB_WORKER_INTERACTIVE_SLOTS', 1, 0, 4),
     uploadConfirmationEnabled: env.BB_UPLOAD_CONFIRMATION_ENABLED==='1',
     uploadConfirmationLane: confirmationLane as UploadConfirmationLane,
     uploadConfirmationSmallSlot: smallSlot,
-    concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
+    concurrency: workflowEnabled?(workflowPhase==='mixed'?2:1):intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
     parse: { issuerIdentityProducer: createIssuerIdentityProducer(pool), material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),

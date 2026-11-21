@@ -19,6 +19,7 @@ import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConf
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import { runReconcileCommand } from './reconcile-run.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
 
 const testDatabaseUrl = await isolatedTestDatabase('BB_TEST_CODEX_DATABASE_URL');
 
@@ -40,14 +41,17 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const p = await send('POST', '/api/v1/projects', { name: `Synthetic codex ${label}`, kind: 'update', issuer_name: null, market: null, offering: null });
     assert.equal(p.statusCode, 201, p.body);
     const projectId = p.json().project_id;
-    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
-    const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `synthetic-codex-${label}-${uid()}`, project_id: projectId, input_revision: 1, input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
+    const audit=await uploadSyntheticAudit(app,projectId);
+    const current=await send('GET',`/api/v1/projects/${projectId}`);assert.equal(current.statusCode,200,current.body);
+    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: current.json().draft_revision, material_versions: [audit], requirement_message_ids: [] });
+    assert.equal(input.statusCode,201,input.body);
+    const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `synthetic-codex-${label}-${uid()}`, project_id: projectId, input_revision: input.json().input_revision, input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
     assert.equal(submitted.statusCode, 202, submitted.body);
     const runId = submitted.json().run_id;
     const prompt = Buffer.from(`synthetic codex prompt ${label}`);
     const objectKey = `users/${owner}/projects/${projectId}/snapshots/prompt-${runId}`;
     await blobs.put(objectKey, prompt, 'text/plain');
-    const promptRef = await saveSnapshotRef(pool, { owner, projectId, runId, kind: 'model_request', version: 1, objectKey, sha256: createHash('sha256').update(prompt).digest('hex'), redactionVersion: 'synthetic_redaction_v1', inputRevision: 1, inputHash: input.json().input_hash, blobs });
+    const promptRef = await saveSnapshotRef(pool, { owner, projectId, runId, kind: 'model_request', version: 1, objectKey, sha256: createHash('sha256').update(prompt).digest('hex'), redactionVersion: 'synthetic_redaction_v1', inputRevision: input.json().input_revision, inputHash: input.json().input_hash, blobs });
     const lease = await claim(pool, 30);
     assert.ok(lease); assert.equal(lease.runId, runId);
     return { projectId, runId, promptRef, lease };

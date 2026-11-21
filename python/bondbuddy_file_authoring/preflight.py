@@ -14,7 +14,8 @@ from pathlib import Path
 
 from . import quality
 from .check import STORY, package, resolve_revisions
-from .fixed_edit import (Editor, MAX_LOG, load_input, regular_bytes, validate_log,
+from .fixed_edit import (Editor, MAX_LOG, committed_operations_bytes, committed_operations_path,
+                         load_input, regular_bytes, validate_log,
                          write_json, write_package)
 from .source_outline import compare_outlines, heading_role, outline, style_map
 from .template_manifest import build_nodes, sha
@@ -181,9 +182,12 @@ def preflight(input_path, operations_path, report_path):
         if data.get('baseline_kind') not in {'uploaded_source', 'project_output', 'reconstructed_pdf'}:
             raise ValueError('WORD_PREFLIGHT_BASELINE_KIND_INVALID')
         operations_path = checked_path(root, operations_path, 'output')
-        if not operations_path.exists():
+        snapshot_path = committed_operations_path(input_path, operations_path)
+        checked_path(root, snapshot_path, 'output')
+        protect_report_path(report_path, [snapshot_path])
+        if not snapshot_path.exists():
             raise ValueError('WORD_EDIT_LOG_REQUIRED')
-        operations_raw = regular_bytes(operations_path)
+        operations_raw = regular_bytes(snapshot_path)
         try:
             log = json.loads(operations_raw.decode('utf-8'))
         except (UnicodeError, json.JSONDecodeError):
@@ -225,7 +229,7 @@ def preflight(input_path, operations_path, report_path):
                           diagnostics=diagnostics(baseline, editor, clean, report, log['operations']))
         for path in [input_path, operations_path, source, *([original] if original else [])]:
             checked_path(root, path)
-        if regular_bytes(input_path) != input_raw or regular_bytes(operations_path) != operations_raw or regular_bytes(source, 100 * 1024 * 1024) != baseline_raw or (
+        if regular_bytes(input_path) != input_raw or committed_operations_bytes(input_path, operations_path) != operations_raw or regular_bytes(source, 100 * 1024 * 1024) != baseline_raw or (
                 original is not None and regular_bytes(original, 100 * 1024 * 1024) != pdf_raw):
             raise ValueError('WORD_PREFLIGHT_INPUT_CHANGED')
         result['snapshot_current'] = True

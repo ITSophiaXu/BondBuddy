@@ -48,7 +48,7 @@ export async function reconcileProviderRun(options:Options,owner:string,runId:st
   }
   // Failed/completed attempts with incomplete evidence can also block resume.
   // They must reach the same deadline rather than disappear from this pass.
-  return await resumePausedRun(pool,owner,runId,'provider_reconciled')||await recoverOrFinish();
+  return await resumePausedRun(pool,owner,runId,'provider_reconciled',blobs?{blobs}:undefined)||await recoverOrFinish();
 }
 
 /** No model slots, provider calls or blob reads for the default no-lookup path.

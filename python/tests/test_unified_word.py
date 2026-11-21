@@ -145,3 +145,106 @@ class UnifiedWordTests(unittest.TestCase):
                 request['revision_handling']['source_material']['sha256'] = '0' * 64
             with self.assertRaisesRegex(ValueError, 'WORD_REVISION_SCOPE_MISMATCH'):
                 render(request, self.source, self.tracked, self.clean, self.baseline)
+
+
+class UnifiedWordV2Tests(unittest.TestCase):
+    """Direct projection rendering checks, independent of real model acceptance."""
+    setUp = UnifiedWordTests.setUp
+    tearDown = UnifiedWordTests.tearDown
+    request = UnifiedWordTests.request
+    xml = UnifiedWordTests.xml
+
+    def block(self, block_id, kind, text='', rows=None, **fields):
+        return {'block_id': block_id, 'order': 0, 'kind': kind, 'text': text,
+                'rows': rows or [], 'evidence': ['synthetic-context'], 'pending': [],
+                'heading_level': 1 if kind == 'heading' else None,
+                'style_key': {'heading': 'heading', 'paragraph': 'body', 'table': 'table'}[kind],
+                'table_id': block_id if kind == 'table' else None,
+                'row_order': 0 if kind == 'table' else None, **fields}
+
+    def v2_request(self, blocks):
+        return {**self.request(), 'version': 'unified-word-request-v2', 'blocks': blocks,
+                'source_sha256': None, 'media_type': None, 'records': [], 'additions': []}
+
+    def test_v2_heading_styles_evidence_pending_and_editable_first_draft(self):
+        blocks = [self.block('h1', 'heading', '第一章', heading_level=1),
+                  self.block('h3', 'heading', '三级标题', heading_level=3),
+                  self.block('body', 'paragraph', '可编辑正文', pending=['核对口径']),
+                  self.block('caption', 'paragraph', '图表说明', style_key='caption')]
+        result = render(self.v2_request(blocks), None, self.tracked, self.clean, self.baseline)
+        doc = Document(self.clean)
+        self.assertEqual([p.style.name for p in doc.paragraphs[:2]], ['Heading 1', 'Heading 3'])
+        self.assertEqual(doc.paragraphs[2].style.name, 'Normal')
+        self.assertEqual(doc.paragraphs[-1].style.name, 'Caption')
+        self.assertIn('【待人工确认】核对口径', [p.text for p in doc.paragraphs])
+        self.assertEqual(result['writer_version'], 'bondbuddy-unified-word-2.0.0')
+        self.assertEqual(result['block_audit'][2]['evidence'], ['synthetic-context'])
+        self.assertEqual(result['pending_review'][0]['record_id'], 'body')
+        self.assertEqual(self.tracked.read_bytes(), self.clean.read_bytes())
+        self.assertFalse(list(self.xml(self.tracked).iter(Q('ins'))))
+        self.assertFalse(list(self.xml(self.tracked).iter(Q('del'))))
+
+    def test_v2_contiguous_table_chunks_merge_header_and_keep_each_chunks_audit(self):
+        blocks = [self.block('t1', 'table', '财务表', [['项目', '金额'], ['资产', '100']], table_id='financial'),
+                  self.block('t2', 'table', '财务表', [['项目', '金额'], ['负债', '50']],
+                             table_id='financial', row_order=1, pending=['核对负债'])]
+        result = render(self.v2_request(blocks), None, self.tracked, self.clean, self.baseline)
+        doc = Document(self.clean)
+        self.assertEqual(len(doc.tables), 1)
+        self.assertEqual([[c.text for c in row.cells] for row in doc.tables[0].rows],
+                         [['项目', '金额'], ['资产', '100'], ['负债', '50']])
+        self.assertEqual(len(result['block_audit']), 2)
+        self.assertEqual(result['pending_review'][0]['record_id'], 't2')
+
+    def test_v2_invalid_heading_styles_duplicate_ids_and_source_scope_fail_closed(self):
+        for key, value in [('heading_level', 0), ('heading_level', 10), ('style_key', 'arbitraryOOXML')]:
+            block = self.block('h1', 'heading', '标题'); block[key] = value
+            request = self.v2_request([block, self.block('p1', 'paragraph', '正文')])
+            with self.assertRaisesRegex(ValueError, 'WORD_PROJECTION_INVALID'):
+                render(request, None, self.tracked, self.clean, self.baseline)
+        block = self.block('p1', 'paragraph', '正文')
+        with self.assertRaisesRegex(ValueError, 'WORD_PROJECTION_INVALID'):
+            render(self.v2_request([block, block]), None, self.tracked, self.clean, self.baseline)
+        request = self.v2_request([block]); request['edits'] = [{'record_id': 'unlocked'}]
+        with self.assertRaisesRegex(ValueError, 'WORD_PROJECTION_SOURCE_SCOPE_INVALID'):
+            render(request, None, self.tracked, self.clean, self.baseline)
+
+    def test_v2_table_gap_overlap_header_mismatch_and_nonadjacent_reuse_fail_closed(self):
+        first = self.block('t1', 'table', '表', [['项目', '金额'], ['资产', '100']], table_id='financial')
+        for key, value in [('row_order', 0), ('row_order', 2), ('rows', [['项目', '值'], ['负债', '50']])]:
+            second = self.block('t2', 'table', '表', [['项目', '金额'], ['负债', '50']], table_id='financial', row_order=1)
+            second[key] = value
+            with self.assertRaisesRegex(ValueError, 'WORD_TABLE_CONTINUATION_INVALID'):
+                render(self.v2_request([first, second]), None, self.tracked, self.clean, self.baseline)
+        second = self.block('t2', 'table', '表', [['项目', '金额'], ['负债', '50']], table_id='financial', row_order=1)
+        with self.assertRaisesRegex(ValueError, 'WORD_TABLE_CONTINUATION_INVALID'):
+            render(self.v2_request([first, self.block('p1', 'paragraph', '正文'), second]), None,
+                   self.tracked, self.clean, self.baseline)
+        first['chapter_id'] = 'chapter-one'; second['chapter_id'] = 'chapter-two'
+        with self.assertRaisesRegex(ValueError, 'WORD_TABLE_CONTINUATION_INVALID'):
+            render(self.v2_request([first, second]), None, self.tracked, self.clean, self.baseline)
+
+    def test_v2_pdf_reconstruction_uses_all_projection_blocks_and_keeps_real_source_baseline(self):
+        self.source.write_bytes(b'%PDF-1.4 synthetic source bytes; host parser records are pinned')
+        original = self.source.read_bytes()
+        blocks = [self.block('chapter', 'heading', '更新后的完整章节', heading_level=2),
+                  self.block('body', 'paragraph', '新的完整正文120万元。'),
+                  self.block('table', 'table', '完整财务表', [['项目', '金额'], ['资产', '120']])]
+        request = self.v2_request(blocks)
+        request.update(source_sha256=hashlib.sha256(original).hexdigest(), media_type='application/pdf',
+                       records=[{'id': 'source/p1', 'text': '原PDF正文100万元。', 'locator': {'page': 1}}])
+        result = render(request, self.source, self.tracked, self.clean, self.baseline)
+        self.assertEqual(result['writer_version'], 'bondbuddy-unified-word-2.0.0')
+        self.assertEqual(result['baseline_kind'], 'reconstructed_pdf')
+        self.assertEqual(result['source_sha256'], request['source_sha256'])
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertEqual(Document(self.clean).paragraphs[0].style.name, 'Heading 2')
+        self.assertIn('新的完整正文120万元。', [p.text for p in Document(self.clean).paragraphs])
+        self.assertEqual(Document(self.clean).tables[0].cell(1, 1).text, '120')
+        self.assertEqual(Document(self.baseline).paragraphs[0].text, '原PDF正文100万元。')
+        self.assertEqual(result['effective_baseline_sha256'], hashlib.sha256(self.baseline.read_bytes()).hexdigest())
+        self.assertEqual(self.tracked.read_bytes(), self.clean.read_bytes())
+        self.assertFalse(list(self.xml(self.tracked).iter(Q('ins'))))
+        request['source_sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'WORD_SOURCE_HASH_MISMATCH'):
+            render(request, self.source, self.tracked, self.clean, self.baseline)

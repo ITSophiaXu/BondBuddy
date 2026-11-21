@@ -7,7 +7,7 @@ import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
 import { AuthoringActivitySchema, type AuthoringActivity, ERROR_CODES, RUN_PAUSE_STAGES, TASK_KINDS, ReviewActionSchema, type ReviewAction, type M4AssistantReply, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
-import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
+import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite,gateState,restoreCanonical } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, inspectGeneratedWord, GENERATED_WORD_DELIVERY_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 import { assertTestGrant } from './non-production-test.js';
@@ -17,6 +17,10 @@ import { nextProviderReconcileUnknown, PROVIDER_RECONCILE_UNKNOWN_GRACE_MS } fro
 import { inputManifestHash } from './production-rule-pin.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
+import {AuthoringWorkflowV1Schema,ChapterReceiptV1Schema,WorkflowPostprocessManifestV1Schema,
+ type AuthoringWorkflowV1,type ChapterReceiptV1,type WorkflowPostprocessManifestV1,type WorkflowPhase} from '@bondbuddy/contracts';
+import {workflowExecutionEnabled} from './execution-capacity.js';
+import {executionCloudCompletionMatches,type ExecutionCloudOperation} from '@bondbuddy/contracts';
 
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { creditBalanceExact,lockCreditAccount } from './billing.js';
@@ -55,6 +59,11 @@ async function billingContractRecoverable(client:PoolClient,r:any,j:any){
   return false;
 }
 async function parkBilling(client:PoolClient,r:any,j:any,reason='wallet_isolated',cancel=false,restoreAttempt=false){
+  if(workflowOwned(j)&&j.lease_token){
+    await client.query(`UPDATE bb_jobs SET billing_resume_stage=CASE WHEN stage='billing_reconcile' THEN billing_resume_stage ELSE stage END,
+      billing_cancel_requested_at=CASE WHEN $2 THEN COALESCE(billing_cancel_requested_at,now()) ELSE billing_cancel_requested_at END WHERE id=$1`,[j.id,cancel]);
+    await pendingWorkflowDisposition(client,r,j,{kind:cancel?'cancel':'pause',stage:'billing_reconcile',reason,error_code:'BILLING_NOT_READY'});return;
+  }
   await client.query(`UPDATE bb_jobs SET state='paused',stage='billing_reconcile',lease_token=NULL,lease_until=NULL,
     billing_resume_stage=CASE WHEN stage='billing_reconcile' THEN billing_resume_stage ELSE stage END,
     billing_cancel_requested_at=CASE WHEN $2 THEN COALESCE(billing_cancel_requested_at,now()) ELSE billing_cancel_requested_at END,
@@ -73,8 +82,9 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
   return [...kinds];
 }
 
-async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={}) {
-  await syncAuthoringProgress(client,r,{state,stage,reason});
+async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={},meterMode?:'preserve_restore_v1') {
+  if(meterMode&&(state!=='queued'||reason!=='database_restore_reconciled'))throw new Problem(409,'CAPABILITY_NOT_READY','Restore meter preservation requires the verified queue transition');
+  if(!meterMode)await syncAuthoringProgress(client,r,{state,stage,reason});
   if(terminal.has(state))await client.query('DELETE FROM bb_run_model_activity WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
@@ -131,15 +141,33 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 
 // Run jobs and #79/#16 platform probes share the lease model but are claimed separately, so the
 // run pipeline never picks up a probe and the probe worker never picks up a user run.
-export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean}={}):Promise<Lease|null> {
+export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean;workflowPhase?:WorkflowPhase}={}):Promise<Lease|null> {
   const runKinds = checkedRunKinds(options.runKinds);
   return transaction(pool,async client=>{
-    await executionClaimGate(client,pool);
+    await executionClaimGate(client,pool,options.workflowPhase);
     await lockTaskQueueScheduling(client);
     // Lock order is run then job in every transition, including cancellation.
-    const q=await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND NOT (j.execution_node_id IS NOT NULL AND j.lease_token IS NOT NULL) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY ${accountExecutionLoadSql('r.owner_user_id')},j.created_at,j.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
+    const q=await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND NOT (j.execution_node_id IS NOT NULL AND j.lease_token IS NOT NULL) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1'))
+      AND bb_restore_account_permitted(r.owner_user_id)
+      AND (($4::text IS NULL AND NOT j.checkpoint ? 'workflow_v1' AND NOT j.checkpoint ? 'workflow_admission_v1'
+        AND NOT ((SELECT workflow_slots_enabled FROM bb_execution_capacity_policy WHERE singleton) AND bb_workflow_run_eligible(j.id) AND j.attempts=0
+          AND NOT EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=j.id)
+          AND NOT EXISTS(SELECT 1 FROM jsonb_object_keys(COALESCE(j.checkpoint->'stages','{}'::jsonb)) stage WHERE stage NOT IN ('input_lock','materials_ready','workflow_budget_v1','chapter_context_v1')))) OR ($4::text IS NOT NULL AND
+        ((j.checkpoint#>>'{workflow_v1,protocol_version}'='1' AND j.checkpoint#>>'{workflow_v1,phase}'=$4)
+        OR ($4='authoring' AND NOT j.checkpoint ? 'workflow_v1' AND
+         (NOT j.checkpoint ? 'workflow_admission_v1' OR (j.checkpoint#>>'{workflow_admission_v1,protocol_version}'='1'
+          AND NOT EXISTS(SELECT 1 FROM jsonb_object_keys(COALESCE(j.checkpoint->'stages','{}'::jsonb)) stage WHERE stage NOT IN ('input_lock','materials_ready','workflow_budget_v1','chapter_context_v1','workflow_outline_v1','workflow_outline_prompt'))))
+         AND (NOT j.checkpoint ? 'workflow_admission_v1' OR bb_workflow_preparation_calls_safe(j.id,j.checkpoint))))))
+      ORDER BY ${accountExecutionLoadSql('r.owner_user_id')},j.created_at,j.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,[options.platformProbe===true,runKinds,options.interactiveOnly===true,options.workflowPhase??null]);
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
+    let admittedPhase=options.workflowPhase;
+    if(admittedPhase==='authoring'&&!workflowOwned(j)){
+      const fresh=!!(await client.query('SELECT bb_workflow_run_eligible($1) AS eligible',[j.id])).rows[0]?.eligible&&j.attempts===0&&
+        !Object.keys(j.checkpoint.stages??{}).some(k=>!['input_lock','materials_ready','workflow_budget_v1','chapter_context_v1'].includes(k))&&
+        !(await client.query('SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1',[j.id])).rowCount;
+      if(!fresh){admittedPhase=undefined;await executionClaimGate(client,pool);}
+    }
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
     if(await walletIsolated(client,r)){await parkBilling(client,r,j);return null;}
     if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return null;}
@@ -159,9 +187,11 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     }
     const token=uid();
     await client.query('DELETE FROM bb_run_model_activity WHERE job_id=$1',[j.id]);
-    await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
+    const admitted=(await client.query(`UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,
+      checkpoint=CASE WHEN $4::text='authoring' AND NOT checkpoint ? 'workflow_v1' THEN checkpoint||jsonb_build_object('workflow_admission_v1',jsonb_build_object('protocol_version',1,'input_hash',$5::text)) ELSE checkpoint END,
+      updated_at=now() WHERE id=$1 RETURNING checkpoint`,[j.id,token,leaseSeconds,admittedPhase??null,String(r.input_hash).trim()])).rows[0];
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
-    return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
+    return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:admitted.checkpoint,attempts:j.attempts+1};
   });
 }
 
@@ -176,6 +206,381 @@ async function lockedLease(client:PoolClient, lease:Lease, renewing=false) {
   const expired=j && new Date(j.lease_until).getTime()<=Date.now();
   if(!j || j.lease_token!==lease.token || j.state!=='running' || expired&&!(renewing&&j.renewal_started_in_time===true) || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   return {r,j};
+}
+
+function workflowOwned(j:any){return !!j.checkpoint?.workflow_v1||j.checkpoint?.workflow_admission_v1?.protocol_version===1;}
+function workflowVerificationState(j:any){return j.checkpoint.workflow_v1??{workflow_admission_v1:j.checkpoint.workflow_admission_v1,stages:j.checkpoint.stages??{}};}
+function checkedWorkflow(r:any,j:any):AuthoringWorkflowV1 {
+  const w=j.checkpoint?.workflow_v1;
+  if(!Value.Check(AuthoringWorkflowV1Schema,w)||w.input_hash!==String(r.input_hash).trim()||w.plan_hash!==w.plan.plan_hash||w.plan.input_hash!==w.input_hash)
+    throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow input or protocol changed');
+  const {plan_hash,...plan}=w.plan;
+  if(inputManifestHash(plan)!==plan_hash)throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow plan hash changed');
+  if(new Set(w.plan.chapters.map(c=>c.chapter_id)).size!==w.plan.chapters.length||w.plan.chapters.some((c,index)=>c.order!==index||new Set(c.batches.map(b=>b.batch_id)).size!==c.batches.length||c.batches.some((b,i)=>b.order!==i)))
+    throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow plan order or identity is ambiguous');
+  return structuredClone(w);
+}
+async function saveWorkflow(client:PoolClient,j:any,w:AuthoringWorkflowV1,lease?:Lease){
+  const q=await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('workflow_v1',$2::jsonb),updated_at=now() WHERE id=$1 RETURNING checkpoint",[j.id,JSON.stringify(w)]);
+  j.checkpoint=q.rows[0].checkpoint;if(lease)lease.checkpoint=j.checkpoint;
+}
+type WorkflowDisposition=NonNullable<AuthoringWorkflowV1['pending_disposition']>;
+async function pendingWorkflowDisposition(client:PoolClient,r:any,j:any,disposition:WorkflowDisposition,lease?:Lease){
+  if(!j.checkpoint?.workflow_v1){
+    if(!workflowOwned(j))throw new Problem(409,'INPUT_REVISION_CONFLICT','No admitted workflow');
+    const q=await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('workflow_pending_disposition_v1',$2::jsonb),updated_at=now() WHERE id=$1 RETURNING checkpoint",[j.id,JSON.stringify(disposition)]);
+    j.checkpoint=q.rows[0].checkpoint;if(lease)lease.checkpoint=j.checkpoint;
+    await event(client,r,'running','stopping','workflow_pause_pending',disposition.error_code,'run.progress');return;
+  }
+  const w=checkedWorkflow(r,j);
+  // Cancellation wins a simultaneous handoff or material/provider pause.
+  if(w.pending_disposition?.kind==='cancel'&&disposition.kind!=='cancel')return;
+  w.pending_disposition=disposition;await saveWorkflow(client,j,w,lease);
+  await event(client,r,'running','stopping',disposition.kind==='handoff'?'workflow_handoff_pending':'workflow_pause_pending',disposition.error_code,'run.progress');
+}
+async function verifyPreparationOutline(pool:Pool,lease:Lease,workflow:AuthoringWorkflowV1,blobs?:PrivateBlobs){
+  const j=(await pool.query('SELECT j.checkpoint,r.project_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1 AND j.run_id=$2 AND j.owner_user_id=$3',[lease.jobId,lease.runId,lease.owner])).rows[0];
+  const outline=j?.checkpoint.stages?.workflow_outline_v1;if(!outline)return undefined;
+  if(!blobs)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow outline requires private object verification');
+  const context=j.checkpoint.stages.chapter_context_v1?.ref;
+  const read=async(object:any)=>{if(!object?.key?.startsWith(`users/${lease.owner}/projects/${j.project_id}/runs/${lease.runId}/workflow-v1/`)||!Number.isSafeInteger(object.byte_size)||object.byte_size<1||object.byte_size>100*1024*1024)throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow preparation object identity changed');
+    const bytes=await blobs.getIfExistsBounded(object.key,100*1024*1024);if(!bytes||bytes.length!==object.byte_size||digest(bytes)!==object.sha256)throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow preparation object changed');return JSON.parse(bytes.toString('utf8'));};
+  const c=await read(context),o=await read(outline.ref);
+  if(c.version!=='chapter-context-v1'||c.input_hash!==workflow.input_hash||c.material_snapshot_hash!==workflow.plan.material_snapshot_hash||inputManifestHash({input:c.input,parser_version:c.parser_version})!==c.material_snapshot_hash||
+    outline.context_hash!==c.material_snapshot_hash||outline.logical_call_id!==inputManifestHash([lease.runId,workflow.input_hash,c.material_snapshot_hash,'outline-v1'])||
+    o.version!=='workflow-outline-v1'||o.input_hash!==workflow.input_hash||o.context_hash!==outline.context_hash||!Array.isArray(o.chapters)||!o.chapters.length||o.chapters.length>40||o.chapters.some((title:any)=>typeof title!=='string'||!title.trim())||
+    restoreCanonical(o.chapters)!==restoreCanonical(workflow.plan.chapters.map(chapter=>chapter.title)))throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow outline or context binding changed');
+  return inputManifestHash(workflowVerificationState(j));
+}
+export async function initializeWorkflow(pool:Pool,lease:Lease,workflow:AuthoringWorkflowV1,options?:{blobs:PrivateBlobs}):Promise<AuthoringWorkflowV1>{
+  if(!await workflowExecutionEnabled(pool,'authoring'))throw new Problem(409,'CAPABILITY_NOT_READY','Workflow phase execution is not enabled');
+  const verifiedOutline=await verifyPreparationOutline(pool,lease,workflow,options?.blobs);
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease);
+    if(j.checkpoint?.workflow_v1){const prior=checkedWorkflow(r,j);if(prior.plan_hash!==workflow.plan_hash)throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow already initialized with another plan');return prior;}
+    if(j.execution_admission_phase!=='authoring'||!(await client.query('SELECT bb_workflow_preparation_calls_safe($1,$2::jsonb) AS safe',[j.id,JSON.stringify(j.checkpoint)])).rows[0]?.safe||
+      Object.keys(j.checkpoint?.stages??{}).some(k=>!['input_lock','materials_ready','workflow_budget_v1','chapter_context_v1','workflow_outline_v1','workflow_outline_prompt'].includes(k))||Object.keys(j.checkpoint??{}).some(k=>k.startsWith('file_authoring'))||
+      j.checkpoint.stages?.workflow_outline_v1&&verifiedOutline!==inputManifestHash(workflowVerificationState(j)))
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','An existing legacy execution cannot change protocol');
+    const candidate={...j,checkpoint:{...j.checkpoint,workflow_v1:workflow}};const w=checkedWorkflow(r,candidate);
+    if(j.checkpoint?.stages?.workflow_budget_v1?.run_deadline_at&&j.checkpoint.stages.workflow_budget_v1.run_deadline_at!==w.run_deadline_at)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow preparation deadline changed');
+    if(w.phase!=='authoring'||w.next_cursor.chapter!==0||w.next_cursor.batch!==0||w.completed.length||w.token_budget.used_known||w.token_budget.unknown_calls.length||w.repair_budget.used_ms||w.repair_budget.used_revisions||w.phase_failures.authoring||w.phase_failures.postprocess||w.pending_disposition)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Initial workflow cursor or budget is not empty');
+    if(j.checkpoint.workflow_phase_failures_v1)w.phase_failures=j.checkpoint.workflow_phase_failures_v1;
+    const usage=await workflowUsage(client,j.id);if(usage.unknown_calls.length||usage.used_known>=w.token_budget.limit)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow preparation token budget is exhausted or unknown');
+    w.token_budget={...w.token_budget,...usage};
+    await saveWorkflow(client,j,w,lease);return w;
+  });
+}
+async function workflowUsage(client:PoolClient,jobId:string){
+  const rows=(await client.query(`SELECT a.id,a.status,u.usage_status,u.conflicting_measurements,u.input_tokens,u.output_tokens
+    FROM bb_model_call_attempts a LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+    WHERE a.job_id=$1 AND a.status<>'confirmed_not_sent' ORDER BY a.created_at,a.id`,[jobId])).rows;
+  const unknown=rows.filter(a=>a.status==='pending_reconcile'||a.usage_status!=='measured'||Number(a.conflicting_measurements)>0).map(a=>a.id);
+  let used=0n;for(const a of rows)if(a.usage_status==='measured'&&Number(a.conflicting_measurements)===0)used+=BigInt(a.input_tokens??0)+BigInt(a.output_tokens??0);
+  if(used>BigInt(Number.MAX_SAFE_INTEGER))throw new Problem(409,'CAPABILITY_NOT_READY','Workflow token budget exceeds supported accounting range');
+  return {used_known:Number(used),unknown_calls:unknown};
+}
+export async function commitChapter(pool:Pool,lease:Lease,expectedCursor:{chapter:number;batch:number},receipt:ChapterReceiptV1):Promise<AuthoringWorkflowV1>{
+  if(!Value.Check(ChapterReceiptV1Schema,receipt))throw new Problem(422,'VALIDATION_FAILED','Invalid chapter receipt');
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease),w=checkedWorkflow(r,j);
+    if(receipt.run_id!==r.id||receipt.job_id!==j.id||receipt.input_hash!==w.input_hash||receipt.plan_hash!==w.plan_hash)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Chapter receipt input changed');
+    const prior=w.completed.find(c=>c.chapter_id===receipt.chapter_id&&c.batch_id===receipt.batch_id);
+    if(prior){const {created_at:priorTime,...priorBody}=prior,{created_at:receiptTime,...receiptBody}=receipt;
+      if(inputManifestHash(priorBody)!==inputManifestHash(receiptBody))throw new Problem(409,'IDEMPOTENCY_CONFLICT','CHAPTER_RECEIPT_CONFLICT');return w;}
+    if(w.phase!=='authoring'||w.pending_disposition||w.next_cursor.chapter!==expectedCursor.chapter||w.next_cursor.batch!==expectedCursor.batch)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow cursor changed');
+    const chapter=w.plan.chapters[expectedCursor.chapter],batch=chapter?.batches[expectedCursor.batch];
+    if(!chapter||!batch||chapter.chapter_id!==receipt.chapter_id||batch.batch_id!==receipt.batch_id)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Chapter receipt is outside the planned range');
+    if(!receipt.object.key.startsWith(`users/${lease.owner}/projects/${r.project_id}/`))throw new Problem(409,'INPUT_REVISION_CONFLICT','Chapter object ownership changed');
+    const attempt=(await client.query('SELECT status,attempt_no FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 ORDER BY attempt_no DESC LIMIT 1',[lease.owner,j.id,receipt.logical_call_id])).rows[0];
+    if(attempt?.status!=='completed'||attempt.attempt_no!==receipt.execution_generation||await providerCallNeedsReconciliation(client,j.id))
+      throw new Problem(409,'CAPABILITY_NOT_READY','Chapter call is not reconciled');
+    const usage=await workflowUsage(client,j.id);if(usage.unknown_calls.length)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow usage is unknown');
+    w.token_budget={...w.token_budget,...usage};w.completed.push(receipt);
+    w.next_cursor=expectedCursor.batch+1<chapter.batches.length?{chapter:expectedCursor.chapter,batch:expectedCursor.batch+1}:{chapter:expectedCursor.chapter+1,batch:0};
+    await saveWorkflow(client,j,w,lease);await event(client,r,'running','model_generation','workflow_chapter_committed',undefined,'run.progress');return w;
+  });
+}
+export async function preparePostprocess(pool:Pool,lease:Lease,expectedPhase:'authoring',manifest:WorkflowPostprocessManifestV1):Promise<void>{
+  if(!Value.Check(WorkflowPostprocessManifestV1Schema,manifest))throw new Problem(422,'VALIDATION_FAILED','Invalid workflow manifest');
+  await transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease),w=checkedWorkflow(r,j);
+    if(w.phase!==expectedPhase||w.pending_disposition||manifest.input_hash!==w.input_hash||manifest.plan_hash!==w.plan_hash||w.next_cursor.chapter!==w.plan.chapters.length||w.next_cursor.batch!==0||
+      inputManifestHash(manifest.chapter_receipts)!==inputManifestHash(w.completed)||await providerCallNeedsReconciliation(client,j.id))
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow is not ready for postprocess');
+    if(!manifest.candidate.key.startsWith(`users/${lease.owner}/projects/${r.project_id}/`))throw new Problem(409,'INPUT_REVISION_CONFLICT','Manifest object ownership changed');
+    w.phase='postprocess';w.handoff_id=uid();w.postprocess_manifest=manifest;
+    await saveWorkflow(client,j,w,lease);await pendingWorkflowDisposition(client,r,j,{kind:'handoff',stage:'model_generation',reason:'workflow_postprocess_ready'},lease);
+  });
+}
+export async function requestWorkflowPause(pool:Pool,lease:Lease,stage:string,reason:string,errorCode?:string){
+  await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease);await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage,reason,...(errorCode?{error_code:errorCode}:{})},lease);});
+}
+export async function recordWorkflowFailure(pool:Pool,lease:Lease,phase:WorkflowPhase){
+  return transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease);
+    if(!j.checkpoint?.workflow_v1&&workflowOwned(j)){
+      const failures={authoring:0,postprocess:0,...j.checkpoint.workflow_phase_failures_v1};failures[phase]++;
+      const q=await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('workflow_phase_failures_v1',$2::jsonb) WHERE id=$1 RETURNING checkpoint",[j.id,JSON.stringify(failures)]);lease.checkpoint=q.rows[0].checkpoint;
+      return {failures:failures[phase],exhausted:failures[phase]>=3};
+    }
+    const w=checkedWorkflow(r,j);w.phase_failures[phase]++;await saveWorkflow(client,j,w,lease);return {failures:w.phase_failures[phase],exhausted:w.phase_failures[phase]>=3};});
+}
+export type WorkflowRepairInput={kind:'reserve_revision';repairKey:string;logicalCallId:string;expectedRevision:number;revision:number;deadlineAt:string;failureCode:string}|
+ {kind:'record_elapsed';logicalCallId:string;elapsedMs:number};
+/** Reservation, deadline and accounting are one commit; replay advances only a
+ * measured duration delta, never a second revision or a renewed deadline. */
+export async function recordWorkflowRepair(pool:Pool,lease:Lease,input:WorkflowRepairInput):Promise<AuthoringWorkflowV1>{
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.logicalCallId))throw new Problem(422,'VALIDATION_FAILED','Invalid workflow repair call');
+  if(input.kind==='record_elapsed'&&(!Number.isSafeInteger(input.elapsedMs)||input.elapsedMs<0))throw new Problem(422,'VALIDATION_FAILED','Invalid workflow repair duration');
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease),w=checkedWorkflow(r,j),ledger={...j.checkpoint.workflow_repair_ledger_v1};
+    if(input.kind==='reserve_revision'){
+      if(input.repairKey!==`workflow_repair_${w.next_cursor.chapter}_${w.next_cursor.batch}`||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0||input.revision!==input.expectedRevision+1||
+        !['WORD_EDIT_ANCHOR_MISMATCH','WORD_EDIT_STALE_PROJECTION','WORD_EDIT_REQUEST_INVALID'].includes(input.failureCode)||!Number.isFinite(Date.parse(input.deadlineAt)))
+        throw new Problem(422,'VALIDATION_FAILED','Invalid workflow repair reservation');
+      const key='revision:'+input.logicalCallId,prior=ledger[key],stage=j.checkpoint.stages?.[input.repairKey];
+      if(prior){if(prior.repair_key!==input.repairKey||prior.revision!==input.revision||prior.deadline_at!==input.deadlineAt||prior.failure_code!==input.failureCode)
+        throw new Problem(409,'IDEMPOTENCY_CONFLICT','Workflow repair reservation changed');lease.checkpoint=j.checkpoint;return w;}
+      if((stage?.revision??0)!==input.expectedRevision||stage&&stage.deadline_at!==input.deadlineAt)
+        throw new Problem(409,'INPUT_REVISION_CONFLICT','Workflow repair revision or deadline changed');
+      const remaining=w.plan.limits.repair_ms-w.repair_budget.used_ms;
+      if(remaining<=0)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair budget exhausted');
+      if(Date.parse(input.deadlineAt)<=Date.now()||Date.parse(input.deadlineAt)>Date.parse(w.run_deadline_at)||Date.parse(input.deadlineAt)>Date.now()+remaining)
+        throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair deadline exhausted or extended');
+      if(input.revision>w.plan.limits.repair_revisions)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair budget exhausted');
+      w.repair_budget.used_revisions++;
+      const repair={revision:input.revision,deadline_at:input.deadlineAt,failure_code:input.failureCode};
+      ledger[key]={...repair,repair_key:input.repairKey};
+      const q=await client.query(`UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('workflow_v1',$2::jsonb,'workflow_repair_ledger_v1',$3::jsonb,
+        'stages',COALESCE(checkpoint->'stages','{}'::jsonb)||jsonb_build_object($4::text,$5::jsonb)),updated_at=now() WHERE id=$1 RETURNING checkpoint`,[j.id,JSON.stringify(w),JSON.stringify(ledger),input.repairKey,JSON.stringify(repair)]);
+      lease.checkpoint=q.rows[0].checkpoint;return w;
+    }
+    const measured=(await client.query(`SELECT count(a.id)::int AS attempts,count(t.attempt_id)::int AS runtimes,COALESCE(sum(t.duration_ms),0) AS duration FROM bb_model_call_attempts a
+      LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id WHERE a.job_id=$1 AND a.logical_call_id=$2`,[j.id,input.logicalCallId])).rows[0];
+    if(measured.attempts!==measured.runtimes)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair runtime is unavailable');
+    const total=Math.max(input.elapsedMs,Number(measured.duration));
+    if(!Number.isSafeInteger(total)||total<0)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair runtime is unavailable');
+    const key='elapsed:'+input.logicalCallId,prior=Number(ledger[key]?.accounted_ms??0),next=Math.max(prior,total);
+    const delta=next-prior;if(delta===0){lease.checkpoint=j.checkpoint;return w;}
+    if(w.repair_budget.used_ms+delta>w.plan.limits.repair_ms)throw new Problem(409,'CAPABILITY_NOT_READY','Workflow repair budget exhausted');
+    w.repair_budget.used_ms+=delta;ledger[key]={accounted_ms:next};
+    const q=await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('workflow_v1',$2::jsonb,'workflow_repair_ledger_v1',$3::jsonb),updated_at=now() WHERE id=$1 RETURNING checkpoint",[j.id,JSON.stringify(w),JSON.stringify(ledger)]);
+    lease.checkpoint=q.rows[0].checkpoint;return w;
+  });
+}
+
+type WorkflowResumeVerification={workflowHash:string};
+async function verifyWorkflowResume(pool:Pool,owner:string,runId:string,blobs?:PrivateBlobs):Promise<WorkflowResumeVerification|null|undefined>{
+  const q=await pool.query('SELECT r.input_hash,r.project_id,j.checkpoint,j.lease_token,j.attempts,j.execution_node_id,j.execution_node_epoch,j.execution_session_id,j.id FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.id=$1 AND r.owner_user_id=$2',[runId,owner]);
+  const j=q.rows[0];if(!j||!workflowOwned(j))return undefined;
+  if(!blobs||j.lease_token)return null;
+  try{
+    const w=j.checkpoint.workflow_v1?checkedWorkflow({input_hash:j.input_hash},j):undefined;
+    const objects=w?[...(w.plan_ref?[w.plan_ref]:[]),...w.completed.map(c=>c.object),...(w.postprocess_manifest?[w.postprocess_manifest.candidate]:[])]:
+      [j.checkpoint.stages?.chapter_context_v1?.ref].filter(Boolean);
+    const prefix=`users/${owner}/projects/${j.project_id}/`;
+    for(const object of objects){
+      if(!object.key.startsWith(prefix)||object.byte_size>100*1024*1024)return null;
+      const bytes=await blobs.getIfExistsBounded(object.key,100*1024*1024);
+      if(!bytes||bytes.length!==object.byte_size||digest(bytes)!==object.sha256)return null;
+    }
+    let chapter=0,batch=0;
+    for(const receipt of w?.completed??[]){
+      if(!w)return null;
+      const planned=w.plan.chapters[chapter],item=planned?.batches[batch];
+      if(!item||receipt.chapter_id!==planned.chapter_id||receipt.batch_id!==item.batch_id||receipt.input_hash!==w.input_hash||receipt.plan_hash!==w.plan_hash||receipt.run_id!==runId||receipt.job_id!==j.id)return null;
+      if(++batch===planned.batches.length){chapter++;batch=0;}
+    }
+    if(w&&(chapter!==w.next_cursor.chapter||batch!==w.next_cursor.batch))return null;
+    return {workflowHash:inputManifestHash(workflowVerificationState(j))};
+  }catch{return null;}
+}
+async function workflowResumeReady(client:PoolClient,r:any,j:any,verified:WorkflowResumeVerification|null|undefined){
+  const gate=await gateState(client);if(gate.state==='paused'&&gate.reason_code==='database_restore_quarantine')return false;
+  if(!(await client.query('SELECT bb_restore_account_permitted($1) AS permitted',[r.owner_user_id])).rows[0]?.permitted)return false;
+  if(!workflowOwned(j))return true;
+  if(!verified||j.lease_token||inputManifestHash(workflowVerificationState(j))!==verified.workflowHash)return false;
+  const w=j.checkpoint.workflow_v1?checkedWorkflow(r,j):undefined,inputHash=String(r.input_hash).trim(),release=j.checkpoint.positive_release_v1,fence=j.checkpoint.cloud_fence_v1,never=j.checkpoint.never_admitted_v1;
+  const positive=release?.version==='positive-release-v1'&&release.job_id===j.id&&release.run_id===r.id&&release.input_hash===inputHash&&
+    release.execution_node_id===j.execution_node_id&&release.epoch===j.execution_node_epoch&&release.session_id===j.execution_session_id&&
+    typeof release.lease_token==='string'&&release.native_processes===0&&release.active_executions===0&&typeof release.cgroup_identity==='string';
+  const fenced=fence?.version==='cloud-fence-v1'&&fence.job_id===j.id&&fence.epoch===j.execution_node_epoch&&fence.node_id===j.execution_node_id&&
+    !!(await client.query(`SELECT 1 FROM bb_execution_cloud_operations WHERE operation_id=$1 AND state='completed' AND action IN ('stop','destroy')
+      AND epoch=$2 AND instance_id=$3 AND cloud_observation IS NOT NULL`,[fence.operation_id,fence.epoch,fence.instance_id])).rowCount;
+  const neverAdmitted=never?.version==='never-admitted-v1'&&never.job_id===j.id&&j.attempts===0&&!j.execution_session_id&&
+    !(await client.query('SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1',[j.id])).rowCount;
+  const restored=j.checkpoint.database_restore_quarantine&&await restoreReleaseReady(client,r,j);
+  if(!positive&&!fenced&&!neverAdmitted&&!restored)return false;
+  const input=(await client.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE project_id=$1 AND owner_user_id=$2 AND revision=$3',[r.project_id,r.owner_user_id,r.input_revision])).rows[0];
+  if(!input||input.input_hash.trim()!==inputHash||inputManifestHash(input.manifest)!==inputHash)return false;
+  const usage=await workflowUsage(client,j.id);
+  if(usage.unknown_calls.length||w&&w.phase==='authoring'&&usage.used_known>=w.token_budget.limit)return false;
+  if(w){w.token_budget={...w.token_budget,...usage};await saveWorkflow(client,j,w);}
+  await client.query("SELECT set_config('bb.workflow_resume_verified_hash',$1,true)",[inputManifestHash(workflowVerificationState(j))]);return true;
+}
+export async function resumeVerifiedWorkflow(pool:Pool,owner:string,runId:string,reason:Parameters<typeof resumePausedRun>[3],options:{blobs:PrivateBlobs}){
+  return resumePausedRun(pool,owner,runId,reason,options);
+}
+
+type RestoreToken={kind:'job'|'message';id:string;token:string};
+const restoreConflict=(reason='Restore execution proof is missing or changed'):never=>{throw new Problem(409,'CAPABILITY_NOT_READY',reason);};
+const restoreDigest=(value:unknown)=>digest(Buffer.from(restoreCanonical(value)));
+function restoreJobIdentity(j:any){return {id:j.id,owner_user_id:j.owner_user_id,project_id:j.project_id,run_id:j.run_id,lease_token:j.lease_token,execution_node_id:j.execution_node_id,execution_node_epoch:j.execution_node_epoch,execution_session_id:j.execution_session_id};}
+/** Operator-only ingress for an exact off-host Stop result that postdates a
+ * backup. The immutable restore manifest is the trust anchor; IO precedes CAS.
+ * This releases capacity only and never changes a provider attempt or money. */
+export async function fenceRestoredExecutionEpoch(pool:Pool,actorId:string,input:{quarantineId:string;manifestSha256:string;nodeId:string;epoch:string;expectedTokens:RestoreToken[];evidenceRef:string},options:{readObject:(ref:string)=>Promise<Buffer>}){
+  if(!actorId||!/^[a-f0-9]{64}$/.test(input.manifestSha256)||!input.evidenceRef)restoreConflict();
+  const pre=(await pool.query('SELECT * FROM bb_database_restore_quarantines WHERE id=$1',[input.quarantineId])).rows[0];
+  if(!pre||pre.manifest_sha256.trim()!==input.manifestSha256||pre.receipt.manifest_sha256!==input.manifestSha256||
+    restoreDigest(Object.fromEntries(Object.entries(pre.receipt).filter(([key])=>key!=='manifest_sha256')))!==input.manifestSha256)restoreConflict();
+  const fence=pre.receipt.fences.find((f:any)=>f.node_id===input.nodeId&&f.epoch===input.epoch),original=pre.preimage.nodes.find((n:any)=>n.id===input.nodeId&&n.epoch===input.epoch);
+  if(!fence||!original||['account_id','region','instance_id','cloud_start_operation_id'].some(key=>original[key]!==fence[key])||
+    ['source_sha256','image_sha256','launch_manifest_sha256'].some(key=>original[key]?.trim()!==fence[key]))restoreConflict();
+  const bytes=await options.readObject(input.evidenceRef);if(!bytes.length||bytes.length>4*1024*1024)restoreConflict();
+  let operation:any;try{operation=JSON.parse(bytes.toString('utf8'));}catch{restoreConflict();}
+  if(operation.operation_id!==fence.stop_operation_id||operation.state!=='completed'||!['stop','destroy'].includes(operation.action)||
+    ['account_id','region','instance_id','epoch'].some(key=>operation[key]!==fence[key])||
+    !operation.cloud_observation||restoreDigest(operation.cloud_observation)!==fence.cloud_observation_sha256||
+    !executionCloudCompletionMatches({...operation,identity:{account_id:fence.account_id,region:fence.region,instance_id:fence.instance_id,epoch:fence.epoch}} as ExecutionCloudOperation,operation.cloud_observation))restoreConflict('Restore cloud Stop completion is unproven');
+  const jobs=pre.preimage.jobs.filter((j:any)=>j.execution_node_id===input.nodeId&&j.execution_node_epoch===input.epoch&&j.lease_token),
+    messages=(pre.preimage.messages??[]).filter((m:any)=>m.execution_node_id===input.nodeId&&m.execution_node_epoch===input.epoch&&m.lease_token),
+    holders=pre.preimage.holders.filter((h:any)=>h.execution_node_id===input.nodeId&&h.execution_node_epoch===input.epoch),
+    waiters=(pre.preimage.waiters??[]).filter((h:any)=>h.execution_node_id===input.nodeId&&h.execution_node_epoch===input.epoch);
+  const expected:RestoreToken[]=[...jobs.map((j:any)=>({kind:'job' as const,id:j.id,token:j.lease_token})),...messages.map((m:any)=>({kind:'message' as const,id:m.id,token:m.lease_token}))];
+  const ordered=(values:RestoreToken[])=>[...values].sort((a,b)=>(a.kind+':'+a.id).localeCompare(b.kind+':'+b.id));
+  if(restoreCanonical(ordered(expected))!==restoreCanonical(ordered(input.expectedTokens)))restoreConflict('Restore token preimage changed');
+  const releasePreimage={node:original,jobs:jobs.map(restoreJobIdentity),messages:messages.map(restoreJobIdentity),holders,waiters},evidenceSha=digest(bytes);
+  return transaction(pool,async c=>{
+    await c.query('SELECT public.bb_lock_evidence_gate(true)');
+    const q=(await c.query('SELECT * FROM bb_database_restore_quarantines ORDER BY seq DESC LIMIT 1 FOR UPDATE')).rows[0],gate=await gateState(c);
+    if(!q||q.id!==pre.id||q.manifest_sha256.trim()!==input.manifestSha256||restoreCanonical(q.preimage)!==restoreCanonical(pre.preimage))restoreConflict();
+    const existing=(await c.query('SELECT * FROM bb_database_restore_fence_releases WHERE quarantine_id=$1 AND original_node_id=$2 AND original_epoch=$3',[q.id,input.nodeId,input.epoch])).rows[0];
+    if(existing){if(existing.evidence_sha256.trim()!==evidenceSha||restoreCanonical(existing.release_preimage)!==restoreCanonical(releasePreimage))restoreConflict();return {id:existing.id,idempotent:true};}
+    if(gate.state!=='paused'||gate.reason_code!=='database_restore_quarantine')restoreConflict();
+    const n=(await c.query('SELECT * FROM bb_execution_nodes WHERE id=$1 FOR UPDATE',[input.nodeId])).rows[0];
+    if(!n||n.epoch!==input.epoch||!['lost','stop_submitted','stopped'].includes(n.state)||['account_id','region','instance_id','cloud_start_operation_id'].some(key=>n[key]!==original[key]))restoreConflict('Restored node identity changed');
+    const currentJobs=(await c.query('SELECT * FROM bb_jobs WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[input.nodeId,input.epoch])).rows;
+    if(restoreCanonical(currentJobs.map(restoreJobIdentity).sort((a,b)=>a.id.localeCompare(b.id)))!==restoreCanonical(jobs.map(restoreJobIdentity).sort((a:any,b:any)=>a.id.localeCompare(b.id))))restoreConflict('Restore token preimage changed');
+    for(const j of currentJobs)if(j.checkpoint.database_restore_quarantine?.restore_id!==q.id||j.checkpoint.database_restore_quarantine?.manifest_sha256!==input.manifestSha256)restoreConflict();
+    const currentMessages=(await c.query('SELECT * FROM bb_review_messages WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[input.nodeId,input.epoch])).rows;
+    if(restoreCanonical(currentMessages.map(restoreJobIdentity).sort((a,b)=>a.id.localeCompare(b.id)))!==restoreCanonical(messages.map(restoreJobIdentity).sort((a:any,b:any)=>a.id.localeCompare(b.id))))restoreConflict('Restore message token preimage changed');
+    for(const [table,rows] of [['bb_model_capacity_holders',holders],['bb_model_capacity_waiters',waiters]] as const){
+      const current=(await c.query(`SELECT row_to_json(h) AS record FROM ${table} h WHERE execution_node_id=$1 AND execution_node_epoch=$2 ORDER BY token FOR UPDATE`,[input.nodeId,input.epoch])).rows.map(row=>row.record);
+      if(restoreCanonical(current)!==restoreCanonical([...rows].sort((a,b)=>a.token.localeCompare(b.token))))restoreConflict('Restore capacity preimage changed');
+      for(const h of current)if((await c.query(`DELETE FROM ${table} h WHERE token=$1 AND row_to_json(h)::jsonb=$2::jsonb`,[h.token,JSON.stringify(h)])).rowCount!==1)restoreConflict();
+    }
+    const id=uid(),proof={version:'restore-fence-v1',receipt_id:id,quarantine_id:q.id,manifest_sha256:input.manifestSha256,node_id:input.nodeId,epoch:input.epoch,operation_id:fence.stop_operation_id,evidence_sha256:evidenceSha};
+    await c.query(`INSERT INTO bb_database_restore_fence_releases(id,quarantine_id,manifest_sha256,original_node_id,original_epoch,evidence_ref,evidence_sha256,release_preimage,actor_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[id,q.id,input.manifestSha256,input.nodeId,input.epoch,input.evidenceRef,evidenceSha,releasePreimage,actorId]);
+    for(const j of currentJobs)await c.query("UPDATE bb_jobs SET lease_token=NULL,lease_until=NULL,checkpoint=checkpoint||jsonb_build_object('restore_fence_v1',$3::jsonb),updated_at=now() WHERE id=$1 AND lease_token=$2",[j.id,j.lease_token,JSON.stringify(proof)]);
+    for(const m of currentMessages){await c.query("UPDATE bb_review_messages SET lease_token=NULL,lease_until=NULL,reply_status='unknown',error='EXECUTION_EPOCH_STOPPED' WHERE id=$1 AND lease_token=$2",[m.id,m.lease_token]);
+      await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'review.assistant_replied',$4)",[uid(),m.owner_user_id,m.project_id,{message_id:m.id,status:'unknown',error:'EXECUTION_EPOCH_STOPPED'}]);}
+    await c.query("UPDATE bb_execution_node_sessions SET state='lost',ready=false WHERE node_id=$1 AND epoch=$2",[input.nodeId,input.epoch]);
+    return {id,idempotent:false};
+  });
+}
+
+async function restoreReleaseReady(c:PoolClient,r:any,j:any){
+  const quarantine=j.checkpoint.database_restore_quarantine,proof=j.checkpoint.restore_fence_v1;
+  if(!quarantine||j.lease_token)return false;
+  const q=(await c.query('SELECT * FROM bb_database_restore_quarantines ORDER BY seq DESC LIMIT 1')).rows[0];
+  if(!q||q.id!==quarantine.restore_id||q.manifest_sha256.trim()!==quarantine.manifest_sha256)return false;
+  const original=q.preimage.jobs.find((old:any)=>old.id===j.id&&old.owner_user_id===r.owner_user_id&&old.run_id===r.id);
+  if(!original)return false;
+  if(!original.lease_token){
+    if(original.attempts===0&&!original.execution_session_id&&j.checkpoint.never_admitted_v1?.version==='never-admitted-v1'&&j.checkpoint.never_admitted_v1.job_id===j.id)return true;
+    const fenced=(await c.query('SELECT 1 FROM bb_database_restore_fence_releases WHERE quarantine_id=$1 AND manifest_sha256=$2 AND original_node_id=$3 AND original_epoch=$4',[q.id,q.manifest_sha256,original.execution_node_id,original.execution_node_epoch])).rowCount;
+    return !!fenced&&original.execution_node_id===j.execution_node_id&&original.execution_node_epoch===j.execution_node_epoch&&original.execution_session_id===j.execution_session_id;
+  }
+  const release=(await c.query('SELECT * FROM bb_database_restore_fence_releases WHERE id=$1 AND quarantine_id=$2 AND manifest_sha256=$3 AND original_node_id=$4 AND original_epoch=$5',
+    [proof?.receipt_id,q.id,q.manifest_sha256,original.execution_node_id,original.execution_node_epoch])).rows[0];
+  return !!release&&proof?.version==='restore-fence-v1'&&proof.quarantine_id===q.id&&proof.manifest_sha256===q.manifest_sha256.trim()&&proof.evidence_sha256===release.evidence_sha256.trim()&&
+    proof.node_id===j.execution_node_id&&proof.epoch===j.execution_node_epoch&&j.execution_node_id===original.execution_node_id&&j.execution_node_epoch===original.execution_node_epoch&&j.execution_session_id===original.execution_session_id&&
+    release.release_preimage.jobs.some((old:any)=>restoreCanonical(old)===restoreCanonical(restoreJobIdentity(original)));
+}
+
+/** Final account-authorized restore CAS. Ordinary user/automatic resume cannot
+ * enter this branch or infer not_sent from an older snapshot. */
+export async function resumeRestoredRun(pool:Pool,actorId:string,owner:string,runId:string,input:{quarantineId:string;manifestSha256:string},options:{blobs:PrivateBlobs}){
+  if(!actorId)restoreConflict();
+  const verified=await verifyWorkflowResume(pool,owner,runId,options.blobs);
+  return transaction(pool,async c=>{
+    await c.query('SELECT public.bb_lock_evidence_gate(false)');
+    const r=await run(c,owner,runId,true),j=(await c.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+    if(!j||terminal.has(r.state)||j.state!=='paused'||j.checkpoint.database_restore_quarantine?.restore_id!==input.quarantineId||j.checkpoint.database_restore_quarantine?.manifest_sha256!==input.manifestSha256)return false;
+    if((await gateState(c)).state!=='open'||!await restoreReleaseReady(c,r,j)||!await workflowResumeReady(c,r,j,verified))return false;
+    const immutable=(await c.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE project_id=$1 AND owner_user_id=$2 AND revision=$3',[r.project_id,owner,r.input_revision])).rows[0];
+    if(!immutable||immutable.input_hash.trim()!==String(r.input_hash).trim()||inputManifestHash(immutable.manifest)!==String(r.input_hash).trim()||await providerCallNeedsReconciliation(c,j.id)||await walletIsolated(c,r)||!await billingContractRecoverable(c,r,j))return false;
+    if(!(await c.query('SELECT 1 FROM bb_projects WHERE id=$1 AND owner_user_id=$2 AND archived_at IS NULL AND deleted_at IS NULL',[r.project_id,owner])).rowCount)return false;
+    if(j.billing_cancel_requested_at){await finalizePendingCancellation(c,r,j);return true;}
+    if(j.user_pause_requested||j.credit_pause_requested)return false;
+    await c.query("UPDATE bb_jobs SET state='queued',stage='queued',checkpoint=(checkpoint-'database_restore_quarantine')||jsonb_build_object('database_restore_resumed_v1',$2::jsonb),updated_at=now() WHERE id=$1",[j.id,{quarantine_id:input.quarantineId,manifest_sha256:input.manifestSha256,actor_id:actorId}]);
+    await event(c,r,'queued','queued','database_restore_reconciled',undefined,'run.state_changed',{quarantine_id:input.quarantineId},'preserve_restore_v1');return true;
+  });
+}
+
+type OriginalCaptureExecution={nodeId:string;epoch:string;sessionId:string};
+type CaptureCallProof={version:'call_cgroup_v1';key:string;identity:string;parentKey:string;parentIdentity:string;logicalCallId:string;generation:number;epoch:string;sessionId:string;sealed:true;nativeProcesses:0};
+async function registeredCaptureSession(client:PoolClient,pool:Pool){
+  const c=executionNodeForPool(pool);if(!c)throw new Problem(409,'CAPABILITY_NOT_READY','Capture registration requires a trusted execution session');
+  const n=(await client.query('SELECT id,epoch,state FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 FOR UPDATE',[c.identity.account_id,c.identity.region,c.identity.instance_id])).rows[0];
+  if(!n||n.epoch!==c.identity.epoch||!(await client.query("SELECT 1 FROM bb_execution_node_sessions WHERE session_id=$1 AND node_id=$2 AND epoch=$3 AND state='active'",[c.session_id,n.id,n.epoch])).rowCount)
+    throw new Problem(409,'CAPABILITY_NOT_READY','Capture registration session is stale');
+  return {nodeId:n.id,epoch:n.epoch,sessionId:c.session_id};
+}
+async function exactCaptureAttempt(client:PoolClient,input:{ownerUserId:string;projectId:string;runId:string;jobId:string;attemptId:string;logicalCallId:string;attemptNo:number;originalExecution:OriginalCaptureExecution}){
+  const q=await client.query(`SELECT a.id FROM bb_model_call_attempts a JOIN bb_model_attempt_execution_configs c ON c.attempt_id=a.id
+    JOIN bb_execution_node_sessions s ON s.session_id=c.execution_session_id
+    WHERE a.id=$1 AND a.owner_user_id=$2 AND a.job_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5
+    AND c.project_id=$6 AND c.run_id=$7 AND c.execution_session_id=$8 AND c.execution_node_epoch=$9 AND s.node_id=$10 AND s.epoch=$9`,
+  [input.attemptId,input.ownerUserId,input.jobId,input.logicalCallId,input.attemptNo,input.projectId,input.runId,input.originalExecution.sessionId,input.originalExecution.epoch,input.originalExecution.nodeId]);
+  if(!q.rowCount)throw new Problem(409,'INPUT_REVISION_CONFLICT','Capture does not match the immutable original attempt configuration');
+}
+export async function recordSealedCapture(pool:Pool,lease:Lease,input:{attemptId:string;logicalCallId:string;attemptNo:number;originalExecution:OriginalCaptureExecution;spoolId:string;localManifestSha256:string;callExitProof:CaptureCallProof;rawUsage:unknown;rawOutcome:unknown}){
+  const p=input.callExitProof,scopeKey=digest(Buffer.from(JSON.stringify({kind:'job',id:lease.jobId,token:lease.token})));
+  if(p?.version!=='call_cgroup_v1'||p.sealed!==true||p.nativeProcesses!==0||p.parentKey!==scopeKey||p.logicalCallId!==input.logicalCallId||p.generation!==input.attemptNo||p.epoch!==input.originalExecution.epoch||p.sessionId!==input.originalExecution.sessionId||
+    !/^[a-f0-9-]+:[0-9]+:[0-9]+$/.test(p.identity)||!/^[a-f0-9-]+:[0-9]+:[0-9]+$/.test(p.parentIdentity)||!/^[a-f0-9]{64}$/.test(input.localManifestSha256)||!input.spoolId)
+    throw new Problem(422,'VALIDATION_FAILED','Capture lacks an exact sealed call proof');
+  return transaction(pool,async client=>{
+    const current=await registeredCaptureSession(client,pool);
+    if(input.originalExecution.nodeId!==current.nodeId||input.originalExecution.epoch!==current.epoch||input.originalExecution.sessionId!==current.sessionId)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Only the original session can register the local sealed call');
+    const r=await run(client,lease.owner,lease.runId,true),j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[lease.jobId,lease.runId,lease.owner])).rows[0];
+    if(!j||j.state!=='running'||j.lease_token!==lease.token||j.execution_session_id!==current.sessionId||j.execution_node_epoch!==current.epoch)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Capture lease identity changed');
+    await exactCaptureAttempt(client,{...input,ownerUserId:lease.owner,projectId:r.project_id,runId:r.id,jobId:j.id});
+    const hash=inputManifestHash({...input,jobId:j.id,runId:r.id,owner:lease.owner,leaseToken:lease.token});
+    const id=uid();await client.query(`INSERT INTO bb_sealed_model_captures(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,execution_node_id,execution_node_epoch,execution_session_id,lease_token,spool_id,manifest_sha256,call_exit_proof,raw_usage,raw_outcome,evidence_sha256)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT(attempt_id) DO NOTHING`,
+      [id,lease.owner,r.project_id,r.id,j.id,input.attemptId,input.logicalCallId,input.attemptNo,current.nodeId,current.epoch,current.sessionId,lease.token,input.spoolId,input.localManifestSha256,p,JSON.stringify(input.rawUsage??null),JSON.stringify(input.rawOutcome),hash]);
+    const prior=(await client.query('SELECT id,evidence_sha256 FROM bb_sealed_model_captures WHERE attempt_id=$1',[input.attemptId])).rows[0];
+    if(prior.evidence_sha256.trim()!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Sealed capture evidence changed');
+    return {id:prior.id as string,idempotent:prior.id!==id};
+  });
+}
+export async function registerRecoveredCaptureEvidence(pool:Pool,input:{ownerUserId:string;projectId:string;runId:string;jobId:string;attemptId:string;logicalCallId:string;attemptNo:number;originalExecution:OriginalCaptureExecution;capture:{key:string;sha256:string;byteSize:number};manifestSha256:string},options:{blobs:PrivateBlobs}){
+  const capture=input.capture;
+  if(!/^[a-f0-9]{64}$/.test(capture.sha256)||!Number.isSafeInteger(capture.byteSize)||capture.byteSize<1||capture.byteSize>100*1024*1024||
+    capture.key!==`users/${input.ownerUserId}/projects/${input.projectId}/recovered-captures/${input.attemptId}-${capture.sha256}.json`||!/^[a-f0-9]{64}$/.test(input.manifestSha256))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid recovered capture object');
+  const bytes=await options.blobs.getIfExistsBounded(capture.key,100*1024*1024);
+  if(!bytes||bytes.length!==capture.byteSize||digest(bytes)!==capture.sha256)throw new Problem(409,'CAPABILITY_NOT_READY','Recovered capture object is missing or changed');
+  return transaction(pool,async client=>{
+    const current=await registeredCaptureSession(client,pool);await exactCaptureAttempt(client,input);
+    const hash=inputManifestHash(input),id=uid();
+    await client.query(`INSERT INTO bb_recovered_capture_evidence(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,original_node_id,original_epoch,original_session_id,recovery_session_id,capture_ref,capture_sha256,byte_size,manifest_sha256,evidence_sha256)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT(attempt_id,capture_sha256) DO NOTHING`,
+      [id,input.ownerUserId,input.projectId,input.runId,input.jobId,input.attemptId,input.logicalCallId,input.attemptNo,input.originalExecution.nodeId,input.originalExecution.epoch,input.originalExecution.sessionId,current.sessionId,capture.key,capture.sha256,capture.byteSize,input.manifestSha256,hash]);
+    const prior=(await client.query('SELECT id,evidence_sha256 FROM bb_recovered_capture_evidence WHERE attempt_id=$1 AND capture_sha256=$2',[input.attemptId,capture.sha256])).rows[0];
+    if(prior.evidence_sha256.trim()!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Recovered capture identity changed');
+    return {id:prior.id as string,idempotent:prior.id!==id};
+  });
 }
 
 /** A request is registered before either the local or shared model-capacity queue.
@@ -222,6 +627,7 @@ export async function setRunModelActivity(pool:Pool,lease:Lease,requestId:string
 
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
   const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease,true);
+    if(j.checkpoint?.workflow_v1?.pending_disposition||j.checkpoint?.workflow_pending_disposition_v1){lease.checkpoint=j.checkpoint;return true;}
     if(await walletIsolated(client,r)){await parkBilling(client,r,j,'wallet_isolated',false,true);return true;}
     await syncAuthoringProgress(client,r);
     // now() is the transaction start, which can be minutes before these locks
@@ -277,11 +683,13 @@ export async function pauseAtCheckpoint(pool:Pool,lease:Lease):Promise<boolean>{
     await syncAuthoringProgress(client,r);
     const creditPause=(await client.query('SELECT credit_pause_requested FROM bb_jobs WHERE id=$1',[j.id])).rows[0].credit_pause_requested;
     if(creditPause){
+      if(workflowOwned(j)){await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage:'credits_exhausted',reason:'credits_exhausted',error_code:'CREDITS_INSUFFICIENT'},lease);return true;}
       await client.query("UPDATE bb_jobs SET state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
       await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
       return true;
     }
     if(!j.user_pause_requested)return false;
+    if(workflowOwned(j)){await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage:'user_paused',reason:'user_paused'},lease);return true;}
     await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
     await event(client,r,'paused','user_paused','user_paused');
     return true;
@@ -317,8 +725,9 @@ export async function recordAuthoringActivity(pool:Pool,lease:Lease,activity:Aut
 
 export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Record<string,unknown>) {
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
-    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,value,stage]);
+    const {r,j}=await lockedLease(client,lease);
+    const next=workflowOwned(j)?{...j.checkpoint,...value,...(j.checkpoint.workflow_v1?{workflow_v1:j.checkpoint.workflow_v1}:{}),...(j.checkpoint.workflow_admission_v1?{workflow_admission_v1:j.checkpoint.workflow_admission_v1}:{})}:value;
+    await client.query('UPDATE bb_jobs SET checkpoint=$2,stage=$3,updated_at=now() WHERE id=$1',[lease.jobId,next,stage]);lease.checkpoint=next;
     await event(client,r,'running',stage,'checkpoint_saved',undefined,'run.progress');
   });
 }
@@ -338,6 +747,7 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
   await guardEvidenceWrite(pool,'call_intent_not_persisted',()=>transaction(pool,async client=>{
     await assertGateOpen(client);
     const {r,j}=await lockedLease(client,lease);
+    if(j.checkpoint?.workflow_v1?.pending_disposition||j.checkpoint?.workflow_pending_disposition_v1)throw new Problem(409,'ALREADY_TERMINAL','Workflow is stopping before another provider call');
     // The first host intent binds this logical call even across ordinary operator
     // retries. A later attempt cannot remove, extend, or replace its deadline.
     const deadlines=Object.values(j.checkpoint?.file_authoring_recovery_captures??{}) as FileAuthoringCapture[];
@@ -437,12 +847,26 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
   });
 }
 
-export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume'|'pause',requestId?:string) {
+export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume'|'pause',requestId?:string,options?:{blobs:PrivateBlobs}) {
+  const workflowVerified=kind==='resume'?await verifyWorkflowResume(pool,owner,runId,options?.blobs):undefined;
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+    if(j.checkpoint.database_restore_quarantine){
+      if(kind==='resume')throw new Problem(409,'CAPABILITY_NOT_READY','Database restore requires the dedicated verified recovery entry');
+      await client.query(kind==='pause'?'UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1':'UPDATE bb_jobs SET billing_cancel_requested_at=COALESCE(billing_cancel_requested_at,now()) WHERE id=$1',[j.id]);
+      return runDto(r);
+    }
+    if(workflowOwned(j)&&kind==='resume'&&!await workflowResumeReady(client,r,j,workflowVerified))
+      throw new Problem(409,'CAPABILITY_NOT_READY','Workflow requires verified objects and a positive termination receipt before resume');
+    if(workflowOwned(j)&&j.lease_token&&(kind==='cancel'||kind==='pause')){
+      if(kind==='pause')await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
+      else await client.query('UPDATE bb_jobs SET billing_cancel_requested_at=COALESCE(billing_cancel_requested_at,now()) WHERE id=$1',[j.id]);
+      await pendingWorkflowDisposition(client,r,j,{kind:kind==='cancel'?'cancel':'pause',stage:kind==='cancel'?'cancelled':'user_paused',reason:kind==='cancel'?'user_cancelled':'user_paused'});
+      return runDto(r);
+    }
     if(kind==='cancel'||kind==='resume'||kind==='pause'){
       if(await walletIsolated(client,r)){
         if(kind==='pause'){
@@ -836,6 +1260,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
       const debit=await debitAuthoringCredits(client,r,Number.MAX_SAFE_INTEGER);
       if(debit&&debit.charged<debit.ceiling){
+        if(workflowOwned(j)){await client.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[j.id]);await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage:'credits_exhausted',reason:'credits_exhausted',error_code:'CREDITS_INSUFFICIENT'},lease);return runDto(r);}
         await client.query("UPDATE bb_jobs SET credit_pause_requested=true,state='paused',stage='credits_exhausted',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
         await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
         return runDto({...r,updated_at:new Date()});
@@ -843,6 +1268,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     }
     // Pause acceptance and success settlement serialize on the same run/job locks.
     if(outcome!=='failed'&&j.user_pause_requested){
+      if(workflowOwned(j)){await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage:'user_paused',reason:'user_paused'},lease);return runDto(r);}
       await client.query("UPDATE bb_jobs SET state='paused',stage='user_paused',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
       await event(client,r,'paused','user_paused','user_paused');
       return runDto({...r,updated_at:new Date()});
@@ -861,6 +1287,11 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         FOR UPDATE OF a`,[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256,WORD_MEDIA_TYPE,outcome==='test_completed'?'test_only':'available']);
       if(!q.rowCount)throw new Problem(422,'DELIVERY_FAILED','Word artifact changed');
       await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.id,artifact.version]);
+    }
+    if(workflowOwned(j)){
+      await pendingWorkflowDisposition(client,r,j,{kind:outcome==='failed'?'fail':'succeeded',stage:outcome,reason:outcome==='failed'?'processor_failed':'word_delivered',
+        ...(options.errorCode?{error_code:options.errorCode}:{}),...(artifact?{artifact_id:artifact.id,artifact_version:artifact.version}:{})},lease);
+      return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[lease.jobId,outcome]);
     if(outcome==='failed')await recordRunFailure(client,r,lease.jobId,options.errorCode,options.failedStage);
@@ -985,7 +1416,8 @@ export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAG
   if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][a-z0-9_]{0,63}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
   if(errorCode && !(ERROR_CODES as readonly string[]).includes(errorCode))throw new Problem(422,'VALIDATION_FAILED','Invalid pause error code');
   await transaction(pool,async client=>{
-    const {r}=await lockedLease(client,lease);
+    const {r,j}=await lockedLease(client,lease);
+    if(workflowOwned(j)){await pendingWorkflowDisposition(client,r,j,{kind:'pause',stage,reason,...(errorCode?{error_code:errorCode}:{})},lease);return;}
     if(stage==='billing_reconcile'){
       const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0];
       await parkBilling(client,r,j,reason,false,true);return;
@@ -996,11 +1428,13 @@ export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAG
 }
 
 /** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
-export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared'|'credits_recharged'|'billing_reconciled') {
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared'|'credits_recharged'|'billing_reconciled',options?:{blobs:PrivateBlobs}) {
+  const workflowVerified=await verifyWorkflowResume(pool,owner,runId,options?.blobs);
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
-    if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    if(!j||j.checkpoint.database_restore_quarantine||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
+    if(!await workflowResumeReady(client,r,j,workflowVerified))return false;
     if(reason==='provider_reconciled'&&j.billing_cancel_requested_at){
       if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
       await finalizePendingCancellation(client,r,j);return true;
@@ -1698,6 +2132,41 @@ export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:Mana
   if(j.execution_node_id!==context.nodeId||j.execution_node_epoch!==context.epoch||j.execution_session_id!==context.sessionId)throw Error('EXECUTION_RELEASE_OWNER_MISMATCH');
   if(!j.lease_until||new Date(j.lease_until).getTime()>=Date.now())return 'blocked' as const;
   const unknown=await providerCallNeedsReconciliation(client,j.id);
+  if(workflowOwned(j)){
+    if(!task)throw Error('WORKFLOW_RELEASE_TASK_PROOF_REQUIRED');
+    const w=j.checkpoint.workflow_v1?checkedWorkflow(r,j):undefined,disposition=w?.pending_disposition??j.checkpoint.workflow_pending_disposition_v1;
+    const usage=await workflowUsage(client,j.id);if(w)w.token_budget={...w.token_budget,...usage};
+    const unreconciled=unknown||usage.unknown_calls.length>0;
+    let stage='queued',state='queued',reason='worker_retry_released';
+    if(await walletIsolated(client,r)){stage='billing_reconcile';state='paused';reason='wallet_isolated';}
+    else if(disposition?.kind==='cancel'||j.billing_cancel_requested_at){stage='cancelled';state='cancelled';reason='user_cancelled';}
+    else if(unreconciled){stage='provider_reconcile';state='paused';reason='provider_reconciliation_required';}
+    else if(disposition?.kind==='fail'){stage='failed';state='failed';reason=disposition.reason;}
+    else if(disposition?.kind==='succeeded'&&!j.user_pause_requested&&!j.credit_pause_requested){
+      stage=disposition.stage==='test_completed'?'test_completed':'succeeded';state=stage;reason='word_delivered';
+      const artifact=(await client.query(`SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 AND version=$4
+        AND quality_status='passed' AND delivery_status=$5 FOR UPDATE`,[lease.owner,r.id,disposition.artifact_id,disposition.artifact_version,stage==='test_completed'?'test_only':'available'])).rows[0];
+      if(!artifact)throw new Problem(409,'DELIVERY_FAILED','Prepared workflow Word artifact changed before release');
+    }else if(j.user_pause_requested){stage='user_paused';state='paused';reason='user_paused';}
+    else if(j.credit_pause_requested){stage='credits_exhausted';state='paused';reason='credits_exhausted';}
+    else if(disposition?.kind==='pause'){stage=disposition.stage;state='paused';reason=disposition.reason;}
+    else if(disposition?.kind==='handoff'){reason='workflow_handoff_released';}
+    if(w)delete w.pending_disposition;
+    const positive={version:'positive-release-v1',job_id:j.id,run_id:r.id,input_hash:String(r.input_hash).trim(),plan_hash:w?.plan_hash??null,lease_token:lease.token,
+      execution_node_id:context.nodeId,epoch:context.epoch,session_id:context.sessionId,cgroup_identity:task.cgroupIdentity,handoff_id:w?.handoff_id??null,
+      native_processes:0,active_executions:0,event_seq:Number(r.event_cursor)+1,released_at:new Date().toISOString()};
+    await client.query(`UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,
+      checkpoint=(checkpoint-'workflow_pending_disposition_v1')||CASE WHEN $4::jsonb IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('workflow_v1',$4::jsonb) END||jsonb_build_object('positive_release_v1',$5::jsonb),updated_at=now() WHERE id=$1 RETURNING checkpoint`,[j.id,state,stage,w?JSON.stringify(w):null,JSON.stringify(positive)]);
+    lease.checkpoint={...j.checkpoint,...(w?{workflow_v1:w}:{}),positive_release_v1:positive};delete lease.checkpoint.workflow_pending_disposition_v1;
+    if(state==='failed')await recordRunFailure(client,r,j.id,disposition?.error_code,disposition?.stage);
+    await event(client,r,state,stage,reason,disposition?.error_code,'run.state_changed',{release_proof:'task_cgroup_v1',native_processes:0,active_executions:0,execution_session_id:context.sessionId,cgroup_identity:task.cgroupIdentity});
+    if(state==='succeeded'){
+      const artifact=(await client.query('SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=$2',[disposition!.artifact_id,disposition!.artifact_version])).rows[0];
+      await registerGeneratedProspectus(client,r,j.checkpoint?.stages?.word_delivery_pair);
+      await registerProjectFileOutcome(client,r,artifact,j.checkpoint?.stages?.word_delivery_pair);
+    }
+    return state as 'queued'|'paused'|'failed'|'succeeded'|'test_completed'|'cancelled';
+  }
   const stage=unknown?'provider_reconcile':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
   const state=stage==='queued'?'queued':'paused';
   await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,state,stage]);
@@ -1711,9 +2180,14 @@ export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:Mana
 /** Cloud death is a capacity fence, never authority to replay a supplier call.
  * Preserve the existing journal and publish the recovery pause atomically. */
 export async function fenceStoppedExecutionEpoch(client:PoolClient,nodeId:string,epoch:string){
+ const stopped=(await client.query(`SELECT n.instance_id,n.stop_operation_id,o.provider_request_id,o.proof_sha256 FROM bb_execution_nodes n
+  JOIN bb_execution_cloud_operations o ON o.operation_id=n.stop_operation_id AND o.epoch=n.epoch
+  WHERE n.id=$1 AND n.epoch=$2 AND o.state='completed' AND o.action IN ('stop','destroy') AND o.cloud_observation IS NOT NULL`,[nodeId,epoch])).rows[0];
  const runs=(await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.execution_node_id=$1 AND j.execution_node_epoch=$2 AND j.lease_token IS NOT NULL ORDER BY r.id FOR UPDATE OF r`,[nodeId,epoch])).rows;
  for(const r of runs){const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
-  await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+  if(workflowOwned(j)&&!stopped)throw Error('WORKFLOW_CLOUD_FENCE_RECEIPT_REQUIRED');
+  const fence=stopped?{version:'cloud-fence-v1',job_id:j.id,node_id:nodeId,epoch,instance_id:stopped.instance_id,operation_id:stopped.stop_operation_id,provider_request_id:stopped.provider_request_id,proof_sha256:stopped.proof_sha256?.trim(),fenced_at:new Date().toISOString()}:null;
+  await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,checkpoint=CASE WHEN $2::jsonb IS NULL THEN checkpoint ELSE checkpoint||jsonb_build_object('cloud_fence_v1',$2::jsonb) END,updated_at=now() WHERE id=$1",[j.id,workflowOwned(j)?JSON.stringify(fence):null]);
   await event(client,r,'paused','provider_reconcile','execution_epoch_stopped');
  }
  const messages=(await client.query('SELECT * FROM bb_review_messages WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[nodeId,epoch])).rows;

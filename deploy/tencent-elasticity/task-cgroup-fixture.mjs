@@ -15,7 +15,9 @@ async function request(input){
 async function operation(input){
  if(input.action==='spawn'){
   const child=spawn('/usr/bin/python3',['-I','/opt/bondbuddy/task-runner.py',input.receipt.key,input.receipt.identity,'--',...input.command],
-   {detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,BB_TASK_CGROUP_KEY:input.receipt.key,BB_TASK_CGROUP_IDENTITY:input.receipt.identity}});
+   {detached:true,stdio:['ignore','pipe','pipe'],env:{...process.env,BB_TASK_CGROUP_KEY:input.receipt.key,BB_TASK_CGROUP_IDENTITY:input.receipt.identity,
+    ...(input.receipt.callBinding?{BB_TASK_CALL_PARENT_KEY:input.receipt.callBinding.parentKey,BB_TASK_CALL_PARENT_IDENTITY:input.receipt.callBinding.parentIdentity,
+      BB_TASK_CALL_LOGICAL_ID:input.receipt.callBinding.logicalCallId,BB_TASK_CALL_GENERATION:String(input.receipt.callBinding.generation)}:{})}});
   const entry={child,stdout:'',stderr:'',done:once(child,'close')};children.set(child.pid,entry);
   child.stdout.on('data',chunk=>{entry.stdout+=chunk;});child.stderr.on('data',chunk=>{entry.stderr+=chunk;});
   if(input.wait===false)return {pid:child.pid};
