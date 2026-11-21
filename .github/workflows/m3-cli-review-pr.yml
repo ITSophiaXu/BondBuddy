@@ -118,6 +118,7 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,size=512m \
             -e BB_TEST_DATABASE_URL -e BB_TEST_AZURITE_CONNECTION_STRING \
             -e BB_TEST_M3_CLI_REVISION=1 -e BB_REVIEW_WEB_SEARCH_ENABLED=0 \
+            -e BB_MODEL_EXECUTION_HOST_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
             -e BB_PYTHON=/opt/venv/bin/python \
             -e BONDBUDDY_TEST_PYTHON=/opt/venv/bin/python \
             -e BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python \
