@@ -791,7 +791,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; drainProgress?:()=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -1156,6 +1156,9 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if (retainAttempt) releaseActiveWorkspace?.();
         try {
           await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
+          // A live checkpoint may still be uploading after the process exits.
+          // Drain it after releasing model capacity and before workspace cleanup.
+          try { await input.fileWorkspace?.drainProgress?.(); } catch { /* failure cannot skip cleanup */ }
           if (attemptDir && !retainAttempt) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
         } finally {
           releaseActiveWorkspace?.();

@@ -13,6 +13,7 @@ export const FILE_AUTHORING_RECOVERY_STAGE = 'file_authoring_recovery';
 export type FileAuthoringRecovery = {
   version: 'file-authoring-recovery-v1'; input_hash: string; attempt_id: string; logical_call_id: string;
   deadline_at?: string;
+  controlled_replay?: true;
   files: { path: string; key: string; sha256: string; byte_size: number }[];
 };
 type Limits = { files: number; fileBytes: number; totalBytes: number };
@@ -57,6 +58,7 @@ function validate(ctx: StageContext, value: unknown, logicalCallId: string): ass
     seen.add(f.path); total += f.byte_size;
   }
   if (!seen.has('input.json') || total > FILE_AUTHORING_RECOVERY_LIMITS.totalBytes) throw unsafe();
+  if (s.controlled_replay!==undefined&&(s.controlled_replay!==true||!seen.has('output/operations.json')))throw unsafe();
   // A file cannot also be the parent directory of another restored file.
   for (const path of seen) for (let parent = path.substring(0, path.lastIndexOf('/')); parent.includes('/'); parent = parent.substring(0, parent.lastIndexOf('/')))
     if (seen.has(parent)) throw unsafe();
@@ -127,6 +129,8 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
   checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string;
+  /** A small, replayable Word checkpoint while the agent is still running. */
+  controlledProgress?: boolean;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
@@ -151,16 +155,44 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
       if(paths.length>limits.files||totalBytes>limits.totalBytes)throw capacity();
     }
   };
-  // The complete metadata pass runs before the first Blob write. Per-file reads
-  // below still independently verify identity, size, links and unchanged bytes.
-  for (const path of ['input.json','scratch', 'output']) await walk(path);
+  // During a live controlled edit, keep only the authoritative operation log
+  // and a bounded handoff note. OCR images and temporary scripts can be rebuilt
+  // from the immutable materials on the next attempt.
+  if (options.controlledProgress) {
+    for (const path of ['input.json','output/operations.json']) await walk(path);
+    for (const path of ['scratch/工作记录.md','scratch/continuation.json']) {
+      try { await lstat(join(root,path)); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      await walk(path);
+    }
+    const data=JSON.parse((await regularBytes(root,'input.json',limits.fileBytes,ctx.signal)).toString('utf8'));
+    const log=JSON.parse((await regularBytes(root,'output/operations.json',limits.fileBytes,ctx.signal)).toString('utf8'));
+    if(data?.format_tools?.version!=='controlled-docx-v1'||data.input_hash!==ctx.run.input_hash.trim()||
+      log?.version!=='word-operations-v1'||log.input_hash!==data.input_hash||log.baseline_sha256!==data.baseline_sha256||
+      !Array.isArray(log.operations)||log.operations.length===0)throw unsafe();
+  } else {
+    // The complete metadata pass runs before the first Blob write. Per-file
+    // reads still independently verify identity, size and unchanged bytes.
+    for (const path of ['input.json','scratch', 'output']) await walk(path);
+  }
+  const inputData=JSON.parse((await regularBytes(root,'input.json',limits.fileBytes,ctx.signal)).toString('utf8'));
+  const controlledReplay=inputData?.format_tools?.version==='controlled-docx-v1'&&paths.includes('output/operations.json');
   const snapshot: FileAuthoringRecovery = { version: 'file-authoring-recovery-v1', input_hash: ctx.run.input_hash.trim(),
-    attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, ...(deadlineAt?{deadline_at:deadlineAt}:{}), files: [] };
+    attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, ...(deadlineAt?{deadline_at:deadlineAt}:{}),
+    ...(controlledReplay?{controlled_replay:true as const}:{}),files: [] };
   let total = 0;
   for (const path of paths) {
     const bytes = await regularBytes(root, path, limits.fileBytes, ctx.signal); total += bytes.length;
     if(total>limits.totalBytes)throw capacity();
     if(path==='input.json'&&!bytes.length)throw unsafe();
+    if(options.controlledProgress&&path==='output/operations.json'){
+      let log:Record<string,unknown>;
+      try{log=JSON.parse(bytes.toString('utf8'));}catch{throw unsafe();}
+      if(log.version!=='word-operations-v1'||log.input_hash!==inputData.input_hash||
+        log.baseline_sha256!==inputData.baseline_sha256||!Array.isArray(log.operations)||!log.operations.length)throw unsafe();
+    }
     const sha256 = digest(bytes), key = keyFor(ctx, intent.call_id, sha256, path);
     try{
       await ctx.blobs.put(key, bytes, 'application/octet-stream');
