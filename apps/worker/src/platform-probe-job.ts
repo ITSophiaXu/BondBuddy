@@ -11,6 +11,7 @@ import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { claim, finishPlatformProbe, pauseRun, renew, type Lease } from '@bondbuddy/api/queue';
 import { CodexAdapterError, loadCodexAdapterConfig, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
+import {assertTaskExecution,withTaskExecution} from './task-execution.js';
 
 type Template = { version: string; prompt: string; schema: Record<string, unknown>; validate: (value: unknown) => boolean };
 // SYNTHETIC. Contains no user, customer or bond data.
@@ -55,8 +56,10 @@ async function ensurePromptSnapshot(pool: Pool, blobs: PrivateBlobs, lease: Leas
 
 export async function runPlatformProbeOnce(deps: PlatformProbeDependencies): Promise<PlatformProbeOutcome> {
   const leaseSeconds = deps.leaseSeconds ?? Math.max(30, Math.ceil(deps.config.timeout_ms / 1000) + 30);
+  assertTaskExecution(deps.pool);
   const lease = await claim(deps.pool, leaseSeconds, { platformProbe: true });
   if (!lease) return 'idle';
+  return withTaskExecution(deps.pool,{kind:'job',id:lease.jobId,token:lease.token},async()=>{
   const heartbeat = setInterval(() => { renew(deps.pool, lease, leaseSeconds).catch(() => undefined); }, Math.max(1000, leaseSeconds * 1000 / 3));
   try {
     const templateId = lease.checkpoint?.template_id as PlatformProbeTemplateId | undefined;
@@ -82,6 +85,7 @@ export async function runPlatformProbeOnce(deps: PlatformProbeDependencies): Pro
       throw finishError;
     }
   } finally { clearInterval(heartbeat); }
+  });
 }
 
 // Manual one-shot drain for operators; the worker container runs the same probe inside runtime.ts when BB_PLATFORM_PROBE_ENABLED=1.

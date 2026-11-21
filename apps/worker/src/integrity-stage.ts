@@ -1,8 +1,7 @@
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile} from './task-execution.js';
 import {Value} from '@sinclair/typebox/value';
 import {integrityRecordPresentation,integrityInputSite,integrityQueryMeasurement,IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
 import {integrityVerifiedQueryPairs} from '@bondbuddy/api/integrity-billing-evidence';
@@ -66,7 +65,7 @@ async function workpaper(ctx:StageContext,input:IntegrityInput,records:Integrity
    const subjects=safe.draft.subjects.filter(s=>s.kind===kind);if(!subjects.length)continue;
    const payload={input:{...safe,draft:{...safe.draft,subjects}},records:records.filter(r=>subjects.some(s=>s.id===r.subject_id)).map(r=>({...r,presentation:integrityRecordPresentation(r)})),evidence:attachments.filter(e=>subjects.some(s=>s.id===e.record.subject_id)),automatic:automatic.filter(e=>subjects.some(s=>s.id===e.subject_id))};
    await writeFile(join(dir,'input.json'),JSON.stringify(payload),{mode:0o600});
-   await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',[join(projectFilesRoot,'python/bondbuddy_file_authoring/integrity_report.py'),join(dir,'input.json'),join(dir,kind+'.docx')],{cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
+   await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',[join(projectFilesRoot,'python/bondbuddy_file_authoring/integrity_report.py'),join(dir,'input.json'),join(dir,kind+'.docx')],{cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
    const bytes=await readFile(join(dir,kind+'.docx'));if(!bytes.length||bytes.length>M4_FILE_MAX)throw Error('FILE_OUTPUT_STORE_FAILED');
    const sha256=digest(bytes),key=prefix(ctx)+sha256+'/'+kind+'.docx';await ctx.blobs.put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
    const readback=await ctx.blobs.getIfExistsBounded(key,M4_FILE_MAX);if(!readback||digest(readback)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');files[kind]={key,sha256,byte_size:bytes.length};

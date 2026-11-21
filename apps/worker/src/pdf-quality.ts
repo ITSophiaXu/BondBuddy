@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { PDF_QUALITY_VERSION, pdfQualitySamplePages, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';

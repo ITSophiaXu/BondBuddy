@@ -10,6 +10,7 @@ import {installPrivateTransport, ensurePrivateExecutionNetwork, validateTranspor
 import {replacePrivateJson} from './transport-renewal.mjs';
 import {renderPrivateTransportConfig} from './private-egress.mjs';
 import {prepareAuthoringWorkspace} from './authoring-workspace.mjs';
+import {prepareTaskCgroups,bindTaskCgroups,loadTaskCgroupSecurity,assertTaskCgroupServiceIdle} from './task-cgroups.mjs';
 
 const exec = promisify(execFile);
 async function docker(args, {timeout=20000}={}) {
@@ -67,7 +68,15 @@ export function selectExecutionNodeConfig(config, publicManifest) {
   return {...common,...matches[0],...(publicManifest?{source_sha256:publicManifest.source_sha256}:{})};
 }
 
-export function createNodeAdapter(config, {runDocker:rawDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now, diagnostics}={}) {
+export async function verifyTaskExecutionImage(image,runDocker=docker){
+ requireThat(typeof image==='string'&&/^(?:sha256:[a-f0-9]{64}|[-A-Za-z0-9._/:]+@sha256:[a-f0-9]{64})$/.test(image),'NODE_IMAGE_DIGEST_REQUIRED');
+ const files=Object.fromEntries(await Promise.all(['task-runner.py','task-chromium'].map(async name=>[name,sha256(await readFile(new URL(name,import.meta.url)))])));
+ const program=`const fs=await import('node:fs'),crypto=await import('node:crypto');for(const [name,hash] of Object.entries(${JSON.stringify(files)})){const path='/opt/bondbuddy/'+name,s=fs.lstatSync(path);if(!s.isFile()||s.uid!==0||(s.mode&18)!==0||crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex')!==hash)throw Error('TASK_RUNNER_IMAGE_MISMATCH');}const real=fs.statSync('/opt/bondbuddy/task-chromium-real');if(!real.isFile()||real.uid!==0||(real.mode&18)!==0)throw Error('TASK_BROWSER_IMAGE_MISMATCH');if((await import('./apps/worker/dist/task-execution.js')).TASK_CGROUP_PROTOCOL_VERSION!==1)throw Error('TASK_CGROUP_IMAGE_PROTOCOL');console.log('task-cgroup-v1');`;
+ const result=await runDocker(['run','--rm','--pull','never','--network','none','--read-only','--user','1000:1000','--cap-drop','ALL','--security-opt','no-new-privileges','--entrypoint','node',image,'--input-type=module','-e',program]);
+ requireThat(result==='task-cgroup-v1','NODE_TASK_CONTAINMENT_IMAGE_NOT_PROVEN');
+}
+
+export function createNodeAdapter(config, {runDocker:rawDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, prepareContainment=prepareTaskCgroups, bindContainment=bindTaskCgroups, loadContainmentSecurity=loadTaskCgroupSecurity, requireContainmentIdle=assertTaskCgroupServiceIdle, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now, diagnostics}={}) {
 requireThat(config.runtime_uid === 1000 && /^[a-f0-9]{64}$/.test(config.image_sha256) && config.compose_file.startsWith('/opt/bondbuddy/'), 'NODE_ADAPTER_CONFIG');
 const launched=new Map();
 let currentService=null, composeArgs=null;
@@ -111,6 +120,10 @@ const runtime = {
       await verifyInstalledExecutionImage(config.images[service.service_id],runDocker);
     }
     if (e.services.some(service => service.service_id === 'authoring')) await prepareAuthoringWorkspace();
+    for (const service of e.services) {
+      await verifyTaskExecutionImage(config.images[service.service_id],runDocker);
+    }
+    if (e.services.some(service => service.service_id === 'authoring')) await prepareAuthoringWorkspace();
     await mkdir('/run/bondbuddy',{recursive:true,mode:0o755});
     const runtimeParent=await lstat('/run/bondbuddy');
     requireThat(process.getuid()===0&&runtimeParent.isDirectory()&&!runtimeParent.isSymbolicLink()&&runtimeParent.uid===0&&(runtimeParent.mode&0o022)===0,'NODE_PRIVATE_PARENT');
@@ -125,6 +138,7 @@ const runtime = {
     requireThat(socketParent.isDirectory()&&!socketParent.isSymbolicLink()&&socketParent.uid===0,'NODE_SOCKET_DIRECTORY');
     await chown('/run/bondbuddy/transport-socket',0,1000);await chmod('/run/bondbuddy/transport-socket',0o750);
     requireThat(config.seccomp_sha256===sha256(await readFile(config.seccomp_file)) && config.apparmor_sha256===sha256(await readFile(config.apparmor_file)),'NODE_SECURITY_PROFILE_DRIFT');
+    await loadContainmentSecurity(config.apparmor_file);
     const profiles=await readFile('/sys/kernel/security/apparmor/profiles','utf8');
     requireThat(profiles.split('\n').includes('bondbuddy-codex-v1 (enforce)'),'NODE_SECURITY_PROFILE_NOT_LOADED');
     const pg=config.private_pg;
@@ -171,6 +185,8 @@ const runtime = {
 
   },
   async startService(service, envelopePath) {
+    await requireContainmentIdle(service.service_id);
+    const material=JSON.parse(await readFile(envelopePath,'utf8'));
     currentService=service.service_id;
     diagnostics?.stage('service_env',service.service_id);
     const environment = enrollment.service_environments?.[service.service_id];
@@ -205,9 +221,10 @@ const runtime = {
     }
 
     diagnostics?.stage('compose_env',service.service_id);
+    const taskSocketDirectory=await prepareContainment(service.service_id);
     const composeEnv = '/run/bondbuddy/service/compose.env';
     const values = {BB_ELASTIC_IMAGE: config.images.authoring, BB_ELASTIC_REVIEW_IMAGE: config.images.review,BB_ELASTIC_NETWORK:config.execution_network,
-      BB_ELASTIC_SERVICE_ENV: envFile, BB_ELASTIC_REGISTRATION_DIR: '/run/bondbuddy/enrollment'};
+      BB_ELASTIC_SERVICE_ENV: envFile, BB_ELASTIC_REGISTRATION_DIR: '/run/bondbuddy/enrollment',BB_ELASTIC_TASK_SOCKET_DIR:taskSocketDirectory};
     await writeFile(composeEnv, Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n'), {mode: 0o600});
     const args = ['compose', '--project-name', 'bondbuddy-execution', '--env-file', composeEnv, '-f', config.compose_file];
     composeArgs=args;
@@ -220,6 +237,7 @@ const runtime = {
     diagnostics?.stage('compose_id',service.service_id);
     const id = await runDocker([...args, 'ps', '-q', service.service_id]);
     requireThat(/^[a-f0-9]{12,64}$/.test(id), 'NODE_CONTAINER_ID');
+    await bindContainment(service.service_id,id,material.context,runDocker);
     return {id, service_id: service.service_id};
   },
   async verifyAllReady(contexts) {

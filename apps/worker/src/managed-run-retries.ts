@@ -1,32 +1,25 @@
 import type {Lease} from '@bondbuddy/api/queue';
 
-/** A process-local barrier, not a TTL sweep. Only leases whose exact pipeline
- * returned retry may enter it. All claim-capable loops share the same barrier;
- * restart loses this authority and requires the existing cloud/session fence. */
+/** Exact execution receipts only, never a TTL sweep. Sealed task containment,
+ * not unrelated active work, proves release. Restart still loses authority. */
 export class ManagedRunRetries {
- private active=0;
  private readonly pending=new Map<string,Lease>();
- private flushing:Promise<void>|undefined;
- constructor(private readonly inventory:()=>Promise<number>,private readonly release:(lease:Lease)=>Promise<string>){}
+ private readonly flushing=new Map<string,Promise<void>>();
+ constructor(private readonly inventory:(lease:Lease)=>Promise<number>,private readonly release:(lease:Lease)=>Promise<string>){}
  get pendingCount(){return this.pending.size;}
- enter(): (()=>void)|null {
-  if(this.pending.size||this.flushing)return null;
-  this.active++;let ended=false;
-  return ()=>{if(!ended){ended=true;this.active--;}};
- }
- defer(lease:Lease){this.pending.set(lease.jobId,lease);}
+ enter():()=>void {return ()=>{};}
+ defer(lease:Lease){const key=JSON.stringify([lease.jobId,lease.token]);if(!this.pending.has(key))this.pending.set(key,lease);}
  async flush(){
-  if(this.flushing)return this.flushing;
-  if(this.active||!this.pending.size)return;
-  const work=async()=>{
-   // No execution can enter while pending is nonempty, including during I/O.
-   if(await this.inventory()!==0)return;
-   for(const [id,lease] of this.pending){
+  const results=await Promise.allSettled([...this.pending].map(([key,lease])=>{
+   const running=this.flushing.get(key);if(running)return running;
+   const work=Promise.resolve().then(async()=>{
+    if(await this.inventory(lease)!==0)return;
     const result=await this.release(lease);
-    if(result!=='blocked')this.pending.delete(id);
-   }
-  };
-  this.flushing=work();
-  try{await this.flushing;}finally{this.flushing=undefined;}
+    if(result!=='blocked'&&this.pending.get(key)===lease)this.pending.delete(key);
+   }).finally(()=>{this.flushing.delete(key);});
+   this.flushing.set(key,work);return work;
+  }));
+  const errors=results.flatMap(result=>result.status==='rejected'?[result.reason]:[]);
+  if(errors.length)throw new AggregateError(errors,'TASK_RETRY_RELEASE_BLOCKED');
  }
 }

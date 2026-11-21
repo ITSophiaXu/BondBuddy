@@ -1,7 +1,7 @@
 import { FILE_AUTHORING_RECOVERY_LIMITS, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, FILE_AUTHORING_CAPTURE_VERSION, FILE_AUTHORING_CAPTURE_FAILURES, isFileAuthoringDeadline,
   type FileAuthoringCapture, type FileAuthoringCaptureOutcome } from '@bondbuddy/contracts';
 import {withPerformanceSpan} from './performance-trace.js';
-import {executionClaimGate,lockTaskQueueScheduling,accountExecutionLoadSql,lockExecutionReleaseContext} from './execution-capacity.js';
+import {executionClaimGate,lockTaskQueueScheduling,accountExecutionLoadSql,lockExecutionReleaseContext,executionNodeForPool} from './execution-capacity.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -1678,13 +1678,20 @@ export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released'
 }
 
 /** Private worker handoff, never a user/operator timeout-recovery endpoint.
- * The proof is supplied only after the current consumer has awaited its pipeline,
- * renewal and other execution loops, blocked new claims, and counted no native
- * processes. A restarted consumer cannot submit another session's receipt. */
-export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:{nativeProcesses:0;activeExecutions:0}) {
+ * Task proof follows pipeline/renewal completion and sealed native containment.
+ * Legacy proof still requires whole-consumer quiescence. Restart never acquires
+ * another session's release authority. */
+export type ManagedRunReleaseProof={nativeProcesses:0;activeExecutions:0}|
+ {version:'task_cgroup_v1';nativeProcesses:0;activeExecutions:0;jobId:string;token:string;epoch:string;sessionId:string;cgroupIdentity:string};
+export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:ManagedRunReleaseProof) {
  if(proof.nativeProcesses!==0||proof.activeExecutions!==0)throw Error('EXECUTION_RELEASE_NOT_QUIESCENT');
+ const task='version' in proof?proof:undefined;
+ const registered=executionNodeForPool(pool);
+ if(task&&(task.version!=='task_cgroup_v1'||task.jobId!==lease.jobId||task.token!==lease.token||
+   task.epoch!==registered?.identity.epoch||task.sessionId!==registered?.session_id||
+   !/^[a-f0-9-]+:[0-9]+:[0-9]+$/.test(task.cgroupIdentity)))throw Error('EXECUTION_RELEASE_SCOPE_MISMATCH');
  return transaction(pool,async client=>{
-  const context=await lockExecutionReleaseContext(client,pool);if(!context)return 'blocked' as const;
+  const context=await lockExecutionReleaseContext(client,pool,task?lease.jobId:undefined);if(!context)return 'blocked' as const;
   const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[lease.runId,lease.owner])).rows[0];
   const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[lease.jobId,lease.runId,lease.owner])).rows[0];
   if(!r||!j||terminal.has(r.state)||j.state!=='running'||j.lease_token!==lease.token)return 'stale' as const;
@@ -1695,7 +1702,8 @@ export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:{nat
   const state=stage==='queued'?'queued':'paused';
   await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,state,stage]);
   await event(client,r,state,stage,unknown?'provider_reconciliation_required':'worker_retry_released',undefined,'run.state_changed',
-    {release_proof:'local_quiescence_v1',native_processes:0,active_executions:0,execution_session_id:context.sessionId});
+    {release_proof:task?'task_cgroup_v1':'local_quiescence_v1',native_processes:0,active_executions:0,execution_session_id:context.sessionId,
+      ...(task?{cgroup_identity:task.cgroupIdentity}:{})});
   return state;
  });
 }

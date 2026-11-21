@@ -1,6 +1,5 @@
 import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdir, writeFile, readFile, copyFile, lstat, realpath, chmod,mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, extname } from 'node:path';
@@ -13,7 +12,6 @@ import type { M4WorkerInput } from './m4-input.js';
 import type { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
-const runFile = promisify(execFile);
 export const M4_FILE_MAX = 100 * 1024 * 1024;
 export const M4_TEXT_MAX = 4 * 1024 * 1024;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';

@@ -4,7 +4,7 @@
  * returned with metadata for a later quality-gated stage and are never promoted here.
  */
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { chmod, lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';

@@ -10,11 +10,11 @@
 /opt/venv/bin/python -B -m bondbuddy_file_authoring.fixed_edit inspect --input input.json --operations output/operations.json --offset 0 --limit 40
 ```
 
-首次没有 operations.json 是正常状态。inspect 分页返回 node_id、kind、text、属性和 limitations；通过 --node 指定一个位置可取完整原文。template-manifest.json 保存整体结构、标题候选、样式链及 property_formats 属性字典。清单中的 *_ref 字段引用该字典；text_truncated=true 的原文必须用 inspect 读取完整内容。
+首次没有 operations.json 是正常状态。inspect 分页返回 node_id、kind、text、属性和 limitations；通过 --node 指定一个位置可取完整原文；--find 文字（可加 --kind paragraph|cell|row|table）只列出含该文字的节点。单页超过约2万字符时提前截断，按 next_offset 继续。template-manifest.json 保存整体结构、标题候选、样式链及 property_formats 属性字典。清单中的 *_ref 字段引用该字典；text_truncated=true 的原文必须用 inspect 读取完整内容。
 
 不要用 `cat`、`printf` 或其他方式整份输出 template-manifest.json；单次工具输出应保持在 16KB 以内。需要结构时用 inspect 分页或 `--node` 按需读取，避免把整份清单塞进模型上下文。
 
-原节点 ID 绑定原稿部件、原始序号和原文指纹，新增段落或行后仍然可用。不要自己拼原节点 ID。before 必须等于该节点当前完整 text，不能只写拟替换的词句。重新 inspect 能看到已应用操作之后的文字。
+原节点 ID 绑定原稿部件、原始序号和原文指纹，新增段落或行后仍然可用。不要自己拼原节点 ID。before 必须等于该节点当前完整 text；也可不写 before/after，改写 "find":"拟替换片段","replace":"新片段"（仅 replace_text、replace_cell_text），find 须在当前文字中恰好出现一次，工具自动补全完整前后文字入日志。add_comment、insert_paragraph、insert_row 可省略 before。重新 inspect 能看到已应用操作之后的文字。
 
 ## 提交操作
 
@@ -24,7 +24,7 @@
 /opt/venv/bin/python -B -m bondbuddy_file_authoring.fixed_edit apply --input input.json --operations output/operations.json --operation-file scratch/operation.json
 ```
 
-apply 自动创建并绑定操作日志，无需手写日志外壳。成功后原子追加；失败不追加。操作数组按顺序执行，整批通过才保存；同批后续操作的 before 应对应前序操作之后的文字。每个 id 在本轮唯一，只能使用英文字母、数字、下划线、连字符，最多80字符。reason 可记录简短修改依据，不把回查过程塞进正文。
+apply 自动创建并绑定操作日志，无需手写日志外壳。成功后原子追加；失败不追加。操作数组按顺序执行，整批通过才保存；同批后续操作的 before 应对应前序操作之后的文字。失败时 stderr 的 detail 给出 unit_index、operation_id、node_id 及当前实际文字和首个不一致位置，据此只修正该条。加 --partial 时逐项独立保存：数组元素可以是单个操作，或必须同时成功的操作子数组；失败项列在 stdout 的 rejected_units，退出码3，已通过项照常保存，修正后只重交失败项。撤回已保存操作用 revert --op-id ID（可重复）或 --from-op-id ID（该项及其后全部）；清空本轮日志用 reset --confirm-reset。不要用 rm 或改写文件代替。每个 id 在本轮唯一，只能使用英文字母、数字、下划线、连字符，最多80字符。reason 可记录简短修改依据，不把回查过程塞进正文。
 
 每次 inspect/apply 都会重新读取锁定原稿并重放累计日志，耗时随原稿大小和已保存操作增加。优先按同章、同表合批提交，跨章继续分批，不必每个字段单独调用。inspect 按需读取相关位置或分页，避免每项修改后重新展开整份文档；该性能边界不改变全文更新与依据核对要求。
 

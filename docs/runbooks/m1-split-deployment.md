@@ -6,6 +6,10 @@
 
 ## 角色与入口
 
+任务级重试屏障的受限 cgroup 启动边界、既有节点／未来模板迁移及未完成的发布检查见
+[任务级原生退出证明](../../deploy/tencent-elasticity/task-cgroups.md)。该实现尚未部署；
+主站发布、旧节点仍在线或镜像存在均不能代替执行节点实际采纳证据。
+
 | 角色 | Compose | 常驻服务 | 单次服务 |
 | --- | --- | --- | --- |
 | `main` | `deploy/m1/compose.main.yaml` | `postgres/api/ops/egress/web`，`BB_PARSE_ROLE=main` 时加 `worker-parse` | `migrate`，仅主站运行 |

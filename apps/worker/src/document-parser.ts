@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { isAbsolute, resolve } from 'node:path';
 import { open, rm } from 'node:fs/promises';
 import { once } from 'node:events';

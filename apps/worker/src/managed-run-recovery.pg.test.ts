@@ -4,14 +4,17 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {Pool} from 'pg';
 import {claim,releaseLease,completeManagedRunRelease,finish,renew} from '@bondbuddy/api/queue';
-import {executionCapacityControl,configureExecutionCapacity,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
+import {executionCapacityControl,configureExecutionCapacity,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime,executionNodeForPool} from '@bondbuddy/api/execution-capacity';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {isolatedTestDatabase} from './test-database.js';
 import {runPipelineOnce} from './run-pipeline.js';
 import {ManagedRunRetries} from './managed-run-retries.js';
 import {WorkerRuntime} from './runtime.js';
 import {setTimeout as delay} from 'node:timers/promises';
+import {once} from 'node:events';
+import {spawn} from './task-execution.js';
 import {transaction,type PrivateBlobs} from '@bondbuddy/api/data';
+import {initializeTaskExecution,taskNativeProcesses,taskReleaseProof,retireTaskExecution,withTaskExecution} from './task-execution.js';
 const connection=await isolatedTestDatabase(undefined,'managed-run-recovery');
 const hash='a'.repeat(64),registration='synthetic-registration-token-0123456789';
 const proof={nativeProcesses:0,activeExecutions:0} as const;
@@ -72,7 +75,9 @@ test('restricted managed role can finish and safely hand off an unexpected failu
  const control=executionCapacityControl(admin);
  await configureExecutionCapacity(admin,0,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:true});
  const enroll=async(p:Pool,instance:string)=>{
-  const identity={account_id:'synthetic',region:'synthetic',instance_id:instance,epoch:randomUUID()},session=randomUUID();
+  const fixture=p===worker&&process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT?JSON.parse(process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT):null;
+  if(fixture)assert.deepEqual({...fixture.identity,epoch:'synthetic'},{account_id:'synthetic',region:'synthetic',instance_id:instance,epoch:'synthetic'});
+  const identity=fixture?.identity??{account_id:'synthetic',region:'synthetic',instance_id:instance,epoch:randomUUID()},session=fixture?.session_id??randomUUID();
   let op=await control.reserveStart({...identity,instance_id:null,instance_count:1,source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:['authoring'],services:[{service_id:'author',capabilities:['authoring']}]},randomUUID(),(await control.snapshot()).policy.revision);
   op=await control.claimCloudDispatch(op.operation_id,op.revision);const ack=randomUUID();
   op=await control.recordCloudResult(op.operation_id,op.revision,{state:'submitted',identity,provider_request_id:ack,observation:null,run_acceptance:{operation_id:op.operation_id,identity,provider_request_id:ack,instance_ids:[instance],client_token:op.client_token,launch_manifest_sha256:hash,launch_binding_sha256:hash,evidence_ref:'synthetic',evidence_sha256:hash}});
@@ -81,8 +86,29 @@ test('restricted managed role can finish and safely hand off an unexpected failu
   await registerExecutionRuntime(p,{identity,session_id:session},{service_id:'author',capabilities:['authoring'],source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,registration_token:registration,process_identity:{pid:String(process.pid)}});
   await heartbeatExecutionRuntime(p,{native_processes:0,unpersisted_results:0,ready:true});return session;
  };
- const session=await enroll(worker,'synthetic-one');await enroll(other,'synthetic-two');
+ const session=await enroll(worker,'synthetic-one'),otherSession=await enroll(other,'synthetic-two');
+ if(process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT)await initializeTaskExecution(worker);
+ await t.test('concurrent exact scope admission cannot enter the same native execution twice',
+  {skip:!process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT},async()=>{
+   const scope={kind:'job',id:'synthetic-scope-race',token:'exact-attempt'} as const;
+   let calls=0;
+   const first=withTaskExecution(worker,scope,async()=>{calls++;return 'completed';});
+   await assert.rejects(withTaskExecution(worker,scope,async()=>{calls++;return 'completed';}),/TASK_EXECUTION_ALREADY_ENTERED/);
+   await first;assert.equal(calls,1);
+  });
  const next=async()=>{const id=await add(),lease=await claim(worker,60,{runKinds:['generation']});assert.equal(lease?.jobId,id);return lease!;};
+ const scopedProof=(lease:NonNullable<Awaited<ReturnType<typeof claim>>>)=>({...proof,version:'task_cgroup_v1' as const,
+  jobId:lease.jobId,token:lease.token,epoch:executionNodeForPool(worker)!.identity.epoch,sessionId:session,
+  cgroupIdentity:'00000000-0000-0000-0000-000000000000:1:1'});
+ const addHolder=async(lease:NonNullable<Awaited<ReturnType<typeof claim>>>)=>{
+  const holder=randomUUID();
+  await transaction(admin,async client=>{
+   await client.query("SELECT set_config('bb.execution_lease_token',$1,true)",[lease.token]);
+   await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,execution_host,host_boot_id,pid_namespace,namespace_init_start,parent_pid,parent_start,execution_session_id,execution_node_id,execution_node_epoch,node_slot,admission_job_id)
+    SELECT $1,'synthetic-release',1,'synthetic','synthetic','synthetic','synthetic','synthetic',1,'synthetic',execution_session_id,execution_node_id,execution_node_epoch,1,id FROM bb_jobs WHERE id=$2`,[holder,lease.jobId]);
+  });
+  return holder;
+ };
  await t.test('expired lease alone is not reclaimable; only the completed owning session can release',async()=>{
   const lease=await next();await releaseLease(worker,lease);
   assert.equal(await claim(other,60,{runKinds:['generation']}),null);
@@ -126,6 +152,37 @@ test('restricted managed role can finish and safely hand off an unexpected failu
   assert.equal((await admin.query('SELECT stage FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0].stage,'provider_reconcile');
   assert.equal(await claim(other,60,{runKinds:['generation']}),null);
  });
+ await t.test('scoped handoff ignores B holders but retains legacy whole-session protection',async()=>{
+  const a=await next(),b=await next(),holder=await addHolder(b);
+  await releaseLease(worker,a);
+  assert.equal(await completeManagedRunRelease(worker,a,proof),'blocked');
+  assert.equal(await completeManagedRunRelease(worker,a,scopedProof(a)),'queued');
+  assert.equal((await admin.query('SELECT lease_token FROM bb_jobs WHERE id=$1',[b.jobId])).rows[0].lease_token,b.token);
+  await admin.query('DELETE FROM bb_model_capacity_holders WHERE token=$1',[holder]);
+  await finish(worker,b,'failed',{errorCode:'DATA_UNAVAILABLE'});
+  const reclaimed=await claim(other,60,{runKinds:['generation']});assert.equal(reclaimed?.jobId,a.jobId);
+  await finish(other,reclaimed!,'failed',{errorCode:'DATA_UNAVAILABLE'});
+ });
+ await t.test('same-job holders and cross-session waiters block scoped release; exact fences reject malformed proofs',async()=>{
+  const lease=await next(),holder=await addHolder(lease),waiter=randomUUID(),scoped=scopedProof(lease);
+  await admin.query("INSERT INTO bb_model_capacity_waiters(token,scope,wait_until,execution_session_id,admission_job_id) VALUES($1,'synthetic-release',now()+interval '60 seconds',$2,$3)",[waiter,otherSession,lease.jobId]);
+  await releaseLease(worker,lease);
+  for(const invalid of [{...scoped,jobId:randomUUID()},{...scoped,token:randomUUID()},
+   {...scoped,epoch:randomUUID()},{...scoped,sessionId:randomUUID()},{...scoped,cgroupIdentity:'unknown'}])
+   await assert.rejects(completeManagedRunRelease(worker,lease,invalid),/SCOPE_MISMATCH/);
+  await assert.rejects(completeManagedRunRelease(other,lease,scoped),/SCOPE_MISMATCH/);
+  assert.equal(await completeManagedRunRelease(worker,lease,scoped),'blocked');
+  await admin.query('DELETE FROM bb_model_capacity_holders WHERE token=$1',[holder]);
+  assert.equal(await completeManagedRunRelease(worker,lease,scoped),'blocked','waiter from another session retains the exact job fence');
+  await admin.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[waiter]);
+  assert.deepEqual((await Promise.all([completeManagedRunRelease(worker,lease,scoped),completeManagedRunRelease(worker,lease,scoped)])).sort(),['queued','stale']);
+  const claims=await Promise.all([claim(worker,60,{runKinds:['generation']}),claim(other,60,{runKinds:['generation']})]);
+  assert.equal(claims.filter(Boolean).length,1);
+  const index=claims[0]?0:1,reclaimed=claims[index]!;
+  assert.notEqual(reclaimed.token,lease.token);
+  assert.equal(await completeManagedRunRelease(worker,lease,scoped),'stale');
+  await finish(index===0?worker:other,reclaimed,'failed',{errorCode:'DATA_UNAVAILABLE'});
+ });
  await t.test('audit is appended exactly once when a retried job fails',async()=>{
   const lease=await next(),errorId=randomUUID();
   await admin.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,stage,category,code,fingerprint,retry_count,recovery_status)
@@ -135,12 +192,16 @@ test('restricted managed role can finish and safely hand off an unexpected failu
   await worker.query("UPDATE bb_jobs SET state='failed' WHERE id=$1",[lease.jobId]);
   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_error_recovery_events WHERE error_id=$1',[errorId])).rows[0].n,1);
  });
- await t.test('real pipeline retry and exhausted retry budget reach a terminal state with the captured role',async()=>{
+ await t.test('real pipeline retry and exhausted retry budget reach a terminal state with the captured role',{skip:!process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT},async()=>{
   const id=await add();let captured:Awaited<ReturnType<typeof claim>>=null;
   const dependencies={pool:worker,blobs:{} as PrivateBlobs,runKinds:['generation'] as const,leaseSeconds:60,
    stages:[{name:'model_generation',run:async()=>{throw Error('synthetic transient infrastructure failure');}}],
    onLease:(lease:Awaited<ReturnType<typeof claim>>)=>{if(lease)captured=lease;}};
-  const barrier=new ManagedRunRetries(async()=>0,lease=>completeManagedRunRelease(worker,lease,proof));
+  const barrier=new ManagedRunRetries(taskNativeProcesses,async lease=>{
+   const result=await completeManagedRunRelease(worker,lease,taskReleaseProof(worker,lease));
+   if(result!=='blocked')await retireTaskExecution(lease);
+   return result;
+  });
   for(let attempt=1;attempt<=3;attempt++){
    const leave=barrier.enter()!;
    const result=await runPipelineOnce(dependencies);assert.equal(result,attempt<3?'retry':'failed');
@@ -149,7 +210,7 @@ test('restricted managed role can finish and safely hand off an unexpected failu
   const row=(await admin.query('SELECT state,attempts,lease_token FROM bb_jobs WHERE id=$1',[id])).rows[0];
   assert.deepEqual(row,{state:'failed',attempts:3,lease_token:null});
  });
- await t.test('actual two-slot runtime waits for its peer before retrying and terminates after three attempts',async t=>{
+ await t.test('actual two-slot runtime retries a clean A while B stays running; exact attempts terminate at three',{skip:!process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT},async t=>{
   // Run this file in its own PID namespace (e.g. Docker entrypoint node --test).
   // No mocked process inventory, database, queue, pipeline or runtime loop.
   const retryId=await add(),peerId=await add(),logs:Record<string,unknown>[]=[];
@@ -159,15 +220,21 @@ test('restricted managed role can finish and safely hand off an unexpected failu
   const runtime=new WorkerRuntime({pool:worker,blobs:{} as PrivateBlobs,kinds:['run'],runKinds:['generation'],concurrency:2,interactiveSlots:0,parseSlots:0,
    pollMs:20,heartbeatMs:30,sweepMs:1000,leaseSeconds:60,executionTransport:{refresh:async()=>{},ready:()=>true,close:()=>{}},log:e=>logs.push(e),
    runStages:[{name:'model_generation',run:async ctx=>{
-    if(ctx.lease.jobId===peerId){peerStarted();await peerGate;return {kind:'fail',code:'DATA_UNAVAILABLE'};}
+    if(ctx.lease.jobId===peerId){
+     const child=spawn('/usr/bin/python3',['-c',"import time;print('ready',flush=True);time.sleep(120)"],{stdio:['ignore','pipe','ignore']});
+     const exit=once(child,'exit');
+     try{await once(child.stdout,'data');peerStarted();await peerGate;return {kind:'fail',code:'DATA_UNAVAILABLE'};}
+     finally{child.kill('SIGTERM');await exit;}
+    }
     await started;throw Error('synthetic transient infrastructure failure');
    }}]}).start();
   t.after(async()=>{releasePeer();await runtime.stop();});
   const until=async(check:()=>Promise<boolean>)=>{for(let n=0;n<200;n++){if(await check())return;await delay(20);}assert.fail(JSON.stringify(logs.slice(-12)));};
   await until(async()=>logs.some(e=>e.kind==='run'&&e.outcome==='retry'));
-  await delay(80);
-  assert.equal((await admin.query('SELECT attempts FROM bb_jobs WHERE id=$1',[retryId])).rows[0].attempts,1);
-  assert.equal((await admin.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='worker_retry_released'",[retryId])).rows[0].n,0);
+  await until(async()=>(await admin.query('SELECT state FROM bb_jobs WHERE id=$1',[retryId])).rows[0].state==='failed');
+  assert.equal((await admin.query('SELECT attempts FROM bb_jobs WHERE id=$1',[retryId])).rows[0].attempts,3);
+  assert.equal((await admin.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='worker_retry_released'",[retryId])).rows[0].n,2);
+  assert.equal((await admin.query('SELECT state FROM bb_jobs WHERE id=$1',[peerId])).rows[0].state,'running');
   releasePeer();
   await until(async()=>(await admin.query("SELECT count(*)::int n FROM bb_jobs WHERE id=ANY($1::text[]) AND state='failed'",[[retryId,peerId]])).rows[0].n===2);
   const row=(await admin.query('SELECT attempts,lease_token,checkpoint FROM bb_jobs WHERE id=$1',[retryId])).rows[0];

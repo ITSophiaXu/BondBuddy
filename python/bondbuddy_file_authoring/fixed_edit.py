@@ -21,7 +21,7 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 from lxml import etree as ET
 
 from .check import STORY, package, resolve_revisions
-from .template_manifest import (build_manifest, build_nodes, capability_limits,
+from .template_manifest import (KINDS, build_manifest, build_nodes, capability_limits,
                                 describe_nodes, node_text, sha)
 from .word_patch import Patcher, paragraph_run_reference, paragraph_text, q, run_with_text, serialized, xml
 
@@ -35,8 +35,66 @@ RECOVERY_BATCH_OPERATIONS = 12
 RECOVERY_BATCH_BYTES = 32 * 1024
 
 
-def error(code):
-    raise ValueError(code)
+MAX_DETAIL_TEXT = 2000
+MAX_PARTIAL_REJECTIONS = 5
+INSPECT_MAX_CHARS = 20_000
+# Only model-facing commands add a detail object. Host-facing commands (prepare,
+# finalize, preflight) keep the one-key {"error": code} protocol the worker parses.
+DETAIL_COMMANDS = {'inspect', 'apply', 'revert', 'reset'}
+ANCHOR_ONLY_KINDS = {'insert_paragraph', 'insert_row', 'add_comment'}
+
+
+class EditError(ValueError):
+    """A fixed WORD_* code plus bounded, model-facing location detail.
+
+    str(exc) stays the bare code, so existing callers and the host protocol are
+    unchanged; only the inspect/apply/revert/reset CLI prints the detail.
+    """
+
+    def __init__(self, code, **detail):
+        super().__init__(code)
+        self.code = code
+        self.detail = {key: value for key, value in detail.items() if value is not None}
+
+
+def error(code, **detail):
+    raise EditError(code, **detail)
+
+
+def bounded(text, limit=MAX_DETAIL_TEXT):
+    return text if len(text) <= limit else text[:limit]
+
+
+def annotate(exc, **detail):
+    """Attach operation context to a WORD_* failure without changing its code."""
+    code = str(exc)
+    if not re.fullmatch(r'WORD_[A-Z_]+', code):
+        return exc
+    if not isinstance(exc, EditError):
+        exc = EditError(code)
+    for key, value in detail.items():
+        if value is not None:
+            exc.detail.setdefault(key, value)
+    return exc
+
+
+def anchor_mismatch(current, before):
+    """Show the model the node's actual current text and where its copy diverged."""
+    at = next((i for i, (a, b) in enumerate(zip(current, before)) if a != b), min(len(current), len(before)))
+    error('WORD_EDIT_ANCHOR_MISMATCH', current_text=bounded(current),
+          current_text_truncated=True if len(current) > MAX_DETAIL_TEXT else None,
+          current_length=len(current), before_length=len(before), first_difference_at=at,
+          current_near_difference=current[max(0, at - 20):at + 40],
+          before_near_difference=before[max(0, at - 20):at + 40],
+          hint='before 必须等于该节点当前完整文字（含本日志中已保存的修改）；可改用 find/replace 只写要替换的片段。')
+
+
+def occurrences(text, needle):
+    positions, start = [], text.find(needle)
+    while start != -1:
+        positions.append(start)
+        start = text.find(needle, start + 1)
+    return positions
 
 
 def regular_bytes(path, limit=MAX_LOG):
@@ -70,7 +128,8 @@ def read_operation_batch(input_path, operations_path):
             error('WORD_EDIT_BATCH_POLICY_INVALID')
         # A single indivisible operation (e.g. inserting an entire period column)
         # can still be assembled from small local fragments and applied atomically.
-        if len(additions) > RECOVERY_BATCH_OPERATIONS or len(additions) > 1 and len(raw) > RECOVERY_BATCH_BYTES:
+        count = sum(len(unit) if isinstance(unit, list) else 1 for unit in additions)
+        if count > RECOVERY_BATCH_OPERATIONS or count > 1 and len(raw) > RECOVERY_BATCH_BYTES:
             error('WORD_EDIT_BATCH_LIMIT')
     return additions
 
@@ -256,16 +315,18 @@ class Editor:
 
     def target(self, node_id, tag=None):
         if not isinstance(node_id, str) or node_id not in self.nodes:
-            error('WORD_EDIT_NODE_NOT_FOUND')
+            error('WORD_EDIT_NODE_NOT_FOUND', node_id=bounded(node_id, 200) if isinstance(node_id, str) else None,
+                  hint='node_id 须从 inspect 结果原样复制；新增节点为 op:<操作id>:paragraph 等。可用 inspect --find 按文字查找。')
         part, node = self.nodes[node_id]
         if tag is not None and node.tag != q(tag):
-            error('WORD_EDIT_NODE_KIND_MISMATCH')
+            error('WORD_EDIT_NODE_KIND_MISMATCH', node_id=node_id, actual_kind=KINDS.get(node.tag),
+                  expected_kind=KINDS.get(q(tag)))
         return part, node
 
     def replace_paragraph(self, node_id, before, after):
         part, node = self.target(node_id, 'p')
         if paragraph_text(node) != before:
-            error('WORD_EDIT_ANCHOR_MISMATCH')
+            anchor_mismatch(paragraph_text(node), before)
         limits = capability_limits(node)
         if 'existing_revisions' in limits:
             error('WORD_EDIT_EXISTING_REVISIONS_UNSUPPORTED')
@@ -515,7 +576,7 @@ class Editor:
         part, node = self.target(operation['node_id'])
         before = text_value(operation['before'])
         if node_text(node) != before:
-            error('WORD_EDIT_ANCHOR_MISMATCH')
+            anchor_mismatch(node_text(node), before)
         if kind == 'replace_text':
             self.replace_paragraph(operation['node_id'], before, text_value(operation.get('after')))
         elif kind == 'replace_cell_text':
@@ -610,9 +671,54 @@ class Editor:
         self.operations.append(operation)
 
     def replay(self, operations):
-        for operation in operations:
-            self.apply(operation)
+        for index, operation in enumerate(operations):
+            try:
+                self.apply(operation)
+            except ValueError as exc:
+                raise annotate(exc, phase='replay', replay_operation_index=index,
+                               replay_operation_id=operation.get('id') if isinstance(operation, dict) else None) from exc
         return self
+
+    def resolve(self, operation):
+        """Expand model shorthand into the canonical, replayable operation.
+
+        find/replace: the tool reads the node's current text, requires exactly one
+        occurrence and writes the full before/after into the log, so replay and
+        all downstream checks see the same canonical operation as before.
+        Anchor-only kinds may omit before; the tool fills the current text.
+        """
+        if not isinstance(operation, dict):
+            return operation
+        kind = operation.get('kind')
+        if 'find' not in operation and 'replace' not in operation:
+            if 'before' not in operation and kind in ANCHOR_ONLY_KINDS:
+                _, node = self.target(operation.get('node_id'))
+                return {**operation, 'before': node_text(node)}
+            return operation
+        if kind not in {'replace_text', 'replace_cell_text'} or 'before' in operation or 'after' in operation \
+                or 'find' not in operation or 'replace' not in operation:
+            error('WORD_EDIT_FIND_REPLACE_INVALID',
+                  hint='find/replace 仅用于 replace_text 或 replace_cell_text，且不能与 before/after 同时出现。')
+        find, replace = text_value(operation['find']), text_value(operation['replace'])
+        if not find:
+            error('WORD_EDIT_FIND_REPLACE_INVALID', hint='find 不能为空。')
+        _, node = self.target(operation.get('node_id'), 'p' if kind == 'replace_text' else 'tc')
+        texts = [paragraph_text(node)] if kind == 'replace_text' else [paragraph_text(p) for p in node.findall(q('p'))]
+        hits = [(index, position) for index, text in enumerate(texts) for position in occurrences(text, find)]
+        if len(hits) != 1:
+            joined = '\n'.join(texts)
+            error('WORD_EDIT_FIND_NOT_FOUND' if not hits else 'WORD_EDIT_FIND_AMBIGUOUS',
+                  node_id=operation.get('node_id'), occurrence_count=len(hits),
+                  contexts=[texts[i][max(0, at - 20):at + len(find) + 20] for i, at in hits[:10]] or None,
+                  current_text=bounded(joined), current_text_truncated=True if len(joined) > MAX_DETAIL_TEXT else None,
+                  hint='find 必须在该节点当前文字中恰好出现一次（不跨段落）；出现多次时加上前后文字使其唯一。')
+        hit_index, at = hits[0]
+        after = [text[:at] + replace + text[at + len(find):] if index == hit_index else text
+                 for index, text in enumerate(texts)]
+        resolved = {key: value for key, value in operation.items() if key not in {'find', 'replace'}}
+        resolved['before'] = node_text(node)
+        resolved['after'] = after[0] if len(after) == 1 else after
+        return resolved
 
     def tracked_parts(self):
         from .format_plan import build_plan, apply_plan
@@ -756,11 +862,147 @@ class Editor:
             for key in self.touched if key in self.original_paragraphs))
 
 
-def load_editor(input_path, operations_path=None):
+def load_log(input_path, operations_path=None):
     data, source, raw = load_input(input_path)
     log = read_json(operations_path) if operations_path and Path(operations_path).exists() else empty_log(data, raw)
     validate_log(log, data, raw)
+    return data, source, raw, log
+
+
+def load_editor(input_path, operations_path=None):
+    data, source, raw, log = load_log(input_path, operations_path)
     return data, source, raw, log, Editor(data, source).replay(log['operations'])
+
+
+def apply_unit(editor, unit, unit_index):
+    """Apply one atomic unit (an operation or a list of operations) and return the canonical ops."""
+    operations = unit if isinstance(unit, list) else [unit]
+    if not operations:
+        error('WORD_EDIT_OPERATION_INVALID', unit_index=unit_index)
+    resolved = []
+    for offset, operation in enumerate(operations):
+        try:
+            canonical = editor.resolve(operation)
+            editor.apply(canonical)
+        except ValueError as exc:
+            info = operation if isinstance(operation, dict) else {}
+            raise annotate(exc, unit_index=unit_index, operation_index_in_unit=offset if isinstance(unit, list) else None,
+                           operation_id=info.get('id'), node_id=info.get('node_id'), kind=info.get('kind')) from exc
+        resolved.append(canonical)
+    return resolved
+
+
+def apply_batch(input_path, operations_path, additions, partial=False):
+    data, source, raw, log, editor = load_editor(input_path, operations_path)
+    count = sum(len(unit) if isinstance(unit, list) else 1 for unit in additions)
+    if len(log['operations']) + count > MAX_OPERATIONS:
+        error('WORD_EDIT_OPERATION_LIMIT')
+    accepted, rejected, skipped = [], [], []
+    for index, unit in enumerate(additions):
+        if not partial:
+            if isinstance(unit, list):
+                error('WORD_EDIT_OPERATION_INVALID', unit_index=index,
+                      hint='嵌套数组（原子组）仅在 apply --partial 下使用。')
+            accepted.extend(apply_unit(editor, unit, index))
+            continue
+        if len(rejected) >= MAX_PARTIAL_REJECTIONS:
+            skipped.append(index)
+            continue
+        try:
+            accepted.extend(apply_unit(editor, unit, index))
+        except ValueError as exc:
+            code = str(exc) if re.fullmatch(r'WORD_[A-Z_]+', str(exc)) else 'WORD_EDIT_FAILED'
+            operations = unit if isinstance(unit, list) else [unit]
+            rejected.append({'unit_index': index, 'error': code,
+                             'operation_ids': [o.get('id') for o in operations if isinstance(o, dict)],
+                             'detail': exc.detail if isinstance(exc, EditError) else {}})
+            # A failed unit may have changed the in-memory document before it
+            # failed; rebuild from the saved log plus accepted units.
+            editor = Editor(data, source).replay(log['operations'] + accepted)
+    if accepted:
+        log['operations'].extend(accepted)
+        write_json(operations_path, log)
+    result = {'version': VERSION, 'operation_count': len(log['operations']),
+              'accepted_operation_ids': [o['id'] for o in accepted][-200:],
+              'added_node_ids': [key for key in editor.nodes if key.startswith('op:')][-200:]}
+    if partial:
+        result.update(status='partial' if rejected or skipped else 'applied', rejected_units=rejected,
+                      not_attempted_unit_indices=skipped or None)
+        if skipped:
+            result['hint'] = f'已有 {MAX_PARTIAL_REJECTIONS} 组失败，其余组未尝试；先按 rejected_units 修正再提交。'
+    return result
+
+
+def revert(input_path, operations_path, op_ids=None, from_op_id=None):
+    data, source, raw, log = load_log(input_path, operations_path)
+    if not Path(operations_path).exists():
+        error('WORD_EDIT_LOG_REQUIRED')
+    operations = log['operations']
+    ids = [o.get('id') for o in operations]
+    if bool(op_ids) == bool(from_op_id):
+        error('WORD_EDIT_ARGUMENT_REQUIRED', hint='revert 需要 --op-id（可重复）或 --from-op-id 其中之一。')
+    if from_op_id:
+        if from_op_id not in ids:
+            error('WORD_EDIT_REVERT_TARGET_NOT_FOUND', missing=[from_op_id])
+        keep = operations[:ids.index(from_op_id)]
+    else:
+        missing = [i for i in op_ids if i not in ids]
+        if missing:
+            error('WORD_EDIT_REVERT_TARGET_NOT_FOUND', missing=missing[:50])
+        keep = [o for o in operations if o.get('id') not in set(op_ids)]
+    try:
+        Editor(data, source).replay(keep)
+    except ValueError as exc:
+        detail = exc.detail if isinstance(exc, EditError) else {}
+        error('WORD_EDIT_REVERT_CONFLICT', cause=str(exc), blocking_operation_id=detail.get('replay_operation_id'),
+              hint='保留的后续操作依赖被撤销的操作（原文或新增节点）；一并撤销它们，或改用 --from-op-id。')
+    kept = {o.get('id') for o in keep}
+    removed = [i for i in ids if i not in kept]
+    log['operations'] = keep
+    write_json(operations_path, log)
+    return {'version': VERSION, 'operation_count': len(keep), 'removed_operation_ids': removed[-200:],
+            'removed_operation_count': len(removed)}
+
+
+def reset(input_path, operations_path):
+    data, source, raw, log = load_log(input_path, operations_path)
+    removed = len(log['operations'])
+    write_json(operations_path, empty_log(data, raw))
+    return {'version': VERSION, 'operation_count': 0, 'removed_operation_count': removed}
+
+
+def inspect_page(editor, raw, node=None, find=None, kind=None, offset=0, limit=30, max_chars=INSPECT_MAX_CHARS):
+    if offset < 0 or not 1 <= limit <= 200:
+        error('WORD_EDIT_PAGE_INVALID', offset=offset, limit=limit, max_limit=200)
+    if max_chars < 1000:
+        error('WORD_EDIT_PAGE_INVALID', max_chars=max_chars, min_max_chars=1000)
+    if node:
+        editor.target(node)
+        selected = {node: editor.nodes[node]}
+    else:
+        selected = editor.nodes
+        if kind:
+            selected = {key: value for key, value in selected.items() if KINDS.get(value[1].tag) == kind}
+        if find:
+            selected = {key: value for key, value in selected.items() if find in node_text(value[1])}
+    total = len(selected)
+    window = list(selected.items())[offset:offset + limit]
+    nodes, used = [], 0
+    for key, value in window:
+        described = describe_nodes(editor.nodes, selected={key: value})[0]
+        size = len(json.dumps(described, ensure_ascii=False))
+        if nodes and used + size > max_chars:
+            break
+        nodes.append(described)
+        used += size
+    following = offset + len(nodes)
+    result = {'version': 'word-edit-inspect-v1', 'baseline_sha256': sha(raw),
+              'offset_unit': 'unicode_code_points', 'total': total, 'nodes': nodes,
+              'next_offset': following if following < total else None}
+    if len(nodes) < len(window):
+        result['truncated_by_size'] = True
+        result['hint'] = f'单次输出上限约 {max_chars} 字符；用 --offset {following} 继续，或用 --node 读取单个节点。'
+    return result
 
 
 def write_package(path, parts):
@@ -812,7 +1054,8 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight'])
+    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight',
+                                            'revert', 'reset'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--operations')
     parser.add_argument('--operation-file')
@@ -824,6 +1067,13 @@ def main():
     parser.add_argument('--limit', type=int, default=30)
     parser.add_argument('--reason')
     parser.add_argument('--report')
+    parser.add_argument('--find')
+    parser.add_argument('--kind', choices=sorted(set(KINDS.values())))
+    parser.add_argument('--max-chars', type=int, default=INSPECT_MAX_CHARS)
+    parser.add_argument('--partial', action='store_true')
+    parser.add_argument('--op-id', action='append')
+    parser.add_argument('--from-op-id')
+    parser.add_argument('--confirm-reset', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'prepare':
@@ -852,11 +1102,24 @@ def main():
             if not args.operations or not args.output_dir:
                 error('WORD_EDIT_ARGUMENT_REQUIRED')
             result = finalize(args.input, args.operations, args.output_dir, args.skip_report)
+        elif args.command == 'apply':
+            if not args.operations or not args.operation_file:
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            additions = read_operation_batch(args.input, args.operation_file)
+            result = apply_batch(args.input, args.operations, additions, partial=args.partial)
+            if result.get('status') == 'partial':
+                print(json.dumps(result, ensure_ascii=False))
+                print(json.dumps({'error': 'WORD_EDIT_PARTIAL_APPLY'}), file=sys.stderr)
+                return 3
+        elif args.command == 'revert':
+            if not args.operations:
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            result = revert(args.input, args.operations, args.op_id, args.from_op_id)
+        elif args.command == 'reset':
+            if not args.operations or not args.confirm_reset:
+                error('WORD_EDIT_ARGUMENT_REQUIRED', hint='reset 会清空本轮全部已保存操作，需要 --confirm-reset。')
+            result = reset(args.input, args.operations)
         else:
-            if args.command == 'apply':
-                if not args.operations or not args.operation_file:
-                    error('WORD_EDIT_ARGUMENT_REQUIRED')
-                additions = read_operation_batch(args.input, args.operation_file)
             data, source, raw, log, editor = load_editor(args.input, args.operations)
             if args.command == 'no_changes':
                 if not args.operations or not args.reason or not args.reason.strip() or len(args.reason) > 2000:
@@ -866,34 +1129,17 @@ def main():
                 log['no_changes_reason'] = args.reason
                 write_json(args.operations, log)
                 result = {'version': VERSION, 'no_changes': True, 'operation_count': len(log['operations'])}
-            elif args.command == 'apply':
-                if len(log['operations']) + len(additions) > MAX_OPERATIONS:
-                    error('WORD_EDIT_OPERATION_LIMIT')
-                for operation in additions:
-                    editor.apply(operation)
-                log['operations'].extend(additions)
-                write_json(args.operations, log)
-                result = {'version': VERSION, 'operation_count': len(log['operations']),
-                          'added_node_ids': [key for key in editor.nodes if key.startswith('op:')][-200:]}
             else:
-                if args.offset < 0 or not 1 <= args.limit <= 200:
-                    error('WORD_EDIT_PAGE_INVALID')
-                if args.node:
-                    editor.target(args.node)
-                    selected = {args.node: editor.nodes[args.node]}
-                else:
-                    selected = editor.nodes
-                total = len(selected)
-                page = dict(list(selected.items())[args.offset:args.offset + args.limit])
-                nodes = describe_nodes(editor.nodes, selected=page)
-                result = {'version': 'word-edit-inspect-v1', 'baseline_sha256': sha(raw),
-                          'offset_unit': 'unicode_code_points', 'total': total,
-                          'nodes': nodes}
+                result = inspect_page(editor, raw, node=args.node, find=args.find, kind=args.kind,
+                                      offset=args.offset, limit=args.limit, max_chars=args.max_chars)
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception as exc:
         code = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r'WORD_[A-Z_]+', str(exc)) else 'WORD_EDIT_FAILED'
-        print(json.dumps({'error': code}), file=sys.stderr)
+        payload = {'error': code}
+        if args.command in DETAIL_COMMANDS and isinstance(exc, EditError) and exc.detail and code != 'WORD_EDIT_FAILED':
+            payload['detail'] = exc.detail
+        print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
         return 1
 
 

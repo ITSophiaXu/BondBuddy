@@ -7,8 +7,7 @@ import {startPerformanceSpan,withPerformanceSpan} from '@bondbuddy/api/performan
 import {withModelStagePerformance} from './model-performance.js';
 import {writeFile,readFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile} from './task-execution.js';
 import {setTimeout as delay} from 'node:timers/promises';
 import {projectFilesRoot} from './project-file-tools.js';
 import {checkedM4File} from './m4-file-workspace.js';
@@ -142,7 +141,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
           if(plan&&typeof plan==='object'&&'source_sha256'in plan&&plan.source_sha256!==source.source.sha256)throw Error('INPUT_REVISION_CONFLICT');
           if(!options.validPlan(plan,group.manifests))return fallback;
           await writeFile(join(dir,'group-input.json'),JSON.stringify(options.input));await writeFile(join(dir,'group-plan.json'),JSON.stringify(plan));
-          await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+          await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
             ['-B',join(projectFilesRoot,'python/bondbuddy_workpaper_progressive.py'),'prepare',join(dir,'source-data.json'),join(dir,'group-input.json'),join(dir,'group-plan.json'),join(dir,'group-validation.json')],
             {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384});
           const result=JSON.parse(await readFile(join(dir,'group-validation.json'),'utf8'));

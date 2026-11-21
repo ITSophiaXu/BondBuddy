@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+: "${BB_TASK_CGROUP_KEY:?task admission required}"
+: "${BB_TASK_CGROUP_IDENTITY:?task identity required}"
+exec /usr/bin/python3 -I /opt/bondbuddy/task-runner.py \
+ "$BB_TASK_CGROUP_KEY" "$BB_TASK_CGROUP_IDENTITY" -- \
+ /opt/bondbuddy/task-chromium-real "$@"

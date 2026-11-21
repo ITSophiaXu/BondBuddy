@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

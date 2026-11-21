@@ -1,8 +1,7 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdir, mkdtemp, rm, writeFile, readFile, copyFile, lstat, realpath } from 'node:fs/promises';
 import { join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { isReviewReport, hasReviewReportBody, ReviewEditorSnapshotSchema, type ReviewEditorIssue } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { digest } from '@bondbuddy/api/data';
@@ -15,7 +14,6 @@ import { correctionFiles, correctionExport } from './review-correction-stage.js'
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 const helpers = join(root, 'python/bondbuddy_file_authoring');
-const runFile = promisify(execFile);
 const MAX = 100 * 1024 * 1024, TEXT_MAX = 4 * 1024 * 1024;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 // A completed provider turn can contain only a progress event. It is never a report.

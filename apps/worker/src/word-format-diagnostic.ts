@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile} from './task-execution.js';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import type { Pool, PoolClient } from 'pg';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { FORMAT_JSON_MAX, WORD_FILE_MAX, readFormatFile, type FormatDiagnostic, type FormatFileRef } from './file-authoring-format.js';
@@ -71,7 +70,7 @@ export async function diagnoseFormat(row: Candidate, blobs: PrivateBlobs, signal
     await writeFile(join(root, 'input.json'), JSON.stringify({ input_hash: row.input_hash.trim(),
       baseline_path: 'materials/baseline.docx', baseline_sha256: row.diagnostic.files.baseline.sha256,
       revision_author: row.diagnostic.revision_author, revision_date: row.diagnostic.revision_date }));
-    await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+    await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
       ['-B', '-s', '-m', 'bondbuddy_file_authoring.format_diff', '--baseline', join(root, 'materials/baseline.docx'),
         '--tracked', join(root, 'tracked.docx'), '--author', row.diagnostic.revision_author,
         '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'), '--output', join(root, 'report.json')],

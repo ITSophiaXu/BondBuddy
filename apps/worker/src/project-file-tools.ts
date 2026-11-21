@@ -1,6 +1,5 @@
 import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile as run} from './task-execution.js';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -15,7 +14,6 @@ import type {M4WorkerInput} from './m4-input.js';
 import {verifiedFileLinks} from './project-file-evidence.js';
 
 export const projectFilesRoot=resolve(fileURLToPath(import.meta.url),'../../../..');
-const run=promisify(execFile);
 export async function projectFilePython(ctx:StageContext,args:string[]){
   const operation=['inspect','inspect-complete','patch'].includes(args[0]??'')?args[0]!:'other';
   return withPerformanceSpan(operation.startsWith('inspect')?'document.inspect':'document.transform',{operation},()=>run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],

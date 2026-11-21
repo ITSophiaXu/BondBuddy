@@ -1,5 +1,5 @@
 /** Fixed continuation tools. Model progress is data, never authority or executable code. */
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
