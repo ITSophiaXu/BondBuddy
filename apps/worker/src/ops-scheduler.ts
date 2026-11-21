@@ -20,6 +20,7 @@ import { backupContainer, pruneOffhostBackups } from './backup-retention.js';
 import { runLibrarySyncPass } from './library-scheduler.js';
 import { ProviderReconciliationSweep, providerReconciliationHealth } from './provider-reconcile-sweep.js';
 import { probeProviderBalance } from './provider-balance-probe.js';
+import {checkWorkflowOperationsHealth} from './workflow-operations-health.js';
 import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBondProjectAdapter, type LibrarySourceAdapter } from './library-sources.js';
 
 // #79/#35 ops scheduler: one small process that runs the periodic operations jobs which used to be
@@ -219,7 +220,7 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   }
   if (!off(env.BB_OPS_WORKER_HEARTBEAT)) {
     const maxAge = intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 5, 86400);
-    tasks.push({ name: 'worker_heartbeat', intervalMs: seconds('BB_OPS_WORKER_HEARTBEAT_SECONDS', 60), leaseMs: 60_000, run: async (): Promise<TaskOutcome> => ({ ok: true, detail: await checkWorkerHeartbeat(pool, maxAge) }) });
+    tasks.push({ name: 'worker_heartbeat', intervalMs: seconds('BB_OPS_WORKER_HEARTBEAT_SECONDS', 60), leaseMs: 60_000, run: async (): Promise<TaskOutcome> => ({ ok: true, detail: {...await checkWorkerHeartbeat(pool, maxAge),...await checkWorkflowOperationsHealth(pool)} }) });
   }
   // #35: deletes off-host backups (bb-backups container) past BB_BACKUP_RETENTION_DAYS; the newest is always kept.
   // Backups themselves are taken by scripts/backup.sh from host cron (docs/runbooks/m1-deploy.md).

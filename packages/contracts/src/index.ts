@@ -724,3 +724,4 @@ export * from './project-assistant.js';
 export * from './automatic-pricing.js';
 export * from './generation-progress.js';
 export * from './execution-capacity.js';
+export * from './workflow-authoring-v1.js';

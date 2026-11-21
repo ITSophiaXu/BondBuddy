@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from zipfile import ZipFile
 from lxml import etree as ET
-from .fixed_edit import Editor, load_editor, regular_bytes, write_json
+from .fixed_edit import Editor, committed_operations_path, load_editor, regular_bytes, write_json
 from .check import resolve_revisions
 from .template_manifest import node_text, sha
 from .word_patch import q, xml
@@ -181,6 +181,7 @@ def inventory(input_path, operations_path=None):
     operations_raw = None
     if operations_path is not None:
         try:
+            operations_path = committed_operations_path(input_path, operations_path)
             operations_raw = regular_bytes(operations_path)
         except (OSError, ValueError) as exc:
             raise ValueError('REVERSE_AUDIT_OPERATIONS_REQUIRED') from exc

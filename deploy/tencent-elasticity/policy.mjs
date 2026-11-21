@@ -11,7 +11,7 @@ const modelCapacity = x => Number.isInteger(x) && x > 0 && x <= 2147483647;
 /** Operator-owned pins name existing instances, never an image allowlist. */
 export function retainedNodePin(c, instanceId) {
   const pins=c.retained_nodes===undefined?[]:c.retained_nodes;
-  requireThat(Array.isArray(pins)&&pins.length<=2,'RETAINED_NODE_PINS');
+  requireThat(Array.isArray(pins)&&pins.length<=(c.max_owned??2),'RETAINED_NODE_PINS');
   const keys=['instance_id','image_id','image_sha256','source_sha256','role_name','create_operation_id','launch_manifest_sha256','launch_binding_sha256'];
   requireThat(pins.every(p=>p&&Object.keys(p).length===keys.length&&Object.keys(p).every(k=>keys.includes(k))&&
     id(p.instance_id,'ins')&&id(p.image_id,'img')&&c.role_names?.includes(p.role_name)&&
@@ -40,11 +40,16 @@ export function validateConfig(c, {apply = false, expenditure = true} = {}) {
   retainedNodePin(c);
   requireThat(c.region === 'ap-beijing' && c.zone === 'ap-beijing-7' && c.instance_type === 'SA9.LARGE16', 'RESOURCE_SCOPE');
   requireThat(/^\d{1,20}$/.test(c.account_id) && /^[a-z0-9-]{1,40}$/.test(c.pool_tag), 'OWNERSHIP_SCOPE');
-  requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) && c.max_owned === 2, 'POOL_BOUND');
+  requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) &&
+    Number.isInteger(c.max_owned)&&c.max_owned>=1&&c.max_owned<=64, 'POOL_BOUND');
+  requireThat(c.max_owned<=2||hash(c.expansion_budget_review_sha256),'EXPANSION_BUDGET_REQUIRED');
   requireThat(['single_node_validation', 'two_node_validation', 'automatic'].includes(c.phase), 'PHASE_REQUIRED');
   requireThat((c.global_model_limit === undefined || modelCapacity(c.global_model_limit)) &&
     [4,8].includes(c.node_model_limit), 'CAPACITY_BOUND');
-  requireThat(c.compute_cny_per_hour === 0.8 && c.compute_cap_cny_per_hour === 1.6, 'COMPUTE_QUOTE');
+  requireThat(c.compute_cny_per_hour === 0.8 &&
+    Math.round(c.compute_cap_cny_per_hour*1000)===c.max_owned*800, 'COMPUTE_QUOTE');
+  if(c.workflow_slots_enabled===true)requireThat(Number.isInteger(c.authoring_slots)&&c.authoring_slots>=1&&c.authoring_slots<=2&&
+    Number.isInteger(c.postprocess_slots)&&c.postprocess_slots>=1&&c.postprocess_slots<=2,'PHASE_CAPACITY_BOUND');
   requireThat(Number.isSafeInteger(c.scale_up_wait_seconds) && c.scale_up_wait_seconds >= 30 &&
     Number.isSafeInteger(c.idle_seconds) && c.idle_seconds >= 60 &&
     Number.isSafeInteger(c.failure_cooldown_seconds) && c.failure_cooldown_seconds >= 60, 'COOLDOWN_BOUND');
@@ -52,9 +57,9 @@ export function validateConfig(c, {apply = false, expenditure = true} = {}) {
     if (expenditure) requireThat(c.enabled === true, 'APPLY_DISABLED');
     requireThat(id(c.image_id, 'img') && id(c.vpc_id, 'vpc') && id(c.subnet_id, 'subnet') && id(c.security_group_id, 'sg'), 'MATERIAL_IDS_REQUIRED');
     requireThat(hash(c.source_sha256) && hash(c.image_sha256) && hash(c.network_review_sha256) && hash(c.quote_sha256), 'MANIFEST_REQUIRED');
-    requireThat(c.role_names?.length === 2 && new Set(c.role_names).size === 2 && c.role_names.every(x => /^[A-Za-z0-9_-]{1,60}$/.test(x)), 'PER_NODE_ROLE_REQUIRED');
+    requireThat(c.role_names?.length === c.max_owned && new Set(c.role_names).size === c.max_owned && c.role_names.every(x => /^[A-Za-z0-9_-]{1,60}$/.test(x)), 'PER_NODE_ROLE_REQUIRED');
     if (expenditure) requireThat(Number.isFinite(c.noncompute_cap_cny_per_hour) && c.noncompute_cap_cny_per_hour >= 0 &&
-      Number.isFinite(c.total_cap_cny_per_hour) && Math.round(c.total_cap_cny_per_hour * 1000) >= 1600 + Math.round(c.noncompute_cap_cny_per_hour * 1000), 'NONCOMPUTE_QUOTE_REQUIRED');
+      Number.isFinite(c.total_cap_cny_per_hour) && Math.round(c.total_cap_cny_per_hour * 1000) >= c.max_owned*800 + Math.round(c.noncompute_cap_cny_per_hour * 1000), 'NONCOMPUTE_QUOTE_REQUIRED');
     if (expenditure && c.phase === 'automatic') requireThat(c.stop_charging_verified === true && hash(c.stop_charging_evidence_sha256), 'STOP_CHARGING_UNVERIFIED');
     if (expenditure) requireThat(c.private_pg_verified === true && c.service_credentials_verified === true, 'BOOTSTRAP_UNVERIFIED');
     if (expenditure && c.global_model_limit > 4) requireThat(hash(c.provider_budget_review_sha256), 'PROVIDER_BUDGET_UNVERIFIED');
@@ -67,8 +72,11 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   const hold = reason => ({kind: 'hold', reason});
   if (!config.enabled || !snapshot.policy.managed_nodes) return hold('disabled');
   if (snapshot.policy.node_model_limit !== config.node_model_limit || snapshot.policy.max_nodes !== config.max_owned) return hold('policy_mismatch');
+  if((snapshot.policy.workflow_slots_enabled===true)!==(config.workflow_slots_enabled===true)||
+    config.workflow_slots_enabled===true&&(snapshot.policy.authoring_slots!==config.authoring_slots||snapshot.policy.postprocess_slots!==config.postprocess_slots))return hold('policy_mismatch');
+  if(config.max_owned>2&&snapshot.policy.expansion_budget_review_sha256!==config.expansion_budget_review_sha256)return hold('expansion_budget_unverified');
   if (snapshot.pending_cloud_reservations) return hold('pending_cloud_operation');
-  if (inventory.length > 2) return hold('inventory_drift');
+  if (inventory.length > config.max_owned) return hold('inventory_drift');
   if (inventory.some(x => x.cooldown_until && now < Date.parse(x.cooldown_until))) return hold('inventory_cooldown');
   const live = inventory.filter(x => x.instance_state !== 'STOPPED'); // unknown/starting still reserve costs
   const ready = snapshot.nodes.filter(x => x.state === 'ready');
@@ -111,8 +119,8 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   if (live.length < config.min_running ||
     ((live.length===0||config.phase !== 'single_node_validation') && unsupplied.length && hasBudgetSlots)) {
     const spare = inventory.find(x => x.instance_state === 'STOPPED');
-    if (live.length >= 2 || (!spare && inventory.length >= 2)) return hold('max_owned');
-    if ((live.length + 1) * config.compute_cny_per_hour > config.compute_cap_cny_per_hour) return hold('compute_cap');
+    if (live.length >= config.max_owned || (!spare && inventory.length >= config.max_owned)) return hold('max_owned');
+    if ((live.length + 1) * Math.round(config.compute_cny_per_hour*1000) > Math.round(config.compute_cap_cny_per_hour*1000)) return hold('compute_cap');
     return {kind: spare ? 'start' : 'run', instance_id: spare?.instance_id ?? null,
       capabilities: live.length < 1 ? [...new Set(config.services.flatMap(s => s.capabilities))] : unsupplied.map(g => g.capability)};
   }

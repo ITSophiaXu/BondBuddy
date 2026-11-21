@@ -1605,7 +1605,7 @@ export function createServer(settings: Settings = {}) {
   for(const kind of ['cancel','resume','pause'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
     const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     if(!queueEnabled)throw unavailable();
-    return queueAction(db(),user,id,kind,request.id);
+    return queueAction(db(),user,id,kind,request.id,blobs?{blobs}:undefined);
   });
   app.get('/api/v1/artifacts/:artifact_id',async(request,reply)=>{
     reply.header('x-bb-request-id',request.id);

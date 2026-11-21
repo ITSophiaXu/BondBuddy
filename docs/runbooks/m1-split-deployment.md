@@ -277,3 +277,24 @@ Stop/Start 与重新登记，则完成该原生流程，不能直接重建后复
 迁移和控制器可先在现行配额部署。提高之前，现有编制、复核和新建模板都要采用按 holder 数量找槽的运行模块，并核对准确字节及原启动绑定。旧进程仍可在原生产配额下读取新 schema。回退时先按原证据和策略版本降低准入，等待在途自然结束。保留迁移、任务、holder 和待对账用量，再按原组件收据恢复需要回退的模块。若恢复旧控制器，先确保 PG 全局值已恢复为它支持的原有配置。
 
 更换节点模板前，逐台用原 Run、对应角色和历史公开引导字节验证完整创建清单。将需要保留的字节写入受控配置的 `retained_warm_bootstraps`，并重新核对报价的配置绑定。暖启在 PG 标记发出前验证完整创建清单。对旧版本已登记为 `unknown` 的操作，只有受控恢复路径能凭准确的本地未发出证据、原 Stop ACK、停费状态和完整节点前像进行取消。原派发时间与证据保留在审计中，已证明未发出的操作延续该节点的停机计费区间。
+
+## 数据库备份恢复隔离与受控恢复（中期工作流）
+
+运行固定已审源码和对应镜像，先保存主站、每个执行节点、解析节点、数据库及存储绑定的组件收据和回滚前像。`restore.sh` 继续拒绝分离部署的历史整栈恢复；下面的独立数据库工具和 operator CLI 用于分离环境，不以恢复旧整栈代替当前角色部署。恢复过程中主站 API、执行/复核、ops 准入保持冻结；解析服务与私有存储按既有角色处理，不能停整台 Azure 机器。
+
+需要两份独立来源：准确 `db.dump` 字节及 SHA256，以及离机调用/云 Stop/账务对账清单。后者使用 `database-restore-safety-v1`，包含 `restore_id`、新的 `control_epoch`、`backup_sha256`、全体旧账号、全部模型 attempt 的原始 job/run/owner/logical_call_id 与完成/未发出/unknown 状态、实际结果私有对象 ref/hash、每个旧节点 epoch 的准确 Stop/Terminate 完成 operation、源/image/launch manifest/start 绑定、云 observation hash，以及每账号冻结后的 ledger/现金/订阅/活动计量 snapshot hash。`manifest_sha256` 是除该字段外的键排序、无空白 UTF-8 JSON SHA256。离机 audit 的 `covered_until` 必须覆盖实际源库冻结时刻；`complete` 不能由缺记录推定。没有证据的调用保持 `unknown`，不能补 `confirmed_not_sent`。未开始的 run 也必须有原始 `never_admitted_v1`、attempts=0、无 session 和无模型 attempts 的证明。
+
+在已有运维入口的私有环境中设置 `DATABASE_URL` 为原库；`RESTORE_DATABASE_URL` 与 `BB_RESTORE_DATABASE_NAME` 指向不同名字的独立恢复库；`AZURE_STORAGE_CONNECTION_STRING` 指向原私有存储，`BB_RESTORE_STORAGE_CONNECTION_STRING` 指向不同账户/endpoint 的隔离存储。operator CLI 的 `BB_RESTORE_OPERATOR_ID` 记录真实运维主体，`BB_PROVIDER_RESULT_CONTAINER` 与已部署私有结果容器一致（默认 `bondbuddy-private`）。不要把连接串或模型凭证复制进 repo、receipt 或终端输出。目标 storage 使用同账户的另一个 key、别名或重排连接串仍会被拒绝。
+
+执行顺序如下；代码中没有自动启动 worker 或恢复云节点的动作：
+
+1. 对初始有签名摘要的 receipt 执行 `node db/verify-restore.mjs --restore-freeze <receipt.json> <db.dump SHA256>`。它冻结外部调用和执行预算，不删除资源。沿用既有控制器/运维入口，对全部旧 epoch 完成真正的 Stop/Terminate 和停费观察，导出完整 completed operation 到隔离私有对象存储；只提交 Stop 请求不是完成。停主站 API/worker/ops 进程，记录各角色实际停止回执。完成离机 audit 和冻结后的账务 snapshot，封存最终 receipt；同一 restore_id 的重复 freeze 不制造新的冻结时刻。
+2. `node db/verify-restore.mjs --restore-safety-dry <final-receipt.json> <db.dump SHA256>` 不需要数据库凭据；接着 `--restore-safety-preflight` 对原库核对全部旧 epoch、正式云 Stop completion、调用全量覆盖、never-sent 和 ledger hash。缺完整 audit、源库不能读、旧 legacy holder 无节点证明、Stop 结果未知或任何绑定不匹配，都停止在冻结状态。源库事件和钱不回写为成功。
+3. 由已有数据库运维身份创建独立库并导入准确备份（`pg_restore --no-owner --exit-on-error`）；不 DROP 原库。在恢复库执行完整新增迁移，再执行 `node db/verify-restore.mjs --restore-safety-apply <final-receipt.json> <db.dump SHA256>`。这个直接入口会再次核对源库，检查实际 target 名称，然后保存 immutable quarantine/preimage、新 control epoch 和逐 job 分类。旧 job token/holder/usage/credits 保留；非终态 run 以原 run ID 发布暂停事件/outbox，不触发计时扣费。重复 apply 同一 receipt 幂等。
+4. `node deploy/m1/scripts/restore-control.mjs validate-storage` 验证存储隔离，按原字节 manifest/hash 导入材料和结果到隔离存储。核对所有原材料、prompt、provider result 和已提交 workflow chapter/operation/projection/receipt 对象的私有 ref、归属、大小及 SHA256。禁止以模型再发一次替代丢失结果。
+5. 每个旧 node/epoch 分别准备普通单链接私有请求文件并执行 `node deploy/m1/scripts/restore-control.mjs fence <request.json>`。请求字段是 `quarantineId,manifestSha256,nodeId,epoch,expectedTokens:[{kind:"job"|"message",id,token}],evidenceRef`。`expectedTokens` 必须精确等于 quarantine.preimage 中这个 epoch 的旧 job/message token 全集；`evidenceRef` 指向步骤 1 导出的完整 source completed operation JSON，包含原 operation/account/region/instance/epoch/action/provider_request_id/cloud_observation。入口先有界读/hash，再短事务重核 q/current node/jobs/messages/holders/waiters，精确释放旧 epoch 职责并写 immutable fence receipt。异 token、新 epoch、哈希变化或 receipt 变化拒绝，不影响其他节点。
+6. 对已完成调用与账务对账的账号执行 `node deploy/m1/scripts/restore-control.mjs reconcile <request.json>`，请求为 `quarantine_id,manifest_sha256,owner_user_ids:[...]`，每次最多16账号。所有 source attempt 必须在恢复库有准确原身份、completed 私有结果真实字节/hash/完成观察或供应商 `confirmed_not_sent` 观察；不存在的 intent、未知调用、遗留 token/holder、账务/meter 不一致会拒绝。它仅追加该账号 reconciliation 并开放全局证据门，未核旧账号仍被数据库 intent trigger 拦截。普通 evidence resume 无法绕过此入口。
+7. 对可恢复原 run 执行 `node deploy/m1/scripts/restore-control.mjs resume <request.json>`，请求为 `quarantine_id,manifest_sha256,owner_user_id,run_id`。唯一 resume CAS 重新验证已封存 workflow 对象、原输入 hash、账号许可、Stop fence、供应商/用量、钱包隔离、预留状态和取消/暂停意图，再将同一 run 排队并发布事件。unknown、丢对象、已取消、用户仍暂停或钱未对清的 run 留在隔离状态。此步骤不改费用政策，不重置 retry/batch/checkpoint，也不调用供应商。
+8. 按角色部署 runbook 接入已验证的恢复库/隔离 storage、新节点 epoch 和准确组件版本；通过既有预算策略与凭据恢复准入，逐角色核对实际进程/配置及原症状验收。真实 Word/模型/云恢复验收需另留证据。本 PR 的 synthetic PG 和文件测试不代表已执行生产恢复。
+
+任一步失败保留 receipt、quarantine、旧 tokens、unknown 和原账务；不调用普通 resume、手工清 holder、直接设成功或删除审计。回滚先冻结新库、新 epoch 与准入，核对新产生的调用/账务再使用受控角色切换；不能把旧备份覆盖回有新副作用的数据库。

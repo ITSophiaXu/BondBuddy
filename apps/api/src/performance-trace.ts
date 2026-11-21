@@ -8,7 +8,8 @@ export interface PerformanceTraceScope {
  ownerUserId:string;projectId:string;runId:string;jobId?:string;traceId?:string;taskKind?:string;runExecutionId?:string;
  serviceRole?:string;workerInstanceId?:string;releaseSha?:string;imageDigest?:string;hostId?:string;processSessionId?:string;batchId?:string;groupId?:string;workItemId?:string;itemAttempt?:number;
 }
-export interface PerformanceObservation {stepKey:string;interval:{startedAt:string|Date;endedAt:string|Date;clockSource:'database_event_interval'|'wall_clock_observation'};attributes?:PerformanceInputAttributes}
+export type PerformanceInterval={startedAt:string|Date;endedAt:string|Date;clockSource:'database_event_interval'|'wall_clock_observation';status?:PerformanceEndStatus};
+export interface PerformanceObservation {stepKey:string;interval:PerformanceInterval;attributes?:PerformanceInputAttributes}
 export type PerformanceInputAttributes=Readonly<Record<string,unknown>>;
 export type PerformanceEndStatus=Exclude<PerformanceSpanStatus,'running'>;
 export interface PerformanceSpanHandle {
@@ -63,20 +64,20 @@ export class PerformanceTraceRuntime {
   else this.drop(s,span.span_id);
   this.touch(s);
  }
- private make(s:SessionState,parent:PerformanceSpanRecord|undefined,key:string,input:PerformanceInputAttributes,interval?:{startedAt:string|Date;endedAt:string|Date;clockSource:'database_event_interval'|'wall_clock_observation'}):{span:PerformanceSpanRecord;handle:PerformanceSpanHandle}|null{
+ private make(s:SessionState,parent:PerformanceSpanRecord|undefined,key:string,input:PerformanceInputAttributes,interval?:PerformanceInterval):{span:PerformanceSpanRecord;handle:PerformanceSpanHandle}|null{
   if(!/^[a-z][a-z0-9_.]{0,127}$/.test(key)){s.row.invalid_attributes++;this.touch(s);return null;}
   s.row.generated++;
   if(s.row.generated>this.maxSpans){s.row.dropped++;s.row.last_sequence++;this.touch(s);return null;}
-  const inherited=parent?Object.fromEntries(Object.entries(parent.attributes).filter(([k])=>['logical_call_id','parent_logical_call_id','author_run_id','call_id','attempt_no','model_id','model_provider','adapter','model_config_version','batch_id','group_id','work_item_id','item_attempt','repair_round','batch_index','material_index'].includes(k))):{};
+  const inherited=parent?Object.fromEntries(Object.entries(parent.attributes).filter(([k])=>['chapter_id','spool_id','execution_node_id','execution_node_epoch','execution_session_id','original_execution_node_epoch','original_execution_session_id','lease_token_sha256','logical_call_id','parent_logical_call_id','author_run_id','call_id','attempt_no','model_id','model_provider','adapter','model_config_version','batch_id','group_id','work_item_id','item_attempt','repair_round','batch_index','material_index'].includes(k))):{};
   const clean=sanitizePerformanceAttributes({...inherited,...input});s.row.invalid_attributes+=clean.invalid;
   const now=new Date().toISOString(),start=interval?new Date(interval.startedAt).toISOString():now,end=interval?new Date(interval.endedAt).toISOString():null;
   const elapsed=end?Date.parse(end)-Date.parse(start):null;
-  if(elapsed!==null&&elapsed<0){s.row.dropped++;s.row.invalid_attributes++;this.touch(s);return null;}
+  if(elapsed!==null&&(elapsed<0||interval?.status!==undefined&&!terminal.has(interval.status))){s.row.dropped++;s.row.invalid_attributes++;this.touch(s);return null;}
   const t0=process.hrtime.bigint();
   const span:PerformanceSpanRecord={span_id:randomUUID(),owner_user_id:s.row.owner_user_id,session_id:s.row.session_id,run_execution_id:s.row.run_execution_id,
    run_id:s.row.run_id,job_id:s.row.job_id,trace_id:s.row.trace_id,parent_span_id:parent?.span_id??null,
    stage:typeof clean.attributes.stage==='string'?clean.attributes.stage:parent?.stage??null,step_key:key,step_version:1,
-   status:end?'succeeded':'running',started_at:start,ended_at:end,duration_ms:elapsed,last_activity_at:end??now,
+   status:end?(interval?.status??'succeeded'):'running',started_at:start,ended_at:end,duration_ms:elapsed,last_activity_at:end??now,
    clock_source:interval?interval.clockSource:'monotonic',attributes:clean.attributes,span_links:clean.links,sequence:0};
   let finished=!!end;s.open+=finished?0:1;
   const annotate=(attrs:PerformanceInputAttributes)=>{
@@ -129,7 +130,7 @@ export class PerformanceTraceRuntime {
  start(key:string,attrs:PerformanceInputAttributes={}):{span:PerformanceSpanRecord;handle:PerformanceSpanHandle}|null{
   const c=context.getStore();if(!c)return null;try{return this.make(c.session,c.span,key,attrs);}catch{return null;}
  }
- interval(key:string,interval:{startedAt:string|Date;endedAt:string|Date;clockSource:'database_event_interval'|'wall_clock_observation'},attrs:PerformanceInputAttributes={}){
+ interval(key:string,interval:PerformanceInterval,attrs:PerformanceInputAttributes={}){
   const c=context.getStore();if(!c)return;try{this.make(c.session,undefined,key,attrs,interval);}catch{c.session.row.invalid_attributes++;c.session.row.dropped++;this.touch(c.session);}
  }
  async flush():Promise<void>{
@@ -181,7 +182,7 @@ export async function withPerformanceSpan<T>(key:string,attrs:PerformanceInputAt
  return context.run({...c,span:entry.span,handle:entry.handle},async()=>{try{const value=await fn(entry.handle);entry.handle.end();return value;}catch(error){entry.handle.end('failed');throw error;}});
 }
 export function currentPerformanceSpanId(){return context.getStore()?.span.span_id??null;}
-export function recordPerformanceInterval(key:string,interval:{startedAt:string|Date;endedAt:string|Date;clockSource:'database_event_interval'|'wall_clock_observation'},attrs:PerformanceInputAttributes={}):void{
+export function recordPerformanceInterval(key:string,interval:PerformanceInterval,attrs:PerformanceInputAttributes={}):void{
  if(['database_event_interval','wall_clock_observation'].includes(interval.clockSource))context.getStore()?.runtime.interval(key,interval,attrs);
 }
 export async function flushPerformanceTraces(pool:Pool,timeoutMs=2000):Promise<void>{try{await runtimes.get(pool)?.drain(timeoutMs);}catch{}}

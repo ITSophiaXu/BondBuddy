@@ -1,3 +1,5 @@
+> 2026-11-21：中期 F01–F10 切片增加版本化章节工作流、可信编辑 V2、call 子 scope、持久保全、有界补传与独立收尾 phase；新增 0199/0200、最小 ACL 和数据库恢复隔离。新协议默认关闭，原供应商 journal、任务归属、账务与全文质量门保留；只提交代码 PR，实际节点生效、真实金样和负载发布门另验。详见[实施与验收](backend-timeout-workflow.md)。
+
 > 2026-11-18：#1613 将 provider_reconcile 收尾接入常驻 ops 与 worker 共用的有界分页恢复器。安全快照续跑沿用原输入、合同和 deadline；无法恢复或未知超过一小时的系统任务明确失败，未知供应商用量保持原样，失败账务与 outbox 原子提交。用户/材料/积分暂停保留，parser 心跳不代表编制能力。无迁移，详见[根因、异常链回归和发布边界](acceptance/issue-1613-terminal-reconciliation.md)。
 
 > 2026-11-17：#994/#1324 续跑改用有界 `bb_continuation.status/checkpoint`，绑定实际输入、操作/双 Word 和 PDF 页内读取视图；CLI0.169 SessionStart 在首次、恢复和自动压缩后重新注入磁盘最新状态。游标仅为未核验执行记录，缺失/失效只触发定向核对；最终纯分页失败在业务完成后正常结束模型交宿主独立重建/渲染，全部质量门禁、预算与原 deadline 保持。无迁移或公共契约变化，详见[续跑与分页交接](verification/large-pdf-continuation-20261117.md)。

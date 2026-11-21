@@ -17,6 +17,10 @@ GRANT EXECUTE ON FUNCTION public.bb_lock_evidence_gate(boolean) TO :"runtime_rol
 GRANT INSERT(run_id,owner_user_id,topic_id,manifest,input_hash)
  ON public.bb_m4_executions TO :"runtime_role";
 GRANT INSERT(charged_points) ON public.bb_credit_reservations TO :"runtime_role";
+-- The 0192 reservation INSERT trigger executes as the consumer, including
+-- reservations whose quote has no authoring scope. It only appends identity.
+GRANT INSERT(owner_user_id,scope_quote_id,reservation_id)
+ ON public.bb_authoring_scope_reservations TO :"runtime_role";
 -- Deferred acceptance capture runs at COMMIT under the consumer identity.
 -- It records immutable refund evidence; it does not approve or issue a refund.
 GRANT INSERT(owner_user_id,reservation_id,item_id,run_id,ordinal,source_item_key,
@@ -34,4 +38,22 @@ GRANT INSERT ON public.bb_model_attempt_execution_configs TO :"runtime_role";
 GRANT INSERT ON public.bb_model_result_failure_diagnostics TO :"runtime_role";
 GRANT INSERT(exit_capture_status,finish_reason_capture_status)
  ON public.bb_model_call_attempt_runtime TO :"runtime_role";
+-- v1 enrollment and immutable candidate evidence. This grants neither cloud
+-- mutation nor provider-completed/settlement authority for an expired lease.
+GRANT INSERT(workflow_protocol_version) ON public.bb_execution_node_sessions TO :"runtime_role";
+GRANT SELECT ON public.bb_model_attempt_execution_configs,public.bb_execution_cloud_operations,
+ public.bb_sealed_model_captures,public.bb_recovered_capture_evidence TO :"runtime_role";
+GRANT INSERT(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,
+ execution_node_id,execution_node_epoch,execution_session_id,lease_token,spool_id,manifest_sha256,
+ call_exit_proof,raw_usage,raw_outcome,evidence_sha256)
+ ON public.bb_sealed_model_captures TO :"runtime_role";
+GRANT INSERT(id,owner_user_id,project_id,run_id,job_id,attempt_id,logical_call_id,attempt_no,
+ original_node_id,original_epoch,original_session_id,recovery_session_id,capture_ref,capture_sha256,
+ byte_size,manifest_sha256,evidence_sha256)
+ ON public.bb_recovered_capture_evidence TO :"runtime_role";
+-- Normal consumers can verify recovery scope, never manufacture control receipts.
+GRANT SELECT ON public.bb_database_restore_quarantines,public.bb_database_restore_reconciliations,
+ public.bb_database_restore_fence_releases TO :"runtime_role";
+GRANT EXECUTE ON FUNCTION public.bb_restore_account_permitted(text),public.bb_workflow_run_eligible(text),
+ public.bb_workflow_preparation_calls_safe(text,jsonb) TO :"runtime_role";
 COMMIT;

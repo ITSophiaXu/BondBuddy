@@ -11,6 +11,14 @@ function context(taskKind: string): StageContext {
     signal: new AbortController().signal, checkpoint: {}, values: new Map(),
   };
 }
+test('enabling workflow does not convert an old material-paused job without admission',async()=>{
+  const ctx=context('update');ctx.values.set('input_lock',{authoring_mode:'unified_v1'});ctx.checkpoint={input_lock:{},materials_ready:{}};ctx.lease={jobId:'job-1',runId:'run-1',owner:'owner-1',token:'token-1',attempts:1,checkpoint:{stages:ctx.checkpoint}} as StageContext['lease'];
+  let legacy=0,workflow=0;
+  const stage=(kind:'legacy'|'workflow'):RunStage=>({name:'model_generation',run:async()=>{if(kind==='legacy')legacy++;else workflow++;return {kind:'done',value:{kind}};}});
+  const router=modelGenerationRouter({workflowEnabled:true,fileStage:stage('legacy'),workflowStage:stage('workflow')});
+  await router.run(ctx);assert.equal(legacy,1);assert.equal(workflow,0);
+  ctx.lease.checkpoint.workflow_admission_v1={protocol_version:1};await router.run(ctx);assert.equal(workflow,1);
+});
 
 test('router sends update tasks to the existing historical stage without entering generation', async () => {
   let updateCalls = 0;

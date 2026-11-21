@@ -25,6 +25,95 @@ runner_spec.loader.exec_module(runner_module)
 
 
 class BrokerUnitTests(unittest.TestCase):
+    def test_runner_refuses_a_different_call_generation_before_business_exec(self):
+        read_fd, write_fd = os.pipe()
+        key, identity = "a" * 64, "synthetic:1:1"
+        client = Mock();client.__enter__ = Mock(return_value=client);client.__exit__ = Mock(return_value=False)
+        client.recvmsg.return_value = (b'{"status":"move-self"}\n', [(socket.SOL_SOCKET, socket.SCM_RIGHTS, struct.pack("i", write_fd))], 0, None)
+        result = {"status": "ok", "key": key, "identity": identity, "sealed": False,
+                  "callBinding": {"kind": "call", "parentKey": "b" * 64, "parentIdentity": "synthetic:1:2", "logicalCallId": "chapter-1", "generation": 1}}
+        client.recv.return_value = (json.dumps(result) + "\n").encode()
+        try:
+            with patch.object(runner_module.socket, "socket", return_value=client), \
+                    patch.object(sys, "argv", ["runner", key, identity, "--", "/usr/bin/true"]), \
+                    patch.dict(os.environ, {"BB_TASK_CALL_PARENT_KEY": "b" * 64, "BB_TASK_CALL_PARENT_IDENTITY": "synthetic:1:2",
+                                           "BB_TASK_CALL_LOGICAL_ID": "chapter-1", "BB_TASK_CALL_GENERATION": "2"}), \
+                    patch.object(runner_module.os, "execvpe") as execute:
+                with self.assertRaisesRegex(RuntimeError, "CALL_BINDING_REFUSED"): runner_module.main()
+                execute.assert_not_called()
+                with self.assertRaises(OSError): os.fstat(write_fd)
+        finally:
+            os.close(read_fd)
+
+    def test_call_scope_closes_only_its_generation_and_keeps_parent_open(self):
+        with tempfile.TemporaryDirectory(prefix="task-call-unit-") as directory:
+            root = Path(directory)
+            broker = object.__new__(module.Broker)
+            broker.state = broker.root = root
+            broker.boot = "synthetic"
+            broker.binding = {"context": {"session_id": "session", "identity": {"epoch": "epoch"}}}
+            broker.init = {"namespace": "pid:[1]", "group": "/synthetic"}
+            broker.worker_file = root / "worker.json"
+            worker = {"pid": 10, "start": "10", "parent": 1, "group": "/synthetic", "namespace": "pid:[1]"}
+            key = "a" * 64
+            parent = root / ("bb-task-" + key)
+            parent.mkdir()
+            (parent / "cgroup.events").write_text("populated 0\n")
+            identity = f"synthetic:{parent.stat().st_dev}:{parent.stat().st_ino}"
+            module.save(root / (key + ".json"), {"boot": broker.boot, "context": broker.binding["context"],
+                "worker": worker, "identity": identity, "sealed": False, "scope": {"kind": "job", "id": "job", "token": "token"}})
+            module.save(broker.worker_file, {"boot": broker.boot, "context": broker.binding["context"], "process": worker})
+            original_mkdir = Path.mkdir
+            original_rmdir = Path.rmdir
+            def create_group(path, *args, **kwargs):
+                original_mkdir(path, *args, **kwargs)
+                if path.name.startswith("bb-call-"):
+                    (path / "cgroup.events").write_text("populated 0\n")
+                    (path / "cgroup.kill").write_text("")
+            def remove_group(path):
+                if path.name.startswith("bb-call-"):
+                    for name in ["cgroup.events", "cgroup.kill"]: (path / name).unlink()
+                original_rmdir(path)
+            request = {"action": "open_call", "key": key, "identity": identity,
+                "logicalCallId": "chapter-1", "generation": 1}
+            with patch.object(module, "process", return_value=worker), patch.object(module.Broker, "worker", return_value={"process": worker}), \
+                    patch.object(module.Broker, "pending_launchers", return_value=0), patch.object(Path, "mkdir", create_group), patch.object(Path, "rmdir", remove_group):
+                first = broker.handle(request, 10, 1000)
+                closed = broker.handle({"action": "close_call", "key": first["key"], "identity": first["identity"]}, 10, 1000)
+                self.assertTrue(closed["sealed"])
+                self.assertEqual(closed["nativeProcesses"], 0)
+                self.assertFalse(module.private_json(root / (key + ".json"))["sealed"])
+                with self.assertRaises(RuntimeError):
+                    broker.handle(request, 10, 1000)
+                broker.handle({"action": "retire", "key": first["key"], "identity": first["identity"]}, 10, 1000)
+                second = broker.handle(dict(request, generation=2), 10, 1000)
+                self.assertNotEqual(first["key"], second["key"])
+                with self.assertRaises(RuntimeError):
+                    broker.handle(dict(request, identity="synthetic:0:0", generation=3), 10, 1000)
+
+    def test_parent_counts_pending_call_launcher_using_trusted_parent_binding(self):
+        with tempfile.TemporaryDirectory(prefix="task-call-launcher-") as directory:
+            broker = object.__new__(module.Broker)
+            broker.state = Path(directory)
+            broker.worker_file = broker.state / "worker.json"
+            broker.boot = "synthetic"
+            broker.binding = {"context": {"session_id": "session"}}
+            broker.init = {"pid": 1, "namespace": "pid:[1]", "group": "/synthetic"}
+            parent_key, call_key = "a" * 64, "b" * 64
+            module.save(broker.worker_file, {"process": {"pid": 10}})
+            module.save(broker.state / (parent_key + ".json"), {"boot": broker.boot, "context": broker.binding["context"], "identity": "synthetic:1:1"})
+            module.save(broker.state / (call_key + ".json"), {"boot": broker.boot, "context": broker.binding["context"],
+                "parent_key": parent_key, "parent_identity": "synthetic:1:1"})
+            def read_text(path):
+                if str(path) == "/proc/10/task/10/children": return "20"
+                if str(path) == "/proc/1/task/1/children": return ""
+                return "20 (runner) " + " ".join(["S", "10", *["0"] * 17, "20"])
+            peer = {"pid": 20, "start": "20", "namespace": "pid:[1]", "group": "/synthetic", "parent": 10}
+            with patch.object(Path, "read_text", read_text), patch.object(module, "process", return_value=peer), \
+                    patch.object(Path, "read_bytes", return_value=b"BB_TASK_CGROUP_KEY=" + call_key.encode() + b"\0"):
+                self.assertEqual(broker.pending_launchers(parent_key), 1)
+                self.assertEqual(broker.pending_launchers(call_key), 1)
+
     def test_unexpected_capabilities_are_closed_without_exec(self):
         descriptors = [os.open("/dev/null", os.O_WRONLY), os.open("/dev/null", os.O_WRONLY)]
         client = Mock()
@@ -225,7 +314,7 @@ class NativeCgroupFixture(unittest.TestCase):
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
                     try:
                         probe.connect(str(self.socket_directory / "broker.sock"))
-                    except ConnectionRefusedError:
+                    except (ConnectionRefusedError, FileNotFoundError):
                         pass
                     else:
                         return
@@ -252,8 +341,16 @@ class NativeCgroupFixture(unittest.TestCase):
         self.container.wait(timeout=10)
         keys = {receipt["key"] for receipt in self.receipts}
         keys.update(path.name[:-5] for path in self.state.iterdir() if re.fullmatch(r"[a-f0-9]{64}\.json", path.name))
+        paths = []
         for key in keys:
+            row = module.private_json(self.state / (key + ".json"))
             path = self.group / ("bb-task-" + key)
+            if row.get("parent_key"):
+                self.assertRegex(row["parent_key"], r"^[a-f0-9]{64}$")
+                path = self.group / ("bb-task-" + row["parent_key"]) / ("bb-call-" + key)
+            self.assertTrue(path.is_relative_to(self.group))
+            paths.append(path)
+        for path in sorted(paths, key=lambda path: len(path.parts), reverse=True):
             if path.exists():
                 path.rmdir()
         subprocess.run(["docker", "rm", self.name], stdout=subprocess.DEVNULL, check=True)
@@ -284,6 +381,31 @@ class NativeCgroupFixture(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("BB_TASK_CGROUP_TEST_IMAGE"), "requires explicit existing local Docker worker image")
 class NativeCgroupTests(NativeCgroupFixture):
+    def test_chapter_orphan_close_keeps_parent_open_and_late_runner_is_refused(self):
+        parent = self.scope("chapter-job")
+        call_request = {"action": "open_call", "key": parent["key"], "identity": parent["identity"], "logicalCallId": "chapter-1", "generation": 1}
+        first = self.call(call_request)
+        self.assertEqual(first["status"], "ok")
+        orphan = self.launch(first, "import os,time\npid=os.fork()\nif pid==0:\n os.setsid();os.close(1);os.close(2);time.sleep(120)\nelse: print(pid,flush=True)\n")
+        self.assertEqual(orphan["code"], 0)
+        self.assertEqual(self.proof(parent, "inspect_live")["nativeProcesses"], 1)
+        for _ in range(100):
+            closed = self.proof(first, "close_call")
+            if closed["nativeProcesses"] == 0: break
+            time.sleep(0.02)
+        self.assertEqual(closed["nativeProcesses"], 0)
+        self.assertTrue(closed["sealed"])
+        self.assertFalse(self.proof(parent, "inspect_live")["sealed"])
+        self.assertEqual(self.launch(first, "print('late-business-code')")["code"], 78)
+        self.assertEqual(self.proof(first, "retire")["nativeProcesses"], 0)
+        second = self.call(dict(call_request, logicalCallId="chapter-2"))
+        self.assertEqual(second["status"], "ok")
+        self.assertEqual(self.launch(second, "print('next-chapter')")["stdout"].strip(), "next-chapter")
+        self.assertEqual(self.proof(second, "close_call")["nativeProcesses"], 0)
+        self.assertEqual(self.proof(second, "retire")["nativeProcesses"], 0)
+        self.assertEqual(self.proof(parent, "seal")["nativeProcesses"], 0)
+        self.assertEqual(self.proof(parent, "retire")["nativeProcesses"], 0)
+
     def test_orphan_setsid_multiple_calls_independent_tasks_and_restart(self):
         a = self.scope("A")
         orphan_script = ("import os,time\npid=os.fork()\nif pid==0:\n os.setsid();os.close(1);os.close(2);time.sleep(120)\n"
