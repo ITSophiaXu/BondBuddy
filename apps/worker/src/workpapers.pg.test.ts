@@ -40,7 +40,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     try{
     const manifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[ctx.run.project_id,ctx.run.input_revision])).rows[0].manifest as M4DocumentManifest;
     assert.equal(manifest.input.document_type,'workpaper');assert.ok(manifest.input.workpaper);assert.equal(manifest.input.workpaper.mode,'direct');assert.equal(manifest.input.workpaper.decision,undefined);assert.match(manifest.knowledge!.content,/不替代独立核查证据/);
-    processed++;if(manifest.input.workpaper.entry.code==='2'&&failOnce){failOnce=false;return {kind:'fail',code:'MODEL_TURN_FAILED'};}
+    processed++;if(manifest.input.workpaper.entry.code==='2'&&failOnce){failOnce=false;return {kind:'fail',code:'MODEL_OUTPUT_SCHEMA_INVALID'};}
     if(manifest.input.workpaper.entry.code==='3'){
       const decision=explanationDecision(manifest.input.workpaper.entry.id),bytes=await makeWorkpaperExplanation(manifest.input.workpaper.entry,decision);
       const key='synthetic-output/'+ctx.run.id;await blobs.put(key,bytes,DOCX);explanations.set(ctx.run.id,bytes);
@@ -120,7 +120,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     batch=await read();batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'pause',expected_revision:batch.revision});
     assert.equal(await advanceWorkpaperBatch(pool),false);
     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'resume',expected_revision:batch.revision});
-    for(let i=1;i<300;i++){await advanceWorkpaperBatch(pool);const state=await execute();assert.equal(state,i===1?'failed':'succeeded');if(i%100===0)process.stdout.write(`workpaper synthetic deliveries: ${i}\n`);}
+    for(let i=1;i<300;i++){await advanceWorkpaperBatch(pool);const state=await execute(),expected=i===1?'failed':'succeeded';if(state!==expected){const current=await read();assert.fail(JSON.stringify({index:i,outcome:state,expected,batch_state:current.state,batch_error:current.error,items:current.items.slice(0,Math.min(i+3,8)).map(item=>({state:item.state,run_id:item.run_id,error:item.error}))}));}if(i%100===0)process.stdout.write(`workpaper synthetic deliveries: ${i}\n`);}
     await advanceWorkpaperBatch(pool);batch=await read();assert.equal(batch.state,'partial');assert.equal(batch.items.filter(i=>i.state==='succeeded').length,299);
     const succeededRuns=batch.items.filter(i=>i.state==='succeeded').map(i=>i.run_id);
     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'retry_failed',expected_revision:batch.revision});
