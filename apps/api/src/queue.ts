@@ -1272,6 +1272,7 @@ export function validFileAuthoringRecovery(value:unknown,scope:{owner:string;pro
   }
   for(const path of paths)for(let parent=path.substring(0,path.lastIndexOf('/'));parent.includes('/');parent=parent.substring(0,parent.lastIndexOf('/')))
     if(paths.has(parent))return false;
+  if(Object.hasOwn(v,'controlled_replay')&&(v.controlled_replay!==true||!paths.has('output/operations.json')))return false;
   return paths.has('input.json');
 }
 
@@ -1361,13 +1362,23 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     if((rotation||providerOutputLimit)&&(!capture||capture.state!=='saved'||!isFileAuthoringDeadline(saved?.deadline_at)))return false;
     // Only an attempt without the modern protocol marker is historical.
     if(!hasCapture&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&noSnapshot)return false;
+    const operationHash=ready?(saved.files as {path:string;sha256:string}[]).find(file=>file.path==='output/operations.json')?.sha256:undefined;
+    const previousAttempt=a.attempt_no>1?(await client.query(`SELECT id FROM bb_model_call_attempts
+      WHERE job_id=$1 AND owner_user_id=$2 AND logical_call_id=$3 AND attempt_no=$4`,
+      [jobId,owner,a.logical_call_id,a.attempt_no-1])).rows[0]:undefined;
+    const prior=previousAttempt?(j.checkpoint?.operator_reconciliations?.[previousAttempt.id] as {operations_sha256?:string}|undefined):undefined;
+    // Two timed-out attempts with the same saved operation log have made
+    // no substantive Word-edit progress; a third identical attempt is wasteful.
+    const stalled=a.error_code==='MODEL_TIMEOUT'&&!!operationHash&&prior?.operations_sha256===operationHash;
     const expired=ready&&isFileAuthoringDeadline(saved.deadline_at)&&Date.parse(saved.deadline_at)<=Date.now();
-    const terminal=expired||exhausted||!ready;
+    const terminal=expired||exhausted||stalled||!ready;
     const reason=expired?'file_authoring_context_deadline_exhausted':exhausted?fileAuthoringRecoveryEvent(a.error_code,rotation?'limit_exhausted':'retries_exhausted'):
+      stalled?'file_authoring_no_edit_progress':
       !ready?fileAuthoringRecoveryEvent(a.error_code,'recovery_unavailable'):fileAuthoringRetryReason(a.error_code);
     const recoveryState=terminal?'failed':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
     const audit={actor:'worker_file_authoring_recovery',reason_code:reason,attempt_id:a.id,logical_call_id:a.logical_call_id,
       decision:terminal?'fail_run':'retry_unknown_usage',recovery_state:recoveryState,
+      ...(operationHash?{operations_sha256:operationHash}:{}),
       ...(providerOutputLimit?{error_code:'MODEL_PROVIDER_OUTPUT_LIMIT'}:{}),
       ...(ready&&saved.deadline_at!==undefined?{deadline_at:saved.deadline_at}:{})};
     // Unknown usage is an immutable historical fact. A durable disposition permits

@@ -790,7 +790,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; reviewCompletionCheck?: boolean; recovery?: boolean; deadlineAt?:string; onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void>; drainProgress?:()=>Promise<void>; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -1092,6 +1092,9 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         return { status, value: status === 'completed' ? cls.value : null, ...(status==='completed' && reviewToolTrace?{reviewToolTrace}:{}), error_code: obs.error_code as ModelAdapterErrorCode | null, attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
       } finally {
         await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
+        // A live checkpoint may still be uploading after the Codex process
+        // exits. Release model capacity first, then drain before workspace cleanup.
+        try { await input.fileWorkspace?.drainProgress?.(); } catch { /* failure cannot skip cleanup */ }
         if (attemptDir) await withPerformanceSpan('model.workspace.cleanup', {}, () => rm(attemptDir!, { recursive: true, force: true }));
         if (attemptStatus) attemptSpan.end(attemptStatus, attemptAttributes);
         else if (executionSignal?.aborted) attemptSpan.end('cancelled');

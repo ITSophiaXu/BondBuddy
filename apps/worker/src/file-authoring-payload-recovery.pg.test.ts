@@ -30,7 +30,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
     observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;
     result?:boolean;deadline?:string;runtimeFinishReason?:string|null;observationFinishReason?:string|null;conflictingTerminal?:boolean;
-    capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure};
+    capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure;operations?:string};
   type Lease=NonNullable<Awaited<ReturnType<typeof claim>>>;
   async function observe(lease:Lease,project:string,inputHash:string,n:number,options:Options={}){
     const logical=options.logical??'file-authoring-v1',content=Buffer.from('synthetic file authoring prompt');
@@ -64,8 +64,14 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       const bytes=Buffer.from(JSON.stringify({input_hash:inputHash})),sha256=digest(bytes),path='input.json';
       const key=`owners/${owner}/projects/${project}/runs/${lease.runId}/file-authoring/recovery/${attempt}/${sha256}/${path}`;
       await blobs.put(key,bytes,'application/json');
+      const files=[{path,key,sha256,byte_size:bytes.length}];
+      if(options.operations!==undefined){
+        const path='output/operations.json',content=Buffer.from(options.operations),sha256=digest(content);
+        const key=`owners/${owner}/projects/${project}/runs/${lease.runId}/file-authoring/recovery/${attempt}/${sha256}/${path}`;
+        await blobs.put(key,content,'application/json');files.push({path,key,sha256,byte_size:content.length});
+      }
       await checkpointStage(pool,lease,'file_authoring_recovery',{version:'file-authoring-recovery-v1',input_hash:options.snapshot==='bad'?'bad':inputHash,
-        attempt_id:attempt,logical_call_id:logical,files:[{path,key,sha256,byte_size:bytes.length}],
+        attempt_id:attempt,logical_call_id:logical,files,
         ...(options.deadline!==undefined?{deadline_at:options.deadline}:{})},false);
     }
     if(options.capture&&options.capture!=='prepared'){
@@ -429,6 +435,16 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
     await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1000000,expiresAt:null,actor:'synthetic',reason:'Synthetic recovery credits'}));
     if(localFailure==='MODEL_TIMEOUT'){
       const deadline=new Date(Date.now()+3600_000).toISOString(),balanceBefore=await creditBalanceExact(pool,owner);
+      const stationary=await fixture({error:'MODEL_TIMEOUT',capture:'saved',deadline,operations:'{"operations":["same"]}'});
+      assert.equal(await stationary.recover(),true);
+      const stationaryLease=await claim(pool,300);assert.ok(stationaryLease);assert.equal(stationaryLease.runId,stationary.lease.runId);
+      const stationaryNext=await observe(stationaryLease,stationary.project,stationary.inputHash,2,
+        {error:'MODEL_TIMEOUT',capture:'saved',deadline,operations:'{"operations":["same"]}'});
+      assert.equal(await stationaryNext.recover(),true);
+      assert.deepEqual(await row(stationary.lease.runId),{state:'failed',stage:'failed'});
+      const stationaryCheckpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[stationary.lease.jobId])).rows[0].checkpoint;
+      assert.equal(stationaryCheckpoint.operator_reconciliations[stationaryNext.attempt].reason_code,'file_authoring_no_edit_progress');
+      assert.equal(await claim(pool,30),null,'unchanged edit logs cannot start a third model attempt');
       const rotatingPaid=await fixture({paid:true,error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
       const held=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows[0];
       assert.equal(held.state,'held');

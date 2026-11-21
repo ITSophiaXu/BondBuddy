@@ -9,6 +9,8 @@ import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import type { StageContext } from './run-pipeline.js';
 import type { UnifiedInput } from './unified-input.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
+import { makeWorkerDocxFixture } from './docx-test-fixture.js';
+import { runFormatPython } from './file-authoring-format.js';
 import { authorizedFileAuthoringRecovery, fileAuthoringContextDeadline, recoverFileAuthoringInput, restoreFileAuthoringWork,
   saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_STAGE, FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringRecovery } from './file-authoring-recovery.js';
 
@@ -62,6 +64,73 @@ test('a process restart restores all work bytes and the original revision timest
     assert.equal((await readFile(join(target, 'scratch/empty.txt'))).length, 0);
     assert.equal(restarted.checkpoint.model_generation, undefined);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('live controlled checkpoints retain only replayable edits and a bounded handoff',async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-controlled-progress-'));
+  try{
+    await workspace(root);
+    const input={version:'codex-file-input-v1',input_hash:f.ctx.run.input_hash,baseline_sha256:'b'.repeat(64),
+      format_tools:{version:'controlled-docx-v1'},revision_date:'2026-11-21T00:00:00.000Z'};
+    const operations={version:'word-operations-v1',input_hash:input.input_hash,baseline_sha256:input.baseline_sha256,
+      operations:[{id:'done-1',kind:'replace_text'}]};
+    await writeFile(join(root,'input.json'),JSON.stringify(input));
+    await writeFile(join(root,'output/operations.json'),JSON.stringify(operations));
+    const saved=await saveFileAuthoringRecovery(f.ctx,root,intent,{checkpoint:f.checkpoint,controlledProgress:true});
+    assert.equal(saved.controlled_replay,true);
+    assert.deepEqual(saved.files.map(file=>file.path),['input.json','output/operations.json','scratch/工作记录.md']);
+    assert.equal(f.writes(),1);
+    await writeFile(join(root,'output/operations.json'),'{bad json');
+    await assert.rejects(saveFileAuthoringRecovery(f.ctx,root,intent,{checkpoint:f.checkpoint,controlledProgress:true}));
+    assert.equal(f.writes(),1,'an invalid live log cannot replace the last durable checkpoint');
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('a live Word batch is checkpointed and replayed before the resumed model call',
+  {skip:!process.env.BONDBUDDY_TEST_PYTHON&&!process.env.BONDBUDDY_WORD_PYTHON},async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-live-word-checkpoint-'));
+  try{
+    const source=makeWorkerDocxFixture({externalLink:false,text:'原稿金额100万元。'});
+    f.objects.set('source',source);
+    const pin={material_id:'source',material_version:1,sha256:digest(source),role:'historical' as const};
+    const input:UnifiedInput={requirements:[],materials:[{pin,filename:'source.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:'source',records:[],pending:[]}],
+      manifest:{issuer_name:'合成发行人',market:'sse',offering:'private',materials:[pin],update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'},
+        authoring:{version:'unified_v1',requirements:[],source_prospectuses:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval',
+          format_policy:{version:'source-format-v1',mode:'preserve_docx',selection:'automatic',template:{kind:'material',material_id:'source',material_version:1,sha256:pin.sha256}}}}};
+    const config={command:[process.execPath],model_id:'synthetic',model_provider:'synthetic',base_url:'http://localhost',wire_api:'responses' as const,
+      model_config_version:'test',reasoning_effort:null,credential:{kind:'env' as const,name:'SYNTHETIC_TOKEN'},work_root:root,
+      timeout_ms:10000,authoring_timeout_ms:10000,kill_grace_ms:100,max_output_bytes:4096,max_schema_reasks:0,disabled_features:[],path_env:''};
+    let turns=0,liveSnapshot:FileAuthoringRecovery|undefined;
+    const stage=()=>fileAuthoringStage({load:async()=>input,config,checkpoint:f.checkpoint,
+      model:options=>({name:'model_generation',run:async()=>{
+        turns++;const cwd=join(root,`attempt-${turns}`);await mkdir(cwd);
+        await options.fileWorkspace!.prepare(cwd);
+        if(turns===1){
+          const remaining=Date.parse(options.fileWorkspace!.deadlineAt!)-Date.now();
+          assert.ok(remaining>10000&&remaining<=30000,'a 10-second process cap leaves room for a resumed attempt');
+          const manifest=JSON.parse(await readFile(join(cwd,'template-manifest.json'),'utf8'));
+          const paragraph=manifest.nodes.find((node:{kind:string;text:string})=>node.kind==='paragraph'&&node.text.includes('原稿金额'));
+          assert.ok(paragraph);
+          const batch=join(cwd,'scratch','edit.json');
+          await writeFile(batch,JSON.stringify([{id:'edit-1',kind:'replace_text',node_id:paragraph.node_id,before:paragraph.text,after:'更新金额200万元。'}]));
+          await runFormatPython(['apply','--input',join(cwd,'input.json'),'--operations',join(cwd,'output','operations.json'),'--operation-file',batch]);
+          options.onActivity?.({type:'item.completed',item:{type:'command_execution',command:'fixed_edit apply',exit_code:0}},intent as any);
+          await options.fileWorkspace!.drainProgress?.();
+          liveSnapshot=(f.ctx.lease.checkpoint.stages as Record<string,FileAuthoringRecovery>)[FILE_AUTHORING_RECOVERY_STAGE];
+          assert.equal(liveSnapshot.controlled_replay,true);
+          assert.ok(liveSnapshot.files.some(file=>file.path==='output/operations.json'));
+          assert.ok(!liveSnapshot.files.some(file=>file.path==='scratch/edit.json'));
+        }else{
+          assert.equal(options.fileWorkspace!.recovery,true);
+          assert.match(await readFile(join(cwd,'output','operations.json'),'utf8'),/edit-1/);
+        }
+        return {kind:'stopped'};
+      }})});
+    assert.equal((await stage().run(f.ctx)).kind,'stopped');
+    assert.ok(liveSnapshot);f.authorize(liveSnapshot,'file_authoring_timeout_auto_retry');
+    assert.equal((await stage().run(f.ctx)).kind,'stopped');
+    assert.equal(turns,2);
+  }finally{await rm(root,{recursive:true,force:true});}
 });
 
 test('changed inputs, corrupt objects, foreign task keys and injected helper paths cannot be restored', async () => {
