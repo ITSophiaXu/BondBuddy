@@ -215,7 +215,7 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
       meta=await deliverySend(`/api/v1/artifacts/${firstPromotion.artifactId}`);assert.equal(meta.statusCode,200,meta.body);
       download=await deliverySend(meta.json().download_url);assert.equal(download.statusCode,200,download.body);
     }finally{await deliveryApp.close();}
-    assert.equal(boundedArtifactReads,2,'metadata and download use evidence-sized Blob reads');
+    assert.equal(boundedArtifactReads,1,'download uses an evidence-sized Blob read');
     assert.deepEqual(download.rawPayload,wordCandidate,'owned artifact download returns the hash-verified Word bytes');
     const deliveryKinds=(await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation_kind IN ('artifact_download_grant','artifact_download')",[owner,wordRun.json().run_id])).rows.map((row:any)=>row.operation_kind);
     assert.ok(deliveryKinds.includes('artifact_download_grant')&&deliveryKinds.includes('artifact_download'),'grant and verified download are searchable');

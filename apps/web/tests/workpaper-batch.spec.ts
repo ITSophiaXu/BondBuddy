@@ -43,6 +43,7 @@ test('asynchronous batch shortage pays and resumes the exact remaining batch wit
   const path=new URL(route.request().url()).pathname.replace('/api/v1','');
   if(path==='/account/sessions')return route.fulfill({json:{items:[]}});
   if(path==='/account/recovery')return route.fulfill({json:{enabled:false,support_operator:false,current:null,pending:null}});
+  if(path===`/projects/${ids.api}/workpapers/batches/short-batch`&&route.request().method()==='GET')return route.fulfill({json:fixtureBody(route,batch)});
   if(path===`/projects/${ids.api}/workpapers/batches/short-batch/actions`){const body=route.request().postDataJSON();actions.push(body);if(!funded)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT'}});batch.state='queued';batch.revision++;batch.billing_resume=undefined;return route.fulfill({json:fixtureBody(route,batch)});}
   if(path==='/subscriptions/catalog')return route.fulfill({json:fixtureBody(route,{enabled:true,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,providers:['wechat'],auto_renew_available:false})});
   if(path==='/subscriptions/account')return route.fulfill({json:fixtureBody(route,{subscription:null,available_points:funded?points:0,held_points:0,subscription_available_points:0,topup_available_points:funded?points:0,other_available_points:0,periods:[]})});
