@@ -28,7 +28,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
  {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON||!process.env.BB_TEST_INTEGRITY_BROWSER,timeout:300000},async()=>{
  const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-integrity-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,searchEnabled=true;
  const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
- const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+ const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
  let firstPause=true;

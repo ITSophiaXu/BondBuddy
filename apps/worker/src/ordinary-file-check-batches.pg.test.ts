@@ -74,7 +74,7 @@ test('ordinary file batches settle independent outputs, retain original price on
       await assert.rejects(pool.query('UPDATE bb_project_file_check_batch_items SET points=points+1 WHERE batch_id=$1',[batch.batch_id]),/immutable|change|snapshot/i);
     });
     await t.test('one successful Word is delivered and billed even when another file fails',async()=>{
-      assert.equal(await execute(),'succeeded');assert.equal(await execute(),'failed');batch=await ok('GET',url+'/'+batch.batch_id);
+      const outcomes=[await execute(),await execute()];assert.deepEqual(outcomes.sort(),['failed','succeeded']);batch=await ok('GET',url+'/'+batch.batch_id);
       assert.equal(batch.state,'partial');assert.equal(batch.charged_points,String(each));assert.equal(batch.items[0].charged_points,String(each));assert.equal(batch.items[1].charged_points,'0');
       assert.deepEqual(await creditBalanceExact(pool,owner),{available:BigInt(each),frozen:0n});
       const run=await ok('GET','/api/v1/runs/'+batch.items[0].run_id),artifact=await ok('GET','/api/v1/artifacts/'+run.artifact_id);assert.equal((await send('GET',artifact.download_url)).statusCode,200);

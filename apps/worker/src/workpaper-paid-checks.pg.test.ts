@@ -12,17 +12,15 @@ import {createServer} from '@bondbuddy/api';
 import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
 import {advanceWorkpaperBatch} from '@bondbuddy/api/workpapers';
 import {advanceProjectFileUpdates} from '@bondbuddy/api/project-file-consistency';
-import {WORKPAPER_PRICE,AUTOMATIC_TASK_TARIFF,type WorkpaperEntry} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF} from '@bondbuddy/contracts';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {makeSyntheticDocxFixture} from '../../api/dist/docx-fixtures.js';
 import {readBoundedOfficeParts} from '../../api/dist/docx-inspector.js';
 import {catalogueXlsx} from '../../api/dist/workpaper-catalogue.test.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {inputLockStage,materialsReadyStage,runPipelineOnce,type codexModelStage,type RunStage} from './run-pipeline.js';
-import {workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 import {m4DocumentDeliveryStage} from './m4-document-stage.js';
 import {projectFileModelStage,projectFileDeliveryStage} from './project-file-stage.js';
-import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'workpaper-paid-checks');
 async function withHeader(bytes:Buffer,image=false){
   const parts=new Map(readBoundedOfficeParts(bytes)),zip=new ZipFile(),chunks:Buffer[]=[];
@@ -41,8 +39,8 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
   const store=new Map<string,Buffer>(),blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
   const origin='http://synthetic-workpaper.test';
-  const server=(automatic:boolean)=>createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,enableSubscriptionBilling:automatic,enableOutcomePricing:automatic,principal:async()=>({userId:actor,csrfVerified:true})});
-  let app=server(false);
+  const server=(automatic:boolean)=>createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,enableSubscriptionBilling:automatic,enableOutcomePricing:automatic,historicalBillingFixture:!automatic,principal:async()=>({userId:actor,csrfVerified:true})});
+  let app=server(true);
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode} ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
@@ -70,28 +68,24 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
   }});
   const checks=()=>execute([projectFileModelStage({model:checkModel}),projectFileDeliveryStage()]);
   try{
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'paid_wp_'+user.slice(0,8)]);await fund(WORKPAPER_PRICE.points*2+2*AUTOMATIC_TASK_TARIFF.check.points-1);
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,'paid_wp_'+user.slice(0,8)]);await fund(2*AUTOMATIC_TASK_TARIFF.workpaper.points+2*AUTOMATIC_TASK_TARIFF.check.points-1);
     const p=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic paid workpapers',issuer_name:'Synthetic issuer',market:'sse',offering:'public'}),id=p.project_id,base='/api/v1/projects/'+id,wp=base+'/workpapers';
     const original=await upload(id,'synthetic-v1.docx',document,docx,'historical');
     let versions=await ok('GET',base+'/prospectus-versions'),source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:0,version_id:versions.versions[0].version_id});
-    const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(3),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),cat=await ok('POST',wp+'/catalogues',{request_id:randomUUID(),material});
-    const request={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision,requirements:'Synthetic only'};
-    const assessor:typeof codexModelStage=options=>({name:options.name,run:async ctx=>{
-      const prompt=await options.buildPrompt(ctx),data=JSON.parse(prompt.split('ref=workpaper-assessment\n')[1].split('\nBB-DATA-')[0]);
-      return {kind:'done',value:{decisions:data.entries.map((e:WorkpaperEntry,i:number)=>({item_id:e.id,status:i===2?'not_applicable':'generate',reason:i===2?'本项目不涉及境外投资。':'总资产可形成分析。',missing_materials:[],citations:[{span_id:'p0',quote:text}]}))}};
-    }});
-    await ok('POST',wp+'/assessments',request);assert.equal(await execute([workpaperAssessmentStage({model:assessor,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
-    const assessment=(await ok('GET',wp)).assessments[0],generationRequest={...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points*2)};
-    const batch=await ok('POST',wp+'/batches',generationRequest);
+    const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(2),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),cat=await ok('POST',wp+'/catalogues',{request_id:randomUUID(),material});
+    const request={start_mode:'direct' as const,request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision,requirements:'Synthetic only',price_version:AUTOMATIC_PRICE_VERSION,expected_points:String(2*AUTOMATIC_TASK_TARIFF.workpaper.points)};
+    const batch=await ok('POST',wp+'/batches',request);
     const generate=()=>execute([{name:'model_generation',run:async ctx=>{
       const files:Record<string,{key:string;sha256:string;byte_size:number}>={};
       for(const [name,bytes] of [['document.docx',document],['preparation-note.docx',makeSyntheticDocxFixture({text:'Synthetic internal note'})]] as const){const sha256=digest(bytes),key=`owners/${user}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/m4-documents/synthetic/${sha256}/${name}`;await blobs.put(key,bytes,docx);files[name]={key,sha256,byte_size:bytes.length};}
+      const task=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[ctx.run.project_id,ctx.run.input_revision])).rows[0].manifest.input.workpaper;
       return {kind:'done',value:{version:'codex-m4-document-v1',input_hash:ctx.run.input_hash.trim(),skill_sha256:'a'.repeat(64),method_hash:'b'.repeat(64),internal_note:true,files,
+        workpaper_decision:{item_id:task.entry.id,status:'generate',reason:'合成材料支持生成。',missing_materials:[],citations:[]},
         project_file_links:{source_sha256:original.sha256,target_sha256:digest(document),warnings:[],links:[{source_span_id:'p0',source_quote:text,target_span_id:'p0',target_quote:text,field:'总资产',period:'2025',unit:'万元',source_location:'段落1',target_location:'段落1',source_sha256:original.sha256,target_sha256:digest(document)}]}}};
     }},m4DocumentDeliveryStage()]);
     for(let n=0;n<2;n++){await advanceWorkpaperBatch(pool);assert.equal(await generate(),'succeeded');}await advanceWorkpaperBatch(pool);
     const generated=(await ok('GET',wp+'/library')).items,first=generated[0],second=generated[1];
-    assert.ok(first.file&&second.file);assert.equal(generated[2].file,undefined,'object-only explanation never receives a fake Word version');
+    assert.ok(first.file&&second.file);assert.equal(generated.length,2);
     assert.equal(first.file.original.version_id,first.file.current.version_id);
     assert.equal(first.links_count,1,'library summaries expose the retained source-link count');
     assert.equal((await pool.query('SELECT jsonb_array_length(links) AS n FROM bb_project_file_versions WHERE owner_user_id=$1 AND id=$2',[user,first.file.current.version_id])).rows[0].n,1,'full evidence stays in the owned stored version');
@@ -99,7 +93,7 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:versions.versions.find((v:any)=>v.material_id===next.material_id).version_id});
     await app.close();app=server(true);
     const quoteRequest={request_id:randomUUID(),workpaper_batch_id:batch.batch_id,source_version_id:source.current_version_id,source_selection_revision:source.selection_revision};
-    const quote=await ok('POST',wp+'/check-batches/quote',quoteRequest);assert.equal(quote.items.length,2);assert.equal(quote.excluded.length,1);assert.equal(quote.points,String(2*AUTOMATIC_TASK_TARIFF.check.points));
+    const quote=await ok('POST',wp+'/check-batches/quote',quoteRequest);assert.equal(quote.items.length,2);assert.equal(quote.excluded.length,0);assert.equal(quote.points,String(2*AUTOMATIC_TASK_TARIFF.check.points));
     const start={...quoteRequest,file_version_ids:quote.items.map((i:any)=>i.file_version_id),price_version:quote.price_version,expected_points:quote.points,scopes:quote.items.map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))};
     const before=await creditBalance(pool,user);assert.equal(before.available,2*AUTOMATIC_TASK_TARIFF.check.points-1);
     const shortage=await send('POST',wp+'/check-batches',start);assert.equal(shortage.statusCode,402,shortage.body);assert.match(shortage.body,new RegExp((2*AUTOMATIC_TASK_TARIFF.check.points).toLocaleString('zh-CN')));
@@ -155,12 +149,10 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_check_evidence WHERE run_id=$1',[imageBatch.items[0].run_id])).rows[0].n,0);
     // Regenerating the exact logical catalogue item appends a new family version;
     // the previous batch retains both its original and its maintenance descendant.
-    await app.close();app=server(false);await fund(WORKPAPER_PRICE.points);
+    await app.close();app=server(true);await fund(AUTOMATIC_TASK_TARIFF.workpaper.points);
     const adopted=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:imageSource.selection_revision,version_id:request.source_version_id});
     const nextRequest={...request,request_id:randomUUID(),item_ids:[maintained.entry.id],source_selection_revision:adopted.selection_revision};
-    await ok('POST',wp+'/assessments',nextRequest);assert.equal(await execute([workpaperAssessmentStage({model:assessor,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
-    const assessment2=(await ok('GET',wp)).assessments[0];
-    const generation2=await ok('POST',wp+'/batches',{...nextRequest,request_id:randomUUID(),assessment_id:assessment2.assessment_id,assessment_hash:assessment2.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)});
+    const generation2=await ok('POST',wp+'/batches',{...nextRequest,expected_points:String(AUTOMATIC_TASK_TARIFF.workpaper.points)});
     await advanceWorkpaperBatch(pool);assert.equal(await generate(),'succeeded');await advanceWorkpaperBatch(pool);
     const history=(await ok('GET',wp+'/library?history=true')).items,newItem=history.find((i:any)=>i.batch_id===generation2.batch_id),oldItem=history.find((i:any)=>i.batch_id===batch.batch_id&&i.entry.id===maintained.entry.id);
     assert.equal(newItem.file.current.file_id,oldItem.file.current.file_id);assert.notEqual(newItem.file.original.version_id,oldItem.file.original.version_id);
