@@ -91,6 +91,7 @@ export type ModelGatewayResponseShape = {
 };
 export type ModelGatewayRecord = {
   kind: 'request'; v: string; seq: number; started_at: string; duration_ms: number;
+  response_headers_ms?: number | null; first_response_byte_ms?: number | null;
   method: string; path: string; request_bytes: number;
   request: ModelGatewayRequestShape | null;
   response: ModelGatewayResponseShape | null;
@@ -569,6 +570,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
   const handle = (req: IncomingMessage, res: ServerResponse) => {
     const t0 = process.hrtime.bigint();
     const record: ModelGatewayRecord = { kind: 'request', v: MODEL_GATEWAY_RECORD_VERSION, seq: ++seq, started_at: new Date().toISOString(), duration_ms: 0,
+      response_headers_ms:null,first_response_byte_ms:null,
       method: safeToken(req.method, 16) ? req.method : 'OTHER', path: safePath(req.url), request_bytes: 0, request: null, response: null,
       outcome: 'completed', gateway_error: null };
     let meter: ModelGatewayResponseMeter | null = null;
@@ -639,9 +641,10 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
       upstreamRequests.add(upstreamReq);
       upstreamReq.once('close', () => upstreamRequests.delete(upstreamReq));
       upstreamReq.on('response', (ures: IncomingMessage) => {
+        record.response_headers_ms=Number((process.hrtime.bigint()-t0)/1000000n);
         meter = new ModelGatewayResponseMeter(ures.statusCode ?? 0, ures.headers);
         res.writeHead(ures.statusCode ?? 502, ures.statusMessage, forwardResponseHeaders(ures.headers));
-        ures.on('data', (chunk: Buffer) => { try { meter?.push(chunk); } catch { /* metering never interrupts the stream */ } });
+        ures.on('data', (chunk: Buffer) => { if(record.first_response_byte_ms===null)record.first_response_byte_ms=Number((process.hrtime.bigint()-t0)/1000000n);try { meter?.push(chunk); } catch { /* metering never interrupts the stream */ } });
         ures.on('end', () => finalize('completed', null));
         ures.on('close', () => { if (!ures.complete) { res.destroy(); finalize('upstream_error', 'UPSTREAM_STREAM_ABORTED'); } });
         ures.on('error', () => { res.destroy(); finalize('upstream_error', 'UPSTREAM_STREAM_ERROR'); });

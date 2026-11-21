@@ -40,4 +40,4 @@ BEGIN
  WHERE existing.owner_user_id=r.owner_user_id AND existing.run_id=r.id AND incoming.run_id=NEW.id)
  ) THEN RAISE EXCEPTION 'Project already has an active business run' USING ERRCODE='23514'; END IF;
  RETURN NEW;
-END $function$
+END $function$;

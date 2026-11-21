@@ -213,6 +213,9 @@ class SecurityTests(unittest.TestCase):
         for args in [['content','prompt','x'],['content','prompt','../secret','--reason','debug'],['content','exec','x','--reason','debug','--offset','-1'],['exec-log','x','--all'],['content','exec','x','--reason','debug','--length','99999999']]:
             with self.subTest(args=args), self.assertRaises(ValueError): broker.parse(args)
         self.assertEqual(broker.parse(['content','prompt','x','--reason','debug'])['kind'],'prompt')
+    def test_session_unknown_time_filter_is_exposed_only_for_sessions(self):
+        self.assertEqual(broker.parse(['db','sessions','--time','unknown'])['time'],'unknown')
+        with self.assertRaises(ValueError): broker.parse(['db','runs','--time','unknown'])
     def test_console_never_dispatches_arbitrary_shell(self):
         with mock.patch.object(console.subprocess,'call') as call:
             for text in ['bash -c id','cat /etc/shadow','scp -t /tmp/x','internal-sftp','logs api\nsh']:
@@ -246,6 +249,26 @@ class SecurityTests(unittest.TestCase):
         self.assertIn('bb_diagnostics.performance_spans',sql)
         self.assertIn("d->>'span_id'",sql)
         self.assertNotIn("'object_ref'",sql)
+
+    def test_session_time_is_immutable_or_explicitly_unknown_and_runtime_exit_is_visible(self):
+        sql=database.install_sql()
+        self.assertIn("(d->>'created_at')::timestamptz AS at",sql)
+        self.assertIn("'legacy_unknown' ELSE 'session_created_at'",sql)
+        self.assertIn("'exit_signal'",sql)
+        self.assertIn("'finish_reason_capture_status'",sql)
+        db=database.Database({})
+        known={'key':'known','at':'2026-11-19T00:00:00.000000Z','body':{'created_at':'2026-11-19T00:00:00Z'}}
+        unknown={'key':'unknown','at':None,'body':{'created_at':None,'time_source':'legacy_unknown'}}
+        with mock.patch.object(db,'query',side_effect=[
+            {'ceiling':'2026-11-21T00:00:00.000000Z','items':[known,unknown]},
+            {'ceiling':'2026-11-21T00:00:00.000000Z','items':[unknown]},
+        ]) as query:
+            first=db.page('sessions',{},limit=1)
+            second=db.page('sessions',{},limit=1,cursor=first['next_cursor'])
+            self.assertEqual(second['items'][0]['at'],None)
+            self.assertEqual(second['unknown_time_query'],'db sessions --time unknown')
+            self.assertIn('at IS NULL',query.call_args_list[1].args[0])
+            self.assertIn('ORDER BY at NULLS LAST,key',query.call_args_list[1].args[0])
 
     def test_node_config_snapshot_never_exports_private_bindings_or_env(self):
         source={'pool_tag':'bondbuddy-execution','region':'ap-beijing','runtime_uid':1000,
