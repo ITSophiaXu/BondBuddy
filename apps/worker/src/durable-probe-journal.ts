@@ -68,11 +68,12 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
     if(intent.owner_user_id!==lease.owner||intent.job_id!==lease.jobId||intent.run_id!==lease.runId)throw new Error('RESULT_DIAGNOSTIC_SCOPE_MISMATCH');
     await guardEvidenceWrite(pool,'model_result_failure_not_persisted',()=>pool.query(`INSERT INTO bb_model_result_failure_diagnostics
       (id,attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,substage,error_class,error_code)
-      SELECT $1,a.id,a.owner_user_id,j.project_id,j.run_id,a.job_id,a.logical_call_id,a.attempt_no,$2,$3,$4
+      SELECT $1,a.id,a.owner_user_id,r.project_id,r.id,a.job_id,a.logical_call_id,a.attempt_no,$2,$3,$4
       FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
-      WHERE a.id=$5 AND a.owner_user_id=$6 AND a.job_id=$7 AND a.logical_call_id=$8 AND a.attempt_no=$9 AND j.run_id=$10
+      JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
+      WHERE a.id=$5 AND a.owner_user_id=$6 AND a.job_id=$7 AND a.logical_call_id=$8 AND a.attempt_no=$9 AND r.id=$10 AND r.project_id=$11
       ON CONFLICT(attempt_id,substage) DO NOTHING`,[randomUUID(),evidence.substage,evidence.error_class,evidence.error_code,
-      intent.call_id,intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no,intent.run_id]));
+      intent.call_id,intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no,intent.run_id,intent.project_id]));
   }
 
   async recordExecutionConfig(intent: ProviderCallIntent, evidence: ModelExecutionConfigEvidence): Promise<void> {
@@ -89,15 +90,16 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
         (attempt_id,owner_user_id,project_id,run_id,job_id,logical_call_id,attempt_no,execution_session_id,execution_node_epoch,
          effective_timeout_ms,timeout_deadline_at,timeout_source,timeout_branch,model_config_version,loaded_adapter_sha256,
          selected_config_sha256,release_sha,overlay_sha256)
-        SELECT a.id,a.owner_user_id,j.project_id,j.run_id,a.job_id,a.logical_call_id,a.attempt_no,
+      SELECT a.id,a.owner_user_id,r.project_id,r.id,a.job_id,a.logical_call_id,a.attempt_no,
           j.execution_session_id,j.execution_node_epoch,$6,$7,$8,$9,$10,$11,$12,$13,$14
         FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
+        JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
         WHERE a.id=$1 AND a.owner_user_id=$2 AND a.job_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5
-          AND j.run_id=$15 AND j.state='running' AND j.lease_token=$16 AND j.lease_until>clock_timestamp()
+          AND r.id=$15 AND r.project_id=$17 AND j.state='running' AND j.lease_token=$16 AND j.lease_until>clock_timestamp()
         ON CONFLICT(attempt_id) DO NOTHING`,[intent.call_id,intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no,
         evidence.effective_timeout_ms,evidence.timeout_deadline_at,evidence.timeout_source,evidence.timeout_branch,
         evidence.model_config_version,evidence.loaded_adapter_sha256,evidence.selected_config_sha256,
-        evidence.release_sha,evidence.overlay_sha256,intent.run_id,lease.token]);
+        evidence.release_sha,evidence.overlay_sha256,intent.run_id,lease.token,intent.project_id]);
       // An existing pre-spawn receipt may correspond to an already-sent process.
       // Never use an idempotent retry of this write as permission to spawn again.
       if(inserted.rowCount!==1)throw new Error('MODEL_EXECUTION_CONFIG_ALREADY_RECORDED_OR_LEASE_LOST');
