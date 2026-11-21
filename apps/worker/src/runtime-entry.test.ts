@@ -69,7 +69,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
   const container = `bb-entry-${randomUUID()}`;
   const blobs = azureBlobs(blobConnection!, container);
   const owner = `entry-owner-${randomUUID()}`, operator = `entry-operator-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true });
+  const app = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true });
   const send = (method: string, url: string, payload?: unknown, contentType?: string) => app.inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   let runtime: WorkerRuntime | undefined;

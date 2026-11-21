@@ -73,7 +73,7 @@ test('long review timelines retain bounded completed categories with ordering, d
     const originalOwner=`synthetic-action-timeline-${randomUUID()}`;
     let owner=originalOwner;
     const origin='http://bondbuddy.test';
-    const app=createServer({pool,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:origin});
+    const app=createServer({pool,historicalBillingFixture:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:origin});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
     const ok=(response:{statusCode:number;body:string})=>assert.ok(response.statusCode>=200&&response.statusCode<300,response.body);
     async function execution(){

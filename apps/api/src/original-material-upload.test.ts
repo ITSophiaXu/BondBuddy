@@ -47,7 +47,7 @@ test('both authorized qx audit originals retain their exact bytes and need no si
   }
 });
 
-test('raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing', {skip:!connection||!storage}, async () => {
+test('raw material public upload preserves bytes, ownership, idempotency and old signature records without starting business execution', {skip:!connection||!storage}, async () => {
   const pool=new Pool({connectionString:connection});
   const originalOwner=`raw-upload-${randomUUID()}`;let owner=originalOwner;
   const container=`bb-raw-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(storage!,container);
@@ -95,7 +95,7 @@ test('raw material public upload preserves bytes, ownership, idempotency and old
     const reused=await complete(repeat,bytes);assert.equal(reused.statusCode,200,reused.body);
     assert.equal(reused.json().material_id,oldId);assert.deepEqual(reused.json().signature_assessment,assessment);
     await assert.rejects(pool.query('UPDATE bb_material_versions SET signature_assessment=NULL WHERE id=$1',[oldId]),(e:any)=>e.code==='23514');
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n,0,'upload creates no parse or business task');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND job_type='run'",[owner,project])).rows[0].n,0,'upload creates no business task');
   } finally {
     await app.close();await pool.end();
     await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();

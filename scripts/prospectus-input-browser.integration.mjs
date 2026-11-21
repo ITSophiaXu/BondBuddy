@@ -39,12 +39,12 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     };
     cleanup.push(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, { chromium, expect }, { createServer: createViteServer }, { createServer },
-      { azureBlobs, transaction }, { creditBalanceExact, grantCredits }, { makeSyntheticDocxFixture }, { pdfSample },
+      { azureBlobs, transaction }, { creditBalanceExact, grantCredits }, { makeSyntheticDocxFixture },
       { inputManifestHash }, { editingSource }, { loadUnifiedInput, unifiedInputGate }, { runUploadConfirmationOnce }] = await Promise.all([
       import('pg'), import('@playwright/test'), import('vite'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/data.js'),
       import('../apps/api/dist/billing.js'),
-      import('../apps/api/dist/docx-fixtures.js'), import('../apps/api/dist/upload-safety.samples.js'),
+      import('../apps/api/dist/docx-fixtures.js'),
       import('../apps/api/dist/production-rule-pin.js'), import('../apps/worker/dist/file-authoring-stage.js'),
       import('../apps/worker/dist/unified-input.js'), import('../apps/api/dist/upload-confirmation.js')
     ]);
@@ -161,7 +161,10 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     const projectId = new URL(page.url()).hash.split('/').at(-1);
     const projectUrl = page.url();
     const sourceBytes = makeSyntheticDocxFixture({ text: '合成原稿；2024年度；只验证输入链，不是客户资料。' });
-    const financialBytes = pdfSample({ tag: 'synthetic-2025-Q3' });
+    // This test checks the exact browser-to-input pin chain. A separate gate
+    // test covers PDF quality inspection; use a DOCX audit here so no parse
+    // worker is needed before the browser can start the authoring task.
+    const financialBytes = makeSyntheticDocxFixture({ text: '合成审计报告；2025年9月末；仅验证材料输入链。' });
     const observeUpload = async phase => {
       const dom = await page.evaluate(() => window.__bbSyntheticUploadObservation());
       const database = (await pool.query({ text: `SELECT json_build_object(
@@ -235,7 +238,8 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     await page.getByLabel('原品种', { exact: true }).selectOption('private');
     await page.getByLabel('原稿最新报告期年份', { exact: true }).selectOption('2024');
     await page.getByRole('radio', { name: '年末', exact: true }).check();
-    const financial = await uploaded('为审计报告（可含报表及附注）选择文件', 'synthetic-financial.pdf', 'application/pdf', financialBytes);
+    const financial = await uploaded('为审计报告（可含报表及附注）选择文件', 'synthetic-financial.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', financialBytes);
     await expect(page.locator('#save-state')).toHaveText('已保存');
     await expect(page.locator('#execute-input')).toBeEnabled();
     const locking = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(`/projects/${projectId}/input-revisions`));

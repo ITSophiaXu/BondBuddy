@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
 import { azureBlobs, uid, transaction } from '@bondbuddy/api/data';
 import { claim, pauseRun } from '@bondbuddy/api/queue';
 import { INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
@@ -21,7 +22,7 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
   { skip: !database || !blobConnection, timeout: 60000 }, async () => {
   const pool = new Pool({ connectionString: database });
   const owner = `synthetic-m2-${uid()}`, blobs = azureBlobs(blobConnection!, 'bondbuddy-m2-worker');
-  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  const app = createServer({ pool, blobs, historicalBillingFixture: true, enablePaidAuthoring: false, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
   const root = await mkdtemp(join(tmpdir(), 'bb-m2-worker-'));
   const config: CodexAdapterConfig = { command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url))],
     model_id: 'synthetic-model', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'synthetic-m2',
@@ -35,7 +36,8 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
       const p = await send('POST', '/api/v1/projects', { name: 'Synthetic worker billing', kind: 'update', issuer_name: null, market: null, offering: null });
       assert.equal(p.statusCode, 201, p.body);
       const projectId = p.json().project_id;
-      const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+      const audit = await uploadSyntheticAudit(app, projectId);
+      const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [audit], requirement_message_ids: [] });
       assert.equal(input.statusCode, 201, input.body);
       const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: uid(), project_id: projectId, input_revision: 1,
         input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' });

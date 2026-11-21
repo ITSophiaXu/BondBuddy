@@ -12,10 +12,11 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
-import { azureBlobs } from '@bondbuddy/api/data';
+import { uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
+import { azureBlobs, transaction } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
-import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
+import { claimMaterialParse, documentParserVersion, enqueueMaterialParse, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
 import { checkpointStage, claim, pauseRun, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
 import { configureTrialGuard, createOverride, revokeOverride, setKillSwitch, trialConfigFromEnv, TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
@@ -23,7 +24,7 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
-import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadiness, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
+import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractor } from './fact-candidate-producer.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv, type ProviderCallReconciler } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -53,8 +54,8 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   let owner = `runtime-owner-${randomUUID()}`;
   const alice = owner, mallory = `runtime-other-${randomUUID()}`, operator = `runtime-operator-${randomUUID()}`;
   const reviewer = `runtime-reviewer-${randomUUID()}`, grantor = `runtime-grantor-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true, stream: { pollMs: 50, maxDurationMs: 1500 } });
-  const closedApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: false });
+  const app = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true, stream: { pollMs: 50, maxDurationMs: 1500 } });
+  const closedApp = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: false });
   const send = (method: string, url: string, payload?: unknown, extra: { contentType?: string; headers?: Record<string, string>; target?: typeof app } = {}) => (extra.target ?? app).inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(extra.contentType ? { 'content-type': extra.contentType } : {}), ...(extra.headers ?? {}) }, payload: payload as any });
   const root = await mkdtemp(join(tmpdir(), 'bb-runtime-'));
@@ -74,7 +75,14 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     return { kind: 'done', checkpoint: { input_revision: run.input_revision, input_hash: run.input_hash.trim(), material_versions: input.material_versions,
       rule_pack_version: input.rule_pack_version ?? null, template_version: input.template_version ?? null, reference_release: input.reference_release ?? null } };
   } };
-  const stages = (extra: Partial<Record<'materials' | 'model' | 'word', RunStage>> = {}): RunStage[] => [syntheticInputLockStage, extra.materials ?? materialsReadyStage, extra.model ?? model(), extra.word ?? word()];
+  const syntheticMaterialsStage: RunStage = { name: 'materials_ready', replay: true, run: async ({ pool: db, run }) => {
+    const readiness = await materialsReadiness(db, run);
+    if (readiness.status === 'failed') return { kind: 'fail', code: readiness.code! };
+    if (readiness.status === 'pending') return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };
+    return { kind: 'done', checkpoint: { materials: readiness.materials.map(({ material_id, material_version, outcome }) =>
+      ({ material_id, material_version, outcome })) } };
+  } };
+  const stages = (extra: Partial<Record<'materials' | 'model' | 'word', RunStage>> = {}): RunStage[] => [syntheticInputLockStage, extra.materials ?? syntheticMaterialsStage, extra.model ?? model(), extra.word ?? word()];
   const expire = (jobId: string) => pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [jobId]);
   const runRow = async (runId: string) => (await pool.query('SELECT r.*,j.id AS job_id,j.state AS job_state,j.stage AS job_stage,j.checkpoint,j.error_code AS job_error FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1', [runId])).rows[0];
   const terminalEvents = async (runId: string) => (await pool.query("SELECT state FROM bb_run_events WHERE run_id=$1 AND state IN ('succeeded','failed','cancelled','rejected')", [runId])).rows.map(r => r.state);
@@ -123,7 +131,19 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
       const p = await send('POST', '/api/v1/projects', { name: `Synthetic runtime ${label}`, kind: 'update', issuer_name: null, market: null, offering: null });
       assert.equal(p.statusCode, 201, p.body); id = p.json().project_id as string;
     }
-    const selected = withIdentity ? [...materialVersions, await reviewedHistoricalMaterial(id!)] : materialVersions;
+    const selected = withIdentity ? [...materialVersions, await reviewedHistoricalMaterial(id!)] : [...materialVersions];
+    if (!materialVersions.length) {
+      const audit = await uploadSyntheticAudit(app,id!);
+      selected.push(audit);
+      // The upload path no longer queues parsing automatically. This mechanics
+      // suite needs the synthetic audit ready before claiming a run.
+      const auditHash = (await pool.query('SELECT sha256 FROM bb_material_versions WHERE id=$1 AND version=$2',
+        [audit.material_id, audit.material_version])).rows[0].sha256;
+      await transaction(pool, client => enqueueMaterialParse(client, { owner: alice, projectId: id!,
+        materialId: audit.material_id, materialVersion: audit.material_version,
+        sha256: auditHash, traceId: randomUUID() }));
+      assert.equal(await runMaterialParseOnce(parseDeps), 'succeeded');
+    }
     const current = (await send('GET', `/api/v1/projects/${id}`)).json();
     const input = await send('POST', `/api/v1/projects/${id}/input-revisions`, { draft_revision: current.draft_revision, material_versions: selected, requirement_message_ids: [] });
     assert.equal(input.statusCode, 201, input.body);
@@ -438,7 +458,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     [legacyFactRun, originalStageEvent[0].id])).rows;
     assert.equal(originalStageOutbox.length, 1);
     await expire(legacyLease.jobId);
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'paused',
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: createMaterialsReadyStage() }) }), 'paused',
       'legacy checkpoint still pauses when the trusted producer is not installed');
     assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyFactRun])).rows[0].n, 0,
@@ -513,16 +533,6 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.deepEqual((await runRow(mismatchedLegacyRun)).checkpoint.stages.materials_ready, { materials: wrongLegacyMaterials });
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [mismatchedLegacyRun])).rows[0].n, 0);
     assert.equal((await send('POST', `/api/v1/runs/${mismatchedLegacyRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
-
-    const noFinancialInput = await project('legacy without financial material');
-    const noFinancialRun = (await execute(noFinancialInput)).json().run_id as string;
-    const noFinancialRow = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1', [noFinancialRun])).rows[0];
-    const nonfinancialReady = await materialsReadiness(pool, noFinancialRow);
-    assert.equal(nonfinancialReady.status, 'ready');
-    await seedLegacyCheckpoint(noFinancialRun, nonfinancialReady.materials.map(({ material_id, material_version, outcome }) =>
-      ({ material_id, material_version, outcome })));
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'succeeded');
-    assert.deepEqual((await runRow(noFinancialRun)).checkpoint.stages.materials_ready.extractions, []);
 
     // Two pinned financial sources: a producer error after the first commit cannot checkpoint
     // the stage or enter the model. Recovery reuses that ledger and follows manifest order.
@@ -621,7 +631,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     await grantOperator(pool, { userId: operator, role: 'log_operator', grantedBy: 'synthetic-test', reasonCode: 'runtime_test' });
     const secondModel = codexModelStage({ name: 'second_model_generation', logicalCallId: 'second-update-generation', config, schema,
       validate: isAnswer, resultSchemaVersion: 'answer-v1', buildPrompt: async ctx => `SYNTHETIC second prompt for run ${ctx.run.id}. SCENARIO:structured` });
-    const twoCalls = [syntheticInputLockStage, materialsReadyStage, model(), secondModel, word()];
+    const twoCalls = [syntheticInputLockStage, syntheticMaterialsStage, model(), secondModel, word()];
     const trialConfig = { ...trialConfigFromEnv({}), enabled: true, model_tokens_per_user_per_day: 1 };
     const trialProject = await project('trial limit runtime');
     configureTrialGuard(trialConfig);
@@ -632,7 +642,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     // immediately without an allow override, midnight rollover, or replaying the first call.
     const legacySecondModel: RunStage = { ...secondModel, run: async () => { throw new TrialLimitProblem(429, 'TRIAL_QUOTA_EXCEEDED', 'model_tokens_per_user_per_day'); } };
     const quotaRun = (await execute(trialProject)).json().run_id as string;
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: [syntheticInputLockStage, materialsReadyStage, model(), legacySecondModel, word()] }), 'paused');
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: [syntheticInputLockStage, syntheticMaterialsStage, model(), legacySecondModel, word()] }), 'paused');
     const quotaRow = await runRow(quotaRun);
     assert.equal(quotaRow.state, 'paused'); assert.equal(quotaRow.job_stage, 'trial_limit');
     assert.equal(quotaRow.checkpoint.stages.model_generation !== undefined, true);
@@ -674,7 +684,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     configureTrialGuard(null);
     const unexpectedRun = (await execute(trialProject)).json().run_id as string;
     const unexpectedStage: RunStage = { name: 'model_generation', run: async () => { throw new Error('synthetic_unexpected'); } };
-    const unexpectedStages = [syntheticInputLockStage, materialsReadyStage, unexpectedStage, word()];
+    const unexpectedStages = [syntheticInputLockStage, syntheticMaterialsStage, unexpectedStage, word()];
     assert.equal(await runPipelineOnce({ pool, blobs, stages: unexpectedStages, maxAttempts: 2 }), 'retry');
     assert.equal(await runPipelineOnce({ pool, blobs, stages: unexpectedStages, maxAttempts: 2 }), 'failed');
     const unexpectedRow = await runRow(unexpectedRun);

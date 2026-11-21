@@ -279,8 +279,8 @@ test('all selected uploads must finish and be saved before starting an update', 
   const files=['first.pdf','second.pdf','queued.pdf'].map(name=>({name,mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic upload guard '+name)}));
   await page.locator('[data-upload-role="audit"]').setInputFiles(files);
   const start=page.locator('#execute-input');
-  await expect(page.locator('[data-upload-phase="uploading"]')).toHaveCount(2);
-  await expect(page.locator('[data-upload-phase="queued"]')).toHaveCount(1);
+  await expect(page.locator('[data-upload-phase="uploading"]')).toHaveCount(3);
+  await expect(page.locator('[data-upload-phase="queued"]')).toHaveCount(0);
   await expect(start).toBeDisabled();
   await expect(start).toHaveText('请先处理材料状态');
   if(process.env.BB_UPLOAD_GUARD_EVIDENCE){
@@ -619,11 +619,17 @@ test(`editing ${change} after lost snapshot readback leaves recovery and locks c
     await page.locator('.material-file-row').filter({hasText:audit.filename}).getByRole('button',{name:'删除',exact:true}).click();
     await expect(page.locator('.material-file-row').filter({hasText:audit.filename})).toHaveCount(0);
   }
-  await expect(page.locator('#execute-input')).toBeEnabled();
-  await page.locator('#execute-input').click(); await expect(page.locator('#execution-preflight')).not.toBeEmpty();
-  expect(state.inputs).toHaveLength(2); expect(state.executes).toHaveLength(0);
-  expect(state.inputs[1].draft_revision).toBe(state.project.draft_revision);
-  expect(state.inputs[1].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version})));
+  if(change==='materials'){
+    await expect(page.locator('#execute-input')).toBeDisabled();
+    await expect(page.locator('#start-disabled-reason')).toContainText('审计报告');
+    expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  }else{
+    await expect(page.locator('#execute-input')).toBeEnabled();
+    await page.locator('#execute-input').click(); await expect(page.locator('#execution-preflight')).not.toBeEmpty();
+    expect(state.inputs).toHaveLength(2); expect(state.executes).toHaveLength(0);
+    expect(state.inputs[1].draft_revision).toBe(state.project.draft_revision);
+    expect(state.inputs[1].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version})));
+  }
 });
 
 for (const rejection of ['quotation','execution'] as const)
@@ -1100,15 +1106,14 @@ test('exhausted size repairs show a retained paused task and reload never submit
   }
 });
 
-test('paginated recovery and real task actions keep one run', async ({ page }) => {
+test('paginated recovery and saved task restart keep one run', async ({ page }) => {
   const state=fixture(); state.parseSucceeded=true; state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   state.paginate=true; state.eventPages=[]; state.listPages=[]; await page.reload();
   await expect(page.locator('#execution-progress')).toContainText('适用规则的处理条件尚未就绪');
   expect(state.listPages).toContain('page-two'); expect(state.eventPages).toContain('1');
-  state.checkStatus='blocked'; await page.locator('#recheck-paused').click();
-  await expect(page.locator('#resume-run')).toHaveCount(0);
-  await expect(page.locator('#recheck-paused')).toBeEnabled();
+  state.checkStatus='blocked'; await page.locator('[data-restart-refresh]').click();
+  await expect(page.locator('[data-restart-refresh]')).toBeEnabled();
   expect(state.runActions).toHaveLength(0);
   if (process.env.BB_UX_EVIDENCE_DIR) {
     const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
@@ -1118,8 +1123,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
       await page.screenshot({ path: join(output, `paused-${label}.png`), fullPage: true });
     }
   }
-  state.checkStatus='ready'; await page.locator('#recheck-paused').click();
-  await page.getByRole('button',{name:'继续更新',exact:true}).click();
+  state.checkStatus='ready'; await page.locator('[data-restart-run]').click();
   await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   const run=[...state.runs.values()][0]; run.state='paused'; state.eventSeq=4;
   state.eventHistory=[
@@ -1129,9 +1133,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   ];
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  await expect(page.locator('#resume-run')).toHaveCount(0);
-  await expect(page.locator('#recheck-paused')).toHaveCount(0);
-  await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
+  await expect(page.locator('[data-restart-refresh]')).toBeVisible();
   state.eventHistory = [
     ...state.eventHistory.slice(0, 2),
     ...Array.from({ length: 14 }, (_, i) => ({
@@ -1141,12 +1143,11 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   ];
   state.eventSeq = 18;
   await page.reload();
-  await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
-  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.locator('[data-restart-refresh]')).toBeVisible();
   state.eventHistory.push({seq:19,state:'paused',stage:'capability_not_ready',reason:'issuer_material_missing'});
   state.eventSeq=19;
   await page.reload();
-  await expect(page.locator('#recheck-paused')).toBeVisible();
+  await expect(page.locator('[data-restart-refresh]')).toBeVisible();
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   run.state='running';
   await expect(page.locator('#cancel-run')).toBeVisible({ timeout: 10000 });
@@ -1383,26 +1384,25 @@ test('continuing after completion creates a new input and retains the preceding 
   expect(clean.word_delivery?.revision_artifact_id).toBe(first.artifact_id);
 });
 
-for(const changeAfterPreparation of [false,true])test(`deduplicated first draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
-  const state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
-  state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+for(const changeAfterPreparation of [false,true])test(`deduplicated sourced draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
+  const state=fixture();state.checkStatus='ready';
   await setup(page,state);await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
-  expect(primary.word_delivery?.source_sha256).toBeNull();
+  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-sourced-draft');
+  expect(primary.word_delivery?.source_sha256).toBe(state.materials.find(m=>m.role==='historical')?.sha256);
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已生成');
   await continueAuthoring(page);
   await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
-  if(changeAfterPreparation)clean.sha256=hash('changed-first-draft');
+  if(changeAfterPreparation)state.generatedVersions[0].sha256=hash('changed-sourced-draft');
   await page.locator('#execute-input').click();
   if(changeAfterPreparation){
-    await expect(page.locator('#execution-message')).toContainText('清洁版成果的准确版本尚未确认');
+    await expect(page.locator('#execution-message')).toContainText('项目当前稿或所选底稿已变化');
     expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
   }else{
     await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
     expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
-    expect(state.inputs[1].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+    expect(state.inputs[1].prospectus_selection_revision).toBe(2);expect(state.runs.size).toBe(2);
   }
 });
 
@@ -1460,12 +1460,11 @@ test('trial stage stays honest without events; a different paused stage discards
   const run = [...state.runs.values()][0];
   run.stage = 'capability_not_ready'; state.eventSeq++; state.eventStage = 'trial_limit';
   // A delayed event for the previous paused stage must not describe the new pause.
-  await expect(page.locator('#recheck-paused')).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.locator('[data-restart-refresh]')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('.execution-summary')).toContainText('处理条件尚未就绪');
-  await page.locator('#recheck-paused').click();
-  await expect(page.locator('#resume-run')).toBeVisible();
-  await page.locator('#resume-run').click();
+  await page.locator('[data-restart-refresh]').click();
+  await expect(page.locator('[data-restart-run]')).toBeVisible();
+  await page.locator('[data-restart-run]').click();
   await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   expect(state.executes).toHaveLength(1);
@@ -1597,7 +1596,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await expect(financial).toContainText('服务器已确认保存');
     completed = true;
     await page.getByRole('button', { name: '刷新已保存材料' }).click();
-    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '清晰度检查完成']);
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '清晰度抽查完成']);
     await expect(page.locator('.source-profile, [data-source-correction], a[href$="/ocr"], .workspace-evidence, .fact-review')).toHaveCount(0);
     await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|历史稿信息|核对识别内容|待确认项/);
     expect(state.materials).toHaveLength(2);
@@ -1624,7 +1623,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await page.getByRole('button', { name: '查看材料' }).click();
-    await expect(page.locator('.processing-title')).toHaveText(['清晰度检查完成']);
+    await expect(page.locator('.processing-title')).toHaveText(['清晰度抽查完成']);
     await expect(page.locator('.material-file-row')).toHaveCount(2);
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
   });
@@ -2065,7 +2064,7 @@ for(const width of [1440,390])test('live authoring: queue, model activity, growi
  await expect(page.locator('.task-progress-heading')).toContainText('任务已暂停');
  if(evidence){await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});await page.screenshot({path:join(evidence,'implementation-paused-'+width+'.png'),fullPage:true});}
  await page.reload();await expect(page.locator('.authoring-credit-meter')).toContainText('1,830 积分');
- await page.getByRole('button',{name:'继续本次任务',exact:true}).click();
+ await page.getByRole('button',{name:'重新启动',exact:true}).click();
  await expect.poll(()=>state.runActions.some(x=>x.endsWith('/resume'))).toBe(true);
  await page.getByRole('button',{name:'停止本次任务',exact:true}).click();
  await expect(page.locator('.authoring-credit-meter')).toContainText('本次已扣费');

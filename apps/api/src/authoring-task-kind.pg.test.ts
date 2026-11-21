@@ -1,4 +1,4 @@
-import { uploadSyntheticReference } from './test-authoring-source.js';
+import { uploadSyntheticAudit, uploadSyntheticReference } from './test-authoring-source.js';
 import type { PrivateBlobs } from './data.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -19,7 +19,7 @@ test('authoring snapshots cannot bypass project mutex by claiming to be QA when 
         const files=new Map<string,Buffer>();
         const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,
           getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
-        const app = createServer({ pool, blobs, allowedOrigin: origin, enableSyntheticQueue: true,
+        const app = createServer({ pool, blobs, allowedOrigin: origin, historicalBillingFixture: true, enableSyntheticQueue: true,
           enablePaidAuthoring: paid, principal: async () => ({ userId: owner, csrfVerified: true }) });
         const send = (url: string, payload: unknown) => app.inject({ method: 'POST', url,
           headers: { origin }, payload: payload as any });
@@ -31,6 +31,7 @@ test('authoring snapshots cannot bypass project mutex by claiming to be QA when 
             assert.equal(created.statusCode, 201, created.body);
             const project = created.json().project_id;
             const materials=await uploadSyntheticReference(app,project);
+            materials.material_versions.push(await uploadSyntheticAudit(app,project));
             const locked = await send(`/api/v1/projects/${project}/input-revisions`, materials);
             assert.equal(locked.statusCode, 201, locked.body);
             const input = locked.json();

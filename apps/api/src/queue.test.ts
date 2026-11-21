@@ -7,6 +7,7 @@ import { createServer } from './server.js';
 import { checkpoint, claim, finish, jobSnapshot, pauseRun, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
 import { azureBlobs, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { uploadSyntheticAudit } from './test-authoring-source.js';
 import { Ajv } from 'ajv';
 import { schemas } from '@bondbuddy/contracts';
 
@@ -30,7 +31,16 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
     await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
       VALUES($1,1,$2,$3,$4,'historical','synthetic.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$5,$6,'parsed')`,
     [material,owner,project,upload,sha,`synthetic/${material}`]);
-    const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material,material_version:1}],requirement_message_ids:[]})).json();
+    const audit=randomUUID(),auditUpload=randomUUID();
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic-audit.txt','text/plain',10,$4,'audit',$5,now()+interval '1 hour','completed')`,
+    [auditUpload,owner,project,sha,`synthetic/${auditUpload}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'audit','synthetic-audit.txt','text/plain',10,$5,$6,'persisted')`,
+    [audit,owner,project,auditUpload,sha,`synthetic/${audit}`]);
+    const locked=await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material,material_version:1},{material_id:audit,material_version:1}],requirement_message_ids:[]});
+    assert.equal(locked.statusCode,201,locked.body);
+    const input=locked.json();
     const manifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,input.input_revision])).rows[0].manifest;
     assert.equal(manifest.issuer_identity.reason,'issuer_identity_source_missing_unreviewed_or_conflicting');
     const request={execution_request_id:randomUUID(),project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,
@@ -84,14 +94,15 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
   const pool=new Pool({connectionString:isolatedConnection});
   let owner='synthetic-queue-a';
   const blobs=azureBlobs(blobConnection!);
-  const settings={pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
+  const settings={pool,blobs,historicalBillingFixture:true,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
   const app=createServer(settings);
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
     const p=await send('POST','/api/v1/projects',{name:'Synthetic queue',kind:'update',issuer_name:null,market:null,offering:null});
     assert.equal(p.statusCode,201,p.body);
     const projectId=p.json().project_id;
-    const input=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    const audit=await uploadSyntheticAudit(app,projectId);
+    const input=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[audit],requirement_message_ids:[]});
     assert.equal(input.statusCode,201,input.body);
     const request={execution_request_id:'synthetic-queue-idempotency',project_id:projectId,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'};
     const responses=await Promise.all(Array.from({length:10},()=>send('POST','/api/v1/runs/execute',request)));
