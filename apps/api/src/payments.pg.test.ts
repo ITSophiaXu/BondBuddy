@@ -19,7 +19,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     query:async order=>receipts.get(order.id)!,
     verifyCallback:async(headers,raw)=>{const signature=String(headers['x-synthetic-signature']??'');
       if(signature.length!==64||!timingSafeEqual(Buffer.from(signature),Buffer.from(sign(raw))))throw Error('bad synthetic signature');return JSON.parse(raw);}};
-  const app=createServer({pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
+  const app=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const callback=(receipt:VerifiedPayment,valid=true)=>{const raw=JSON.stringify(receipt);return send('POST','/api/v1/payments/alipay/callback',raw,{'content-type':'application/json','x-synthetic-signature':valid?sign(raw):'0'.repeat(64)});};
   try{
@@ -76,7 +76,7 @@ test('subscription mode closes legacy bonus-pack sales while replaying original 
   const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-legacy-transition',acknowledgement:'success',
     create:async order=>{creates++;receipts.set(order.id,{orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return{checkoutUrl:'https://synthetic.invalid/transition/'+order.id};},
     query:async order=>receipts.get(order.id)!,verifyCallback:async()=>{throw Error('Synthetic test uses verified provider seam');}};
-  const settings={pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})};
+  const settings={pool,historicalBillingFixture:true,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})};
   let app=createServer({...settings,enableSubscriptionBilling:false,enableOutcomePricing:false});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   try{

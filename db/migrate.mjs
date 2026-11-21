@@ -10,7 +10,7 @@ try {
     const existing = await pool.query('SELECT 1 FROM bb_schema_migrations WHERE filename=$1',[filename]);
     if (existing.rowCount) continue;
     const client=await pool.connect();
-    try { await client.query('BEGIN'); await client.query(readFileSync(resolve(dir,filename),'utf8')); await client.query('INSERT INTO bb_schema_migrations(filename) VALUES($1)',[filename]); await client.query('COMMIT'); process.stdout.write(`Applied ${filename}\n`); }
+    try { await client.query('BEGIN'); await client.query(readFileSync(resolve(dir,filename),'utf8').replace(/\r\n/g,'\n')); await client.query('INSERT INTO bb_schema_migrations(filename) VALUES($1)',[filename]); await client.query('COMMIT'); process.stdout.write(`Applied ${filename}\n`); }
     catch(error){await client.query('ROLLBACK');throw error;} finally{client.release();}
   }
 } finally { await pool.end(); }

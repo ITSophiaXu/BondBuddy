@@ -31,7 +31,7 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
     const blobs = azureBlobs(connection!,container);
     const owner = `unified-${randomUUID()}`;
     let active = owner;
-    const app = createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true});
+    const app = createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true}),enableSyntheticQueue:true});
     const send = (method:string,url:string,payload?:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,
       headers:{origin,...headers},payload:payload as any});
     try {
@@ -45,7 +45,7 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
         const project=created.json().project_id;
         const refs:{material_id:string;material_version:number}[]=[];
         let source:SourceProspectus|undefined, completeSource:SourceProspectus|undefined;
-        for(const role of missingMetadata?['historical']:relation?['historical','audit']:['audit']){
+        for(const role of missingMetadata||relation?['historical','audit']:['audit']){
           const bytes=role==='historical'?makeWorkerDocxFixture({externalLink:false}):Buffer.from('合成目标发行人：2025年净资产120万元；无新增对外担保。');
           const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain';
           const declaration={byte_size:bytes.length,sha256:digest(bytes)};

@@ -90,6 +90,7 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
     if(path==='/api/v1/me')return reply(route,{user_id:'owner-a'});
     if(path==='/api/v1/credits/balance'){state.balanceReads++;return reply(route,{enabled:true,...state.balance});}
     if(path==='/api/v1/m4/topics')return reply(route,req.method()==='POST'?{topic:state.workspace.topic}:{topics:[state.workspace.topic]});
+    if(/^\/api\/v1\/runs\/[^/]+$/.test(path)){const task=state.workspace.tasks.find(t=>path.endsWith('/'+t.run.run_id));return task?reply(route,task.run):reply(route,{code:'NOT_FOUND'},404);}
     if(path==='/api/v1/projects/source-project')return reply(route,{...state.workspace.project,project_id:'source-project',name:'来源项目'});
     if(path.endsWith('/workspace'))return reply(route,state.workspace);
     if(path.includes('/drafts/')){
@@ -615,8 +616,8 @@ for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dyn
   await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   if(process.env.M4_DYNAMIC_EVIDENCE){const dir=resolve('test-evidence/material-dynamic-20261013');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,`running-${viewport.width}.png`),fullPage:true});}
   await page.getByRole('button',{name:'暂停生成',exact:true}).click();await expect(page.locator('.task-progress')).toContainText('任务已暂停');
-  await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'继续生成'})).toBeVisible();
-  await page.getByRole('button',{name:'继续生成'}).click();await expect(page.getByRole('button',{name:'暂停生成'})).toBeVisible();expect(s.controls).toEqual(['pause','resume']);
+  await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'重新启动',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'重新启动',exact:true}).click();await expect(page.getByRole('button',{name:'暂停生成'})).toBeVisible();expect(s.controls).toEqual(['pause','resume']);
   p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;p.charged_points=p.accrued_points=1000;task.run.state='paused';task.run.stage='credits_exhausted';
   await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).toContainText('积分已用完');await expect(page.getByRole('link',{name:'查看积分与支付状态',exact:true})).toBeVisible();
   await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);

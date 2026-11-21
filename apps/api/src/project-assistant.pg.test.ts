@@ -21,7 +21,7 @@ test('explicit completed baseline uses the existing content-update tier, not the
 const connection=await isolatedTestDatabase(undefined,'global-assistant');
 test('global assistant persistence, owner isolation, no implicit execution and create retries',{skip:!connection,timeout:90000},async()=>{
   const pool=new Pool({connectionString:connection}),user=randomUUID(),other=randomUUID();let actor=user;
-  const app=createServer({pool,principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,allowedOrigin:'http://bondbuddy.test'});
+  const app=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:true,principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.json();};
   try{
@@ -62,7 +62,7 @@ test('global assistant persistence, owner isolation, no implicit execution and c
     await ok('PUT',`/api/v1/m4/topics/${t.topic_id}/drafts/private_summary`,{expected_version:0,input:draft});
     const quote=await ok('POST',`/api/v1/m4/topics/${t.topic_id}/quote`,{kind:'document',document_type:'private_summary',expected_draft_version:1});
     const cardRequest={card_id:randomUUID(),operation:'generation',project_id:t.project_id,execution_request_id:randomUUID(),quote_id:quote.quote.quote_id,document_type:'private_summary',expected_draft_version:1};
-    const card=await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest);assert.equal(card.card.quote.points,'4500');assert.equal(card.card.run,null);
+    const card=await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest);assert.equal(card.card.quote.points,quote.quote.points);assert.equal(card.card.run,null);
     assert.equal((await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest)).card.card_id,card.card.card_id);
     assert.equal((await send('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,{...cardRequest,input_hash:'c'.repeat(64)})).statusCode,409);
     const execution={execution_request_id:cardRequest.execution_request_id,document_type:'private_summary',expected_draft_version:1,quote_id:quote.quote.quote_id,entrypoint:'assistant'};
@@ -75,7 +75,7 @@ test('global assistant persistence, owner isolation, no implicit execution and c
     assert.deepEqual(await creditBalance(pool,user),{available:10000,frozen:0});
     const reservation=(await pool.query('SELECT billing_policy,points,charged_points FROM bb_credit_reservations WHERE owner_user_id=$1 AND run_id=$2',[user,executed.run.run_id])).rows[0];
     assert.equal(reservation.billing_policy,'authoring_balance_v2');
-    assert.equal(Number(reservation.points),4500);
+    assert.equal(Number(reservation.points),Number(quote.quote.points));
     assert.equal(Number(reservation.charged_points),0);
     actor=other;
     for(const path of [`/m4/topics/${t.topic_id}/workspace`,`/assistant/topics/${t.topic_id}/cards`,`/assistant/projects/${p.project_id}`])assert.equal((await send('GET',`/api/v1${path}`)).statusCode,404);

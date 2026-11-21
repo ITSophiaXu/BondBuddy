@@ -46,7 +46,7 @@ test('M3 real upload/parse → synthetic contained CLI with explicit tools → r
     const root=await mkdtemp(join(tmpdir(),'bb-m3-pipeline-')),marker=join(root,'synthetic-calls.jsonl');
     const container=`bb-m3-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(connection!,container);
     const owner=randomUUID();let active=owner;
-    const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,
+    const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,
       principal:async()=>({userId:active,csrfVerified:true}),enableRunRuntime:true});
     const beforeWord=process.env.BONDBUDDY_WORD_PYTHON,beforeSearch=process.env.BB_REVIEW_WEB_SEARCH_ENABLED;
     process.env.BONDBUDDY_WORD_PYTHON=python;process.env.BB_REVIEW_WEB_SEARCH_ENABLED='0';

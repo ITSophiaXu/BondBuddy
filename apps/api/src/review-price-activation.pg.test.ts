@@ -25,7 +25,7 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
  const bytes=new Map<string,Buffer>();
  const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
  let paid=false;
- const makeApp=()=>createServer({pool,blobs,enablePaidReview:paid,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+ const makeApp=()=>createServer({pool,blobs,historicalBillingFixture:true,enablePaidReview:paid,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
  let app=makeApp();const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
  const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
  try{

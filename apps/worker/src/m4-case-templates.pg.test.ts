@@ -28,7 +28,7 @@ test('case templates: real API -> exact worker input -> native Word pair -> one 
   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,
     getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
   let actor:string=owner,calls=0;
-  const app=createServer({pool,blobs,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const app=createServer({pool,blobs,enableSyntheticQueue:true,historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as never,url,payload:payload as never,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-case-pipeline-'));

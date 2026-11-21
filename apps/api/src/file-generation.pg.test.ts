@@ -125,7 +125,7 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
    const autoBatch=await ok('POST',base+'/batches',autoRequest);assert.equal(autoBatch.workpapers.template_mode,'automatic');
    const manifest=(await pool.query('SELECT manifest FROM bb_workpaper_items WHERE batch_id=$1',[autoBatch.workpapers.batch_id])).rows[0].manifest;
    assert.equal(manifest.input.template,null);assert.equal(manifest.template_material,null);assert.ok(manifest.knowledge.template.sha256);
-   assert.equal(manifest.input.workpaper.execution,withMaterials?undefined:'shared_batch_v1');
+   assert.equal(manifest.input.workpaper.execution,withMaterials?undefined:'grouped_batch_v1');
    assert.equal(manifest.input.materials.length,withMaterials?2:1);
    if(withMaterials)assert.deepEqual(manifest.input.materials[1],source,'supplement reaches the normal material-aware document path');
    assert.equal((await ok('POST',base+'/batches',autoRequest)).batch_id,autoBatch.batch_id);

@@ -39,7 +39,7 @@ test('dedicated parse slot finishes an upload before a blocked run, and zero res
   const pool = new Pool({ connectionString: connection, max: 8 });
   const blobs = azureBlobs(blobConnection!, `bb-slots-${randomUUID()}`);
   const owner = `slots-owner-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true });
+  const app = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true });
   const send = (method: string, url: string, payload?: unknown, contentType?: string) => app.inject({ method: method as any, url,
     headers: { origin, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   const upload = async (projectId: string) => {

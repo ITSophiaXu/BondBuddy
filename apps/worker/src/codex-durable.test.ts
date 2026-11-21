@@ -19,6 +19,7 @@ import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConf
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import { runReconcileCommand } from './reconcile-run.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { uploadSyntheticAudit } from '@bondbuddy/api/test-authoring-source';
 
 const testDatabaseUrl = await isolatedTestDatabase('BB_TEST_CODEX_DATABASE_URL');
 
@@ -32,7 +33,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
   const pool = new Pool({ connectionString: connection });
   const blobs = azureBlobs(blobConnection!, 'bondbuddy-m1-11-codex');
   const owner = `synthetic-codex-owner-${uid()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  const app = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin: 'http://bondbuddy.test' }, payload: payload as any });
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-durable-'));
   const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null, credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 400, kill_grace_ms: 100, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin' };
@@ -40,7 +41,9 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const p = await send('POST', '/api/v1/projects', { name: `Synthetic codex ${label}`, kind: 'update', issuer_name: null, market: null, offering: null });
     assert.equal(p.statusCode, 201, p.body);
     const projectId = p.json().project_id;
-    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+    const audit = await uploadSyntheticAudit(app, projectId);
+    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [audit], requirement_message_ids: [] });
+    assert.equal(input.statusCode, 201, input.body);
     const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `synthetic-codex-${label}-${uid()}`, project_id: projectId, input_revision: 1, input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
     assert.equal(submitted.statusCode, 202, submitted.body);
     const runId = submitted.json().run_id;
