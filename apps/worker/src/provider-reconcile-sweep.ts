@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { providerReconciliationCandidates, reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload,
-  recordProviderReconcileUnknown, resumePausedRun, type RunKind } from '@bondbuddy/api/queue';
+  recordProviderReconcileUnknown,recordUnsupportedWorkflowReconcile, resumePausedRun, type RunKind } from '@bondbuddy/api/queue';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { raiseAlert } from '@bondbuddy/api/evidence-gate';
 
@@ -22,6 +22,9 @@ export async function reconcileProviderRun(options:Options,owner:string,runId:st
       AND r.stage='provider_reconcile' AND j.state='paused' AND j.stage='provider_reconcile'`,[runId,owner,jobId])).rows[0];
   if(!scope)return false;
   if(scope.archived_at||scope.deleted_at)return recordProviderReconcileUnknown(pool,owner,runId,jobId,reconciler.name);
+  if(await recordUnsupportedWorkflowReconcile(pool,owner,runId,jobId)){
+    log({kind:'reconcile',run_id:runId,outcome:'manual_required',reason_code:'workflow_protocol_unsupported'});return false;
+  }
   const attempts=(await pool.query(`SELECT a.owner_user_id,r.project_id,r.id AS run_id,a.job_id,a.logical_call_id,a.attempt_no,
       a.id AS call_id,a.model_id,a.prompt_snapshot_id AS prompt_snapshot_ref,
       EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed

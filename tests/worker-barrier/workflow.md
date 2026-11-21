@@ -20,7 +20,7 @@
 python3 tests/worker-barrier/run-workflow.py --image your-local-tools:tag --output /tmp/workflow-native.log
 ```
 
-容器退出成功且 Node 报告 `# fail 0`、`# skipped 0` 才通过。默认输出为五个子场景及顶层，共六个 Node tests。可用 `--case direct`、`--case controlled` 或 `--case delivery` 定位单条路径；每个单选仅注册该子场景及顶层，共两个 tests，不把未选场景统计为通过。组件样本必须带 ordinary unified 版本，持久化 context hash/input hash；每次 claim 前用实际进程 inventory 刷新节点心跳，不放宽生产的30秒心跳门限。
+容器退出成功且 Node 报告 `# fail 0`、`# skipped 0` 才通过。默认注册全部子场景及顶层，实际计数以本轮原始输出为准。可用 `--case direct`、`--case controlled` 或 `--case delivery` 定位路径，不把未选场景统计为通过。组件样本必须带 ordinary unified 版本，持久化 context hash/input hash；每次 claim 前用实际进程 inventory 刷新节点心跳，不放宽生产的30秒心跳门限。
 
 同一入口也支持原 `managed-run-recovery.pg.test.ts`：
 
@@ -29,6 +29,14 @@ python3 tests/worker-barrier/run-workflow.py --suite managed-recovery --image yo
 ```
 
 该模式使用原 `task-cgroup-database-fixture.mjs`，不替换其业务断言，保留原受保护 argv、真实 `BB_SYNTHETIC_TASK_CGROUP_CONTEXT` 及 independent PG/cgroup，可与 workflow suite 独立运行。不要用普通 `node --test` 缺少 native context 的 skip 结果替代此验收。
+
+候选保全的三条 runtime 回归使用独立进程，执行器身份不在同一进程内切换或重置：
+
+```sh
+python3 tests/worker-barrier/run-workflow.py --suite retention --image your-local-tools:tag --output /tmp/retention-native.log
+```
+
+入口固定运行 pending、unreadable、admission 三个 case，各取得新的真实 broker 容器和原生上下文、初始化 task 边界；每个 case 必须恰好一条 Node 测试且无失败或跳过。总计三条原断言，分别覆盖候选阻止安全停机、未知库存阻止 ready、心跳尚未刷新时本地阻止领取。`BB_RETENTION_NATIVE_CASE` 由 fixture 提供，未知值拒绝；普通 PostgreSQL 模式不能代替此验证。
 
 需要排除 Windows `/mnt/c` 文件读取开销时，可将 PostgreSQL 测试复制到 Linux 临时目录再运行：
 

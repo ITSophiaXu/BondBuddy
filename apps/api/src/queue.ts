@@ -430,12 +430,18 @@ export async function resumeVerifiedWorkflow(pool:Pool,owner:string,runId:string
 type RestoreToken={kind:'job'|'message';id:string;token:string};
 const restoreConflict=(reason='Restore execution proof is missing or changed'):never=>{throw new Problem(409,'CAPABILITY_NOT_READY',reason);};
 const restoreDigest=(value:unknown)=>digest(Buffer.from(restoreCanonical(value)));
+async function assertRestoreControlPrivileges(db:Pool|PoolClient){
+  const permitted=(await db.query(`SELECT has_table_privilege(current_user,'public.bb_database_restore_fence_releases','INSERT')
+    AND has_table_privilege(current_user,'public.bb_database_restore_reconciliations','INSERT') AS permitted`)).rows[0]?.permitted;
+  if(permitted!==true)restoreConflict('Restore control privileges are required');
+}
 function restoreJobIdentity(j:any){return {id:j.id,owner_user_id:j.owner_user_id,project_id:j.project_id,run_id:j.run_id,lease_token:j.lease_token,execution_node_id:j.execution_node_id,execution_node_epoch:j.execution_node_epoch,execution_session_id:j.execution_session_id};}
 /** Operator-only ingress for an exact off-host Stop result that postdates a
  * backup. The immutable restore manifest is the trust anchor; IO precedes CAS.
  * This releases capacity only and never changes a provider attempt or money. */
 export async function fenceRestoredExecutionEpoch(pool:Pool,actorId:string,input:{quarantineId:string;manifestSha256:string;nodeId:string;epoch:string;expectedTokens:RestoreToken[];evidenceRef:string},options:{readObject:(ref:string)=>Promise<Buffer>}){
   if(!actorId||!/^[a-f0-9]{64}$/.test(input.manifestSha256)||!input.evidenceRef)restoreConflict();
+  await assertRestoreControlPrivileges(pool);
   const pre=(await pool.query('SELECT * FROM bb_database_restore_quarantines WHERE id=$1',[input.quarantineId])).rows[0];
   if(!pre||pre.manifest_sha256.trim()!==input.manifestSha256||pre.receipt.manifest_sha256!==input.manifestSha256||
     restoreDigest(Object.fromEntries(Object.entries(pre.receipt).filter(([key])=>key!=='manifest_sha256')))!==input.manifestSha256)restoreConflict();
@@ -457,6 +463,7 @@ export async function fenceRestoredExecutionEpoch(pool:Pool,actorId:string,input
   if(restoreCanonical(ordered(expected))!==restoreCanonical(ordered(input.expectedTokens)))restoreConflict('Restore token preimage changed');
   const releasePreimage={node:original,jobs:jobs.map(restoreJobIdentity),messages:messages.map(restoreJobIdentity),holders,waiters},evidenceSha=digest(bytes);
   return transaction(pool,async c=>{
+    await assertRestoreControlPrivileges(c);
     await c.query('SELECT public.bb_lock_evidence_gate(true)');
     const q=(await c.query('SELECT * FROM bb_database_restore_quarantines ORDER BY seq DESC LIMIT 1 FOR UPDATE')).rows[0],gate=await gateState(c);
     if(!q||q.id!==pre.id||q.manifest_sha256.trim()!==input.manifestSha256||restoreCanonical(q.preimage)!==restoreCanonical(pre.preimage))restoreConflict();
@@ -509,8 +516,10 @@ async function restoreReleaseReady(c:PoolClient,r:any,j:any){
  * enter this branch or infer not_sent from an older snapshot. */
 export async function resumeRestoredRun(pool:Pool,actorId:string,owner:string,runId:string,input:{quarantineId:string;manifestSha256:string},options:{blobs:PrivateBlobs}){
   if(!actorId)restoreConflict();
+  await assertRestoreControlPrivileges(pool);
   const verified=await verifyWorkflowResume(pool,owner,runId,options.blobs);
   return transaction(pool,async c=>{
+    await assertRestoreControlPrivileges(c);
     await c.query('SELECT public.bb_lock_evidence_gate(false)');
     const r=await run(c,owner,runId,true),j=(await c.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
     if(!j||terminal.has(r.state)||j.state!=='paused'||j.checkpoint.database_restore_quarantine?.restore_id!==input.quarantineId||j.checkpoint.database_restore_quarantine?.manifest_sha256!==input.manifestSha256)return false;
@@ -1504,6 +1513,68 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
+export const PAUSED_RUN_SWEEP_STAGES=['awaiting_materials','credits_exhausted','billing_reconcile','trial_limit'] as const;
+export type PausedRunSweepStage=typeof PAUSED_RUN_SWEEP_STAGES[number];
+export type PausedRunSweepCandidate={job_id:string;run_id:string;owner_user_id:string;pause_stage:string;pause_event_seq:number;workflow_owned:boolean;workflow_protocol_version:unknown};
+type PausedSweepDisposition='checking'|'waiting'|'error'|'manual_required'|'resumed';
+const pauseSweepDelay=(attempts:number)=>Math.min(300000,15000*2**Math.min(attempts,5));
+const pausedSweepAnchor=`COALESCE((SELECT e.seq FROM bb_run_events e WHERE e.run_id=r.id AND e.state='paused' AND e.type='run.state_changed' ORDER BY e.seq DESC LIMIT 1),0)`;
+const pausedSweepVersion=`COALESCE(j.checkpoint#>'{workflow_v1,protocol_version}',j.checkpoint#>'{workflow_admission_v1,protocol_version}','null'::jsonb)`;
+const pausedSweepSame=`COALESCE(j.checkpoint#>>ARRAY['paused_sweep_v1',$1::text,'pause_event_seq'],'')=${pausedSweepAnchor}::text
+  AND ${pausedSweepVersion}=COALESCE(j.checkpoint#>ARRAY['paused_sweep_v1',$1::text,'workflow_protocol_version'],'null'::jsonb)`;
+/** A bounded keyset page, independent of the pause clock. Legacy/NULL due is
+ * immediately due; a new pause or protocol invalidates an old disposition. */
+export async function pausedRunSweepCandidates(pool:Pool,stage:PausedRunSweepStage,limit=20,runKinds?:readonly RunKind[],afterJobId?:string){
+  if(!PAUSED_RUN_SWEEP_STAGES.includes(stage)||!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid paused sweep page');
+  return (await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id,j.stage AS pause_stage,${pausedSweepAnchor} AS pause_event_seq,
+    j.checkpoint ? 'workflow_v1' OR j.checkpoint ? 'workflow_admission_v1' AS workflow_owned,
+    COALESCE(j.checkpoint#>'{workflow_v1,protocol_version}',j.checkpoint#>'{workflow_admission_v1,protocol_version}') AS workflow_protocol_version
+    FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
+    WHERE j.job_type<>'parse' AND j.state='paused' AND j.lease_token IS NULL
+    AND (j.stage=$1 OR ($1='credits_exhausted' AND r.task_kind='update' AND r.stage='provider_reconcile' AND j.stage='provider_reconcile' AND j.credit_pause_requested))
+    AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1'))
+    AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) AND ($4::text IS NULL OR j.id>$4)
+    AND (NOT (${pausedSweepSame}) OR (COALESCE(j.checkpoint#>>ARRAY['paused_sweep_v1',$1::text,'disposition'],'')<>'manual_required'
+      AND CASE WHEN jsonb_typeof(j.checkpoint#>ARRAY['paused_sweep_v1',$1::text,'next_due_ms'])='number'
+       THEN (j.checkpoint#>>ARRAY['paused_sweep_v1',$1::text,'next_due_ms'])::numeric ELSE 0 END<=EXTRACT(EPOCH FROM clock_timestamp())*1000))
+    ORDER BY j.id LIMIT $2`,[stage,limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null])).rows as PausedRunSweepCandidate[];
+}
+async function lockedPausedSweep(client:PoolClient,candidate:PausedRunSweepCandidate,allowQueued=false){
+  const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[candidate.run_id,candidate.owner_user_id])).rows[0];
+  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[candidate.job_id,candidate.run_id,candidate.owner_user_id])).rows[0];
+  if(!r||!j||j.lease_token||!(['paused',...(allowQueued?['queued']:[])].includes(j.state))||
+    (j.state==='paused'&&j.stage!==candidate.pause_stage)||!['paused','settlement_pending',...(allowQueued?['queued']:[])].includes(r.state))return null;
+  const anchor=(await client.query(`SELECT ${pausedSweepAnchor} AS pause_seq,floor(EXTRACT(EPOCH FROM clock_timestamp())*1000)::text AS checked_ms FROM bb_runs r WHERE r.id=$1`,[candidate.run_id])).rows[0];
+  if(Number(anchor.pause_seq)!==candidate.pause_event_seq)return null;
+  return {r,j,now:Number(anchor.checked_ms)};
+}
+async function writePausedSweep(client:PoolClient,j:any,stage:PausedRunSweepStage,record:Record<string,unknown>){
+  const value=j.checkpoint.paused_sweep_v1,scans=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('paused_sweep_v1',$2::jsonb) WHERE id=$1",[j.id,JSON.stringify({...scans,[stage]:record})]);
+}
+/** Persist the retry responsibility before readiness/object IO. The same due
+ * record prevents duplicate scans after a crash or a second worker's read. */
+export async function beginPausedRunSweep(pool:Pool,candidate:PausedRunSweepCandidate,stage:PausedRunSweepStage):Promise<string|null>{
+  return transaction(pool,async client=>{
+    const locked=await lockedPausedSweep(client,candidate);if(!locked)return null;const {j,now}=locked;
+    const version=j.checkpoint.workflow_v1?.protocol_version??j.checkpoint.workflow_admission_v1?.protocol_version??null;
+    if(JSON.stringify(version)!==JSON.stringify(candidate.workflow_protocol_version??null))return null;
+    const prior=j.checkpoint.paused_sweep_v1?.[stage],same=prior?.pause_event_seq===candidate.pause_event_seq&&JSON.stringify(prior.workflow_protocol_version??null)===JSON.stringify(version);
+    if(same&&(prior.disposition==='manual_required'||typeof prior.next_due_ms==='number'&&prior.next_due_ms>now))return null;
+    const attempts=same&&Number.isSafeInteger(prior.attempts)&&prior.attempts>=0?Math.min(Number.MAX_SAFE_INTEGER,prior.attempts+1):1,checkId=uid();
+    await writePausedSweep(client,j,stage,{version:1,check_id:checkId,pause_event_seq:candidate.pause_event_seq,pause_stage:candidate.pause_stage,workflow_protocol_version:version,
+      attempts,last_checked_ms:now,next_due_ms:now+pauseSweepDelay(attempts),disposition:'checking',reason_code:'readiness_check'});return checkId;
+  });
+}
+export async function completePausedRunSweep(pool:Pool,candidate:PausedRunSweepCandidate,stage:PausedRunSweepStage,checkId:string,disposition:Exclude<PausedSweepDisposition,'checking'>,reasonCode:string){
+  if(!/^[a-z][a-z0-9_]{0,63}$/.test(reasonCode))throw Error('Invalid paused sweep disposition');
+  return transaction(pool,async client=>{
+    const locked=await lockedPausedSweep(client,candidate,disposition==='resumed');if(!locked)return false;const {j,now}=locked,prior=j.checkpoint.paused_sweep_v1?.[stage];
+    if(prior?.check_id!==checkId)return false;
+    await writePausedSweep(client,j,stage,{...prior,last_checked_ms:now,next_due_ms:disposition==='manual_required'||disposition==='resumed'?null:now+pauseSweepDelay(prior.attempts),disposition,reason_code:reasonCode});return true;
+  });
+}
+
 /** A separate keyset scan keeps old unknown calls (and blocked size-limit calls) from
  * starving new recoverable work. Advancing a worker cursor never edits evidence. */
 export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,runKinds?:readonly RunKind[],afterJobId?:string) {
@@ -1531,6 +1602,8 @@ export async function providerReconciliationCandidates(pool:Pool,limit=20,runKin
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid reconciliation batch size');
   return (await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
     WHERE j.state='paused' AND j.stage='provider_reconcile' AND r.state IN ('paused','settlement_pending') AND r.stage='provider_reconcile'
+    AND NOT (COALESCE(j.checkpoint#>>'{provider_reconcile_manual,disposition}','')='manual_required'
+      AND COALESCE(j.checkpoint#>>'{provider_reconcile_manual,reason_code}','')='workflow_protocol_unsupported')
     AND ($2::text[] IS NULL OR j.job_type=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
     AND (COALESCE(j.checkpoint->'provider_reconcile_unknown'->>'exhausted','false')='true'
       OR ${providerPauseStartedAt}<=clock_timestamp()-interval '1 hour'
@@ -1538,6 +1611,27 @@ export async function providerReconciliationCandidates(pool:Pool,limit=20,runKin
         THEN (j.checkpoint#>>'{provider_reconcile_unknown,next_check_ms}')::numeric ELSE 0 END<=EXTRACT(EPOCH FROM clock_timestamp())*1000)
     ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null])).rows as
       {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
+/** A future workflow protocol cannot be interpreted by this release. Record
+ * that boundary atomically without querying a supplier or changing its evidence.
+ * Only explicit supported-schema recovery can later remove this manual marker. */
+export async function recordUnsupportedWorkflowReconcile(pool:Pool,owner:string,runId:string,jobId:string):Promise<boolean>{
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+    if(!r||!['paused','settlement_pending'].includes(r.state)||r.stage!=='provider_reconcile')return false;
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
+    if(!j||j.state!=='paused'||j.stage!=='provider_reconcile')return false;
+    const version=j.checkpoint?.workflow_v1?.protocol_version;
+    if(!Number.isSafeInteger(version)||version<1||version===1)return false;
+    const prior=j.checkpoint?.provider_reconcile_manual;
+    if(prior?.disposition==='manual_required'&&prior.reason_code==='workflow_protocol_unsupported'&&prior.protocol_version===version)return true;
+    const checked=(await client.query('SELECT clock_timestamp() AS checked_at')).rows[0].checked_at;
+    const manual={disposition:'manual_required',reason_code:'workflow_protocol_unsupported',protocol_version:version,last_checked_at:new Date(checked).toISOString()};
+    await client.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{provider_reconcile_manual}',$2::jsonb,true),updated_at=now() WHERE id=$1",[jobId,JSON.stringify(manual)]);
+    await event(client,r,r.state,'provider_reconcile','workflow_protocol_unsupported','CAPABILITY_NOT_READY','run.progress',{disposition:'manual_required',protocol_version:version});
+    return true;
+  });
 }
 
 /** A task can fail while supplier usage remains unknown. No observation, usage,

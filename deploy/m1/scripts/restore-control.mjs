@@ -61,6 +61,6 @@ export async function runRestoreControl(mode,input,env=process.env){
 async function main(){
   const [mode,path]=process.argv.slice(2);
   const result=await runRestoreControl(mode,mode==='validate-storage'?undefined:requestFile(path));
-  console.log(JSON.stringify(result));
+  process.stdout.write(JSON.stringify(result)+'\n');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(error=>{console.error(error.code??error.message);process.exitCode=1;});

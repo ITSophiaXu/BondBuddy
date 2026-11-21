@@ -17,6 +17,10 @@ GRANT EXECUTE ON FUNCTION public.bb_lock_evidence_gate(boolean) TO :"runtime_rol
 GRANT INSERT(run_id,owner_user_id,topic_id,manifest,input_hash)
  ON public.bb_m4_executions TO :"runtime_role";
 GRANT INSERT(charged_points) ON public.bb_credit_reservations TO :"runtime_role";
+-- The 0192 reservation INSERT trigger executes as the consumer, including
+-- reservations whose quote has no authoring scope. It only appends identity.
+GRANT INSERT(owner_user_id,scope_quote_id,reservation_id)
+ ON public.bb_authoring_scope_reservations TO :"runtime_role";
 -- Deferred acceptance capture runs at COMMIT under the consumer identity.
 -- It records immutable refund evidence; it does not approve or issue a refund.
 GRANT INSERT(owner_user_id,reservation_id,item_id,run_id,ordinal,source_item_key,

@@ -12,6 +12,8 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
       ('workpaper_execution_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_m4_executions',col,'INSERT'))
         FROM unnest(ARRAY['run_id','owner_user_id','topic_id','manifest','input_hash']) AS columns(col))),
       ('reservation_charged_points_insert', has_column_privilege(current_user,'public.bb_credit_reservations','charged_points','INSERT')),
+      ('authoring_scope_reservation_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_authoring_scope_reservations',col,'INSERT'))
+        FROM unnest(ARRAY['owner_user_id','scope_quote_id','reservation_id']) AS columns(col))),
       ('refund_unit_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_units',col,'INSERT'))
         FROM unnest(ARRAY['owner_user_id','reservation_id','item_id','run_id','ordinal','source_item_key','label','points','scope_quote_id','evidence_kind','evidence']) AS columns(col))),
       ('refund_slice_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_unit_slices',col,'INSERT'))
@@ -27,6 +29,19 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
         FROM unnest(ARRAY['state','updated_at']) AS columns(col))),
       ('model_execution_config_write', has_table_privilege(current_user,'public.bb_model_attempt_execution_configs','INSERT')),
       ('model_result_failure_write', has_table_privilege(current_user,'public.bb_model_result_failure_diagnostics','INSERT')),
+      ('ops_alert_read', has_table_privilege(current_user,'public.bb_ops_alerts','SELECT')),
+      ('ops_alert_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_ops_alerts',col,'INSERT'))
+        FROM unnest(ARRAY['id','kind','severity','dedupe_key','detail']) AS columns(col))),
+      ('performance_session_read', has_table_privilege(current_user,'public.bb_performance_sessions','SELECT')),
+      ('performance_session_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_sessions',col,'INSERT'))
+        FROM unnest(ARRAY['session_id','owner_user_id','project_id','run_id','job_id','trace_id','run_execution_id','task_kind','service_role','worker_instance_id','release_sha','started_at','ended_at','last_flush_at','closed','generated','acknowledged','dropped','invalid_attributes','flush_errors','last_sequence','complete']) AS columns(col))),
+      ('performance_session_update', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_sessions',col,'UPDATE'))
+        FROM unnest(ARRAY['ended_at','last_flush_at','closed','generated','acknowledged','dropped','invalid_attributes','flush_errors','last_sequence','complete']) AS columns(col))),
+      ('performance_span_read', has_table_privilege(current_user,'public.bb_performance_spans','SELECT')),
+      ('performance_span_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_spans',col,'INSERT'))
+        FROM unnest(ARRAY['span_id','owner_user_id','run_id','session_id','run_execution_id','trace_id','job_id','parent_span_id','stage','step_key','step_version','status','started_at','ended_at','duration_ms','last_activity_at','clock_source','attributes','span_links','sequence']) AS columns(col))),
+      ('performance_span_update', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_spans',col,'UPDATE'))
+        FROM unnest(ARRAY['status','ended_at','duration_ms','last_activity_at','attributes','span_links','sequence']) AS columns(col))),
       ('workflow_session_version_write', has_column_privilege(current_user,'public.bb_execution_node_sessions','workflow_protocol_version','INSERT')),
       ('workflow_phase_read', has_column_privilege(current_user,'public.bb_jobs','execution_admission_phase','SELECT')),
       ('restore_quarantine_read', has_table_privilege(current_user,'public.bb_database_restore_quarantines','SELECT')),

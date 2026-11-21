@@ -168,18 +168,24 @@ export class PgModelCallBudget implements ModelCallBudget {
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
     let timer: ReturnType<typeof setInterval> | undefined;
-    let released = false, granted = false;
-    const release = async () => {
-      if (released) return;
-      released = true;
+    let released = false, releaseStarted=false, localLeft=false, granted = false;
+    let releasePromise:Promise<void>|undefined;
+    const release = ():Promise<void> => {
+      if (released) return Promise.resolve();
+      if(releasePromise)return releasePromise;
+      releaseStarted = true;
       this.exitedTokens.add(token);
       if (timer) clearInterval(timer);
       signal?.removeEventListener('abort', abort);
-      try {
+      const attempt=(async()=>{try {
         await this.sessions.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[token]);
         await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2',[token,this.host]);
         this.exitedTokens.delete(token);
-      } finally { this.leave(); }
+        released=true;
+      } finally { if(!localLeft){localLeft=true;this.leave();} }})();
+      releasePromise=attempt;
+      void attempt.catch(()=>{if(releasePromise===attempt)releasePromise=undefined;});
+      return attempt;
     };
     try {
       await withPerformanceSpan('model.capacity.global_wait', { wait_reason: 'global_capacity' }, async span => {
@@ -253,7 +259,7 @@ export class PgModelCallBudget implements ModelCallBudget {
       } catch (error) { if (controller.signal.aborted) span.end('cancelled'); throw error; }
       });
       const renew = async () => {
-        if (released || controller.signal.aborted) throw new Error('Model capacity holder lost');
+        if (releaseStarted || controller.signal.aborted) throw new Error('Model capacity holder lost');
         try {
           const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET renewed_at=now() WHERE token=$1 AND host_id=$2',[token,this.host]);
           if (!result.rowCount) throw new Error('Model capacity holder lost');

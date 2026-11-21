@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {claim,pauseRun,resumePausedRun,completeManagedRunRelease,commitChapter,recordWorkflowRepair,recordWorkflowFailure,recordSealedCapture,registerRecoveredCaptureEvidence} from './queue.js';
-import {digest} from './data.js';
+import {claim,pauseRun,resumePausedRun,resumeVerifiedWorkflow,completeManagedRunRelease,commitChapter,recordWorkflowRepair,recordWorkflowFailure,recordSealedCapture,registerRecoveredCaptureEvidence} from './queue.js';
+import {digest,type PrivateBlobs} from './data.js';
+import {grantCredits} from './billing.js';
+import {savePromptSnapshot} from './log-ops.js';
+import {persistProviderResultObject,recordProviderCallObservation} from './provider-results.js';
 import {configureExecutionCapacity,registerExecutionRuntime,heartbeatExecutionRuntime} from './execution-capacity.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {isolatedTestDatabase} from './test-database.js';
@@ -39,6 +42,40 @@ test('workflow phase claiming and pause/resume safety',{skip:!connection},async 
   await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,checkpoint) VALUES($1,$2,$1,'generation','default',$3,$4,$5)",[id,owner,state,state==='paused'?'capability_not_ready':'queued',{workflow_v1:workflow(hash,phase)}]);
   return id;
  };
+ const resumeReasons=['materials_ready','provider_reconciled','trial_limit_cleared','credits_recharged','billing_reconciled'] as const;
+ type ResumeReason=typeof resumeReasons[number];
+ const resumeStage={materials_ready:'awaiting_materials',provider_reconciled:'provider_reconcile',trial_limit_cleared:'trial_limit',credits_recharged:'credits_exhausted',billing_reconciled:'billing_reconcile'} as const;
+ const releasedChapter=async(reason:ResumeReason,postprocess=false)=>{
+  const id=await add('authoring'),lease=await claim(worker,30,{runKinds:['generation'],workflowPhase:'authoring'});assert.equal(lease?.jobId,id);assert.ok(lease);
+  const w=lease.checkpoint.workflow_v1 as AuthoringWorkflowV1,objects=new Map<string,Buffer>();
+  const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,Buffer.from(b));},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,getIfExistsBounded:async(k,max)=>{const b=objects.get(k);return b&&b.length<=max?b:null;},exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
+  const object=(name:string,bytes:Buffer)=>{const key=`users/${owner}/projects/${id}/runs/${id}/workflow-v1/${name}`;objects.set(key,bytes);return {key,sha256:digest(bytes),byte_size:bytes.length};};
+  w.plan_ref=object('plan.json',Buffer.from(JSON.stringify(w.plan)));
+  const projection={version:'document-projection-v1',input_hash:w.input_hash,plan_hash:w.plan_hash,chapter_id:'one',batch_id:'first',blocks:[{block_id:'one-paragraph',order:0,kind:'paragraph',text:'Synthetic completed chapter',rows:[],evidence:[],pending:[],heading_level:null,style_key:'body',table_id:null,row_order:null}],summary:[]};
+  const receipt:ChapterReceiptV1={version:'chapter-receipt-v1',run_id:id,job_id:id,input_hash:w.input_hash,plan_hash:w.plan_hash,chapter_id:'one',batch_id:'first',logical_call_id:'synthetic-completed-chapter',execution_generation:1,call_status:'completed',object:object('chapter.json',Buffer.from(JSON.stringify(projection))),projection_version:0,operations_sha256:null,accepted_op_receipts:[],validation:{schema_version:'document-projection-v1',range_verified:true,structure_verified:true,evidence_refs_valid:true},created_at:new Date().toISOString()};
+  // Only the restored checkpoint is seeded here. The release uses the same
+  // registered SQL/native-protocol fixture as the existing positive test.
+  w.completed=[receipt];w.next_cursor={chapter:1,batch:0};
+  const attemptId=randomUUID(),snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:id,runId:id,kind:'model_request',body:'Synthetic completed workflow chapter',inputRevision:1,inputHash:w.input_hash,templateVersion:'synthetic-workflow-v1'});
+  const intent={owner_user_id:owner,project_id:id,job_id:id,run_id:id,trace_id:id,logical_call_id:receipt.logical_call_id,call_id:attemptId,attempt_no:1,model_id:'synthetic',model_config_version:'synthetic-workflow-v1',prompt_snapshot_ref:snapshot};
+  await pool.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id) VALUES($1,$2,$3,$4,1,'pending_reconcile','synthetic',$5)",[attemptId,owner,id,receipt.logical_call_id,snapshot]);
+  const validate=(value:unknown)=>inputManifestHash(value)===inputManifestHash(projection);
+  const result=await persistProviderResultObject({blobs,intent,bytes:Buffer.from(JSON.stringify(projection)),resultSchemaVersion:'document-projection-v1',validate});
+  await recordProviderCallObservation(pool,blobs,{...intent,...result,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage:{status:'measured',input_tokens:10,output_tokens:5,total_tokens:15,cached_input_tokens:null,reasoning_tokens:null},error_code:null},validate,{lease});
+  if(postprocess){w.phase='postprocess';w.handoff_id=randomUUID();w.postprocess_manifest={version:'workflow-postprocess-manifest-v1',input_hash:w.input_hash,plan_hash:w.plan_hash,chapter_receipts:[receipt],candidate:object('candidate.docx',Buffer.from('Synthetic private candidate bytes'))};}
+  await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{workflow_v1}',$2::jsonb),credit_pause_requested=$3,billing_resume_stage='queued' WHERE id=$1",[id,JSON.stringify(w),reason==='credits_recharged']);
+  if(reason==='credits_recharged'){
+   await pool.query("INSERT INTO bb_users(id,username) VALUES($1,'synthetic_workflow_resume') ON CONFLICT(id) DO NOTHING",[owner]);
+   const client=await pool.connect();try{await client.query('BEGIN');await grantCredits(client,{owner,source:'existing_grant',key:'synthetic-workflow-resume-credits',points:1,expiresAt:null,actor:'synthetic',reason:'Synthetic verified workflow resume fixture'});await client.query('COMMIT');}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  }
+  await pauseRun(worker,lease,resumeStage[reason],'synthetic_recovery_blocker');
+  await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",[id]);
+  assert.equal(await completeManagedRunRelease(worker,lease,{version:'task_cgroup_v1',nativeProcesses:0,activeExecutions:0,jobId:id,token:lease.token,epoch,sessionId,cgroupIdentity:epoch+':1:1'}),'paused');
+  return {id,receipt,objects,blobs,w:(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[id])).rows[0].checkpoint.workflow_v1 as AuthoringWorkflowV1};
+ };
+ const recoveryState=async(id:string)=>(await pool.query(`SELECT r.state AS run_state,j.state AS job_state,j.lease_token,j.attempts,
+  (SELECT count(*)::int FROM bb_model_call_attempts a WHERE a.job_id=j.id) AS intents FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1`,[id])).rows[0];
+ const cancelFixture=async(id:string)=>pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE id=$1",[id]);
  await t.test('authoring consumer cannot take a postprocess workflow',async()=>{
   const id=await add('postprocess');
   assert.equal(await claim(worker,30,{runKinds:['generation'],workflowPhase:'authoring'} as any),null);
@@ -88,6 +125,54 @@ test('workflow phase claiming and pause/resume safety',{skip:!connection},async 
   for(const reason of ['materials_ready','provider_reconciled','trial_limit_cleared','credits_recharged','billing_reconciled'] as const)
    assert.equal(await resumePausedRun(pool,owner,id,reason,{blobs:{getIfExistsBounded:async()=>null} as any}),false,reason);
   await pool.query("UPDATE bb_jobs SET state='cancelled' WHERE id=$1",[id]);
+ });
+ for(const reason of resumeReasons){
+  await t.test(`verified completed objects resume through the common gate: ${reason}`,async()=>{
+   const f=await releasedChapter(reason),before=await recoveryState(f.id),readKeys:string[]=[];
+   assert.deepEqual(before,{run_state:'paused',job_state:'paused',lease_token:null,attempts:1,intents:1});
+   const blobs={...f.blobs,getIfExistsBounded:async(k:string,max:number)=>{readKeys.push(k);return f.blobs.getIfExistsBounded!(k,max);}};
+   assert.equal(await resumeVerifiedWorkflow(worker,owner,f.id,reason,{blobs}),true);
+   assert.deepEqual(readKeys,[f.w.plan_ref!.key,f.receipt.object.key]);
+   assert.deepEqual(await recoveryState(f.id),{...before,run_state:'queued',job_state:'queued'});
+   assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[f.id])).rows[0].checkpoint.workflow_v1.completed,[f.receipt]);
+   await cancelFixture(f.id);
+  });
+  for(const corruption of ['missing_object','changed_bytes','changed_size','receipt_input_hash','receipt_plan_hash','receipt_order','cursor'] as const)
+   await t.test(`completed recovery rejects ${corruption}: ${reason}`,async()=>{
+    const f=await releasedChapter(reason),before=await recoveryState(f.id);
+    if(corruption==='missing_object')f.objects.delete(f.receipt.object.key);
+    else if(corruption==='changed_bytes'){const bytes=Buffer.from(f.objects.get(f.receipt.object.key)!);bytes[bytes.length-1]=bytes[bytes.length-1]!^1;f.objects.set(f.receipt.object.key,bytes);}
+    else{
+     if(corruption==='changed_size')f.w.completed[0]!.object.byte_size++;
+     else if(corruption==='receipt_input_hash')f.w.completed[0]!.input_hash='b'.repeat(64);
+     else if(corruption==='receipt_plan_hash')f.w.completed[0]!.plan_hash='b'.repeat(64);
+     else if(corruption==='receipt_order')f.w.completed[0]!.batch_id='another-batch';
+     else f.w.next_cursor={chapter:0,batch:0};
+     await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{workflow_v1}',$2::jsonb) WHERE id=$1",[f.id,JSON.stringify(f.w)]);
+    }
+    assert.equal(await resumeVerifiedWorkflow(worker,owner,f.id,reason,{blobs:f.blobs}),false);
+    assert.deepEqual(await recoveryState(f.id),before,'refused recovery must retain the pause and cannot issue an intent');
+    await cancelFixture(f.id);
+   });
+ }
+ for(const field of ['execution_node_id','epoch','session_id'] as const)
+  await t.test(`completed recovery rejects a positive release from another ${field}`,async()=>{
+   const f=await releasedChapter('materials_ready'),before=await recoveryState(f.id);
+   await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,ARRAY['positive_release_v1',$2::text],to_jsonb($3::text)) WHERE id=$1",[f.id,field,randomUUID()]);
+   assert.equal(await resumeVerifiedWorkflow(worker,owner,f.id,'materials_ready',{blobs:f.blobs}),false);
+   assert.deepEqual(await recoveryState(f.id),before);await cancelFixture(f.id);
+  });
+ await t.test('postprocess recovery verifies plan, completed chapter and candidate objects',async()=>{
+  for(const missing of ['plan','candidate',null] as const){
+   const f=await releasedChapter('materials_ready',true),before=await recoveryState(f.id),readKeys:string[]=[];
+   const key=missing==='plan'?f.w.plan_ref!.key:missing==='candidate'?f.w.postprocess_manifest!.candidate.key:null;
+   if(key)f.objects.delete(key);
+   const blobs={...f.blobs,getIfExistsBounded:async(k:string,max:number)=>{readKeys.push(k);return f.blobs.getIfExistsBounded!(k,max);}};
+   assert.equal(await resumeVerifiedWorkflow(worker,owner,f.id,'materials_ready',{blobs}),missing===null);
+   assert.deepEqual(await recoveryState(f.id),missing===null?{...before,run_state:'queued',job_state:'queued'}:before);
+   if(missing===null)assert.deepEqual(readKeys,[f.w.plan_ref!.key,f.receipt.object.key,f.w.postprocess_manifest!.candidate.key]);
+   await cancelFixture(f.id);
+  }
  });
  await t.test('immutable occupied phase survives a checkpoint handoff; budgets do not reset',async()=>{
   const id=await add('authoring'),lease=await claim(worker,30,{runKinds:['generation'],workflowPhase:'authoring'});assert.ok(lease);

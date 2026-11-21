@@ -18,15 +18,20 @@ const repo=resolve(fileURLToPath(import.meta.url),'../../../..');
 export type ChapterContextV1={version:'chapter-context-v1';input_hash:string;parser_version:string;input:UnifiedInput;source:WorkflowObject|null;chapters:ChapterSource[];nodes:WorkflowNode[];material_snapshot_hash:string};
 export const workflowPrefix=(ctx:StageContext)=>`users/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/workflow-v1/`;
 export async function writeWorkflowObject(ctx:StageContext,name:string,bytes:Buffer):Promise<WorkflowObject>{
+  ctx.signal.throwIfAborted();
   const sha256=digest(bytes),key=workflowPrefix(ctx)+sha256+'/'+name;
   await ctx.blobs.put(key,bytes,name.endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/json');
+  ctx.signal.throwIfAborted();
   const stored=await ctx.blobs.getIfExistsBounded(key,100*1024*1024);
+  ctx.signal.throwIfAborted();
   if(!stored||stored.length!==bytes.length||digest(stored)!==sha256)throw Error('WORKFLOW_OBJECT_READBACK_FAILED');
   return {key,sha256,byte_size:bytes.length};
 }
 export async function readWorkflowObject(ctx:StageContext,ref:WorkflowObject){
+  ctx.signal.throwIfAborted();
   if(!ref.key.startsWith(workflowPrefix(ctx))||ref.key.includes('..')||!Number.isSafeInteger(ref.byte_size)||ref.byte_size<1||ref.byte_size>100*1024*1024)throw Error('WORKFLOW_OBJECT_SCOPE_INVALID');
   const bytes=await ctx.blobs.getIfExistsBounded(ref.key,ref.byte_size);
+  ctx.signal.throwIfAborted();
   if(!bytes||bytes.length!==ref.byte_size||digest(bytes)!==ref.sha256)throw Error('WORKFLOW_OBJECT_READBACK_FAILED');return bytes;
 }
 export function contextRecords(input:UnifiedInput){return input.materials.flatMap((m,mi)=>m.records.map((r,ri)=>({id:`m${mi}:${ri}`,text:r.literal_quote,uncertainty:r.uncertainty,locator:r.locator,material_sha256:m.pin.sha256,record_sha256:inputManifestHash(r)})));}

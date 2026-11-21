@@ -38,6 +38,16 @@ test('task and stage containers alone cannot explain the elapsed run', () => {
   const metrics = runPerformanceMetrics(data);
   assert.equal(metrics.coveredMs, 0); assert.equal(metrics.unexplainedMs, 12000);
 });
+
+test('a chapter wrapper cannot attribute its gaps to the measured CLI child',()=>{
+  const data=mergePerformancePage(undefined,page([
+    span('chapter',0,10000,null,{step_key:'workflow.chapter.call'}),
+    span('exec',3000,5000,'chapter',{step_key:'model.exec'})
+  ],{run:{created_at:at(0),state:'succeeded',started_at:at(0),ended_at:at(10000)}}));
+  const metrics=runPerformanceMetrics(data);
+  assert.equal(metrics.coveredMs,2000);assert.equal(metrics.unexplainedMs,8000);
+  assert.equal(metrics.row(data.items[0]!).unexplainedMs,8000);
+});
 test('the measured CLI boundary explains elapsed work even when tool children exist', () => {
   const data = mergePerformancePage(undefined, page([span('exec', 0, 10000, null, {step_key: 'model.exec'}), span('tool', 1000, 2000, 'exec', {step_key: 'model.tool'})]));
   assert.equal(runPerformanceMetrics(data).coveredMs, 10000);

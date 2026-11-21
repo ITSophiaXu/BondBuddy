@@ -38,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--suite", choices=["workflow", "managed-recovery", "demand", "postgres"], default="workflow")
+    parser.add_argument("--suite", choices=["workflow", "managed-recovery", "retention", "demand", "postgres"], default="workflow")
     parser.add_argument("--case", choices=["all", "controlled", "delivery", "direct"], default="all")
     parser.add_argument("--test-file", action="append", default=[], help="Explicit repo-relative API/worker dist test or db PostgreSQL test (postgres suite only).")
     args = parser.parse_args()
@@ -87,6 +87,10 @@ def main():
             # instead of weakening that test's target guard.
             subprocess.run(["docker", "exec", case.postgres, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "CREATE DATABASE bb_middle_template_native TEMPLATE bondbuddy_fixture"], check=True, stdout=subprocess.DEVNULL)
             network, test_database = f"container:{case.postgres}", "postgresql://postgres@127.0.0.1/bb_middle_template_native"
+        machine_id = case.directory / "synthetic-machine-id"
+        machine_id.write_text(uuid.uuid4().hex + "\n")
+        machine_id.chmod(0o444)
+        mounts += ["-v", f"{machine_id}:/etc/machine-id:ro"]
         case.container = original_popen([
             "docker", "run", "--name", case.name, "--pull", "never", "-i", "--init", "--read-only",
             "--user", "1000:1000", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
@@ -111,8 +115,8 @@ def main():
                     super().setUp()
                 return
             def copy(source, destination, *a, **kw):
-                if args.suite == "workflow" and Path(source) == fixture.HERE / "task-cgroup-database-fixture.mjs":
-                    return original_copy(HERE / "workflow-entry.mjs", destination, *a, **kw)
+                if args.suite in ("workflow","retention") and Path(source) == fixture.HERE / "task-cgroup-database-fixture.mjs":
+                    return original_copy(HERE / ("retention-entry.mjs" if args.suite=="retention" else "workflow-entry.mjs"), destination, *a, **kw)
                 return original_copy(source, destination, *a, **kw)
             def popen(command, *a, **kw):
                 if isinstance(command, list) and command[:2] == ["docker", "run"] and "apps/worker/dist/runtime.js" in command:
@@ -125,18 +129,28 @@ def main():
                         "-v", f"{REPO / 'python'}:/app/python:ro",
                         "-e", "BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python",
                         "-e", f"BB_WORKFLOW_NATIVE_CASE={args.case}",
+                        *(["-e",f"BB_RETENTION_NATIVE_CASE={self.retention_case}"] if args.suite=="retention" else []),
                     ] + command[index:]
                 return original_popen(command, *a, **kw)
             with patch.object(shutil, "copyfile", side_effect=copy), patch.object(subprocess, "Popen", side_effect=popen):
                 super().setUp()
         def test_workflow(self):
             stdout, _ = self.container.communicate(timeout=300)
-            args.output.write_text(stdout)
+            if args.suite=="retention":
+                with args.output.open('a') as evidence: evidence.write(stdout+'\n')
+            else: args.output.write_text(stdout)
             self.assertEqual(self.container.returncode, 0, stdout[-18000:])
             self.assertIn("# fail 0", stdout)
             self.assertIn("# skipped 0", stdout)
             if args.suite == "demand": self.assertIn("# tests 1", stdout)
-    result = unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite([WorkflowCase("test_workflow")]))
+            if args.suite == "retention": self.assertIn("# tests 1", stdout)
+    cases=[]
+    if args.suite=="retention":
+        args.output.write_text('')
+        for name in ('pending','unreadable','admission'):
+            case=WorkflowCase('test_workflow');case.retention_case=name;cases.append(case)
+    else:cases=[WorkflowCase('test_workflow')]
+    result = unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
     return 0 if result.wasSuccessful() and not result.skipped else 1
 
 if __name__ == "__main__": raise SystemExit(main())

@@ -211,7 +211,7 @@ async function main(){
   const [mode,path,backupHash]=process.argv.slice(2);
   if(!mode||!mode.startsWith('--restore-'))return verifyLegacyRestore();
   const receipt=readReceipt(path,backupHash);
-  if(mode==='--restore-safety-dry'){console.log(JSON.stringify({state:'validated_frozen',restore_id:receipt.restore_id,manifest_sha256:receipt.manifest_sha256}));return;}
+  if(mode==='--restore-safety-dry'){process.stdout.write(JSON.stringify({state:'validated_frozen',restore_id:receipt.restore_id,manifest_sha256:receipt.manifest_sha256})+'\n');return;}
   const target=mode==='--restore-safety-apply'?process.env.RESTORE_DATABASE_URL:process.env.DATABASE_URL;
   if(!target)fail('RESTORE_DATABASE_URL_REQUIRED');
   if(mode==='--restore-safety-apply'&&target===process.env.DATABASE_URL)fail('RESTORE_DATABASE_NOT_ISOLATED');
@@ -226,7 +226,7 @@ async function main(){
       try{await verifyRestoreSource(source,receipt);}finally{await source.end();}
     }
     const result=mode==='--restore-freeze'?await freezeRestoreSource(pool,receipt):mode==='--restore-safety-preflight'?await verifyRestoreSource(pool,receipt):mode==='--restore-safety-apply'?await quarantineRestoredDatabase(pool,receipt):fail('RESTORE_MODE_INVALID');
-    console.log(JSON.stringify(result));
+    process.stdout.write(JSON.stringify(result)+'\n');
   }finally{await pool.end();}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(error=>{console.error(error.message);process.exitCode=1;});

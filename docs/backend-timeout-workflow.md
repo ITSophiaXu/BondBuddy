@@ -23,6 +23,8 @@ flowchart LR
 
 每次模型调用另有子 cgroup。调用封闭且原生进程为空后，Node 在同一持久卷封存原字节，再登记原 session 捕获证据并释放物理模型许可。外层 task 保持开放，下一章可以建立新子 scope；整个 pipeline 退出后才永久封闭外层 task。子 scope 证明不能代替 job 释放证明。
 
+原调用身份在启动原生进程前冻结。封存后的数据库 ACK 暂败由同进程 registry 保留原 ACK、原 permit release 闭包及 proof，心跳与补传循环继续重试；已确认 ACK 不因 holder 删除暂败再次发送。重启后不收养旧 session，继续走原有 stop/fence 恢复。ACK、登记及 GC 核查使用承继原可信 session 和数据库角色的有界控制连接；数据库锁等待失败后先 rollback／关闭真实连接，再返回重试。
+
 ## F01–F10 对照
 
 | Fix | 实现入口 | 验收重点 |
@@ -59,6 +61,8 @@ PDF／兼容无原稿路径先执行一次 journal 记录的 outline 调用，�
 弹性 authoring-state volume 承载 attempts/spool/workflow，镜像初始化 UID1000 私有 0700 目录。补传每次最多 120 秒，每轮最多 3 条、累计 5 分钟，失败持久退避。低磁盘、未封存和未接管阻止该容量新领取；已安全封存的待补传不停止其他 job。drain 等待未履行的持久化责任，不能删除 volume；远端核验前仍存在物理磁盘丢失窗口。
 
 新版正常链路的解析缓存、prompt、调用 journal、章节、Word 和质量报告也经过统一有界对象 IO。SDK 在最小凭据的独立子进程中运行，每次最多 120 秒；超时后强制终止并等待进程退出，才向调用方返回失败。该边界防止存储请求卡住后继续无界占用执行任务。私有对象写入仍须读回核对字节和 hash，失败不提交章节游标或成功终态。
+
+远端登记成功后的本地 GC 有独立 fsync ticket。清理中断、manifest 已删或临时 ticket 写入中断时，下轮扫描先核对数据库原登记身份与 hash，再继续删除；不重新上传、不重复登记。只修剪已验证的空祖先目录，未知或冲突文件保留并拒绝不安全清理。GC 残留属于本地清理责任，不能冒充成果尚未持久化。
 
 开启顺序：固定 tree 构建并验质量门 → 追加迁移／ACL → 核对宿主 helper/profile、镜像、登记收据 → 配置真实预算与持久卷 → 启用匹配 DB phase policy → `BB_WORKFLOW_V1=1`、`BB_WORKFLOW_PHASE=mixed`。不一致即拒绝启动或领取。回滚先关闭新准入并排空新版任务，保留 checkpoint/spool，不能让旧 consumer 接新版任务。
 

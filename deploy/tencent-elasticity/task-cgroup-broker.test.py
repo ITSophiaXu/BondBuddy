@@ -314,7 +314,7 @@ class NativeCgroupFixture(unittest.TestCase):
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
                     try:
                         probe.connect(str(self.socket_directory / "broker.sock"))
-                    except ConnectionRefusedError:
+                    except (ConnectionRefusedError, FileNotFoundError):
                         pass
                     else:
                         return

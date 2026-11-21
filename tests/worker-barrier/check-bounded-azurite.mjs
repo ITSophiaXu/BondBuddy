@@ -6,7 +6,7 @@ import {boundedPrivateBlobs} from '../../apps/worker/dist/bounded-private-blobs.
 
 // Explicit opt-in integration command, never part of the environment-free unit suite.
 const connectionString=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
-assert.ok(connectionString?.startsWith('UseDevelopmentStorage=true;'),'A local synthetic Azurite connection is required');
+assert.ok(connectionString?.startsWith('DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;')&&/BlobEndpoint=http:\/\/127\.0\.0\.1:\d+\/devstoreaccount1;?$/.test(connectionString),'A local synthetic Azurite connection is required');
 const containerName='bb-bounded-io-'+randomUUID();
 const container=BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
 const blobs=boundedPrivateBlobs(azureBlobs(connectionString,containerName),{connectionString,containerName,timeoutMs:15000});

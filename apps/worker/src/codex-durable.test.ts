@@ -33,7 +33,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
   const pool = new Pool({ connectionString: connection });
   const blobs = azureBlobs(blobConnection!, 'bondbuddy-m1-11-codex');
   const owner = `synthetic-codex-owner-${uid()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true, historicalBillingFixture: true });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin: 'http://bondbuddy.test' }, payload: payload as any });
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-durable-'));
   const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null, credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 400, kill_grace_ms: 100, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin' };
@@ -69,6 +69,17 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     webJournal.recordIntent=async intent=>{webIntent=intent;await recordIntent(intent);};
     const searched=await runContainedModelCall(callFor(web,'SCENARIO:web_search'),webJournal,{...config,web_search:'live'});
     assert.equal(searched.status,'completed');
+    assert.deepEqual((await pool.query('SELECT project_id FROM bb_jobs WHERE id=$1',[web.lease.jobId])).rows,
+      [{project_id:null}],'ordinary API enqueue leaves the optional job project empty');
+    assert.deepEqual((await pool.query('SELECT project_id,run_id,job_id FROM bb_model_attempt_execution_configs WHERE attempt_id=$1',[webIntent.call_id])).rows,
+      [{project_id:web.projectId,run_id:web.runId,job_id:web.lease.jobId}],'the run supplies the authoritative project identity');
+    const diagnostic={substage:'object_verify',error_class:'storage_integrity',error_code:'MODEL_RESULT_STORE_FAILED'} as const;
+    await webJournal.recordResultFailure({...webIntent,project_id:'another-project'},diagnostic);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_result_failure_diagnostics WHERE attempt_id=$1',[webIntent.call_id])).rows[0].n,0,
+      'an incorrect project cannot write diagnostics for the real attempt');
+    await webJournal.recordResultFailure(webIntent,diagnostic);
+    assert.deepEqual((await pool.query('SELECT project_id,run_id,job_id,substage FROM bb_model_result_failure_diagnostics WHERE attempt_id=$1',[webIntent.call_id])).rows,
+      [{project_id:web.projectId,run_id:web.runId,job_id:web.lease.jobId,substage:'object_verify'}]);
     const stored=(await pool.query('SELECT events,content_sha256 FROM bb_model_web_search_evidence WHERE call_id=$1',[webIntent.call_id])).rows[0];
     assert.equal(stored.events.length,1);assert.equal(stored.events[0].item.id,'search-1');
     await webJournal.recordWebSearchEvents(webIntent,stored.events);

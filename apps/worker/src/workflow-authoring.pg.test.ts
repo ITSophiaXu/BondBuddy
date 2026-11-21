@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,lstat} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
@@ -11,8 +11,8 @@ import {Pool} from 'pg';
 import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
 import {grantCredits,reserveCreditLots} from '../../api/dist/billing.js';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {configureExecutionCapacity,registerExecutionRuntime,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
-import {claim,releaseLease,completeManagedRunRelease,finish} from '@bondbuddy/api/queue';
+import {configureExecutionCapacity,registerExecutionRuntime,heartbeatExecutionRuntime,withExecutionControlPool} from '@bondbuddy/api/execution-capacity';
+import {claim,releaseLease,completeManagedRunRelease,commitChapter,finish,registerRecoveredCaptureEvidence} from '@bondbuddy/api/queue';
 import {emptyUpdateDetails,type AuthoringWorkflowV1} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {initializeTaskExecution,withTaskExecution,withBackgroundTaskExecution,taskNativeProcesses,taskReleaseProof,retireTaskExecution,taskExecFile} from './task-execution.js';
@@ -23,6 +23,11 @@ import {boundedPrivateBlobs} from './bounded-private-blobs.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 import {fileAuthoringDeliveryStage,type FileAuthoringResult} from './file-authoring-stage.js';
 import {nativeExecutionProcesses} from './execution-node-runtime.js';
+import {WorkerRuntime} from './runtime.js';
+import {withPerformanceTrace,withPerformanceSpan,flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
+import {withWorkflowHandoffPerformance} from './workflow-observability.js';
+import {readDurableSpool,readDurableSpoolForGc,sealDurableSpool,flushDurableSpool,pendingDurableSpool,type DurableSpoolReceipt} from './durable-spool.js';
+import {collectRegisteredDurableSpool,recoveredSpoolRegistrationRecorded,runDurableSpoolPass} from './durable-spool-consumer.js';
 
 const connection=await isolatedTestDatabase(undefined,'workflow-authoring-native');
 test('real workflow checkpoints, phase handoff and unknown call barrier',{
@@ -63,9 +68,9 @@ test('real workflow checkpoints, phase handoff and unknown call barrier',{
  const context=async(lease:Lease):Promise<StageContext>=>({pool:worker,blobs,lease,run:(await admin.query('SELECT * FROM bb_runs WHERE id=$1',[lease.runId])).rows[0],signal:new AbortController().signal,checkpoint:(lease.checkpoint.stages??{}) as StageContext['checkpoint'],values:new Map()});
  const readyHeartbeat=async()=>heartbeatExecutionRuntime(worker,{native_processes:await nativeExecutionProcesses(),unpersisted_results:0,ready:true});
  const next=async(id:string,phase:'authoring'|'postprocess')=>{await readyHeartbeat();const lease=await claim(worker,90,{runKinds:['generation'],workflowPhase:phase});assert.equal(lease?.jobId,id);return lease!;};
- const seed=async(ctx:StageContext)=>{
-  const input={manifest:{issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{},materials:[],authoring:{version:'unified_v1',source_prospectuses:[],knowledge:[{path:'synthetic.md',markdown:'# 第一章\n# 第二章'}],requirements:[]}},materials:[],requirements:['Synthetic fixture; do not invent verified facts']} as unknown as ChapterContextV1['input'];
-  const parser_version='synthetic-parser-v1',value:ChapterContextV1={version:'chapter-context-v1',input_hash:ctx.run.input_hash.trim(),parser_version,input,source:null,chapters:[{title:'第一章',source_node_ids:[]},{title:'第二章',source_node_ids:[]}],nodes:[],material_snapshot_hash:inputManifestHash({input,parser_version})};
+ const seed=async(ctx:StageContext,titles=['第一章','第二章'])=>{
+  const input={manifest:{issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{},materials:[],authoring:{version:'unified_v1',source_prospectuses:[],knowledge:[{path:'synthetic.md',markdown:titles.map(title=>'# '+title).join('\n')}],requirements:[]}},materials:[],requirements:['Synthetic fixture; do not invent verified facts']} as unknown as ChapterContextV1['input'];
+  const parser_version='synthetic-parser-v1',value:ChapterContextV1={version:'chapter-context-v1',input_hash:ctx.run.input_hash.trim(),parser_version,input,source:null,chapters:titles.map(title=>({title,source_node_ids:[]})),nodes:[],material_snapshot_hash:inputManifestHash({input,parser_version})};
   const ref=await writeWorkflowObject(ctx,'chapter-context.json',Buffer.from(JSON.stringify(value)));
   ctx.checkpoint.chapter_context_v1={ref,material_snapshot_hash:value.material_snapshot_hash,input_hash:value.input_hash};
   await admin.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages}',$2::jsonb) WHERE id=$1",[ctx.lease.jobId,JSON.stringify(ctx.checkpoint)]);
@@ -73,15 +78,15 @@ test('real workflow checkpoints, phase handoff and unknown call barrier',{
  };
  const scoped=async(ctx:StageContext,stage=workflowAuthoringStage({config,tokenLimit:1000}),before?:()=>Promise<void>)=>{
   let outcome!:StageOutcome;
-  await withTaskExecution(worker,{kind:'job',id:ctx.lease.jobId,token:ctx.lease.token},async()=>{
+  await withPerformanceTrace(worker,{ownerUserId:ctx.run.owner_user_id,projectId:ctx.run.project_id,runId:ctx.run.id,jobId:ctx.lease.jobId,serviceRole:'synthetic-authoring'},()=>withTaskExecution(worker,{kind:'job',id:ctx.lease.jobId,token:ctx.lease.token},async()=>{
    await before?.();outcome=await stage.run(ctx);return 'handoff_pending' as const;
-  });return outcome;
+  }));return outcome;
  };
  const release=async(lease:Lease)=>{
   assert.equal(await taskNativeProcesses(lease),0);
   const proof=taskReleaseProof(worker,lease);
   await releaseLease(worker,lease);
-  const result=await completeManagedRunRelease(worker,lease,proof);
+  const result=await withWorkflowHandoffPerformance(worker,lease,control=>completeManagedRunRelease(control,lease,proof));
   assert.notEqual(result,'blocked');await retireTaskExecution(lease);return result;
  };
  const cancel=async(id:string)=>{await admin.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE id=$1",[id]);await admin.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[id]);};
@@ -101,6 +106,12 @@ test('real workflow checkpoints, phase handoff and unknown call barrier',{
   await assert.rejects(finish(worker,lease,'succeeded'),/Verified Word artifact required/);
   assert.equal((await admin.query('SELECT state FROM bb_runs WHERE id=$1',[id])).rows[0].state,'running');
   assert.equal(await release(lease),'queued');
+  await flushPerformanceTraces(worker,5000);
+  const handoffSpans=(await admin.query("SELECT * FROM bb_performance_spans WHERE run_id=$1 AND step_key IN ('model.call.close','workflow.handoff.prepare','workflow.handoff.release')",[id])).rows;
+  for(const key of ['model.call.close','workflow.handoff.prepare','workflow.handoff.release'])assert.ok(handoffSpans.some(row=>row.step_key===key),key);
+  assert.ok(handoffSpans.every(row=>row.job_id===id&&row.trace_id===id&&row.ended_at&&row.duration_ms>=0));
+  assert.equal(handoffSpans.find(row=>row.step_key==='workflow.handoff.release').attributes.lease_token_sha256,digest(lease.token));
+  assert.ok(!JSON.stringify(handoffSpans).includes(lease.token));
   const post=await next(id,'postprocess');assert.notEqual(post.token,lease.token);const postCtx=await context(post);
   let generated!:StageOutcome,delivered!:StageOutcome;
   await withTaskExecution(worker,{kind:'job',id,token:post.token},async()=>{
@@ -141,12 +152,115 @@ test('real workflow checkpoints, phase handoff and unknown call barrier',{
   await cancel(id);await release(resumed);
  });
 
+ if(!['controlled','delivery'].includes(process.env.BB_WORKFLOW_NATIVE_CASE??''))for(const failure of ['put','readback','cursor_commit'] as const)
+  await t.test(`completed chapter survives its first ${failure} failure without a second provider send`,async()=>{
+   const id=await add(),lease=await next(id,'authoring'),ctx=await context(lease);await seed(ctx,['第一章']);
+   const start=(await sends()).length,puts:{key:string;sha256:string;byte_size:number}[]=[];
+   let injected=false;
+   const faultBlobs:PrivateBlobs={...blobs,put:async(key,bytes,type)=>{
+    if(key.endsWith('/chapter.json')){puts.push({key,sha256:digest(bytes),byte_size:bytes.length});if(failure==='put'&&!injected){injected=true;throw Error('SYNTHETIC_CHAPTER_PUT_FAILED');}}
+    await blobs.put(key,bytes,type);
+   },getIfExistsBounded:async(key,max)=>{
+    if(key.endsWith('/chapter.json')&&failure==='readback'&&!injected){injected=true;throw Error('SYNTHETIC_CHAPTER_READBACK_FAILED');}
+    return blobs.getIfExistsBounded(key,max);
+   }};
+   ctx.blobs=faultBlobs;
+   const constraint='synthetic_first_cursor_'+id.replace(/-/g,'');
+   if(failure==='cursor_commit')await admin.query(`ALTER TABLE bb_outbox ADD CONSTRAINT ${constraint} CHECK (NOT (aggregate_type='run' AND aggregate_id='${id}' AND payload->>'reason'='workflow_chapter_committed')) NOT VALID`);
+   try{
+    await assert.rejects(scoped(ctx),failure==='put'?/SYNTHETIC_CHAPTER_PUT_FAILED/:failure==='readback'?/SYNTHETIC_CHAPTER_READBACK_FAILED/:new RegExp(constraint));
+    assert.equal((await sends()).length-start,2,'outline and chapter were actually sent once before persistence failed');
+    const saved=(await admin.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[id])).rows[0].checkpoint.workflow_v1 as AuthoringWorkflowV1;
+    assert.deepEqual(saved.completed,[]);assert.deepEqual(saved.next_cursor,{chapter:0,batch:0});
+    const attempts=(await admin.query('SELECT a.id,a.status,u.usage_status FROM bb_model_call_attempts a JOIN bb_call_usage u ON u.attempt_id=a.id WHERE a.job_id=$1 ORDER BY a.created_at',[id])).rows;
+    assert.equal(attempts.length,2);assert.ok(attempts.every(row=>row.status==='completed'&&row.usage_status==='measured'));
+    assert.equal((await admin.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='workflow_chapter_committed'",[id])).rows[0].n,0,'failed first commit must roll back its event and cursor');
+    assert.equal(puts.length,1);
+    const stored=await blobs.getIfExists(puts[0]!.key);
+    if(failure==='put')assert.equal(stored,null);else{assert.ok(stored);assert.equal(digest(stored),puts[0]!.sha256);}
+   }finally{
+    if(failure==='cursor_commit')await admin.query(`ALTER TABLE bb_outbox DROP CONSTRAINT ${constraint}`);
+   }
+   assert.equal(await release(lease),'queued');
+   const resumed=await next(id,'authoring'),fresh=await context(resumed);fresh.blobs=faultBlobs;
+   assert.deepEqual(await scoped(fresh),{kind:'handoff_pending'});
+   assert.equal((await sends()).length-start,2,'stage recreation must reuse the measured provider result');
+   const completed=(await admin.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[id])).rows[0].checkpoint.workflow_v1 as AuthoringWorkflowV1;
+   assert.equal(completed.completed.length,1);assert.deepEqual(completed.next_cursor,{chapter:1,batch:0});
+   assert.deepEqual(puts,[completed.completed[0]!.object,completed.completed[0]!.object],'recovery must persist the same bytes under the same hash');
+   assert.equal(digest(await blobs.get(completed.completed[0]!.object.key)),completed.completed[0]!.object.sha256);
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[id])).rows[0].n,2);
+   assert.equal((await commitChapter(worker,resumed,{chapter:0,batch:0},completed.completed[0]!)).completed.length,1);
+   assert.equal((await admin.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='workflow_chapter_committed'",[id])).rows[0].n,1,'successful commit and replay produce only one committed event');
+   assert.equal((await admin.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_id=$1 AND payload->>'reason'='workflow_chapter_committed'",[id])).rows[0].n,1);
+   await cancel(id);await release(resumed);
+  });
+
+ if(!['controlled','delivery','direct'].includes(process.env.BB_WORKFLOW_NATIVE_CASE??''))for(const cause of ['timeout','user_cancel','permit_abort','lease_expiry'] as const)await t.test('interrupted native workflow preserves its sealed evidence: '+cause,async()=>{
+  const id=await add(),lease=await next(id,'authoring'),ctx=await context(lease);await seed(ctx);
+  try{
+  const cancelled=new AbortController(),capacityAbort=new AbortController();ctx.signal=cancelled.signal;
+  const start=(await sends()).length;
+  const interrupted:typeof codexModelStage=options=>options.name!=='workflow_1_0_0'?codexModelStage(options):codexModelStage({...options,config:{...(typeof options.config==='function'?options.config():options.config),command:[...config.command,'--stall'],timeout_ms:cause==='timeout'?1500:20000,authoring_timeout_ms:cause==='timeout'?1500:20000},wrapJournal:journal=>{
+   const acquire=journal.acquireCallSlot!.bind(journal);
+   journal.acquireCallSlot=async signal=>{
+    const permit=await acquire(signal);assert.ok(permit);
+    const bind=permit.bindProcess.bind(permit);
+    return {...permit,signal:AbortSignal.any([permit.signal,capacityAbort.signal]),bindProcess:async(pid,home)=>{
+     await bind(pid,home);
+     if(cause!=='timeout')setTimeout(()=>{
+      if(cause==='permit_abort')capacityAbort.abort(Error('synthetic capacity permit revoked'));
+      else if(cause==='user_cancel')cancelled.abort(Error('synthetic user cancel'));
+      else void admin.query("UPDATE bb_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1 AND lease_token=$2",[id,lease.token]).then(()=>cancelled.abort(Error('LEASE_LOST')));
+     },300);
+    }};
+   };return journal;
+  }});
+  const stoppedConfig={...config,timeout_ms:30000,authoring_timeout_ms:30000,kill_grace_ms:100};
+  // Use the ordinary journal and actual call/task scopes. The fake executable
+  // deliberately ignores SIGTERM; the returned proof follows real kill+join.
+  let thrown:unknown;
+  try{await scoped(ctx,workflowAuthoringStage({config:stoppedConfig,tokenLimit:1000,model:interrupted}));}catch(error){thrown=error;}
+  assert.equal((await sends()).length-start,3,'outline and first chapter complete once; second chapter is interrupted without replacement');
+  assert.equal(await taskNativeProcesses(lease),0);
+  const inventory=await pendingDurableSpool(join(stoppedConfig.work_root,'spool'));
+  const receipts=[];for(const receipt of inventory.receipts){const manifest=await readDurableSpool(receipt);if(manifest.identity.jobId===id)receipts.push({receipt,manifest});}
+  assert.equal(receipts.length,3,'each original call retains its own sealed evidence');
+  const captured=receipts.find(row=>row.manifest.outcome!=='turn_completed');assert.ok(captured);
+  const raw=JSON.parse(await readFile(join(captured.receipt.directory,'evidence/model-response.json'),'utf8'));
+  assert.equal(raw.stop,cause==='timeout'?'timeout':'cancelled','the intended cancellation must win over the independent native timeout');
+  assert.ok(raw.duration_ms<(cause==='timeout'?5000:20000));
+  if(cause==='permit_abort'){assert.equal(cancelled.signal.aborted,false);assert.equal(capacityAbort.signal.aborted,true);}
+  if(cause==='user_cancel')assert.equal(cancelled.signal.reason.message,'synthetic user cancel');
+  assert.equal(captured.manifest.exitProof.sealed,true);assert.equal(captured.manifest.exitProof.nativeProcesses,0);
+  assert.equal(captured.manifest.usage.status,'unknown');assert.notEqual(captured.manifest.outcome,'turn_completed');
+  assert.ok(captured.manifest.files.some(file=>file.path==='evidence/exec.log'));
+  assert.equal((await admin.query("SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1 AND status='completed'",[id])).rows[0].n,2,'only the measured outline and first chapter complete');
+  const job=(await admin.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[id])).rows[0];
+  assert.equal(job.checkpoint.workflow_v1.completed.length,1,'interrupted evidence cannot replace the verified first chapter');
+  assert.deepEqual(job.checkpoint.workflow_v1.next_cursor,{chapter:1,batch:0});
+  const verified=job.checkpoint.workflow_v1.completed[0];
+  assert.equal(digest(await blobs.get(verified.object.key)),verified.object.sha256,'already verified chapter bytes remain intact');
+  assert.equal((await admin.query('SELECT count(*)::int n FROM bb_artifact_versions WHERE run_id=$1',[id])).rows[0].n,0);
+  if(cause==='lease_expiry'){
+   assert.equal(cancelled.signal.reason.message,'LEASE_LOST');
+   assert.ok(thrown||cancelled.signal.aborted);
+   const expired=(await admin.query('SELECT j.state,j.lease_token,j.lease_until<clock_timestamp() AS expired,r.state AS run_state FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1',[id])).rows[0];
+   assert.deepEqual(expired,{state:'running',lease_token:lease.token,expired:true,run_state:'running'},'the original token remains running but its lease has expired');
+   await assert.rejects(commitChapter(worker,lease,{chapter:0,batch:0},verified),{code:'ALREADY_TERMINAL',message:'Lease is no longer active'});
+  }
+  }finally{
+   try{await release(lease);}finally{await cancel(id);}
+  }
+ });
+
  if(!['controlled','delivery','direct'].includes(process.env.BB_WORKFLOW_NATIVE_CASE??''))await t.test('an unknown committed intent pauses A without resending while B can execute',async()=>{
   const id=await add(),lease=await next(id,'authoring'),ctx=await context(lease);await seed(ctx);const start=(await sends()).length;
   const crash:typeof codexModelStage=options=>codexModelStage({...options,wrapJournal:journal=>{
    const original=journal.recordIntent.bind(journal);journal.recordIntent=async intent=>{await original(intent);throw Error('SYNTHETIC_CRASH_AFTER_INTENT');};return journal;
   }});
   await assert.rejects(scoped(ctx,workflowAuthoringStage({config,tokenLimit:1000,model:crash})),/SYNTHETIC_CRASH_AFTER_INTENT/);
+  assert.equal((await admin.query("SELECT count(*)::int n FROM bb_ops_alerts WHERE kind='workflow_usage_unknown' AND detail->>'job_id'=$1",[id])).rows[0].n,1);
   assert.equal((await sends()).length,start,'crash happened before native provider send');
   const b=await add(),peer=await next(b,'authoring'),peerCtx=await context(peer);await seed(peerCtx);
   assert.deepEqual(await scoped(peerCtx),{kind:'handoff_pending'},'B proceeds while A retains its original token');
@@ -156,6 +270,119 @@ test('real workflow checkpoints, phase handoff and unknown call barrier',{
   const count=(await sends()).length;assert.equal(await claim(worker,90,{runKinds:['generation'],workflowPhase:'authoring'}),null);assert.equal((await sends()).length,count);
   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[id])).rows[0].n,1);
   await cancel(b);await release(peer);await cancel(id);
+ });
+
+ if(!['controlled','delivery','direct'].includes(process.env.BB_WORKFLOW_NATIVE_CASE??''))await t.test('original session retries sealed ACK and failed holder deletion without another model send',async()=>{
+  const id=await add(),lease=await next(id,'authoring'),ctx=await context(lease);await seed(ctx);
+  const start=(await sends()).length;let blocked=true,ackAttempts=0,nativeStarted=false;
+  let acknowledge:(()=>Promise<void>)|undefined,cleanupRelease:(()=>Promise<void>)|undefined;
+  let originalReceipt:DurableSpoolReceipt|undefined;
+  const fault:typeof codexModelStage=options=>codexModelStage({...options,wrapJournal:journal=>{
+   const original=journal.recordSealedCapture!.bind(journal),acquire=journal.acquireCallSlot!.bind(journal),identify=journal.spoolIdentity!.bind(journal);
+   journal.spoolIdentity=async intent=>{assert.equal(nativeStarted,false,'identity preparation cannot become a post-exit DB dependency');return identify(intent);};
+   journal.acquireCallSlot=async signal=>{
+    const permit=await acquire(signal);cleanupRelease=()=>permit.release();
+    return {...permit,bindProcess:async(pid,home)=>{nativeStarted=true;await permit.bindProcess(pid,home);}};
+   };
+   journal.recordSealedCapture=async(intent,receipt,proof,raw)=>{
+    originalReceipt=receipt;
+    acknowledge=()=>original(intent,receipt,proof,raw);ackAttempts++;
+    if(blocked)throw Error('SYNTHETIC_SEALED_ACK_UNAVAILABLE');
+    await acknowledge();
+   };return journal;
+  }});
+  const suffix=id.replace(/-/g,''),trigger='bb_synthetic_release_'+suffix;
+  const runtime=new WorkerRuntime({pool:worker,blobs,kinds:['run'],runKinds:['generation'],runStages:[],concurrency:1,parseSlots:0,interactiveSlots:0,logSink:null,candidateRetention:{pendingCount:async()=>0}});
+  try{
+   const originalStatementTimeout=worker.options.statement_timeout;
+   try{
+    worker.options.statement_timeout=10000;
+    await withExecutionControlPool(worker,async control=>{
+     const settings=(await control.query("SELECT current_setting('statement_timeout') AS statement,current_setting('lock_timeout') AS lock,current_setting('idle_in_transaction_session_timeout') AS idle")).rows[0];
+     assert.deepEqual(settings,{statement:'2s',lock:'1s',idle:'3s'},'source settings cannot enlarge control budgets');
+    });
+   }finally{if(originalStatementTimeout===undefined)delete worker.options.statement_timeout;else worker.options.statement_timeout=originalStatementTimeout;}
+   await assert.rejects(scoped(ctx,workflowAuthoringStage({config,tokenLimit:1000,model:fault})),/SYNTHETIC_SEALED_ACK_UNAVAILABLE/);
+   assert.equal((await sends()).length-start,1);
+   assert.equal(await taskNativeProcesses(lease),0);
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_sealed_model_captures WHERE job_id=$1',[id])).rows[0].n,0);
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_model_capacity_holders WHERE admission_job_id=$1',[id])).rows[0].n,1);
+   await releaseLease(worker,lease);
+   assert.equal(await completeManagedRunRelease(worker,lease,taskReleaseProof(worker,lease)),'blocked');
+   blocked=false;
+   const locker=await admin.connect();
+   try{
+    await locker.query('BEGIN');await locker.query('SELECT id FROM bb_execution_nodes WHERE id=$1 FOR UPDATE',[nodeId]);
+    const started=Date.now();await runtime.sweep();
+    assert.ok(Date.now()-started<5000,'a locked control row must return within its server lock budget');
+    assert.equal((await admin.query('SELECT count(*)::int n FROM bb_sealed_model_captures WHERE job_id=$1',[id])).rows[0].n,0);
+    assert.equal((await admin.query("SELECT count(*)::int n FROM pg_stat_activity WHERE application_name='bondbuddy_execution_control' AND state='idle in transaction'")).rows[0].n,0,'failed control work leaves no live transaction');
+   }finally{await locker.query('ROLLBACK');locker.release();}
+   // A real PostgreSQL failure after the ACK tests retry of the original
+   // holder DELETE, including the journal's release promise and local counter.
+   await admin.query(`CREATE FUNCTION ${trigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic holder deletion unavailable'; END; $$`);
+   await admin.query(`CREATE TRIGGER ${trigger} BEFORE DELETE ON bb_model_capacity_holders FOR EACH ROW WHEN (OLD.admission_job_id='${id}') EXECUTE FUNCTION ${trigger}()`);
+   await runtime.sweep();
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_sealed_model_captures WHERE job_id=$1',[id])).rows[0].n,1,'same-session sweep must persist the original sealed ACK');
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_model_capacity_holders WHERE admission_job_id=$1',[id])).rows[0].n,1,'failed DELETE remains physically fenced');
+   await admin.query(`DROP TRIGGER ${trigger} ON bb_model_capacity_holders`);
+   // The heartbeat's retry hook must remain live after claiming has stopped.
+   // Exercise that hook in its stopping state against the actual PG holder.
+   const draining=runtime as unknown as {stopping:boolean;flushRetries():Promise<void>};draining.stopping=true;
+   await draining.flushRetries();
+   assert.equal(ackAttempts,3,'an acknowledged sealed receipt is not registered again during release retries');
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_model_capacity_holders WHERE admission_job_id=$1',[id])).rows[0].n,0);
+   assert.equal((await sends()).length-start,1,'capture/release recovery never issues a second model send');
+   assert.equal((await admin.query('SELECT count(*)::int n FROM bb_recovered_capture_evidence WHERE job_id=$1',[id])).rows[0].n,0,'remote recovery registration cannot stand in for the sealed ACK');
+   assert.equal(await release(lease),'paused','the original provider outcome remains unresolved');
+   const saved=(await admin.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[id])).rows[0].checkpoint;
+   assert.equal(saved.positive_release_v1.lease_token,lease.token);
+   assert.equal(saved.positive_release_v1.native_processes,0);
+   assert.equal((await admin.query('SELECT status FROM bb_model_call_attempts WHERE job_id=$1',[id])).rows[0].status,'pending_reconcile');
+   // Reuse the actual native call's immutable identity/empty proof. The added
+   // bytes are explicitly synthetic GC evidence, never a provider result.
+   const original=await readDurableSpool(originalReceipt!),gcRoot=join(root,'gc-retry-'+id);
+   const gcReceipt=await sealDurableSpool({root:gcRoot,identity:original.identity,exitProof:original.exitProof,usage:original.usage,
+    outcome:original.outcome,files:[{path:'gc-fixture.txt',bytes:Buffer.from('synthetic GC regression bytes')}],minFreeBytes:0});
+   let uploads=0;
+   const gcAttributes={spool_id:gcReceipt.spoolId,call_id:original.identity.attemptId,logical_call_id:original.identity.logicalCallId,attempt_no:original.identity.attemptNo};
+   assert.deepEqual(await withPerformanceTrace(worker,{ownerUserId:original.identity.ownerUserId,projectId:original.identity.projectId,runId:original.identity.runId,jobId:original.identity.jobId,serviceRole:'synthetic-spool'},()=>withPerformanceSpan('spool.receipt',gcAttributes,()=>flushDurableSpool(gcRoot,{upload:async(key,bytes)=>{uploads++;await blobs.put(key,bytes,'application/octet-stream');},
+    readback:(key,max)=>blobs.getIfExistsBounded(key,max),register:async(manifest,receipt)=>{
+     const i=manifest.identity;
+     return registerRecoveredCaptureEvidence(worker,{ownerUserId:i.ownerUserId,projectId:i.projectId,runId:i.runId,jobId:i.jobId,
+      attemptId:i.attemptId,logicalCallId:i.logicalCallId,attemptNo:i.attemptNo,originalExecution:i.originalExecution,
+      capture:manifest.remoteCapture!,manifestSha256:receipt.manifestSha256},{blobs});
+    }}))),{registered:1,failed:0});
+   const registered=(await admin.query('SELECT row_to_json(e) value FROM bb_recovered_capture_evidence e WHERE job_id=$1',[id])).rows;
+   assert.equal(registered.length,1);const originalUploads=uploads;
+   assert.deepEqual(await collectRegisteredDurableSpool(gcRoot,{pool:worker,verify:(manifest,receipt)=>recoveredSpoolRegistrationRecorded(worker,manifest,receipt),
+    remove:async directory=>{await rm(join(directory,'manifest.json'));throw Object.assign(Error('synthetic partial deletion'),{code:'EIO'});}}),{collected:0,failed:1});
+   assert.equal((await pendingDurableSpool(gcRoot)).gcPending,1);
+   const deferred=await readDurableSpoolForGc(gcRoot,gcReceipt),nextDue=Date.parse(deferred.nextDueAt);
+   assert.ok(nextDue>Date.now(),'GC failure persists a future retry deadline');
+   assert.deepEqual(await runDurableSpoolPass(worker,gcRoot),{registered:0,failed:0,pending:0,gcPending:1},'production pass must retain not-due GC debt');
+   assert.equal((await readDurableSpoolForGc(gcRoot,gcReceipt)).nextDueAt,deferred.nextDueAt);
+   await new Promise(resolve=>setTimeout(resolve,Math.max(1,nextDue-Date.now()+20)));
+   assert.deepEqual(await runDurableSpoolPass(worker,gcRoot),{registered:0,failed:0,pending:0,gcPending:0});
+   await assert.rejects(lstat(gcReceipt.directory),(error:unknown)=>(error as NodeJS.ErrnoException).code==='ENOENT');
+   assert.equal(uploads,originalUploads);
+   assert.deepEqual((await admin.query('SELECT row_to_json(e) value FROM bb_recovered_capture_evidence e WHERE job_id=$1',[id])).rows,registered);
+   assert.equal((await sends()).length-start,1,'GC cannot issue or accept another model result');
+   await flushPerformanceTraces(worker,5000);
+   const gcSpans=(await admin.query('SELECT * FROM bb_performance_spans WHERE run_id=$1 AND attributes->>\'spool_id\'=$2',[id,gcReceipt.spoolId])).rows;
+   for(const key of ['spool.upload','spool.readback','spool.register','spool.gc'])assert.ok(gcSpans.some(s=>s.step_key===key),key);
+   for(const row of gcSpans){assert.equal(row.job_id,id);assert.equal(row.trace_id,id);assert.equal(row.attributes.call_id,original.identity.attemptId);assert.equal(row.attributes.logical_call_id,original.identity.logicalCallId);assert.ok(row.ended_at);assert.ok(row.duration_ms>=0);
+    if(row.step_key!=='spool.receipt'){assert.equal(row.attributes.original_execution_node_epoch,original.identity.originalExecution.epoch);assert.equal(row.attributes.original_execution_session_id,original.identity.originalExecution.sessionId);assert.equal(row.attributes.lease_token_sha256,digest(original.identity.leaseToken));}
+   }
+   assert.ok(gcSpans.some(row=>row.step_key==='spool.gc'&&row.status==='failed'),'partial deletion must remain a failed measured stage');
+   const callSpans=(await admin.query("SELECT * FROM bb_performance_spans WHERE run_id=$1 AND step_key='model.call.close'",[id])).rows;
+   assert.ok(callSpans.length>0);assert.ok(callSpans.every(row=>row.ended_at&&row.duration_ms>=0&&row.job_id===id));
+   assert.ok(!JSON.stringify([...gcSpans,...callSpans]).includes(original.identity.leaseToken));
+  }finally{
+   blocked=false;await admin.query(`DROP TRIGGER IF EXISTS ${trigger} ON bb_model_capacity_holders`);
+   await admin.query(`DROP FUNCTION IF EXISTS ${trigger}()`);
+   await acknowledge?.().catch(()=>{});await cleanupRelease?.().catch(()=>{});await cancel(id);
+  }
  });
 
  if(!['delivery','direct'].includes(process.env.BB_WORKFLOW_NATIVE_CASE??''))await t.test('controlled DOCX restores editor V2 receipts and pending comments before trusted finalize',async()=>{

@@ -32,7 +32,7 @@ async function operation(input){
  if(input.action==='wait'){const entry=children.get(input.pid),[code]=await entry.done;return {code,stdout:entry.stdout,stderr:entry.stderr};}
  return request(input);
 }
-console.log(JSON.stringify({boot:true}));
+process.stdout.write(JSON.stringify({boot:true})+'\n');
 for await(const line of createInterface({input:process.stdin})){
  try{console.log(JSON.stringify(await operation(JSON.parse(line))));}
  catch(error){console.log(JSON.stringify({fixtureError:String(error)}));}

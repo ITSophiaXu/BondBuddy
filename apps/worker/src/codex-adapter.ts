@@ -10,6 +10,7 @@ import { modelCancellationDiagnostic, reportModelCancellation } from './model-ca
 // scratch/output, no command network or credentials. Unapproved tool items fail closed.
 import { spawn, withTaskCallExecution, type TaskCallReleaseProof } from './task-execution.js';
 import {durableSpoolRoot,retainUnsealedDurableSpool,sealDurableSpool,type DurableSpoolIdentity,type DurableSpoolReceipt} from './durable-spool.js';
+import {pendingSealedCaptures,type PendingSealedCaptureHandle} from './pending-sealed-captures.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1015,6 +1016,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
       let workspace:string|undefined,nativeAttempted=false,nativeFinished=false,callProof:TaskCallReleaseProof|undefined;
       let nativeResult:CodexProcessResult|undefined;
       let spoolReceipt:DurableSpoolReceipt|undefined,permitReleased=false,captureRegistered=false;
+      let frozenSpoolIdentity:DurableSpoolIdentity|undefined,sealedHandoff:PendingSealedCaptureHandle|undefined;
       const retainLocally = async (reason: string, captureFailure: string) => {
         retainAttempt = retainAfterCommit = true;
         releaseActiveWorkspace?.();
@@ -1096,6 +1098,9 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if(callDeadline!==undefined&&!isFileAuthoringDeadline(callDeadline))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(callDeadline!==undefined&&Date.parse(callDeadline)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
         await withPerformanceSpan('model.intent.persist', {}, () => journal.recordIntent(intent)); // durable before spawn
+        // Freeze the DB-bound original identity before any native send. Native
+        // exit must need only local bytes and its actual call empty proof to seal.
+        if(input.callScope)frozenSpoolIdentity=structuredClone(await journal.spoolIdentity!(intent));
         // A provider-result blob is not a committed observation/checkpoint.
         // Keep the last local copy until every journal acknowledgement succeeds.
         retainAttempt = !!input.fileWorkspace?.onFailure;
@@ -1138,18 +1143,26 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         nativeResult=raw;
         if(input.callScope){
           if(!callProof)throw Error('TASK_CALL_NOT_QUIESCENT');
-          const identity=await journal.spoolIdentity!(intent);
+          const identity=frozenSpoolIdentity!;
           const files:{path:string;bytes:Buffer}[]=[{path:'model-response.json',bytes:Buffer.from(JSON.stringify({...raw,exec_log:undefined}))}];
           if(raw.exec_log)files.push({path:'exec.log',bytes:raw.exec_log.bytes});
-          spoolReceipt=await withPerformanceSpan('model.workspace.spool',{call_id:intent.call_id},()=>sealDurableSpool({
-            root:durableSpoolRoot(c.work_root),identity,exitProof:callProof!,usage:raw.usage,
-            outcome:raw.stop??(raw.turn_completed?'turn_completed':'interrupted'),sourceDir:input.fileWorkspace?cwd:undefined,
-            files,deadlineAt:callDeadline}));
-          await journal.recordSealedCapture!(intent,spoolReceipt,callProof,{usage:raw.usage,outcome:raw.stop??(raw.turn_completed?'turn_completed':'interrupted')});
-          captureRegistered=true;
-          // This only releases physical model capacity. The ordinary provider
-          // result/usage/settlement gates below still decide accepted completion.
-          await withPerformanceSpan('model.capacity.release',{},()=>permit?.release());permitReleased=true;
+          spoolReceipt=await withPerformanceSpan('model.workspace.spool',{call_id:intent.call_id,logical_call_id:intent.logical_call_id,
+            original_execution_node_epoch:identity.originalExecution.epoch,original_execution_session_id:identity.originalExecution.sessionId,
+            execution_node_id:identity.originalExecution.nodeId,lease_token_sha256:createHash('sha256').update(identity.leaseToken).digest('hex')},async span=>{
+            const receipt=await sealDurableSpool({root:durableSpoolRoot(c.work_root),identity,exitProof:callProof!,usage:raw.usage,
+              outcome:raw.stop??(raw.turn_completed?'turn_completed':'interrupted'),sourceDir:input.fileWorkspace?cwd:undefined,
+              files,deadlineAt:callDeadline});span.annotate({spool_id:receipt.spoolId});return receipt;
+          });
+          const sealedIntent=structuredClone(intent),sealedReceipt=structuredClone(spoolReceipt),sealedProof=structuredClone(callProof);
+          const sealedRaw=structuredClone({usage:raw.usage,outcome:raw.stop??(raw.turn_completed?'turn_completed':'interrupted')});
+          sealedHandoff=pendingSealedCaptures.retain({identity,receipt:sealedReceipt,proof:sealedProof,
+            acknowledge:async()=>{await journal.recordSealedCapture!(sealedIntent,sealedReceipt,sealedProof,sealedRaw);captureRegistered=true;},
+            release:async()=>{
+              // Physical capacity only: provider completion/usage/settlement
+              // still require their ordinary independent acknowledgements.
+              await withPerformanceSpan('model.capacity.release',{},()=>permit?.release());permitReleased=true;
+            }});
+          await sealedHandoff.attempt();
         }
         if (raw.stop === 'cancelled') reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
           input.signal?.aborted ? 'task_signal' : 'capacity_signal', raw.duration_ms === 0 && raw.exit_code === null ? 'before_spawn' : 'native', intent.call_id));
@@ -1295,7 +1308,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           // A workflow permit requires exact call closure, durable local bytes
           // and the sealed DB receipt. Legacy retention preserves its existing
           // visible local responsibility before physical capacity is released.
-          if(!permitReleased&&(!input.callScope||captureRegistered||!nativeAttempted))
+          if(!permitReleased&&!sealedHandoff&&(!input.callScope||captureRegistered||!nativeAttempted))
             await withPerformanceSpan('model.capacity.release', {}, () => permit?.release());
           // A live checkpoint may still be uploading after the process exits.
           // Drain it after releasing model capacity and before workspace cleanup.

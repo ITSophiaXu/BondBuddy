@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {PerformanceTraceRuntime,withPerformanceSpan,type PerformanceSpanRecord,type PerformanceSessionRecord} from '@bondbuddy/api/performance-trace';
 import {buildAuthoringPlan,logicalChapterCall,validateProjection,assembleProjections,callDeadline,repairCallDeadline,blockIdentity,verifyPlan} from './workflow-authoring.js';
 const h='a'.repeat(64), refs=['m0:0'];
 const plan=()=>buildAuthoringPlan({inputHash:h,baselineHash:null,materialSnapshotHash:h,knowledgeHash:h,chapters:[{title:'第一章',source_node_ids:[]}],contextRefs:refs});
@@ -46,4 +47,23 @@ test('missing evidence and oversized or nonrectangular tables reject before comm
   const p=projection();p.blocks[0]!.evidence=[];assert.throws(()=>validateProjection(p,plan(),0,0),/EVIDENCE/);
   const table={...projection(),blocks:[{...projection().blocks[0]!,kind:'table' as const,style_key:'table' as const,table_id:'t',row_order:0,rows:[['a','b'],['c']]}]};
   assert.throws(()=>validateProjection(table,plan(),0,0),/TABLE/);
+});
+
+test('chapter telemetry retains batch and call identity through nested tools without invalidating coverage',async()=>{
+  const spans=new Map<string,PerformanceSpanRecord>(),sessions=new Map<string,PerformanceSessionRecord>();
+  const runtime=new PerformanceTraceRuntime(async(ss,ps)=>{for(const s of ss)sessions.set(s.session_id,s);for(const p of ps)spans.set(p.span_id,p);});
+  const attrs={chapter_id:'chapter-0',batch_id:'batch-0',logical_call_id:h};
+  await runtime.trace({ownerUserId:'owner',projectId:'project',runId:'run',jobId:'job'},async()=>{
+    await withPerformanceSpan('workflow.chapter.call',attrs,async()=>{
+      await withPerformanceSpan('model.exec',{},()=>withPerformanceSpan('model.tool',{tool_type:'read'},()=>undefined));
+    });
+    await withPerformanceSpan('workflow.chapter.persist',attrs,()=>undefined);
+    await withPerformanceSpan('workflow.chapter.commit',attrs,()=>undefined);
+  });
+  await runtime.drain();
+  const rows=[...spans.values()].filter(s=>s.step_key!=='run.execution');
+  assert.equal(rows.length,5);
+  for(const row of rows){assert.equal((row.attributes as Record<string,unknown>).chapter_id,attrs.chapter_id,row.step_key);assert.equal(row.attributes.batch_id,attrs.batch_id);assert.equal(row.attributes.logical_call_id,h);}
+  assert.equal([...sessions.values()][0]!.invalid_attributes,0);
+  assert.equal([...sessions.values()][0]!.complete,true);
 });

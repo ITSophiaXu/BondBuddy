@@ -20,6 +20,27 @@ const cas=()=>{throw new Error('EXECUTION_CAPACITY_CAS_CONFLICT');};
 export function executionNodeForPool(pool:Pool){return contexts.get(pool);}
 /** Set only after trusted registration succeeded. No runtime env controls global capacity. */
 function bind(pool:Pool,context:ExecutionNodeContext){if(!Value.Check(ExecutionNodeContextSchema,context))throw Error('EXECUTION_NODE_IDENTITY_INVALID');contexts.set(pool,context);}
+/** A bounded control connection inherits only a previously trusted session and
+ * the source database role. It never enrolls, accepts an external identity, or
+ * acquires a model permit. Every connected socket closes before work returns. */
+export async function withExecutionControlPool<T>(source:Pool,work:(control:Pool)=>Promise<T>):Promise<T>{
+ const context=executionNodeForPool(source);if(!context)throw Error('EXECUTION_CONTROL_SESSION_REQUIRED');
+ const control=new Pool({...source.options,max:1,connectionTimeoutMillis:3000,query_timeout:3000,idleTimeoutMillis:1000,allowExitOnIdle:true,
+  statement_timeout:2000,lock_timeout:1000,idle_in_transaction_session_timeout:3000,
+  application_name:'bondbuddy_execution_control',options:[source.options.options??'','-c statement_timeout=2000 -c lock_timeout=1000 -c idle_in_transaction_session_timeout=3000'].join(' ')});
+ const ended:Promise<void>[]=[];
+ control.on('connect',client=>{ended.push(new Promise<void>(resolveEnd=>client.once('end',()=>resolveEnd())));});
+ control.on('error',()=>{ /* A rejected operation retains its original responsibility. */ });
+ bind(control,structuredClone(context));
+ try{return await work(control);}
+ finally{
+  contexts.delete(control);
+  // transaction() has rolled back/released its borrowed client. A client read
+  // timeout can still leave its server outcome unknown; ending every socket
+  // and observing end completes that rollback boundary before the next retry.
+  await control.end();await Promise.all(ended);
+ }
+}
 function policyDto(p:any):ExecutionCapacityPolicy{return {revision:Number(p.revision),managed_nodes:p.managed_nodes,global_model_limit:p.global_model_limit,node_model_limit:p.node_model_limit,max_nodes:p.max_nodes,budget_available:p.budget_available,provider_concurrency_limit:p.provider_concurrency_limit,provider_policy_sha256:p.provider_policy_sha256?.trim()??null,expense_policy_sha256:p.expense_policy_sha256?.trim()??null,cooldown_until:p.cooldown_until?.toISOString()??null,launch_blocked_by_operation_id:p.launch_blocked_by_operation_id??null,
  ...(p.workflow_slots_enabled?{workflow_slots_enabled:true,authoring_slots:p.authoring_slots,postprocess_slots:p.postprocess_slots}:{}),
  ...(p.max_nodes>2?{expansion_budget_review_sha256:p.expansion_budget_review_sha256?.trim()??null}:{})};}

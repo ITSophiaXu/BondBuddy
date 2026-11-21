@@ -9,6 +9,7 @@ import type {Pool} from 'pg';
 import {executionNodeForPool} from '@bondbuddy/api/execution-capacity';
 import type {Lease,ManagedRunReleaseProof} from '@bondbuddy/api/queue';
 import {needsLeaseRelease} from './lease-outcome.js';
+import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 
 export const TASK_CGROUP_PROTOCOL_VERSION=1;
 type Scope={kind:'job'|'assistant'|'background';id:string;token:string};
@@ -124,10 +125,13 @@ export async function withTaskCallExecution<T>(input:{logicalCallId:string;gener
  let value:T|undefined,proof:TaskCallReleaseProof|undefined;
  try{value=await current.run(receipt,work);}
  finally{
+  await withPerformanceSpan('model.call.close',{logical_call_id:input.logicalCallId,attempt_no:input.generation,
+   execution_node_epoch:context.identity.epoch,execution_session_id:context.session_id},async span=>{
   receipt.sealed=true;
   receipt.retireWhenEmpty=true;
   for(let attempt=0;attempt<100;attempt++){
    const closed=await request({action:'close_call',key,identity:receipt.identity});
+   span.annotate({poll_count:attempt+1,cgroup_process_count:closed.nativeProcesses});
    if(closed.key!==key||closed.identity!==receipt.identity||!closed.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
    if(closed.nativeProcesses===0){
     proof={version:'call_cgroup_v1',key,identity:receipt.identity,parentKey:parent.key,parentIdentity:parent.identity,
@@ -140,6 +144,7 @@ export async function withTaskCallExecution<T>(input:{logicalCallId:string;gener
    await new Promise(resolve=>setTimeout(resolve,25));
   }
   if(!proof)throw Error('TASK_CALL_NOT_QUIESCENT');
+  });
  }
  return {value:value!,proof:proof!};
 }
