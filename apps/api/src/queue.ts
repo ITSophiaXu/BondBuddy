@@ -125,7 +125,7 @@ export async function providerCallNeedsReconciliation(client:PoolClient, jobId:s
 }
 
 export async function enqueue(client:PoolClient, r:any, subtype='default') {
-  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)",[uid(),r.owner_user_id,r.id,r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null]);
+  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id,project_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7,$8)",[uid(),r.owner_user_id,r.id,r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null,r.project_id]);
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
 }
 

@@ -32,7 +32,8 @@ function memoryBlobs(){
 
 async function fixture(pool:Pool,failedStage='model_generation'){
   const owner=uid(),origin='http://bondbuddy.test',{blobs,objects}=memoryBlobs();
-  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunRuntime:true});
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunRuntime:true,
+    historicalBillingFixture:true,enableSubscriptionBilling:false,enablePaidAuthoring:false,enablePaidReview:false});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   const good=(r:{statusCode:number;body:string})=>assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);
   try{

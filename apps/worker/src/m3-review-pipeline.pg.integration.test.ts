@@ -47,7 +47,8 @@ test('M3 real upload/parse → synthetic contained CLI with explicit tools → r
     const container=`bb-m3-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(connection!,container);
     const owner=randomUUID();let active=owner;
     const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,
-      principal:async()=>({userId:active,csrfVerified:true}),enableRunRuntime:true});
+      principal:async()=>({userId:active,csrfVerified:true}),enableRunRuntime:true,historicalBillingFixture:true,
+      enableSubscriptionBilling:false,enablePaidAuthoring:false,enablePaidReview:false});
     const beforeWord=process.env.BONDBUDDY_WORD_PYTHON,beforeSearch=process.env.BB_REVIEW_WEB_SEARCH_ENABLED;
     process.env.BONDBUDDY_WORD_PYTHON=python;process.env.BB_REVIEW_WEB_SEARCH_ENABLED='0';
     const config:CodexAdapterConfig={command:[process.execPath,fake,`--m3-marker=${marker}`],model_id:'deepseek-flash',model_provider:'deepseek',
