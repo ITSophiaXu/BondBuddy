@@ -1,5 +1,4 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdtemp,readFile,writeFile,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve,join } from 'node:path';
@@ -11,7 +10,7 @@ import { readReviewMarkdown } from '@bondbuddy/api/review-readable';
 import type { StageContext, StageOutcome } from './run-pipeline.js';
 import type { ReviewFileInput,ReviewFileResult } from './review-file-stage.js';
 
-const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile),MAX=100*1024*1024;
+const root=resolve(fileURLToPath(import.meta.url),'../../../..'),MAX=100*1024*1024;
 /** Same queue and input gate, deterministic file conversion only. Never invokes an adapter. */
 export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,markdown?:Buffer):Promise<ReviewFileResult>{
   const pin=input.manifest.review.input.source_material_ref!,source=input.materials.find(m=>m.pin.material_id===pin.material_id&&m.pin.material_version===pin.material_version&&m.pin.sha256===pin.sha256);

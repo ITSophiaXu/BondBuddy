@@ -58,4 +58,6 @@ profile bondbuddy-codex-v1 flags=(attach_disconnected,mediate_deleted) {
   # allow processes within the container to trace each other,
   # provided all other LSM and yama setting allow it.
   ptrace (trace,tracedby,read,readby) peer=bondbuddy-codex-v1,
+  # Only the confined host broker may read task ownership metadata.
+  ptrace (readby) peer=bondbuddy-task-cgroups-v1,
 }

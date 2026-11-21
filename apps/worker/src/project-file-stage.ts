@@ -1,8 +1,7 @@
 import {mkdir,writeFile,readFile,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile} from './task-execution.js';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckResultSchema,type ProjectFileAsset,type ProjectFileCheckResult} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
@@ -120,7 +119,7 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
       const report=['# 项目文件一致性检查',`基准：${input.source.filename} · V${input.source.sequence}`,...files.flatMap(f=>[
         `## ${input.files.find(x=>x.file_version_id===f.file_version_id)!.filename}`,f.coverage,...f.findings.flatMap(i=>[i.reason,`位置：${i.target_location}`,`原文：${i.original}`,`建议：${i.replacement??'请补充材料并人工确认'}`,`依据：${i.source_location} ${i.source_quote}`])])].join('\n\n');
       await writeFile(join(directory,'report.md'),report);
-      await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+      await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
         [join(projectFilesRoot,'python/bondbuddy_file_authoring/report_from_text.py'),join(directory,'report.md'),join(directory,'report.docx')],
         {cwd:projectFilesRoot,signal:ctx.signal,timeout:120000,maxBuffer:1024*1024});
       const output=await storeOutputs(ctx,directory,['report.docx']);return {kind:'done',value:output,checkpoint:{project_file_result:output}};

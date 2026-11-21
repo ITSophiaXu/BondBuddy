@@ -1,4 +1,4 @@
-import {spawn} from 'node:child_process';
+import {spawn} from './task-execution.js';
 import {constants} from 'node:fs';
 import {lstat,mkdir,open,readdir,realpath,rm,statfs} from 'node:fs/promises';
 import {join,resolve} from 'node:path';

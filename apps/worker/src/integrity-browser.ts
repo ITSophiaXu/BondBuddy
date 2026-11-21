@@ -100,8 +100,8 @@ export const collectIntegrityWebsite:IntegrityCollector=async(site,subject,signa
   proxy=await integrityBrowserOperation('proxy',()=>integrityProxy(site,{upstreamUrl:process.env.BB_INTEGRITY_EGRESS_PROXY_URL}));
   desktop=await integrityBrowserOperation('desktop',()=>startIntegrityDesktop(cache,integrityBrowserEnvironment(cache)));
   signal.throwIfAborted();
-  const browserEnv=desktop.env as Record<string,string>,server=proxy.server;
-  browser=await integrityBrowserOperation('launch',()=>chromium.launch({headless:false,chromiumSandbox:true,env:browserEnv,proxy:{server},args:['--window-size=1440,952','--window-position=0,0','--disable-quic','--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']}));
+  const browserEnv=taskBrowserEnvironment(desktop.env as Record<string,string>),server=proxy.server;
+  browser=await integrityBrowserOperation('launch',()=>chromium.launch({executablePath:taskBrowserExecutable(),headless:false,chromiumSandbox:true,env:browserEnv,proxy:{server},args:['--window-size=1440,952','--window-position=0,0','--disable-quic','--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']}));
   signal.throwIfAborted();
   const launched=browser;
   const context=await integrityBrowserOperation('context',()=>launched.newContext({viewport:null,locale:'zh-CN',timezoneId:'Asia/Shanghai',acceptDownloads:false,serviceWorkers:'block'}));
@@ -365,3 +365,4 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
    queryObserver?.close();captchaImages.close();context.off('request',scriptStarted);context.off('requestfinished',scriptFinished);context.off('requestfailed',resourceFailed);context.off('response',resourceResponse);context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);if(onRequest)context.off('request',onRequest);if(onRequestFinished){context.off('requestfinished',onRequestFinished);context.off('requestfailed',onRequestFinished);}await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));
   }
 }
+import {taskBrowserExecutable,taskBrowserEnvironment} from './task-execution.js';

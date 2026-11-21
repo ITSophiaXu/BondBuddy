@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile} from './task-execution.js';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import { FORMAT_JSON_MAX } from './file-authoring-format.js';
 
@@ -50,7 +49,7 @@ export async function verifyWordQuality(input: WordQualityInput): Promise<WordQu
     let stdout: string;
     let rejected = false;
     try {
-      ({ stdout } = await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+      ({ stdout } = await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
         ['-B', '-s', '-m', 'bondbuddy_file_authoring.quality', '--input', join(root, 'input.json')],
         { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
           timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal: input.signal }));

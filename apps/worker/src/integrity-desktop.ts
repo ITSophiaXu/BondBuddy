@@ -1,11 +1,10 @@
-import {spawn, execFile, type ChildProcess} from 'node:child_process';
-import {promisify} from 'node:util';
+import {type ChildProcess} from 'node:child_process';
+import {spawn,taskExecFile as exec} from './task-execution.js';
 import {writeFile, readFile, mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomBytes, randomInt} from 'node:crypto';
 import type {Page} from 'playwright';
 
-const exec = promisify(execFile);
 const screen = {width:1440,height:1000};
 // Configure native XFCE plugins, rather than painting a toolbar into the evidence.
 // A single, always-visible light taskbar reserves the bottom 48 pixels for itself.

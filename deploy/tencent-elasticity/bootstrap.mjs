@@ -8,11 +8,10 @@ import {INTEGRITY_TRANSPORT_SECTION} from './private-egress.mjs';
 
 /** Install only public, pinned code. Private Blob capability arrives after enrollment. */
 function businessBootstrap(config) {
-  if(!config.business_overlay_sha256)return '';
-  requireThat(/^[a-f0-9]{64}$/.test(config.business_overlay_sha256),'BUSINESS_OVERLAY_PIN');
-  const files=Object.fromEntries(['node-adapter.mjs','business-overlay.mjs'].map(name=>{
+  if(config.business_overlay_sha256)requireThat(/^[a-f0-9]{64}$/.test(config.business_overlay_sha256),'BUSINESS_OVERLAY_PIN');
+  const files=Object.fromEntries(['node-adapter.mjs','business-overlay.mjs','task-cgroups.mjs','task-cgroup-broker.py','task-cgroup-broker.profile','task-runner.py','task-chromium'].map(name=>{
     const bytes=readFileSync(new URL(name,import.meta.url));
-    return [name,{content:bytes.toString('utf8'),sha256:sha256(bytes)}];
+    return [name,{source:`/app/deploy/tencent-elasticity/${name}`,sha256:sha256(bytes)}];
   }));
   const compose=readFileSync(new URL('compose.yaml',import.meta.url));
   const integrityProfile=readFileSync(new URL('../m1/security/integrity-browser-seccomp.json',import.meta.url));
@@ -22,8 +21,94 @@ function businessBootstrap(config) {
   const before=egress.replace(addition,'').replace('+INTEGRITY_TRANSPORT_SECTION;',';');
   const egressPatch={before_sha256:sha256(before),after_sha256:sha256(egress),addition};
   const integrityRule=JSON.parse(integrityProfile).syscalls.at(-1);
-  const payload=gzipSync(JSON.stringify({egress_patch:egressPatch,generic_profile_sha256:sha256(genericProfile),integrity_profile_sha256:sha256(integrityProfile),integrity_rule:integrityRule,integrity_section:INTEGRITY_TRANSPORT_SECTION,pin:config.business_overlay_sha256,files,compose:{content:compose.toString('utf8'),sha256:sha256(compose)}}),{level:9,mtime:0}).toString('base64');
-  return `python3 - <<'BB_BUSINESS_CODE'\nimport os,json,gzip,base64,hashlib,stat\nfrom pathlib import Path\nassert os.geteuid()==0\np=json.loads(gzip.decompress(base64.b64decode('${payload}')))\nh=lambda b:hashlib.sha256(b).hexdigest()\ndef regular(f):\n s=f.lstat();assert stat.S_ISREG(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0;return f.read_bytes()\ndef save(f,b):\n t=f.with_name(f.name+'.business-install');fd=os.open(t,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n with os.fdopen(fd,'wb') as o:o.write(b);o.flush();os.fsync(o.fileno())\n os.replace(t,f)\nbc=Path('/etc/bondbuddy/elastic-bootstrap.json');nc=Path('/etc/bondbuddy/elastic-node.json')\nbefore=regular(bc);b=json.loads(before);nodebefore=regular(nc);n=json.loads(nodebefore)\na=Path(b['adapter_path']);assert str(a).startswith('/opt/bondbuddy/') and a.name=='node-adapter.mjs'\nparent=a.parent\nfor d in [parent,*parent.parents]:\n s=d.lstat();assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0\nactual=regular(a);assert h(actual)==b['adapter_sha256'] and h(actual) in ['a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65','ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248',p['files']['node-adapter.mjs']['sha256']]\nfor f,v in [(a,actual),(bc,before),(nc,nodebefore)]:\n backup=f.with_name(f.name+'.before-integrity1477')\n if not backup.exists():\n  fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n  with os.fdopen(fd,'wb') as o:o.write(v);o.flush();os.fsync(o.fileno())\nfor name,item in p['files'].items():\n raw=item['content'].encode();assert h(raw)==item['sha256'];f=parent/name\n if f.exists():\n  prior=regular(f);backup=f.with_name(f.name+'.before-integrity1477')\n  if not backup.exists():\n   fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n   with os.fdopen(fd,'wb') as o:o.write(prior);o.flush();os.fsync(o.fileno())\n save(f,raw)\ncf=Path(n['compose_file']);oldcompose=regular(cf)\nassert h(oldcompose)==n['compose_sha256'] and h(oldcompose) in ['3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489','e2945a653787183d3f1f295580248116b8f5bc6fdc86e93427fa2469fdfaee2f','9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd',p['compose']['sha256']]\ncb=cf.with_name(cf.name+'.before-integrity1477')\nif not cb.exists():\n fd=os.open(cb,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n with os.fdopen(fd,'wb') as o:o.write(oldcompose);o.flush();os.fsync(o.fileno())\nraw=p['compose']['content'].encode();assert h(raw)==p['compose']['sha256'];save(cf,raw)\nep=p['egress_patch'];ef=parent/'private-egress.mjs';eb=regular(ef)\nif h(eb)!=ep['after_sha256']:\n assert h(eb)==ep['before_sha256']\n updated=eb.decode().replace('export function renderPrivateTransportConfig',ep['addition']+'export function renderPrivateTransportConfig').replace('proxy.remote_port,proxy.sni);','proxy.remote_port,proxy.sni)+INTEGRITY_TRANSPORT_SECTION;').encode()\n assert h(updated)==ep['after_sha256'];save(ef,updated)\n# Restore the browser deployment contract for both fresh and retained nodes.\nsf=cf.parent.parent/'m1'/'security'/'integrity-browser-seccomp.json'\noldsf=Path(n['seccomp_file']);assert oldsf.parent==sf.parent and oldsf.name in ['codex-seccomp.json',sf.name]\nassert h(regular(oldsf))==n['seccomp_sha256']\ngeneric=regular(sf.parent/'codex-seccomp.json');assert h(generic)==p['generic_profile_sha256']\nprofile=json.loads(generic);profile['syscalls'].append(p['integrity_rule'])\nsfraw=(json.dumps(profile,indent=2)+'\\n').encode();assert h(sfraw)==p['integrity_profile_sha256']\nif sf.exists():assert regular(sf)==sfraw\nelse:save(sf,sfraw)\nn['seccomp_file']=str(sf);n['seccomp_sha256']=h(sfraw)\npg=n['private_pg'];tf=Path(pg['config_file']);transport=regular(tf)\nassert h(transport)==pg['config_sha256'] and str(tf).startswith('/etc/bondbuddy/')\nextra=p['integrity_section'].encode()\nif b'[execution-integrity]' not in transport:\n backup=tf.with_name(tf.name+'.before-integrity1477')\n if not backup.exists():\n  fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n  with os.fdopen(fd,'wb') as o:o.write(transport);o.flush();os.fsync(o.fileno())\n transport+=extra;save(tf,transport)\nelse:assert transport.endswith(extra)\npg['config_sha256']=h(transport)\nn['compose_sha256']=p['compose']['sha256']\nn['business_overlay_sha256']=p['pin'];b['adapter_sha256']=p['files']['node-adapter.mjs']['sha256']\nassert regular(nc)==nodebefore and regular(bc)==before\nsave(nc,json.dumps(n,separators=(',',':')).encode());save(bc,json.dumps(b,separators=(',',':')).encode())\nBB_BUSINESS_CODE\n`;
+  const workerProfile=readFileSync(new URL('../m1/security/codex-apparmor.profile',import.meta.url));
+  files['codex-apparmor.profile']={source:'/app/deploy/m1/security/codex-apparmor.profile',sha256:sha256(workerProfile)};
+  const payload=gzipSync(JSON.stringify({egress_patch:egressPatch,generic_profile_sha256:sha256(genericProfile),integrity_profile_sha256:sha256(integrityProfile),integrity_rule:integrityRule,integrity_section:INTEGRITY_TRANSPORT_SECTION,pin:config.business_overlay_sha256,files,compose:{source:'/app/deploy/tencent-elasticity/compose.yaml',sha256:sha256(compose)}}),{level:9,mtime:0}).toString('base64');
+  return `python3 - <<'BB_BUSINESS_CODE'
+import os,json,gzip,base64,hashlib,stat,subprocess,re,tempfile
+from pathlib import Path
+assert os.geteuid()==0
+p=json.loads(gzip.decompress(base64.b64decode('${payload}')))
+h=lambda b:hashlib.sha256(b).hexdigest()
+def regular(f):
+ s=f.lstat();assert stat.S_ISREG(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0;return f.read_bytes()
+def save(f,b):
+ t=f.with_name(f.name+'.business-install');fd=os.open(t,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb') as o:o.write(b);o.flush();os.fsync(o.fileno())
+ os.replace(t,f)
+def backup(f,raw):
+ target=f.with_name(f.name+'.before-task-cgroups-v1')
+ if not target.exists():
+  fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  with os.fdopen(fd,'wb') as o:o.write(raw);o.flush();os.fsync(o.fileno())
+bc=Path('/etc/bondbuddy/elastic-bootstrap.json');nc=Path('/etc/bondbuddy/elastic-node.json')
+before=regular(bc);b=json.loads(before);nodebefore=regular(nc);n=json.loads(nodebefore)
+a=Path(b['adapter_path']);assert str(a).startswith('/opt/bondbuddy/') and a.name=='node-adapter.mjs'
+parent=a.parent
+for d in [parent,*parent.parents]:
+ s=d.lstat();assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_mode&0o022==0
+actual=regular(a)
+assert h(actual)==b['adapter_sha256'] and h(actual) in ['a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65','ce6d04c3fc8bba9cfe710a5006cfb8eb2b91447a1623e6d442041be9bbb8e248','432e7a88730d65c3497b9f027a5f49d240d53491bbe43e5071445f8d078e228b',p['files']['node-adapter.mjs']['sha256']]
+running=subprocess.run(['/usr/bin/docker','ps','--filter','label=com.docker.compose.project=bondbuddy-execution','--format','{{.ID}}'],capture_output=True,text=True,check=True,timeout=10)
+assert not running.stdout.strip(), 'Drain and stop execution services before updating their launch boundary.'
+for service in ['authoring','review']:
+ status=subprocess.run(['/usr/bin/systemctl','is-active','bondbuddy-task-cgroups-'+service+'.service'],capture_output=True,text=True,timeout=10)
+ assert status.stdout.strip() in ['inactive','failed'], 'Drain and stop existing brokers before replacing their boundary.'
+image=n['images']['authoring']
+assert isinstance(image,str) and re.fullmatch(r'(sha256:[a-f0-9]{64}|[-A-Za-z0-9._/:]+@sha256:[a-f0-9]{64})',image)
+container=subprocess.check_output(['/usr/bin/docker','create','--pull','never','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--entrypoint','/usr/bin/true',image],text=True,timeout=30).strip()
+assert re.fullmatch(r'[a-f0-9]{64}',container)
+try:
+ with tempfile.TemporaryDirectory(prefix='bondbuddy-task-bootstrap-') as temporary:
+  for name,item in [*p['files'].items(),('compose.yaml',p['compose'])]:
+   target=Path(temporary)/name
+   subprocess.run(['/usr/bin/docker','cp',container+':'+item['source'],str(target)],check=True,timeout=30)
+   info=target.lstat();assert stat.S_ISREG(info.st_mode) and info.st_uid==0
+   target.chmod(0o600);raw=regular(target);assert h(raw)==item['sha256']
+   item['content']=raw.decode()
+finally:
+ subprocess.run(['/usr/bin/docker','rm',container],check=True,timeout=30)
+cf=Path(n['compose_file']);oldcompose=regular(cf)
+assert h(oldcompose)==n['compose_sha256'] and h(oldcompose) in ['3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489','e2945a653787183d3f1f295580248116b8f5bc6fdc86e93427fa2469fdfaee2f','9f015499d74869af5e94c5b75233e0e339f6df97e70e9e1ecc2d88d54bfc14bd','3c604483ef133e97c6edd3b2b1b222490b269906129b9ec2debf98e677ec4ed4',p['compose']['sha256']]
+wf=Path(n['apparmor_file']);oldprofile=regular(wf)
+assert wf==cf.parent.parent/'m1'/'security'/'codex-apparmor.profile'
+assert h(oldprofile)==n['apparmor_sha256'] and h(oldprofile) in ['db6feaad5ff0f5b538fe4f101ecd5f9395b3b083efe25ce436624c2947f450ae',p['files']['codex-apparmor.profile']['sha256']]
+for f,raw in [(a,actual),(bc,before),(nc,nodebefore),(cf,oldcompose),(wf,oldprofile)]:backup(f,raw)
+for name,item in p['files'].items():
+ raw=item['content'].encode();assert h(raw)==item['sha256']
+ f=wf if name=='codex-apparmor.profile' else parent/name
+ if f.exists():backup(f,regular(f))
+ save(f,raw)
+raw=p['compose']['content'].encode();assert h(raw)==p['compose']['sha256'];save(cf,raw)
+n['apparmor_sha256']=p['files']['codex-apparmor.profile']['sha256']
+if p.get('pin'):
+ ep=p['egress_patch'];ef=parent/'private-egress.mjs';eb=regular(ef)
+ if h(eb)!=ep['after_sha256']:
+  assert h(eb)==ep['before_sha256']
+  updated=eb.decode().replace('export function renderPrivateTransportConfig',ep['addition']+'export function renderPrivateTransportConfig').replace('proxy.remote_port,proxy.sni);','proxy.remote_port,proxy.sni)+INTEGRITY_TRANSPORT_SECTION;').encode()
+  assert h(updated)==ep['after_sha256'];backup(ef,eb);save(ef,updated)
+ sf=cf.parent.parent/'m1'/'security'/'integrity-browser-seccomp.json'
+ oldsf=Path(n['seccomp_file']);assert oldsf.parent==sf.parent and oldsf.name in ['codex-seccomp.json',sf.name]
+ assert h(regular(oldsf))==n['seccomp_sha256']
+ generic=regular(sf.parent/'codex-seccomp.json');assert h(generic)==p['generic_profile_sha256']
+ profile=json.loads(generic);profile['syscalls'].append(p['integrity_rule'])
+ sfraw=(json.dumps(profile,indent=2)+'\\n').encode();assert h(sfraw)==p['integrity_profile_sha256']
+ if sf.exists():assert regular(sf)==sfraw
+ else:save(sf,sfraw)
+ n['seccomp_file']=str(sf);n['seccomp_sha256']=h(sfraw)
+ pg=n['private_pg'];tf=Path(pg['config_file']);transport=regular(tf)
+ assert h(transport)==pg['config_sha256'] and str(tf).startswith('/etc/bondbuddy/')
+ extra=p['integrity_section'].encode()
+ if b'[execution-integrity]' not in transport:
+  backup(tf,transport);transport+=extra;save(tf,transport)
+ else:assert transport.endswith(extra)
+ pg['config_sha256']=h(transport)
+ n['business_overlay_sha256']=p['pin']
+n['compose_sha256']=p['compose']['sha256'];b['adapter_sha256']=p['files']['node-adapter.mjs']['sha256']
+assert regular(nc)==nodebefore and regular(bc)==before
+save(nc,json.dumps(n,separators=(',',':')).encode());save(bc,json.dumps(b,separators=(',',':')).encode())
+BB_BUSINESS_CODE
+`;
 }
 
 

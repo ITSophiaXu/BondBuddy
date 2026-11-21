@@ -1,16 +1,15 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { isReviewReport, type ReviewReport, type ReviewAction } from '@bondbuddy/contracts';
 import { digest, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage, recordReviewAction } from '@bondbuddy/api/queue';
 import type { RunStage, StageContext } from './run-pipeline.js';
 
-const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
+const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 /** Shares the project lock with adoption/execution so a cancelled old writer cannot change the catalog behind a new acceptance. */
 export async function registerReviewReport(ctx:Pick<StageContext,'pool'|'run'|'lease'>,report:ReviewReport):Promise<boolean> {
   if(!isReviewReport(report)||report.run_id!==ctx.run.id||report.project_id!==ctx.run.project_id||report.input_revision!==ctx.run.input_revision

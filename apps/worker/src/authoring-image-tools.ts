@@ -1,6 +1,6 @@
 /** Read-only bounded image previews for the current authoring workspace. */
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';

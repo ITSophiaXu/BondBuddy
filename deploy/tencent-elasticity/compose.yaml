@@ -31,6 +31,7 @@ services:
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
+      - ${BB_ELASTIC_TASK_SOCKET_DIR:?trusted per-service containment required}:/run/bondbuddy/task-cgroups:ro
     mem_limit: 6g
     cpus: 2
     pids_limit: 512
@@ -41,6 +42,7 @@ services:
     restart: 'no'
   review:
     image: ${BB_ELASTIC_REVIEW_IMAGE:?immutable review image digest required}
+    init: true
     command: [node, apps/worker/dist/runtime.js]
     user: '1000:1000'
     env_file:
@@ -68,6 +70,7 @@ services:
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
       - /run/bondbuddy/transport-socket:/run/bondbuddy/service:ro
+      - ${BB_ELASTIC_TASK_SOCKET_DIR:?trusted per-service containment required}:/run/bondbuddy/task-cgroups:ro
     mem_limit: 7g
     cpus: 2
     pids_limit: 512

@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile} from './task-execution.js';
 import { mkdir, mkdtemp, writeFile, readFile, copyFile, lstat, realpath, rm } from 'node:fs/promises';
 import { join, resolve, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { Value } from '@sinclair/typebox/value';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
@@ -191,7 +190,7 @@ export function reviewRevisionCliStage(options: {
           const data = JSON.parse(lockedInputBytes!.toString('utf8'));
           await copyFile(join(cwd, data.source.path), join(checkDir, data.source.path));
           await writeFile(join(checkDir, 'scratch/proposal.json'), proposal);
-          await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+          await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
             ['-B', join(repo, 'python/bondbuddy_word_delivery/revision_cli.py'), 'scratch/proposal.json', '--workspace', checkDir],
             { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' }, timeout: 300000, maxBuffer: MAX_JSON, signal: ctx.signal });
           const bytes = new Map<string, Buffer>();

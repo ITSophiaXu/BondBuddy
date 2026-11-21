@@ -11,17 +11,15 @@ import { unifiedWordDeliveryStage } from './unified-word-stage.js';
 import { reviewFileDeliveryStage } from './review-file-stage.js';
 import { reviewWordDeliveryStage } from './review-word-stage.js';
 import { REVIEW_REVISION_CLI_METHOD, reviewRevisionCliDeliveryStage } from './review-revision-cli-stage.js';
-import { execFile } from 'node:child_process';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { updateContentHash } from '@bondbuddy/domain/historical-update';
 import { PENDING_ORIGINAL_NOTICE, type HistoricalGenerationPlan } from './historical-model-stage.js';
 import { type RunStage, type StageContext } from './run-pipeline.js';
 
-const runFile = promisify(execFile);
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const MAX_SOURCE = 100 * 1024 * 1024;
 const MAX_OUTPUT = 64 * 1024 * 1024;
