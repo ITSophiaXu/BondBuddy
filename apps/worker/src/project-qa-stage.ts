@@ -3,8 +3,7 @@ import {resolveModelCallConcurrency} from './model-call-budget.js';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile} from './task-execution.js';
 import {Value} from '@sinclair/typebox/value';
 import {QaAnswerSchema,QaResultSchema,qaSearchTerms,qaSameAsset,type QaAnswer,type QaInput,type QaResult,type QaQuestion} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
@@ -21,7 +20,7 @@ import {QA_ANSWER_TEMPLATE,reusableQaAnswer} from './project-qa-recovery.js';
 export {qaPromptEvidence} from './project-qa-evidence.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
-async function python(ctx:StageContext,args:string[]){await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_qa',...args],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:180000,maxBuffer:2*1024*1024});}
+async function python(ctx:StageContext,args:string[]){await taskExecFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_qa',...args],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:180000,maxBuffer:2*1024*1024});}
 async function store(ctx:StageContext,path:string){const bytes=await readFile(path);if(!bytes.length||bytes.length>max)throw Error('FILE_OUTPUT_STORE_FAILED');const sha256=digest(bytes),key=prefix(ctx)+sha256+'/document.docx';await ctx.blobs.put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');const readback=await ctx.blobs.getIfExistsBounded(key,max);if(!readback||digest(readback)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');return {key,sha256,byte_size:bytes.length};}
 async function sourceBytes(ctx:StageContext,asset:QaInput['source']['asset']){const row=await readProjectFileAsset(ctx.pool,ctx.run.owner_user_id,asset),bytes=await ctx.blobs.getIfExistsBounded(row.object_key,max);if(!bytes||digest(bytes)!==asset.pin.sha256)throw Error('INPUT_REVISION_CONFLICT');return {bytes,media:row.media_type};}
 async function lock(ctx:StageContext,c:import('pg').PoolClient){const row=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.id=$1 AND r.owner_user_id=$2 AND j.id=$3 AND j.lease_token=$4 AND j.state='running' AND j.lease_until>now() AND NOT r.state=ANY($5::text[]) FOR UPDATE OF r,j",[ctx.run.id,ctx.run.owner_user_id,ctx.lease.jobId,ctx.lease.token,['cancelled','failed','succeeded']]);if(!row.rowCount)throw Error('LEASE_LOST');}

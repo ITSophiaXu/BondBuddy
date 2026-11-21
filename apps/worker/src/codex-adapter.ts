@@ -7,7 +7,7 @@ import { modelCancellationDiagnostic, reportModelCancellation } from './model-ca
 // Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
 // scratch/output, no command network or credentials. Unapproved tool items fail closed.
-import { spawn } from 'node:child_process';
+import { spawn } from './task-execution.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

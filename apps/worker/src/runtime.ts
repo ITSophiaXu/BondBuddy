@@ -2,6 +2,7 @@ import {flushPerformanceTraces} from '@bondbuddy/api/performance-trace';
 import {executionNodeForPool,executionNodeState,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {enrollExecutionNodeFromEnv,assertManagedRuntimeOptions,nativeExecutionChildren,nativeExecutionProcesses} from './execution-node-runtime.js';
 import {ManagedRunRetries} from './managed-run-retries.js';
+import {assertTaskExecution,initializeTaskExecution,taskNativeProcesses,taskReleaseProof,retireTaskExecution,sweepCompletedTaskExecutions,withBackgroundTaskExecution} from './task-execution.js';
 import {executionTransportFromEnv,type ExecutionTransportHealth} from './execution-node-transport.js';
 import { modelCallConcurrency } from './model-call-budget.js';
 // #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
@@ -103,7 +104,12 @@ export class WorkerRuntime {
   private readonly workAbort = new AbortController();
   private readonly runLeases = new Map<number, Lease>();
   private readonly parseLeases = new Map<number, MaterialParseLease>();
-  private readonly retries=new ManagedRunRetries(nativeExecutionProcesses,lease=>completeManagedRunRelease(this.o.pool,lease,{nativeProcesses:0,activeExecutions:0}));
+  private readonly retries=new ManagedRunRetries(taskNativeProcesses,async lease=>{
+    const result=await completeManagedRunRelease(this.o.pool,lease,taskReleaseProof(this.o.pool,lease));
+    if(result!=='blocked')try{await retireTaskExecution(lease);}
+    catch{this.counters.errors++;this.emit({kind:'task_cgroup_retire',outcome:'blocked'});}
+    return result;
+  });
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
@@ -151,7 +157,7 @@ export class WorkerRuntime {
   }
 
   start() {
-    if(executionNodeForPool(this.o.pool))assertManagedRuntimeOptions(this.o);
+    if(executionNodeForPool(this.o.pool)){assertManagedRuntimeOptions(this.o);assertTaskExecution(this.o.pool);}
     if(!executionNodeForPool(this.o.pool)&&this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='update'||kind==='generation')) this.loops.push(this.formatDiagnosticLoop());
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
@@ -182,7 +188,7 @@ export class WorkerRuntime {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
-        await this.flushRetries();
+        void this.flushRetries();
         const leave=this.enterExecution();if(!leave)break;
         let completedLease:Lease|null=null;
         try {
@@ -203,6 +209,7 @@ export class WorkerRuntime {
           if(outcome==='retry'&&completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
           if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
         } catch (error) {
+          if(completedLease&&executionNodeForPool(this.o.pool))this.retries.defer(completedLease);
           this.counters.errors++;
           this.emit({ slot, kind, outcome: 'error', error: error instanceof Error ? error.message.slice(0, 64).replace(/[^A-Za-z0-9_ .:-]/g, '') : 'unknown' });
         }finally{leave();}
@@ -250,6 +257,8 @@ export class WorkerRuntime {
   private async sweepLoop() {
     while (!this.stopping) {
       try { await this.sweep(); } catch { this.counters.errors++; }
+      try{await sweepCompletedTaskExecutions();}
+      catch{this.counters.errors++;this.emit({kind:'task_cgroup_retire',outcome:'blocked'});}
       await sleep(this.o.sweepMs, this.stopSignal.signal);
     }
   }
@@ -268,7 +277,7 @@ export class WorkerRuntime {
   private async stagingLoop(root: string) {
     while (!this.stopping) {
       try {
-        const result = await sweepParseStaging(root);
+        const result = await withBackgroundTaskExecution(()=>sweepParseStaging(root));
         if (result.removed) this.emit({ kind: 'parse_staging_cleanup', removed: result.removed, bytes: result.bytes });
       } catch { this.counters.errors++; this.emit({ kind: 'parse_staging_cleanup', outcome: 'error' }); }
       await sleep(5 * 60 * 1000, this.stopSignal.signal);
@@ -481,8 +490,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
-  if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const enrollment=await enrollExecutionNodeFromEnv(pool,options);
+  await initializeTaskExecution(pool);
+  if(options.stagingRoot)await withBackgroundTaskExecution(()=>sweepParseStaging(options.stagingRoot!));
   options.executionTransport=await executionTransportFromEnv(enrollment);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
   process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, assistant_slots: options.reviewAssistant?.slots ?? 0, model_call_concurrency: modelCallConcurrency(), interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);

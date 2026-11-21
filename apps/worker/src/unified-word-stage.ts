@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile as runFile} from './task-execution.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import type { UnifiedPlan } from './unified-model-stage.js';
 import type { RunStage } from './run-pipeline.js';
@@ -11,7 +10,6 @@ import { executableRevisionFinding, ReviewRevisionHandlingSchema } from '@bondbu
 import { Value } from '@sinclair/typebox/value';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 
-const runFile = promisify(execFile);
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 export function unifiedWordDeliveryStage(): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {

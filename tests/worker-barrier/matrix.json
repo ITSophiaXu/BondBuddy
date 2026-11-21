@@ -1,0 +1,72 @@
+{
+  "version": "worker-barrier-matrix-v1",
+  "synthetic": true,
+  "groups": [
+    {
+      "id": "control-two-slots",
+      "description": "A terminates without retry; the free slot must start C while B sleeps.",
+      "slots": 2,
+      "retry": false,
+      "a_seconds": 1,
+      "retry_seconds": 0.1,
+      "peer_seconds": [5],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 0
+    },
+    {
+      "id": "retry-two-short",
+      "description": "Two slots with a short peer; A retries and C starts before B exits.",
+      "slots": 2,
+      "retry": true,
+      "a_seconds": 0.5,
+      "retry_seconds": 0.1,
+      "peer_seconds": [4],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 0
+    },
+    {
+      "id": "retry-two-long",
+      "description": "The original A/B/C reproduction with a six-second peer.",
+      "slots": 2,
+      "retry": true,
+      "a_seconds": 2,
+      "retry_seconds": 0.1,
+      "peer_seconds": [6],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 0
+    },
+    {
+      "id": "retry-four-slots",
+      "description": "Three sleeping peers must not block the remaining slot.",
+      "slots": 4,
+      "retry": true,
+      "a_seconds": 1,
+      "retry_seconds": 0.1,
+      "peer_seconds": [6, 6, 6],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 0
+    },
+    {
+      "id": "retry-eight-slots",
+      "description": "Seven sleeping peers must not cause a process-wide retry barrier.",
+      "slots": 8,
+      "retry": true,
+      "a_seconds": 1,
+      "retry_seconds": 0.1,
+      "peer_seconds": [6, 6, 6, 6, 6, 6, 6],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 0
+    },
+    {
+      "id": "retry-native-tail",
+      "description": "A retains a live task-owned child: A must wait, but C must still run.",
+      "slots": 2,
+      "retry": true,
+      "a_seconds": 1,
+      "retry_seconds": 0.1,
+      "peer_seconds": [8],
+      "c_seconds": 0.2,
+      "native_tail_seconds": 3
+    }
+  ]
+}

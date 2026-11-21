@@ -19,8 +19,7 @@ import {checkedM4File,M4_FILE_MAX,m4ToolHashes} from './m4-file-workspace.js';
 import {verifiedFileLinks} from './project-file-evidence.js';
 import type {M4WorkerInput} from './m4-input.js';
 import type {M4DocumentResult} from './m4-document-stage.js';
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {taskExecFile} from './task-execution.js';
 import {setTimeout as delay} from 'node:timers/promises';
 import {prepareProgressiveGroup,progressiveItemPlanIdentity,progressivePlanGroup,WORKPAPER_PLAN_GROUP_SIZE} from './workpaper-progressive-groups.js';
 import {workpaperMethodHash} from './workpaper-method.js';
@@ -31,7 +30,7 @@ export type SharedSource={version:'workpaper-source-v1';source:ProjectFileText;t
 const hash=(v:unknown)=>inputManifestHash(v);
 async function python(ctx:StageContext,args:string[],helper:'bondbuddy_workpaper_batch.py'|'bondbuddy_workpaper_progressive_render.py'='bondbuddy_workpaper_batch.py'){
   const operation=args[0]==='extract'?'material.extract':args[0]==='validate'?'document.quality_check':'document.render';
-  try{return await withPerformanceSpan(operation,{operation:args[0]},()=>promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+  try{return await withPerformanceSpan(operation,{operation:args[0]},()=>taskExecFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
     ['-B',join(projectFilesRoot,'python',helper),...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384}));
   }catch(error){

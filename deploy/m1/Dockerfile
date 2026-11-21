@@ -136,6 +136,9 @@ USER node
 CMD ["node","apps/worker/dist/upload-confirmation-runtime.js"]
 
 FROM node-runtime AS worker
+COPY --chown=root:root deploy/tencent-elasticity/task-cgroups.mjs deploy/tencent-elasticity/task-cgroup-broker.py deploy/tencent-elasticity/task-cgroup-broker.profile deploy/tencent-elasticity/task-runner.py deploy/tencent-elasticity/task-chromium deploy/tencent-elasticity/
+COPY --chown=root:root deploy/tencent-elasticity/business-overlay.mjs deploy/tencent-elasticity/compose.yaml deploy/tencent-elasticity/
+COPY --chown=root:root deploy/m1/security/codex-apparmor.profile deploy/m1/security/
 COPY --chown=root:root deploy/tencent-elasticity/policy.mjs deploy/tencent-elasticity/costcap.mjs deploy/tencent-elasticity/cloud-quote-refresh.mjs deploy/tencent-elasticity/tencent-cvm.mjs deploy/tencent-elasticity/controller.mjs deploy/tencent-elasticity/bootstrap.mjs deploy/tencent-elasticity/private-files.mjs deploy/tencent-elasticity/ops-handler.mjs deploy/tencent-elasticity/reconcile-entry.mjs deploy/tencent-elasticity/bootstrap-entry.mjs deploy/tencent-elasticity/enrollment.mjs deploy/tencent-elasticity/node-adapter.mjs deploy/tencent-elasticity/private-transport.mjs deploy/tencent-elasticity/private-egress.mjs deploy/tencent-elasticity/transport-issuer.mjs deploy/tencent-elasticity/transport-renewal.mjs deploy/tencent-elasticity/transport-refresher.mjs deploy/tencent-elasticity/transport-service.mjs deploy/tencent-elasticity/stunnel-reload.mjs deploy/tencent-elasticity/control-socket.mjs deploy/tencent-elasticity/control-authority.mjs deploy/tencent-elasticity/control-credentials.mjs deploy/tencent-elasticity/control-tick-bound.mjs deploy/tencent-elasticity/
 ARG BB_RELEASE_SHA=unknown
 LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
@@ -162,6 +165,9 @@ COPY --chown=root:root --chmod=0755 deploy/m1/scripts/codex-bwrap.sh /usr/local/
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && /usr/local/bin/bwrap --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
 RUN install -d -m 0755 /opt/bondbuddy
+COPY --chown=root:root --chmod=0644 deploy/tencent-elasticity/task-runner.py /opt/bondbuddy/task-runner.py
+COPY --chown=root:root --chmod=0755 deploy/tencent-elasticity/task-chromium /opt/bondbuddy/task-chromium
+RUN node --input-type=module -e "import {chromium} from 'playwright';import {symlinkSync} from 'node:fs';symlinkSync(chromium.executablePath(),'/opt/bondbuddy/task-chromium-real');"
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-image-model-catalog.json /opt/bondbuddy/codex-image-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json

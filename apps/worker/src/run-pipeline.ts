@@ -1,4 +1,5 @@
 import {registerFileReviewReport} from './review-file-report.js';
+import {assertTaskExecution,withTaskExecution} from './task-execution.js';
 import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
 import {DeferredQaJournal} from './deferred-qa-journal.js';
@@ -624,11 +625,13 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const { pool } = deps;
   const blobs=performanceBlobs(deps.blobs);
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
+  assertTaskExecution(pool);
   const claimStartedAt=new Date();
   const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
   const claimEndedAt=new Date();
   deps.onLease?.(lease);
   if (!lease) return 'idle';
+  try{return await withTaskExecution(pool,{kind:'job',id:lease.jobId,token:lease.token},async()=>{
   const abort = new AbortController();
   const onOuterAbort = () => abort.abort();
   deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
@@ -863,6 +866,6 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } finally {
     await heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
-    deps.onLease?.(null);
   }
+  });}finally{deps.onLease?.(null);}
 }

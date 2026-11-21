@@ -1,4 +1,5 @@
 import {executionClaimGate,lockTaskQueueScheduling,accountExecutionLoadSql} from '@bondbuddy/api/execution-capacity';
+import {assertTaskExecution,withTaskExecution} from './task-execution.js';
 import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool, PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
@@ -429,8 +430,10 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
   /** Test seams still run the production durable journal; no default canned replies. */
   model?:typeof runContainedModelCall;afterCall?:()=>Promise<void>}):Promise<ReviewAssistantOutcome> {
   if(options.signal?.aborted)return 'idle';
+  assertTaskExecution(options.pool);
   const leaseSeconds=options.leaseSeconds??120,lease=await claimReviewAssistant(options.pool,leaseSeconds);
   if(!lease)return 'idle';
+  return withTaskExecution(options.pool,{kind:'assistant',id:lease.id,token:lease.lease_token},async()=>{
   const controller=new AbortController(),abort=()=>controller.abort();options.signal?.addEventListener('abort',abort,{once:true});
   if(options.signal?.aborted)abort();
   let renewing=false;
@@ -469,4 +472,5 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
       await finishMessage(options.pool,lease,status,code);return status;
     } catch {return 'lost';}
   } finally {clearInterval(heartbeat);options.signal?.removeEventListener('abort',abort);}
+  });
 }

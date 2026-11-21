@@ -87,16 +87,16 @@ export function accountExecutionLoadSql(owner:'r.owner_user_id'|'m.owner_user_id
 
 export async function executionNodeState(pool:Pool){const c=contexts.get(pool);return c?(await node(pool,c.identity)).state:null;}
 
-/** Local completion is distinct from expiry. The owning consumer first closes
- * its claim barrier, awaits all work and positively inventories its PID namespace.
+/** Local completion is distinct from expiry. Legacy proof inventories the whole
+ * consumer; task proof seals and inventories only that exact native execution.
  * Lock the node before run/job rows, as admission and cloud fencing do. */
-export async function lockExecutionReleaseContext(client:PoolClient,pool:Pool){
+export async function lockExecutionReleaseContext(client:PoolClient,pool:Pool,jobId?:string){
  const c=contexts.get(pool);if(!c)throw Error('EXECUTION_RELEASE_IDENTITY_REQUIRED');
  const n=await node(client,c.identity,true);
  const session=(await client.query('SELECT state FROM bb_execution_node_sessions WHERE session_id=$1 AND node_id=$2 AND epoch=$3',[c.session_id,n.id,c.identity.epoch])).rows[0];
  if(!['ready','draining'].includes(n.state)||session?.state!=='active')return null;
- const busy=await client.query(`SELECT 1 FROM bb_model_capacity_holders WHERE execution_session_id=$1
-   UNION ALL SELECT 1 FROM bb_model_capacity_waiters WHERE execution_session_id=$1 LIMIT 1`,[c.session_id]);
+ const busy=await client.query(`SELECT 1 FROM bb_model_capacity_holders WHERE ($2::text IS NULL AND execution_session_id=$1) OR admission_job_id=$2
+   UNION ALL SELECT 1 FROM bb_model_capacity_waiters WHERE ($2::text IS NULL AND execution_session_id=$1) OR admission_job_id=$2 LIMIT 1`,[c.session_id,jobId??null]);
  if(busy.rowCount)return null;
  return {nodeId:n.id,epoch:c.identity.epoch,sessionId:c.session_id};
 }

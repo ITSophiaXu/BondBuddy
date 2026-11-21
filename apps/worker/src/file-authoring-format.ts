@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process';
+import {taskExecFile} from './task-execution.js';
 import { mkdir, mkdtemp, readFile, rm, writeFile, lstat, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -33,7 +32,7 @@ export async function readFormatFile(root: string, name: string, max = WORD_FILE
 
 /** Always import the installed host package, never Python from a model workspace. */
 export async function runFormatPython(args: string[], signal?: AbortSignal) {
-  return promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+  return taskExecFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
     ['-B', '-s', '-m', 'bondbuddy_file_authoring.fixed_edit', ...args],
     { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
       timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });
