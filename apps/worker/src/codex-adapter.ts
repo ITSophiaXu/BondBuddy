@@ -766,6 +766,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
 
 export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
 export interface CodexJournal extends ProbeJournal {
+  /** Optional host capacity permit. Wait before recording an intent or sending a request. */
+  acquireCallSlot?(signal?: AbortSignal): Promise<{ signal?: AbortSignal } | undefined>;
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
   /** Persist the bounded private stdout/stderr evidence for this attempt. */
   storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
@@ -938,6 +940,26 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
     for (; attemptNo <= maxAttempts; attemptNo++) {
       if (input.signal?.aborted) return cancelledResult();
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
+      let permit: Awaited<ReturnType<NonNullable<CodexJournal['acquireCallSlot']>>>;
+      try {
+        permit = await withPerformanceSpan('model.capacity.wait', {}, async () => {
+          const deadlineAt = input.fileWorkspace?.deadlineAt;
+          if (deadlineAt !== undefined && !isFileAuthoringDeadline(deadlineAt)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+          const remaining = deadlineAt === undefined ? undefined : Date.parse(deadlineAt) - Date.now();
+          if (remaining !== undefined && remaining <= 0) throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
+          const deadline = new AbortController();
+          const timer = remaining === undefined ? undefined : setTimeout(() => deadline.abort(Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED')), Math.min(remaining, 2147483647));
+          const signal = remaining === undefined ? input.signal : input.signal ? AbortSignal.any([input.signal, deadline.signal]) : deadline.signal;
+          try { return await journal.acquireCallSlot?.(signal); }
+          catch (error) { if (deadline.signal.aborted) throw deadline.signal.reason; throw error; }
+          finally { if (timer) clearTimeout(timer); }
+        });
+      } catch (error) {
+        if (input.signal?.aborted) return cancelledResult();
+        throw error;
+      }
+      const executionSignal = permit?.signal && input.signal ? AbortSignal.any([permit.signal, input.signal]) : permit?.signal ?? input.signal;
+      if (executionSignal?.aborted) return cancelledResult();
       const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
       try {
         const cwd = join(attemptDir, 'cwd'), home = join(attemptDir, 'home');
@@ -966,7 +988,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           await verifyFilePermissions(c,cwd,home);
         }
 
-        if (input.signal?.aborted) return cancelledResult();
+        if (executionSignal?.aborted) return cancelledResult();
         if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
         await journal.recordIntent(intent); // durable before spawn
@@ -982,7 +1004,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         const loadedAdapterSha256=createHash('sha256').update(await readFile(fileURLToPath(import.meta.url))).digest('hex');
         const attemptResult=await withPerformanceSpan<ContainedCallResult|null>('model.attempt',
           {logical_call_id:input.logical_call_id,call_id:intent.call_id,attempt_no:attemptNo},async attemptSpan=>{
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onBeforeSpawn:journal.recordExecutionConfig?(effective_timeout_ms,timeout_deadline_at)=>journal.recordExecutionConfig!(intent,{
             effective_timeout_ms,timeout_deadline_at,timeout_source:useAuthoringTimeout
@@ -995,7 +1017,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
             overlay_sha256:/^[a-f0-9]{64}$/.test(process.env.BB_EXECUTION_OVERLAY_SHA256??'')?process.env.BB_EXECUTION_OVERLAY_SHA256!:null
           }):undefined,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
-        if(raw.stop==='cancelled')reportModelCancellation(modelCancellationDiagnostic(input.signal?.reason,
+        if(raw.stop==='cancelled')reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
           raw.duration_ms===0&&raw.exit_code===null?'before_spawn':'native',intent.call_id));
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.
@@ -1021,7 +1043,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         } catch { /* Missing or corrupt host trace fails local output validation below. */ }
         // A cancelled local replay is not a schema-invalid supplier response.
         // Retain the completed turn's real usage and prohibit a schema re-ask.
-        if (input.signal?.aborted && !raw.stop) raw.stop='cancelled';
+        if (executionSignal?.aborted && !raw.stop) raw.stop='cancelled';
         const cls = classifyCodexResult(raw, text => {
           if (input.reviewTools && !reviewToolTrace) { invalidCategory = 'review_tool_trace'; return {ok:false}; }
           if (input.materialToolsTrace && !materialToolTrace) { invalidCategory = 'material_tool_trace'; return {ok:false}; }
@@ -1037,7 +1059,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
         if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_OUTPUT_LIMIT','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
-            !input.signal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
+            !executionSignal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
         }
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
@@ -1066,7 +1088,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
-        if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
+        if (executionSignal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await withPerformanceSpan('model.runtime.persist',{},()=>journal.recordRuntime(intent,runtime));
@@ -1078,7 +1100,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         }
         attempts.push(attemptRecord(intent, c, runtime, obs));
         if (retryable) {
-          if (input.signal?.aborted) {attemptSpan.end('cancelled');return cancelledResult();}
+          if (executionSignal?.aborted) {attemptSpan.end('cancelled');return cancelledResult();}
           let feedback='Your previous reply failed output validation. Reply again with only the complete JSON value required by the schema.';
           if(['json_parse','missing_message'].includes(invalidCategory))feedback='Your previous reply was not a single valid JSON value. Reply again with only the complete JSON value required by the schema.';
           else if(output.kind==='json'&&output.validationFeedback)try{feedback=output.validationFeedback(parsedOutput)?.slice(0,2000)||feedback;}catch{ /* Diagnostics cannot weaken validation or stop durable retry. */ }
