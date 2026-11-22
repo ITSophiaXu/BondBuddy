@@ -31,6 +31,11 @@ test('pipeline records execution/recovery, checkpoint reuse and every delivery t
   const delivery=await rows(completed),keys=delivery.map(row=>row.step_key);
   for(const key of ['worker.claim','job.queue_wait','stage.execute','stage.checkpoint','artifact.promote','document.inspect','artifact.upload','artifact.readback','artifact.register','run.finish','run.terminal_persist'])assert(keys.includes(key),key);
   assert.equal(delivery.find(row=>row.step_key==='run.execution').status,'succeeded');
+  const execution=delivery.find(row=>row.step_key==='run.execution');
+  assert.equal(execution.attributes.resource_scope,'shared_worker_container');
+  assert(['cgroup_v2','unavailable'].includes(execution.attributes.resource_availability));
+  assert(execution.attributes.resource_sample_count>=1);
+  assert(execution.attributes.cgroup_memory_peak_bytes===null||execution.attributes.cgroup_memory_peak_bytes>0);
   assert(delivery.every(row=>row.duration_ms!==null&&row.duration_ms>=0));
   const sessions=(await pool.query('SELECT * FROM bb_performance_sessions WHERE run_id=$1',[completed])).rows;
   assert.equal(sessions.length,1);

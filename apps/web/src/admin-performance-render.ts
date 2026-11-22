@@ -75,6 +75,9 @@ export function performanceRunPanel(runId: string, state: PerformanceReadState<R
   const controls = `<div class="actions perf-actions">${button(state.loading ? '读取中…' : data ? '刷新步骤' : '加载步骤', `data-perf-run-refresh="${esc(runId)}" ${state.loading ? 'disabled' : ''}`)}${button('导出已载入 CSV', `data-perf-export="run-csv" ${!data || state.loading ? 'disabled' : ''}`)}${button('导出已载入 JSON', `data-perf-export="run-json" ${!data || state.loading ? 'disabled' : ''}`)}</div>`;
   if (!data) return `<section class="panel perf-panel" data-performance-run aria-busy="${state.loading}"><h3>步骤瀑布</h3>${controls}${state.error ? `<p role="alert" class="notice">${esc(state.error)}</p>` : ''}<div class="empty">${state.loading ? '正在读取此任务的步骤…' : '按需读取本次执行的嵌套步骤与采集完整度；历史任务不会补造步骤。'}</div></section>`;
   const metrics = runPerformanceMetrics(data), tree = performanceTree(data.items, collapsed);
+  const memoryPeaks=data.items.filter(span=>span.step_key==='run.execution'&&span.ended_at!==null)
+    .map(span=>span.attributes.cgroup_memory_peak_bytes).filter((value):value is number=>typeof value==='number'&&Number.isFinite(value));
+  const memoryPeak=memoryPeaks.length?Math.max(...memoryPeaks):null;
   const session = new Map(data.sessions.map(item => [item.session_id, item]));
   const width = metrics.chartEnd - metrics.chartStart;
   return `<section class="panel perf-panel" data-performance-run aria-busy="${state.loading}">
@@ -85,10 +88,11 @@ export function performanceRunPanel(runId: string, state: PerformanceReadState<R
       ${metric('细步骤解释覆盖', duration(metrics.coveredMs), metrics.complete ? '真实边界区间并集，排除整段容器' : '仅已载入完整计时，覆盖尚不完整')}
       ${metric('未解释时间', duration(metrics.unexplainedMs), '仅完整采集且完整分页时计算')}
       ${metric('失败 / 耗时缺测', `${metrics.failed} / ${metrics.missing}`, '已载入步骤；含未结束或工具边界缺测')}
+      ${metric('采样内存峰值',memoryPeak===null?'未知':`${(memoryPeak/1048576).toFixed(1)} MiB`,metrics.completePages?'本任务各次执行的最高值；共享 worker 容器':'已载入执行的最高值；共享 worker 容器')}
     </div>
     ${performanceCoverage({...data.coverage, complete: data.coverage.complete && metrics.missing === 0, unfinished_span_count: Math.max(data.coverage.unfinished_span_count, metrics.missing)})}
     <p class="perf-query-receipt">查询于 ${esc(time(data.captured_at))} · 已读取 ${data.pages.length} 页 · ${metrics.completePages ? '分页已全部载入' : '分页尚未全部载入'} · 审计 ID <span class="mono">${esc(data.audit_id)}</span></p>
-    <p class="muted">顶部解释覆盖排除任务、阶段、模型调用等整段容器，只统计实际工作边界；CLI 执行包含模型和工具，不代表纯模型耗时。父行显示直接子步骤的区间并集。“未解释”不等于空闲或 CPU 耗时。运行中已历时截至所在页查询时间；继续分页不会自动更新旧页。缺测及未载入部分保持未知。</p>
+    <p class="muted">内存峰值按任务执行期间每秒采样并在结束时记录；共享 worker 容器可能同时承载其他任务，因此不是任务独占用量，也不是内核精确峰值。顶部解释覆盖排除任务、阶段、模型调用等整段容器，只统计实际工作边界；CLI 执行包含模型和工具，不代表纯模型耗时。父行显示直接子步骤的区间并集。“未解释”不等于空闲或 CPU 耗时。运行中已历时截至所在页查询时间；继续分页不会自动更新旧页。缺测及未载入部分保持未知。</p>
     ${metrics.hasOrphans ? '<p class="notice">部分父步骤尚未载入或未采集，相关步骤暂列在顶层；不会推测其父子关系。</p>' : ''}
     ${tree.length ? `<div class="perf-waterfall-scroll" role="region" aria-label="嵌套步骤耗时瀑布" tabindex="0"><div class="perf-waterfall">
       <div class="perf-waterfall-head"><span>步骤 / 状态（展开查看上下文）</span><span>相对提交时间 · ${esc(duration(Math.max(0, width)))}</span><span>总耗时 / 已历时</span><span>子区间并集</span><span>未解释</span></div>
