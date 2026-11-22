@@ -548,7 +548,7 @@ export function codexModelStage(options: {
         return !!envelope && options.validate(envelope.output);
       }
         : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
-      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
+      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult, fileAuthoringRecoveryCapture:!!options.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(options.logicalCallId),fileAuthoringDeadlineAt:()=>options.fileWorkspace?.deadlineAt });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
       const callGate = await ctx.validateBeforeModelCall?.();
       if (callGate) return callGate;

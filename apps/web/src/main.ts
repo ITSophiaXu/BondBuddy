@@ -598,10 +598,9 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
 function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials',handoffQuery=new URLSearchParams()) {
   draft = new Draft(project, api, updateSaveState);
   restoreUploadRows(project.project_id);
-  if (project.update_details?.authoring_mode !== 'unified_v1') {
-    materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
-    materialProcessing.setVisible(document.visibilityState === 'visible');
-  }
+  materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id),
+    {auditPdfGate: project.kind === 'update', auditOnly: project.update_details?.authoring_mode === 'unified_v1'});
+  materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
   shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading" title="${esc(project.name)}">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span>${project.source_project_id?`<a class="text-button" href="#/projects/${encodeURIComponent(project.source_project_id)}">返回原项目</a>`:'<button class="text-button" type="button" id="delete-project">删除项目</button>'}</div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
@@ -845,6 +844,7 @@ function updateProcessingRows(projectId: string) {
       if (focused) replacement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     }
   }
+  syncProjectExecution(projectId);
 }
 
 function materialDeleteControl(id:string) {
@@ -924,7 +924,8 @@ function projectMaterialReadiness(projectId: string) {
   const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : prospectusPanel?.sourceSelectionMessage ? prospectusPanel.sourceSelectionMessage : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…'
-    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : '';
+    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE
+    : materialProcessing?.block(confirmedMaterials(projectId)) || '';
   return {ready: !message, message};
 }
 
@@ -1327,7 +1328,7 @@ function bindMaterialWorkspace(projectId: string) {
       return;
     }
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
-    if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
+    if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry, true); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');
     if (!button || projectExecution && !projectExecution.materialsEditable) return;
     const upload = (localUploads.get(projectId) ?? []).find(item => item.key === button.dataset.uploadKey);

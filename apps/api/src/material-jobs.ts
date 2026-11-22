@@ -1,10 +1,11 @@
 import { Pool, type PoolClient } from 'pg';
+import { PDF_QUALITY_STAGE, PDF_QUALITY_VERSION, PDF_QUALITY_JOB_VERSIONS, isAuditPdf, auditPdfQualityState, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
 import {
   ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_OCR_STAGE, MATERIAL_PARSE_STAGES,
   type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MATERIAL_PARSE_RUNTIME_EVENT_TYPES, type MaterialParseJob,
 } from '@bondbuddy/contracts';
 import type { PlatformProcessingCostPayload } from '@bondbuddy/contracts';
-import { date, material, missing, Problem, transaction, uid } from './data.js';
+import { date, material, project, missing, Problem, transaction, uid } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 import { errorDiagnostic } from './error-diagnostics.js';
 
@@ -13,7 +14,7 @@ export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.8'
 export const DEFAULT_MATERIAL_PARSE_MAX_ATTEMPTS = 3;
 export const documentParserVersion = () => process.env.BB_DOCUMENT_PARSER_VERSION ?? DEFAULT_DOCUMENT_PARSER_VERSION;
 
-type Stage = typeof MATERIAL_PARSE_STAGES[number] | typeof MATERIAL_PARSE_OCR_STAGE;
+type Stage = typeof MATERIAL_PARSE_STAGES[number] | typeof MATERIAL_PARSE_OCR_STAGE | typeof PDF_QUALITY_STAGE;
 type EventType = typeof MATERIAL_PARSE_EVENT_TYPES[number] | typeof MATERIAL_PARSE_RUNTIME_EVENT_TYPES[number];
 type Category = typeof ERROR_CATEGORIES[number];
 export type MaterialParseCheckpoint = { stages?: Partial<Record<Stage, Record<string, unknown>>> };
@@ -187,11 +188,11 @@ export async function pauseMaterialParse(pool: Pool, lease: MaterialParseLease, 
   });
 }
 
-export async function succeedMaterialParse(pool: Pool, lease: MaterialParseLease, result: MaterialParseResult) {
+export async function succeedMaterialParse(pool: Pool, lease: MaterialParseLease, result: MaterialParseResult | {pdf_quality: PdfQuality}) {
   await transaction(pool, async client => {
     const job = await lockedLease(client, lease);
     const updated = await client.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',result=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 RETURNING *", [job.id, result]);
-    await journal(client, updated.rows[0], 'material_parse.succeeded', 'succeeded', 'succeeded', { outcome: result.outcome });
+    await journal(client, updated.rows[0], 'material_parse.succeeded', 'succeeded', 'succeeded', 'outcome' in result ? { outcome: result.outcome } : {});
   });
 }
 
@@ -216,7 +217,8 @@ export async function failMaterialParse(pool: Pool, lease: MaterialParseLease, f
 export function materialParseJobDto(job: any): MaterialParseJob {
   const stages = Object.keys(job.checkpoint?.stages ?? {}).filter((s): s is Stage => (MATERIAL_PARSE_STAGES as readonly string[]).includes(s));
   const result = job.result as MaterialParseResult | null;
-  return { job_id: job.id, job_type: MATERIAL_PARSE_JOB_TYPE, subtype: MATERIAL_PARSE_JOB_SUBTYPE, project_id: job.project_id, material_id: job.material_id,
+  const quality = readPdfQuality(job.checkpoint?.stages?.[PDF_QUALITY_STAGE]);
+  return { ...(quality ? {pdf_quality: quality} : {}), job_id: job.id, job_type: MATERIAL_PARSE_JOB_TYPE, subtype: MATERIAL_PARSE_JOB_SUBTYPE, project_id: job.project_id, material_id: job.material_id,
     material_version: job.material_version, material_sha256: job.material_sha256.trim(), parser_version: job.parser_version, state: job.state, stage: job.stage,
     completed_stages: MATERIAL_PARSE_STAGES.filter(s => stages.includes(s)), attempts: job.attempts, max_attempts: job.max_attempts,
     error_code: job.error_code ?? null, outcome: result?.outcome ?? null, parse_status: result?.parse_status ?? null,
@@ -280,3 +282,34 @@ export async function readMaterialParseJobEvents(pool: Pool, owner: string, jobI
 }
 
 export { currentJob as currentMaterialParseJob };
+
+
+/** Dedicated inspection version avoids trusting v1's rounding and never starts OCR. */
+export async function enqueueAuditPdfQuality(client: PoolClient, input: {
+  owner: string; projectId: string; materialId: string; materialVersion: number; sha256: string; traceId: string;
+}) {
+  const existing = (await client.query(
+    "SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND material_sha256=$5 AND job_type='parse' AND subtype='material_parse' AND split_part(parser_version, ':retry:', 1)=ANY($6::text[]) ORDER BY created_at DESC,id DESC LIMIT 1",
+    [input.owner,input.projectId,input.materialId,input.materialVersion,input.sha256,PDF_QUALITY_JOB_VERSIONS])).rows[0];
+  return existing ? {jobId: existing.id as string, created: false} : enqueueMaterialParse(client, {...input, parserVersion: PDF_QUALITY_VERSION});
+}
+
+/** POST is idempotent and owner-scoped. Explicit retry only restarts an inconclusive final inspection. */
+export async function requestAuditPdfQuality(pool: Pool, owner: string, projectId: string, materialId: string, retry = false) {
+  return transaction(pool, async client => {
+    const p = await project(client, owner, projectId, true);
+    const m = await material(client, owner, projectId, materialId);
+    if (p.kind !== 'update' || !isAuditPdf(m)) throw new Problem(422, 'VALIDATION_FAILED', '此检查仅适用于募集书更新中的审计 PDF。');
+    const {jobId} = await enqueueAuditPdfQuality(client, {owner, projectId, materialId, materialVersion: m.version, sha256: m.sha256.trim(), traceId: uid()});
+    const job = (await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE', [jobId, owner])).rows[0];
+    const state = auditPdfQualityState(job.checkpoint?.stages?.[PDF_QUALITY_STAGE]);
+    if (retry && finalStates.has(job.state) && state !== 'ready' && state !== 'low') {
+      // Final jobs are immutable. Explicit retry creates a new inspection attempt;
+      // subsequent polling observes it, never overwriting the old receipt.
+      const next = await enqueueMaterialParse(client, {owner,projectId,materialId,materialVersion:m.version,
+        sha256:m.sha256.trim(),traceId:uid(),parserVersion:PDF_QUALITY_VERSION + ':retry:' + uid()});
+      return (await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2',[next.jobId,owner])).rows[0];
+    }
+    return job;
+  });
+}

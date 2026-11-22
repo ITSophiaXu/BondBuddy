@@ -88,7 +88,8 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
-export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+export function readinessMessage(reason: string, lastProcessingStage?: string, runState?: string): string {
+  if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
@@ -96,6 +97,11 @@ export function readinessMessage(reason: string, lastProcessingStage?: string): 
     : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
+  if (reason === 'file_authoring_output_limit_recovery_pending') return '编制服务的单步输出达到上限，正在核对已保存的进度。通过核对后将继续原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_recovery_unavailable') return runState === 'failed'
+    ? '编制服务的单步输出达到上限，本轮无法从已核验的进度继续。已保存材料仍保留，请联系支持核对本轮任务。'
+    : '编制服务的单步输出达到上限，目前无法核实可接续的进度。请联系支持核对原任务，无需重新上传材料。';
+  if (reason === 'file_authoring_output_limit_retries_exhausted') return '编制服务多次达到单步输出上限，已停止自动重试。已保存材料与处理记录仍保留，请联系支持核对。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
   if (reason === 'authoring_issuer_materials_required') return '请先停止本次任务并点击“继续修改”，补充目标发行人的材料后重新编制；其他企业的参考稿不能代替目标企业事实。';
@@ -523,7 +529,7 @@ export class ProjectExecution {
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
-      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage)
+      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage, run.state)
         : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'

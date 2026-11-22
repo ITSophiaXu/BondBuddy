@@ -13,6 +13,7 @@ if(!existsSync(codexArchive))writeFileSync(codexArchive,codexBytes);
 const archive=join(dir,'worker-snapshot.tar');
 const files=['package.json','node_modules','python','knowledge','product-prototype/knowledge','deploy/m1/codex-model-catalog.json','deploy/m1/codex-authoring-model-catalog.json','deploy/m1/codex-file-authoring-model-catalog.json','scripts/local-integration'];
 files.push('deploy/m1/codex-deepseek-model-catalog.json');
+files.push('deploy/m1/codex-copilot-file-authoring-model-catalog.json');
 for(const name of ['contracts','domain','rule-pack-registry','rule-applicability-context'])files.push(`packages/${name}/dist`,`packages/${name}/package.json`);
 for(const name of ['api','worker'])files.push(`apps/${name}/dist`,`apps/${name}/package.json`);
 if(!process.argv.includes('--reuse-snapshot')){

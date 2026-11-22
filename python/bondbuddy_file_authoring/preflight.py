@@ -23,6 +23,22 @@ from .word_patch import paragraph_text, q, serialized, xml
 VERSION = 'word-quality-preflight-v1'
 
 
+def host_render_handoff(result):
+    """Execution guidance only; a failed model diagnostic never approves delivery."""
+    report = result.get('quality_report')
+    issues = result.get('issues')
+    if (result.get('snapshot_current') is not True or result.get('status') != 'failed'
+            or not isinstance(report, dict) or report.get('version') != quality.VERSION
+            or report.get('status') != 'failed' or not isinstance(issues, list) or not issues
+            or issues != report.get('issues')
+            or any(not isinstance(issue, dict) or issue.get('code') != 'WORD_PAGE_COUNT_UNAVAILABLE'
+                   for issue in issues)):
+        return None
+    return {'action': 'defer_page_rendering_to_host', 'reason': 'rendering_infrastructure_only',
+            'operations_sha256': result['operations_sha256'], 'host_validation_required': True,
+            'authoring_completion': 'not_verified'}
+
+
 def protect_report_path(report_path, paths):
     if any(Path(path).absolute().resolve() == report_path.resolve() for path in paths):
         raise ValueError('WORD_PREFLIGHT_REPORT_INPUT_ALIAS')
@@ -218,6 +234,9 @@ def preflight(input_path, operations_path, report_path):
         result.update(status='failed', issues=[{'code': code}])
     # Existing model-written reports are overwritten by this fresh computation.
     checked_path(root, report_path, 'scratch')
+    handoff = host_render_handoff(result)
+    if handoff is not None:
+        result['host_handoff'] = handoff
     if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > MAX_LOG:
         raise ValueError('WORD_PREFLIGHT_REPORT_LIMIT')
     write_json(report_path, result)

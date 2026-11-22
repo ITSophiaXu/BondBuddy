@@ -118,6 +118,10 @@ function run(receiptPath, release = true) {
   check('browser-input-chain', process.execPath, ['scripts/prospectus-input-browser.mjs'], parseTap);
   check('worker-authoring', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/worker/dist/file-authoring-quality.test.js', 'apps/worker/dist/file-authoring-delivery.test.js',
+    'apps/worker/dist/file-authoring-repair.test.js',
+    'apps/worker/dist/model-gateway.test.js', 'apps/worker/dist/authoring-image-tools.test.js',
+    'apps/worker/dist/file-authoring-instructions.test.js', 'apps/worker/dist/file-authoring-recovery.test.js',
+    'apps/worker/dist/codex-file-output-limits.test.js', 'apps/worker/dist/file-authoring-payload-recovery.pg.test.js',
     'apps/worker/dist/file-authoring-format.test.js', 'apps/worker/dist/file-authoring-quality.pg.test.js',
     'apps/worker/dist/authoring-material-tools.test.js', 'apps/worker/dist/codex-exec-log.test.js',
     'apps/worker/dist/none-baseline.test.js'], parseTap);

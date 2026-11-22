@@ -29,6 +29,10 @@ VERSION = 'word-operations-v1'
 MAX_LOG = 32 * 1024 * 1024
 MAX_OPERATIONS = 20_000
 MAX_TEXT = 200_000
+RECOVERY_BATCH_POLICY = 'authoring-batch-policy.json'
+RECOVERY_BATCH_POLICY_BYTES = b'{"version":"authoring-output-limit-retry-v1"}\n'
+RECOVERY_BATCH_OPERATIONS = 12
+RECOVERY_BATCH_BYTES = 32 * 1024
 
 
 def error(code):
@@ -42,14 +46,33 @@ def regular_bytes(path, limit=MAX_LOG):
     return path.read_bytes()
 
 
-def read_json(path):
+def decode_json(raw):
     try:
-        result = json.loads(regular_bytes(path).decode('utf-8'))
+        result = json.loads(raw.decode('utf-8'))
     except (UnicodeError, json.JSONDecodeError):
         error('WORD_EDIT_JSON_INVALID')
     if not isinstance(result, (dict, list)):
         error('WORD_EDIT_JSON_INVALID')
     return result
+
+
+def read_json(path):
+    return decode_json(regular_bytes(path))
+
+
+def read_operation_batch(input_path, operations_path):
+    raw = regular_bytes(operations_path)
+    additions = decode_json(raw)
+    additions = additions if isinstance(additions, list) else [additions]
+    policy = Path(input_path).resolve().parent / RECOVERY_BATCH_POLICY
+    if policy.exists() or policy.is_symlink():
+        if regular_bytes(policy, 256) != RECOVERY_BATCH_POLICY_BYTES:
+            error('WORD_EDIT_BATCH_POLICY_INVALID')
+        # A single indivisible operation (e.g. inserting an entire period column)
+        # can still be assembled from small local fragments and applied atomically.
+        if len(additions) > RECOVERY_BATCH_OPERATIONS or len(additions) > 1 and len(raw) > RECOVERY_BATCH_BYTES:
+            error('WORD_EDIT_BATCH_LIMIT')
+    return additions
 
 
 def write_json(path, value):
@@ -662,6 +685,10 @@ def main():
                 error('WORD_EDIT_ARGUMENT_REQUIRED')
             result = finalize(args.input, args.operations, args.output_dir, args.skip_report)
         else:
+            if args.command == 'apply':
+                if not args.operations or not args.operation_file:
+                    error('WORD_EDIT_ARGUMENT_REQUIRED')
+                additions = read_operation_batch(args.input, args.operation_file)
             data, source, raw, log, editor = load_editor(args.input, args.operations)
             if args.command == 'no_changes':
                 if not args.operations or not args.reason or not args.reason.strip() or len(args.reason) > 2000:
@@ -672,10 +699,6 @@ def main():
                 write_json(args.operations, log)
                 result = {'version': VERSION, 'no_changes': True, 'operation_count': len(log['operations'])}
             elif args.command == 'apply':
-                if not args.operations or not args.operation_file:
-                    error('WORD_EDIT_ARGUMENT_REQUIRED')
-                additions = read_json(args.operation_file)
-                additions = additions if isinstance(additions, list) else [additions]
                 if len(log['operations']) + len(additions) > MAX_OPERATIONS:
                     error('WORD_EDIT_OPERATION_LIMIT')
                 for operation in additions:

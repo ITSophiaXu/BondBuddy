@@ -278,6 +278,21 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.deepEqual((await pool.query('SELECT outcome FROM bb_error_recovery_events WHERE job_id=$1', [timeoutJob.id])).rows.map(r => r.outcome),
       ['recovered'], 'later parse success resolves the earlier timeout');
 
+    // Quality is advisory and survives native parse retries and terminal failure.
+    const qualityBytes=Buffer.from('JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEKL0tpZHMgWyA0IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjAwIDgwMCBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDU0IDAwMDAwIG4gCjAwMDAwMDAxMTMgMDAwMDAgbiAKMDAwMDAwMDE2MiAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDUKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjI1NgolJUVPRgo=','base64');
+    const qualityId=(await complete(projectId,await startUpload(projectId,qualityBytes,'application/pdf','financial','synthetic-quality.pdf'),qualityBytes)).json().material_id as string;
+    const quality={version:'pdf-raster-quality-1' as const,status:'complete' as const,page_count:1,checked_pages:1,low_resolution_pages:[{page:1,dpi:144}]};
+    let qualityCalls=0;
+    const pdfQualityInspector=async(path:string)=>{assert.deepEqual(readFileSync(path),qualityBytes);qualityCalls++;return quality;};
+    parser=async()=>{throw Error('DOCUMENT_PARSER_TIMEOUT');};
+    assert.deepEqual([await runMaterialParseOnce(deps({pdfQualityInspector})),await runMaterialParseOnce(deps({pdfQualityInspector})),await runMaterialParseOnce(deps({pdfQualityInspector}))],['retry_scheduled','retry_scheduled','failed']);
+    assert.equal(qualityCalls,1);
+    const qualityResponse=await send('GET',`/api/v1/projects/${projectId}/materials/${qualityId}/parse-job`);
+    assert.equal(qualityResponse.statusCode,200);assert.deepEqual(qualityResponse.json().pdf_quality,quality);
+    assert.equal(qualityResponse.json().state,'failed');assert.equal(qualityResponse.json().error_code,'MATERIAL_PARSE_TIMEOUT');
+    owner=bob;assert.equal((await send('GET',`/api/v1/projects/${projectId}/materials/${qualityId}/parse-job`)).statusCode,404);owner=alice;
+    parser=async request=>syntheticParse(request);
+
     // Simulate a future reconciliation requeue without changing the production terminal-state guard.
     // The transaction restores the guard and job state when it rolls back.
     const reconciliation = await pool.connect();

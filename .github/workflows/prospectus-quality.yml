@@ -55,7 +55,7 @@ jobs:
           python -m pip install -r python/requirements-dev.txt
           python -m pip check
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-noto-cjk ripgrep
+          sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-noto-cjk fonts-dejavu-core ripgrep tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
       # This job does not receive private acceptance or issue release receipts.
       # The independent prospectus-release-acceptance status comes only from the
