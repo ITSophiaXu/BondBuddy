@@ -61,6 +61,20 @@ test('automatic zero floor waits for effective demand and budget, while validati
   assert.equal(planCapacity({...snapshot(),active_model_calls:4},[],{...config,phase:'single_node_validation'}).kind,'run');
 });
 
+test('fixed single node never creates, starts, drains or replaces capacity and leaves queued work pending',()=>{
+ const fixed={...config,phase:'fixed_single_node',min_running:1,max_owned:1,compute_cap_cny_per_hour:.8};
+ assert.doesNotThrow(()=>validateConfig(fixed));
+ assert.throws(()=>validateConfig({...fixed,max_owned:2}),/FIXED_NODE_REQUIRED/);
+ const s={...snapshot(),policy:{...snapshot().policy,max_nodes:1},nodes:[{identity,state:'ready',ready_slots:0,
+   active_leases:1,active_model_calls:1,capabilities:['authoring','review'] }],effective_queued_work:8,
+   groups:[{capability:'authoring',effective_queued_work:8,oldest_wait_seconds:3600,available_run_slots:0}]};
+ assert.equal(planCapacity(s,safeInventory(),fixed).reason,'fixed_capacity_queue');
+ assert.equal(planCapacity({...s,effective_queued_work:0},safeInventory(),fixed).reason,'fixed_capacity');
+ assert.equal(planCapacity(s,[],fixed).reason,'fixed_node_inventory_mismatch');
+ assert.equal(planCapacity(s,[{...safeInventory()[0],instance_state:'STOPPED'}],fixed).reason,'fixed_node_unavailable');
+ assert.equal(planCapacity(s,[...safeInventory(),{...safeInventory()[0],instance_id:'ins-extra'}],fixed).reason,'inventory_drift');
+});
+
 test('automatic zero floor drains the final healthy idle node but refuses lease, unknown and missing-idle shortcuts',()=>{
   const time=Date.now(),zero={...config,min_running:0},n={identity,state:'ready',revision:1,active_leases:0,active_model_calls:0,
     ready_slots:4,capabilities:['authoring','review'],idle_since:new Date(time-301000).toISOString()};

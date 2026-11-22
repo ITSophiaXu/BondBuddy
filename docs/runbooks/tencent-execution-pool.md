@@ -1,6 +1,8 @@
 # 腾讯按量执行池
 
-范围为同地域的最多两台按量 CVM，网站、唯一业务 PostgreSQL 和纯解析保持常驻。首版使用原生 CVM API，经现有运维服务的既有 tick 调和（启动、重启、无业务事件空闲期间均推进）；不启用 AS 告警扩容、健康替换或自动缩容。AS 的 `WAKE_UP_STOPPED_SCALING` 仍可能销毁实例或创建新实例，不能证明满足排空协议。关联 #1361；公共状态和方法只由 `packages/contracts/src/execution-capacity.ts` 定义。
+> **当前容量决定（2026-11-22）：固定单节点。** 用户决定暂时只用一台执行机器，不再自动扩容。历史自动策略段落仅作背景；当前行为和切换前置条件见[固定单节点执行容量决定](../product-decisions/2026-11-22-fixed-execution-capacity.md)。
+
+历史弹性池用同地域按量 CVM，网站、唯一业务 PostgreSQL 和纯解析保持常驻。控制面仍由原生 CVM API 和现有运维 tick 调和；但当前固定单节点决定覆盖历史多节点范围，生产切换完成后应只绑定一台常驻执行机。不得开启 AS 告警扩容、健康替换或自动缩容。AS 的 `WAKE_UP_STOPPED_SCALING` 可能销毁实例或创建新实例，不能证明满足排空协议。关联 #1361；公共状态和方法只由 `packages/contracts/src/execution-capacity.ts` 定义。
 
 ## 准备物料
 
@@ -86,7 +88,7 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 数据库客户端 unit 刻意没有 Install 段，禁止 enable。安装时清除该专属 unit 的旧开机链接；warm 开机先等待当前操作的 broker envelope，再安装当前 epoch leaf 并显式 start。启动检查 unit 为 static/disabled，启用开机自启则拒绝。已有 active transport 的身份/凭据漂移仍拒绝覆盖或重启，不能以重启掩盖旧流量。
 
-## 阶段、验收与撤销
+## 阶段、验收与撤销（历史弹性池实施记录）
 
 按单节点、双节点、自动策略三阶段推进。自动阶段在供应商/费用策略、实际库存失败冷却和真实停机费用证据满足前保持关闭。定向云故障单测、真实隔离 PG 双节点测试、真实云启动/领取/保存/排空/停机分别记录，模拟云端不可冒充 live。
 
@@ -110,7 +112,17 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 容器保持 `/run/bondbuddy/service/transport.sock` 路径，但只挂载宿主专用 `/run/bondbuddy/transport-socket` 目录；该目录只允许 socket，绝不包含 service env 或 key。重启 transport 后新 inode 会在同一个容器内可见。两个根权限 unit 通过 RuntimeDirectory/Group 1000/0750 创建冷启动目录，并保留目录以便代码拒绝未知残留，不自动删除未知内容。
 
 
-## 自动阶段停至零台
+## 当前固定单节点操作口径
+
+私有池配置使用 `phase=fixed_single_node`、`min_running=1`、`max_owned=1` 和准确 `resident_instance_id`；同一 PostgreSQL 容量策略使用 `max_nodes=1`。计算上限按一台机器核算，保留既有全局/单节点模型额度和费用准入。部署入口必须拒绝配置、策略、库存三者不一致的扩容写操作。
+
+固定模式不自动 Run、Start 或 Stop。唯一常驻实例未运行、未登记、未 ready，或发现额外实例时，控制器保持 hold 并发出 `execution_pool_fixed_capacity_hold` 诊断事件；运维告警据此通知值班人员。容量满时任务继续留在原持久队列，等待可用槽位，不新增实例。
+
+从现有多节点策略切换时，先读取当前节点、实际容器/服务、所有活跃任务租约与模型 holder、未决云操作和云端状态。选择准确常驻实例；对其余实例沿用当前自动版本的正向排空、Stop ACK、STOPPED/STOP_CHARGING 回读，完成后才停用旧调度配置。将数据库策略与私有配置一致更新为单节点，再部署固定策略版本并验证唯一节点可领取与保存成果。不得依靠租约过期、失联或自动器停止来认定可安全停机；未知云操作先核对，不重复发起。
+
+常驻实例故障时先关闭新领取并观察原有任务、租约和模型调用终态。人员根据准确云回执和节点前像人工恢复该实例；若需要替换机器，使用单独受控维护步骤，保留原云操作、epoch、私网身份及回滚证据。PR 合并、镜像存在和健康检查不能代替实际节点及任务验收。
+
+## 自动阶段停至零台（已被固定单节点决定取代）
 
 单节点／双节点验证阶段保持 `min_running=1`，正式自动配置使用 `phase=automatic, min_running=0`。无达到等待阈值的有效独立积压时，空池不创建或启动实例；共享计划等待、业务材料缺项和预算关闭不构成扩容需求。达到阈值且全群／费用准入有效时，优先暖启动已停止实例，否则按原不可变请求创建一台。
 
