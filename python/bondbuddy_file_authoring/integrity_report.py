@@ -98,6 +98,8 @@ def generate(data, target):
     if counts: intro += '其中，' + '；'.join(counts) + '。'
     intro += '具体核查情况如下：'
     para(intro, '{{intro}}')
+    exported = data.get('exported_at') or data.get('generated_at') or datetime.now(timezone.utc).isoformat()
+    para('导出时间（北京时间）：' + beijing(exported), small=True)
     if info['draft'].get('notes'):
         para(info['draft']['notes'], small=True)
     para('汇总清单', '汇总清单', keep=True)
@@ -132,8 +134,9 @@ def generate(data, target):
             p = para(f'{index}、{r["site_name"]}', keep=True)
             p.paragraph_format.first_line_indent = Pt(0)
             confirmed = r.get('browser', {}).get('outcome') in ['results', 'no_results']
-            label = '查询词：' if confirmed else '尝试查询词：' if r['search_performed'] else '拟查询词：'
-            para(label + (r['query'] or '未完成查询'), small=True, keep=True)
+            attempted = bool(r.get('search_performed'))
+            label = '查询词：' if confirmed else '尝试查询词：' if attempted else '拟查询词：'
+            para(label + (r.get('query') or ('未完成查询' if attempted else '未记录')), small=True, keep=True)
             # A click, query form, challenge or blank page is not result evidence.
             # Blockers remain in private diagnostic storage, but never illustrate a completed query.
             automatic = [a for a in data.get('automatic', []) if confirmed and a['subject_id'] == subject['id'] and a['site_id'] == r['site_id'] and a.get('metadata', {}).get('kind') in ['result', 'detail']]
@@ -153,8 +156,12 @@ def generate(data, target):
                 p._p.append(link)
                 para('采集日志时间（北京时间）：' + beijing(meta['captured_at']), small=True)
             if not automatic:
-                para('本次未取得可确认的搜索结果截图，详见查询状态与原因。' if r['status'] != 'not_applicable' else r['reason'])
-                para('访问时间（北京时间）：' + beijing(r['checked_at']), small=True)
+                para('本次未取得可确认的搜索结果截图，详见查询状态与原因。' if r['status'] != 'not_applicable' else r['reason'], small=True)
+                checked = beijing(r.get('checked_at')) if r.get('checked_at') else '未记录'
+                if attempted:
+                    para('访问/尝试时间（北京时间）：' + checked, small=True)
+                else:
+                    para('未实际执行查询；记录时间（非访问时间，北京时间）：' + checked, small=True)
             para('查询状态：' + presentation(r)['label'])
             para('核查情况：' + presentation(r)['description'])
             for source in r.get('sources', []):

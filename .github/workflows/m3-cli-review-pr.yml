@@ -133,6 +133,27 @@ jobs:
           grep -Eq '^# fail 0$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m3-cli-native.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m3-cli-native.tap"
+      - name: Pinned Copilot file protocol with strict offline authentication
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --security-opt apparmor=bondbuddy-codex-v1 \
+            --security-opt "seccomp=$GITHUB_WORKSPACE/deploy/m1/security/codex-seccomp.json" \
+            --cpus 2 --memory 2g --memory-swap 2g --pids-limit 256 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            --tmpfs /home/node/.cache:rw,exec,nosuid,nodev,size=512m,uid=1000,gid=1000 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/deploy/m1/codex-copilot-file-authoring-model-catalog.json,dst=/app/deploy/m1/codex-copilot-file-authoring-model-catalog.json,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/deploy/m1/Dockerfile,dst=/app/deploy/m1/Dockerfile,readonly" \
+            -e BB_TEST_CODEX_BIN=/opt/codex/bin/codex \
+            -e BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python -e PYTHONDONTWRITEBYTECODE=1 \
+            --entrypoint node bondbuddy-m3-cli-native:ci \
+            --test --test-concurrency=1 --test-reporter=tap apps/worker/dist/codex-copilot-file-protocol.test.js \
+            | tee "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# tests 4$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# pass 4$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/copilot-file-protocol.tap"
       - name: Native Word and parser regressions
         run: python -m unittest -v test_document_parser test_review_word test_review_file_annotations test_unified_word test_word_delivery test_file_authoring test_fixed_edit test_source_outline test_revision_cli
       - name: Stop private Blob test service

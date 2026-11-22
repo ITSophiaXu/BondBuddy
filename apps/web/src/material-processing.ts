@@ -1,12 +1,12 @@
-import { type MaterialParseJob } from '@bondbuddy/contracts';
+import { isAuditPdf, auditPdfQualityMessage, auditPdfQualityState, AUDIT_PDF_INCOMPLETE_MESSAGE, type MaterialParseJob } from '@bondbuddy/contracts';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { esc } from './ui.js';
 
 type Material = Dto<'MaterialResponse'>;
-type Reader = Pick<ApiClient, 'materialParseJob' | 'material'>;
+type Reader = Pick<ApiClient, 'materialParseJob' | 'material'> & Partial<Pick<ApiClient, 'materialPdfQuality'>>;
 type Entry = {
   material: Material; job?: MaterialParseJob; error?: string; loading: boolean; requested: boolean;
-  controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
+  retryQuality?: boolean; controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
 };
 export const materialProcessingKey = (material: Material) => `${material.material_id}:${material.material_version}:${material.sha256}`;
 
@@ -52,10 +52,44 @@ export class MaterialProcessing {
   private disposed = false;
   private visible = true;
   private running = 0;
-  constructor(private api: Reader, private projectId: string, private changed: () => void) {}
+  constructor(private api: Reader, private projectId: string, private changed: () => void,
+    private options: {auditPdfGate?: boolean; auditOnly?: boolean} = {}) {}
+
+  private gated(material: Material) { return Boolean(this.options.auditPdfGate && isAuditPdf(material)); }
+  private tracks(material: Material) { return !this.options.auditOnly || this.gated(material); }
+
+  block(materials: Material[]): string {
+    for (const material of materials) {
+      if (!this.gated(material)) continue;
+      const entry = this.entries.get(materialProcessingKey(material));
+      const incomplete = auditPdfQualityState(entry?.job?.pdf_quality) === 'pending' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && auditPdfQualityState(entry.job.pdf_quality) === 'pending'));
+      const message = incomplete ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(entry?.job?.pdf_quality);
+      if (message) return material.filename + '：' + message;
+    }
+    return '';
+  }
+
+  private renderAudit(material: Material, entry: Entry | undefined) {
+    const quality = entry?.job?.pdf_quality;
+    let state = auditPdfQualityState(quality);
+    if (state === 'pending' && (entry?.error || entry?.job && (['failed', 'cancelled', 'paused'].includes(entry.job.state) || entry.job.state === 'succeeded' && state === 'pending'))) state = 'incomplete';
+    const title = state === 'low' ? '请更换电子版审计报告' : state === 'ready' ? (quality?.sampled_pages ? '清晰度抽查完成' : '清晰度检查完成')
+      : state === 'incomplete' ? '清晰度检查未完成' : '正在检查清晰度';
+    const tone = state === 'low' || state === 'incomplete' ? 'error' : state === 'ready' ? 'ready' : 'pending';
+    const pages = (quality?.blocking_pages ?? quality?.low_resolution_pages.map(p => p.page))?.slice(0, 8).join('、');
+    const pageHint = state === 'low' && pages ? 'PDF 第 ' + pages + (quality!.low_resolution_pages.length > 8 ? ' 等' : '') + ' 页。' : '';
+    const hint = state === 'ready' && quality?.sampled_pages ? '已抽查 ' + quality.checked_pages + (quality.low_resolution_pages.length ? ' 页。部分页面分辨率偏低，可继续；建议优先使用清晰电子版，并核对生成后的财务数字。' : ' 页，未发现低分辨率页面。')
+      : state === 'incomplete' ? AUDIT_PDF_INCOMPLETE_MESSAGE : auditPdfQualityMessage(quality);
+    const key = esc(materialProcessingKey(material));
+    return '<div class="material-processing" data-material-processing="' + key + '" data-tone="' + tone + '">' +
+      '<p class="processing-title" role="status">' + esc(title) + '</p>' +
+      (hint ? '<p class="processing-hint material-quality-warning" role="' + (state === 'low' ? 'alert' : 'status') + '">' + esc(pageHint + hint) + '</p>' : '') +
+      (state === 'incomplete' ? '<button type="button" class="text-button" data-processing-retry="' + key + '" ' + (entry?.loading ? 'disabled' : '') + '>重试清晰度检查</button>' : '') + '</div>';
+  }
 
   sync(materials: Material[]) {
     if (this.disposed) return;
+    materials = materials.filter(material => this.tracks(material));
     const keys = new Set(materials.map(materialProcessingKey));
     for (const [key, entry] of this.entries) if (!keys.has(key)) {
       clearTimeout(entry.timer); entry.controller?.abort(); this.entries.delete(key);
@@ -67,10 +101,11 @@ export class MaterialProcessing {
     this.pump();
   }
 
-  refresh(key?: string) {
+  refresh(key?: string, retryQuality = false) {
     if (this.disposed) return;
     for (const [id, entry] of this.entries) if (!key || key === id) {
       clearTimeout(entry.timer); entry.polls = 0;
+      if (retryQuality && this.gated(entry.material)) entry.retryQuality = true;
       // A repeated click or reused upload joins the in-flight read.
       if (!entry.controller) { entry.requested = true; entry.loading = true; }
     }
@@ -90,12 +125,19 @@ export class MaterialProcessing {
   }
 
   render(material: Material) {
+    if (!this.tracks(material)) return '';
     const key = materialProcessingKey(material), entry = this.entries.get(key);
+    if (this.gated(material)) return this.renderAudit(material, entry);
     const summary = entry?.job ? jobSummary(entry.job) : ['pending', '正在读取处理状态…', ''];
     const [tone, title, hint] = entry?.error ? ['attention', '处理状态暂不可用', entry.error] : summary;
+    const quality = !entry?.error ? entry?.job?.pdf_quality : undefined;
+    const affected = quality?.low_resolution_pages ?? [];
+    const pageList = affected.slice(0, 8).map(item => item.page).join('、');
+    const qualityHint = affected.length ? `第 ${pageList}${affected.length > 8 ? ' 等' : ''} 页扫描图片清晰度可能不足，可能影响文字和金额识别。建议更换电子原版，或使用 300 DPI 重新扫描；仅放大或重新保存不能恢复细节。${quality?.status === 'partial' ? '清晰度检查尚未覆盖全文。' : ''}` : '';
     const canRefresh = entry?.error || entry?.job && ['paused', 'failed', 'cancelled'].includes(entry.job.state);
     return `<div class="material-processing" data-material-processing="${esc(key)}" data-tone="${tone}">
       <p class="processing-title" role="status">${esc(title)}</p>${hint ? `<p class="processing-hint">${esc(hint)}</p>` : ''}
+      ${qualityHint ? `<p class="processing-hint material-quality-warning" role="note">${esc(qualityHint)}</p>` : ''}
       ${canRefresh ? `<button type="button" class="text-button" data-processing-retry="${esc(key)}" ${entry.loading ? 'disabled' : ''}>${entry.loading ? '正在刷新…' : '刷新状态'}</button>` : ''}
     </div>`;
   }
@@ -117,7 +159,10 @@ export class MaterialProcessing {
     const timeout = setTimeout(() => controller.abort(), 15000);
     const material = entry.material;
     try {
-      const job = await this.api.materialParseJob(this.projectId, material.material_id, controller.signal);
+      const retry = Boolean(entry.retryQuality); entry.retryQuality = false;
+      const job = this.gated(material)
+        ? await this.api.materialPdfQuality!(this.projectId, material.material_id, retry, controller.signal)
+        : await this.api.materialParseJob(this.projectId, material.material_id, controller.signal);
       controller.signal.throwIfAborted();
       if (!current()) return;
       if (job.project_id !== this.projectId || job.material_id !== material.material_id || job.material_version !== material.material_version || job.material_sha256 !== material.sha256) {
@@ -140,7 +185,7 @@ export class MaterialProcessing {
         entry.controller = undefined; entry.loading = false; this.changed();
         // Paused, terminal and read-error states require explicit refresh. No fake percentages or unbounded error retries.
         if (this.visible && !entry.error && (entry.job?.state === 'queued' || entry.job?.state === 'running')) {
-          entry.timer = setTimeout(() => { entry.requested = true; this.pump(); }, Math.min(3000 * 2 ** Math.min(entry.polls++, 3), 15000));
+          entry.timer = setTimeout(() => { entry.requested = true; this.pump(); }, this.gated(material) ? Math.min(1000 * 2 ** Math.min(entry.polls++, 2), 3000) : Math.min(3000 * 2 ** Math.min(entry.polls++, 3), 15000));
         }
       }
     }

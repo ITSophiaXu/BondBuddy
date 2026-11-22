@@ -20,6 +20,9 @@ def export_report(source: Path, target: Path):
     style.font.name = 'Arial'
     style.font.size = Pt(10.5)
     style.element.get_or_add_rPr().get_or_add_rFonts().set(qn('w:eastAsia'), 'Microsoft YaHei')
+    language = OxmlElement('w:lang')
+    language.set(qn('w:eastAsia'), 'zh-CN')
+    style.element.get_or_add_rPr().append(language)
     style.paragraph_format.space_after = Pt(5)
     # Keep every line, including Markdown tables and code; no JSON/schema interpretation.
     for line in text.splitlines():

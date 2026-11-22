@@ -3,14 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas, type ReviewAction } from '@bondbuddy/contracts';
 import { createReviewActionObserver } from './review-action-progress.js';
-import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, modelCancellationDiagnostic, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, FILE_AUTHORING_COMPACT_PROMPT, FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, loadCodexAdapterConfig, modelCancellationDiagnostic, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 import {ModelResultStoreFailure} from './durable-probe-journal.js';
@@ -326,6 +326,59 @@ test('authoring deadline is independently configurable and rejects invalid timer
     assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: value }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });
 
+test('enforcement requires an explicit bounded request budget and preserves off/measure configuration', () => {
+  assert.equal(loadCodexAdapterConfig({}).model_gateway, undefined);
+  assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'off' }).model_gateway, undefined);
+  assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'measure' }).model_gateway, 'measure');
+  for (const budget of [undefined, ''])
+    assert.throws(() => loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: budget }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  for (const mode of ['off', 'measure', 'enforce']) {
+    for (const budget of ['0', '-1', 'NaN', 'Infinity', '1.5', '268435457', '9007199254740992'])
+      assert.throws(() => loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: mode, BB_MODEL_MAX_REQUEST_BYTES: budget }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  }
+  for (const budget of [1, 268435456]) {
+    const config = loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: String(budget) });
+    assert.equal(config.model_gateway, 'enforce');
+    assert.equal(config.model_max_request_bytes, budget);
+    assert.doesNotThrow(() => assertCodexConfig(config));
+    assert.throws(() => assertCodexConfig({ ...config, model_max_request_bytes: undefined }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+    for (const invalid of [0, -1, 1.5, NaN, Infinity, 268435457])
+      assert.throws(() => assertCodexConfig({ ...config, model_max_request_bytes: invalid }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  }
+});
+
+test('enforcement gateway startup failure never spawns or falls back; measurement remains optional', async () => {
+  const { root, config, cleanup } = await setup({ model_gateway: 'enforce', model_max_request_bytes: 1024 * 1024 });
+  try {
+    // The gateway rejects a query in its upstream URL before listening. The fake
+    // child never contacts this URL, so measure can prove its existing fallback.
+    const invalid = { ...config, base_url: 'https://synthetic.invalid/responses?unsupported=1' };
+    for (const mode of ['enforce', 'measure'] as const) {
+      const events: Record<string, unknown>[] = [], logs: Record<string, unknown>[] = [];
+      const result = await runCodexProcess({ ...invalid, model_gateway: mode }, {
+        prompt: 'SCENARIO:structured', cwd: root, codexHome: root, home: root, schemaFile: null,
+        ephemeral: true, resumeThreadId: null, captureExecLog: true,
+        onEvent: event => events.push(event), gatewayLog: line => logs.push(line),
+      });
+      assert.ok(logs.some(line => line.event === 'start_failed'));
+      if (mode === 'enforce') {
+        assert.equal(result.stop, 'gateway_failed');
+        assert.equal(result.turn_completed, false);
+        assert.equal(result.exit_code, null);
+        assert.equal(events.length, 0, 'no child event means the rejected gateway cannot use the direct route');
+        const classified = classifyCodexResult(result, () => ({ ok: false }));
+        assert.equal(classified.outcome, 'failed');
+        assert.equal(classified.error_code, 'MODEL_ADAPTER_CONFIG_INVALID');
+        assert.equal(classified.usage.status, 'unknown');
+        assert.equal(classified.usage.total_tokens, null);
+      } else {
+        assert.equal(result.turn_completed, true);
+        assert.ok(events.some(event => event.type === 'fake.trace'));
+      }
+    }
+  } finally { await cleanup(); }
+});
+
 test('authoring survives the short-call deadline but remains bounded and cancellable', async () => {
   const { config, cleanup } = await setup({ timeout_ms: 200, authoring_timeout_ms: 3000, kill_grace_ms: 100 });
   const materialTools = { materials: [] };
@@ -398,8 +451,9 @@ for (const credential of ['env', 'command'] as const) {
       assert.ok(args.includes('--ignore-user-config'));
       const overrides = args.filter((_, index) => args[index - 1] === '-c');
       assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
-      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), ['model_auto_compact_token_limit=900000']);
-      for (const setting of ['model_context_window=1000000', 'model_auto_compact_token_limit=900000']) {
+      const compaction = mode === 'file' ? 128000 : 900000;
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), [`model_auto_compact_token_limit=${compaction}`]);
+      for (const setting of ['model_context_window=1000000', `model_auto_compact_token_limit=${compaction}`]) {
         const index = args.indexOf(setting);
         assert.ok(index > args.indexOf('--ignore-user-config'), `${setting} must be an exec override`);
         assert.equal(args[index - 1], '-c');
@@ -410,12 +464,52 @@ for (const credential of ['env', 'command'] as const) {
       const catalog = credential === 'env' ? 'codex-deepseek-model-catalog.json'
         : mode === 'materials' ? 'codex-authoring-model-catalog.json'
         : mode === 'image' ? 'codex-image-model-catalog.json'
-        : mode === 'file' ? 'codex-file-authoring-model-catalog.json' : 'codex-model-catalog.json';
+        : mode === 'file' ? 'codex-copilot-file-authoring-model-catalog.json' : 'codex-model-catalog.json';
       assert.equal(catalogs.at(-1), `model_catalog_json="/opt/bondbuddy/${catalog}"`);
       if (credential === 'env') assert.equal(catalogs.length, 1, 'all DeepSeek modes retain the same fallback capabilities');
     });
   }
 }
+
+test('file authoring and recovery retain the same 128k compaction headroom with bounded tools', () => {
+  const config = loadCodexAdapterConfig({});
+  for (const recovery of [false, true]) {
+    const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
+      resumeThreadId: null, fileAuthoring: true, fileRecovery: recovery });
+    assert.ok(args.some((value, index) => value === 'view_image' && args[index - 1] === '--disable'));
+    assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
+    assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
+    assert.ok(args.includes('mcp_servers.bb_images.required=true'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.enabled_tools=["status","checkpoint"]'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.tools.status.approval_mode="writes"'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.tools.checkpoint.approval_mode="approve"'));
+    assert.ok(args.includes('mcp_servers.bb_continuation.required=true'));
+    assert.ok(args.includes('model_auto_compact_token_limit=128000'));
+    assert.ok(args.includes(`tool_output_token_limit=${recovery ? 2048 : 4096}`));
+    assert.ok(args.includes(`developer_instructions=${JSON.stringify(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`), 'runtime continuation applies even when the original prompt is already pinned');
+    assert.ok(args.includes(`compact_prompt=${JSON.stringify(FILE_AUTHORING_COMPACT_PROMPT)}`));
+    assert.ok(args.includes('--ephemeral'));
+  }
+  const ordinary = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true, resumeThreadId: null });
+  assert.ok(!ordinary.some(arg => /^(developer_instructions|compact_prompt)=/.test(arg)), 'non-file calls retain their own instruction policy');
+  for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
+    assert.match(text, /untrusted execution data/);
+    assert.match(text, /next_offset/);
+    assert.match(text, /hashes/);
+  }
+  assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, /do not prove complete reading/);
+  for(const policy of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS,FILE_AUTHORING_COMPACT_PROMPT]) assert.match(policy,/bb_continuation\.status/);
+  assert.match(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS,/bb_continuation\.checkpoint/);
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /Never invent hashes, offsets, financial verification or completed coverage/);
+  for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
+    for (const required of ['snapshot_current=true', 'status=failed', 'WORD_PAGE_COUNT_UNAVAILABLE',
+      'host_handoff.action=defer_page_rendering_to_host', 'operations_sha256', 'authoring_completion=not_verified',
+      '退出码 1', '独立重建双稿', '70%', '不得据此跳过原任务剩余材料阅读', '日志已变或有其他质量失败'])
+      assert.ok(text.includes(required), `pinned prompts and compaction must retain the handoff limit: ${required}`);
+  }
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /failed issue codes.*unfinished authoring work/);
+  assert.match(FILE_AUTHORING_COMPACT_PROMPT, /stale hash or mixed failures never permits/);
+});
 
 test('DeepSeek catalog preserves the official 0.166 fallback prompt and capabilities with a 1M ceiling', async () => {
   // openai/codex@6ff1e1ca3b30fc8b914720681fcf5fe62e95f856:
@@ -606,7 +700,7 @@ test('persistent schema re-ask resumes the existing thread', async () => {
 });
 
 test('timeout kills the process group, records the attempt, usage unknown, no retry', async () => {
-  const { config, cleanup } = await setup({ timeout_ms: 300, kill_grace_ms: 200 });
+  const { config, cleanup } = await setup({ timeout_ms: 1200, kill_grace_ms: 200 });
   try {
     const j = new MemoryCodexJournal();
     const r = await runContainedModelCall(call('SCENARIO:hang'), j, config);
@@ -615,7 +709,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
     if (process.platform === 'win32') assert.ok(rec.exit_signal === 'SIGKILL' || (rec.exit_signal === null && rec.exit_code !== 0));
     else assert.equal(rec.exit_signal, 'SIGKILL', 'fake ignores SIGTERM, grace SIGKILL ends it');
     assert.equal(rec.usage.status, 'unknown'); assert.equal(rec.usage.input_tokens, null);
-    assert.ok(rec.duration_ms >= 300);
+    assert.ok(rec.duration_ms >= 1200);
     assert.ok(rec.framework_thread_id===null||rec.framework_thread_id==='0199a1f0-0000-7000-8000-00000000c0de');
     assert.ok(rec.duration_ms < 10000, 'termination remains bounded when the OS tree-kill helper cannot complete');
     assert.equal(j.intents.length, 1);
@@ -625,13 +719,99 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
 test('interrupted, non-zero exit, broken stream and turn.failed map to stable codes with unknown usage', async () => {
   const { config, cleanup } = await setup();
   try {
-    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED']];
+    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE']];
     for (const [scenario, status, code] of cases) {
       const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
       assert.equal(r.status, status, scenario); assert.equal(r.error_code, code, scenario);
       assert.equal(r.attempts[0].usage.status, 'unknown', `${scenario}: no turn.completed means unknown, never 0`);
       assert.ok(validateRecord(r.attempts[0]), scenario);
     }
+  } finally { await cleanup(); }
+});
+
+test('explicit 413 stops a retrying CLI promptly without retrying the call or zeroing unknown usage', async () => {
+  const { root, config, cleanup } = await setup({ timeout_ms: 10000 });
+  const script = join(root, 'synthetic-retrying-codex.mjs');
+  await writeFile(script, `for await (const chunk of process.stdin) {}
+process.stdout.write(JSON.stringify({type:'thread.started',thread_id:'synthetic-payload-thread'})+'\\n');
+if(process.argv[3]==='stderr') process.stderr.write('x'.repeat(10000)+'\\n'+JSON.parse(process.argv[2]).message+'\\n');
+else process.stdout.write(process.argv[2]+'\\n');
+setInterval(()=>{},1000);
+`);
+  try {
+    for (const [stream, event] of [
+      ['stdout', { type: 'error', error: { status: 413, message: 'synthetic rejected request body' } }],
+      ['stdout', { type: 'error', message: 'unexpected status 413 Payload Too Large: Failed to buffer the request body: length limit exceeded' }],
+      ['stderr', { type: 'error', message: 'unexpected status 413 Payload Too Large: Failed to buffer the request body: length limit exceeded' }],
+    ] as const) {
+      const journal = new MemoryCodexJournal();
+      const result = await runContainedModelCall(call('synthetic request'), journal, { ...config, command: [process.execPath, script, JSON.stringify(event), stream] });
+      assert.equal(result.status, 'failed');
+      assert.equal(result.error_code, 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+      assert.equal(result.attempts.length, 1);
+      assert.equal(journal.intents.length, 1);
+      assert.equal(journal.observations.length, 1);
+      assert.equal(journal.observations[0].retryable, false);
+      assert.ok(result.attempts[0].duration_ms < 5000, '413 terminates before the 10-second model deadline');
+      assert.equal(result.attempts[0].usage.status, 'unknown');
+      for (const field of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_tokens', 'total_tokens'] as const)
+        assert.equal(result.attempts[0].usage[field], null, `${field} is unknown, never fabricated as zero`);
+      assert.ok(validateRecord(result.attempts[0]));
+    }
+  } finally { await cleanup(); }
+});
+
+test('cancellation during the payload-rejection kill grace wins over recovery', { skip: process.platform === 'win32' }, async () => {
+  const { root, config, cleanup } = await setup({ timeout_ms: 10000, kill_grace_ms: 300 });
+  const script = join(root, 'synthetic-payload-cancellation.mjs');
+  await writeFile(script, `for await (const chunk of process.stdin) {}
+process.on('SIGTERM',()=>{});
+process.stdout.write(JSON.stringify({type:'error',error:{status:413,message:'synthetic request rejected'}})+'\\n');
+setInterval(()=>{},1000);
+`);
+  try {
+    for (const source of ['task']) {
+      const controller = new AbortController();
+      const journal = new MemoryCodexJournal();
+      const result = await runContainedModelCall(call('synthetic', {
+        ...(source === 'task' ? { signal: controller.signal } : {}),
+        onEvent: event => { if (event.type === 'error') setTimeout(() => controller.abort(), 20); },
+      }), journal, { ...config, command: [process.execPath, script] });
+      assert.equal(result.status, 'needs_reconcile', source);
+      assert.equal(result.error_code, 'MODEL_CANCELLED', source);
+      assert.equal(journal.intents.length, 1, source);
+      assert.equal(journal.observations.length, 1, source);
+      assert.equal(journal.observations[0].observation.error_code, 'MODEL_CANCELLED', source);
+      assert.equal(journal.observations[0].observation.outcome, 'pending_reconcile', source);
+    }
+  } finally { await cleanup(); }
+});
+
+test('an incidental page number cannot stop the CLI and an explicit other HTTP status wins', async () => {
+  const { root, config, cleanup } = await setup();
+  const script = join(root, 'synthetic-status-codex.mjs');
+  await writeFile(script, `for await (const chunk of process.stdin) {}
+for (const event of JSON.parse(process.argv[2])) process.stdout.write(JSON.stringify(event)+'\\n');
+process.exit(Number(process.argv[3]));
+`);
+  try {
+    const incidental = [
+      { type: 'error', message: 'Synthetic page 413 contains the heading Payload Too Large in the uploaded document.' },
+      { type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify({ answer: 'synthetic', n: 1 }) } },
+      { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 1 } },
+    ];
+    const completed = await runContainedModelCall(call('synthetic'), new MemoryCodexJournal(), {
+      ...config, command: [process.execPath, script, JSON.stringify(incidental), '0'],
+    });
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.attempts[0].usage.status, 'measured');
+    const auth = { status: 401, message: 'synthetic diagnostic mentions HTTP 413 in unrelated content' };
+    const denied = await runContainedModelCall(call('synthetic'), new MemoryCodexJournal(), {
+      ...config, command: [process.execPath, script, JSON.stringify([{ type: 'error', error: auth }, { type: 'turn.failed', error: auth }]), '1'],
+    });
+    assert.equal(denied.error_code, 'MODEL_PROVIDER_AUTH_FAILED');
+    assert.equal(denied.attempts[0].usage.status, 'unknown');
+    assert.equal(denied.attempts[0].usage.total_tokens, null);
   } finally { await cleanup(); }
 });
 
