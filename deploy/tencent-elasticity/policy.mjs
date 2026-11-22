@@ -43,7 +43,8 @@ export function validateConfig(c, {apply = false, expenditure = true} = {}) {
   requireThat((c.min_running===1 || (c.phase==='automatic'&&c.min_running===0)) &&
     Number.isInteger(c.max_owned)&&c.max_owned>=1&&c.max_owned<=64, 'POOL_BOUND');
   requireThat(c.max_owned<=2||hash(c.expansion_budget_review_sha256),'EXPANSION_BUDGET_REQUIRED');
-  requireThat(['single_node_validation', 'two_node_validation', 'automatic'].includes(c.phase), 'PHASE_REQUIRED');
+  requireThat(['fixed_single_node', 'single_node_validation', 'two_node_validation', 'automatic'].includes(c.phase), 'PHASE_REQUIRED');
+  if(c.phase==='fixed_single_node')requireThat(c.min_running===1&&c.max_owned===1&&id(c.resident_instance_id,'ins'),'FIXED_NODE_REQUIRED');
   requireThat((c.global_model_limit === undefined || modelCapacity(c.global_model_limit)) &&
     [4,8].includes(c.node_model_limit), 'CAPACITY_BOUND');
   requireThat(c.compute_cny_per_hour === 0.8 &&
@@ -78,12 +79,28 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
   if (snapshot.pending_cloud_reservations) return hold('pending_cloud_operation');
   if (inventory.length > config.max_owned) return hold('inventory_drift');
   if (inventory.some(x => x.cooldown_until && now < Date.parse(x.cooldown_until))) return hold('inventory_cooldown');
+  if(config.phase==='fixed_single_node'){
+    if (snapshot.policy.launch_blocked_by_operation_id) return hold('authorization_denial');
+    if (!snapshot.policy.budget_available) return hold('budget');
+    if (snapshot.policy.cooldown_until && now < Date.parse(snapshot.policy.cooldown_until)) return hold('policy_cooldown');
+    const {global_model_limit:limit, provider_concurrency_limit:quota,
+      provider_policy_sha256:providerReview, expense_policy_sha256:expenseReview} = snapshot.policy;
+    if (!modelCapacity(limit) || !modelCapacity(quota) || limit > quota ||
+        (config.global_model_limit !== undefined && config.global_model_limit !== limit)) return hold('policy_mismatch');
+    if (limit > 4 && (!hash(providerReview) || providerReview !== config.provider_budget_review_sha256 || !hash(expenseReview))) {
+      return hold('provider_budget_unverified');
+    }
+    if(inventory.length!==1||inventory[0]?.instance_id!==config.resident_instance_id)return hold('fixed_node_inventory_mismatch');
+    if(inventory[0].instance_state!=='RUNNING')return hold('fixed_node_unavailable');
+    const resident=snapshot.nodes.find(n=>n.identity.instance_id===config.resident_instance_id);
+    if(resident?.state!=='ready')return hold('fixed_node_not_ready');
+    // A fixed pool never creates, starts, drains or stops instances. Work remains
+    // in the existing durable queue until the resident node can accept it.
+    return hold(snapshot.effective_queued_work>0&&resident.ready_slots===0?'fixed_capacity_queue':'fixed_capacity');
+  }
   const live = inventory.filter(x => x.instance_state !== 'STOPPED'); // unknown/starting still reserve costs
   const ready = snapshot.nodes.filter(x => x.state === 'ready');
   const automaticZero=config.phase==='automatic'&&config.min_running===0;
-  // Zero is an explicit execution-pool policy. Idle selection still requires
-  // positive PG activity evidence; the controller obtains the full drain proof
-  // and freezes the epoch before any cloud Stop. A lost node is never idle proof.
   if(automaticZero&&ready.length>0&&
     (snapshot.effective_queued_work===0||!snapshot.policy.budget_available)){
     const idle=ready.find(n=>inventory.some(i=>i.instance_id===n.identity.instance_id&&i.instance_state==='RUNNING')&&
@@ -91,7 +108,6 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
         Number.isFinite(Date.parse(n.idle_since))&&now-Date.parse(n.idle_since)>=config.idle_seconds*1000)));
     if(idle)return {kind:'drain',identity:idle.identity,revision:idle.revision};
   }
-  // Safe contraction is allowed even when the spend budget has been withdrawn.
   if (!automaticZero && (config.phase === 'automatic' || !snapshot.policy.budget_available) && ready.length > 1 && live.length > 1 &&
       (snapshot.effective_queued_work === 0 || !snapshot.policy.budget_available)) {
     const spare = ready.find(n => n.identity.instance_id !== config.resident_instance_id &&

@@ -238,9 +238,15 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         // Never stop the delayed node or replay any workload as a timeout action.
         log({event:'execution_pool_boot_delayed',instance_id:starting.identity.instance_id});
       }
-      if(initialEnrollmentPending||!inventory)return;
+      if(initialEnrollmentPending||!inventory){
+        if(config.phase==='fixed_single_node'&&initialEnrollmentPending)
+          diagnosticLog({event:'execution_pool_fixed_capacity_hold',reason:'fixed_node_not_ready',queued_work:snapshot.effective_queued_work});
+        return;
+      }
       stage='capacity_plan';
       plan??=await controller.plan(inventory);
+      if(config.phase==='fixed_single_node'&&plan.kind==='hold'&&['fixed_capacity_queue','fixed_node_inventory_mismatch','fixed_node_unavailable','fixed_node_not_ready','inventory_drift'].includes(plan.reason))
+        diagnosticLog({event:'execution_pool_fixed_capacity_hold',reason:plan.reason,queued_work:snapshot.effective_queued_work});
       if (plan.kind === 'drain') {
         const operationId=randomUUID();
         operationContext={operation_id:operationId,identity:plan.identity};stage='node_drain';
