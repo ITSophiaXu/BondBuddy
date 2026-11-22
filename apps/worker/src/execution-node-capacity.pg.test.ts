@@ -27,8 +27,15 @@ test('managed pool admission, dual capacity, drain, and cloud fencing',{skip:!co
  const observation=(action:string,requestId:string)=>({instance_state:action==='stop'?'STOPPED':'RUNNING',latest_operation:action==='stop'?'StopInstances':action==='start'?'StartInstances':'RunInstances',latest_operation_state:'SUCCESS',latest_operation_request_id:requestId,stop_charging_mode:action==='stop'?'STOP_CHARGING':null,observed_at:new Date().toISOString(),evidence_ref:'synthetic-describe.json',evidence_sha256:hash});
  const finish=async(op:ExecutionCloudOperation,i:ExecutionNodeIdentity)=>{
   const requestId='request-'+op.operation_id;
-  op=await control.recordCloudResult(op.operation_id,op.revision,{state:'submitted',identity:i,provider_request_id:requestId,observation:null});
-  return control.recordCloudResult(op.operation_id,op.revision,{state:'completed',identity:i,provider_request_id:requestId,observation:observation(op.action,requestId)});
+  assert.ok(op.dispatched_at);
+  // Run requires its singleton ACK and creation binding, in addition to a
+  // running observation. These receipts remain explicit synthetic evidence.
+  op=await control.recordCloudResult(op.operation_id,op.revision,{state:'submitted',identity:i,provider_request_id:requestId,observation:null,
+   ...(op.action==='run'?{run_acceptance:{operation_id:op.operation_id,identity:i,provider_request_id:requestId,instance_ids:[i.instance_id],client_token:op.client_token,
+    launch_manifest_sha256:hash,launch_binding_sha256:hash,evidence_ref:'synthetic-run-acceptance.json',evidence_sha256:hash}}:{})});
+  return control.recordCloudResult(op.operation_id,op.revision,{state:'completed',identity:i,provider_request_id:requestId,observation:{...observation(op.action,requestId),
+   ...(op.action==='run'?{run_creation:{operation_id:op.operation_id,identity:i,launch_manifest_sha256:hash,launch_binding_sha256:hash,
+    created_at:op.dispatched_at!,instance_status:'RUNNING',status_request_id:requestId}}:{})}});
  };
  await t.test('legacy holder must positively drain before managed policy activation',async()=>{
   const old=await new PgModelCallBudget(pool).acquire(undefined,'legacy:before');

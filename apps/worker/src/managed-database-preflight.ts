@@ -12,6 +12,8 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
       ('workpaper_execution_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_m4_executions',col,'INSERT'))
         FROM unnest(ARRAY['run_id','owner_user_id','topic_id','manifest','input_hash']) AS columns(col))),
       ('reservation_charged_points_insert', has_column_privilege(current_user,'public.bb_credit_reservations','charged_points','INSERT')),
+      ('authoring_scope_reservation_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_authoring_scope_reservations',col,'INSERT'))
+        FROM unnest(ARRAY['owner_user_id','scope_quote_id','reservation_id']) AS columns(col))),
       ('refund_unit_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_units',col,'INSERT'))
         FROM unnest(ARRAY['owner_user_id','reservation_id','item_id','run_id','ordinal','source_item_key','label','points','scope_quote_id','evidence_kind','evidence']) AS columns(col))),
       ('refund_slice_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_task_refund_unit_slices',col,'INSERT'))
@@ -27,6 +29,34 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
         FROM unnest(ARRAY['state','updated_at']) AS columns(col))),
       ('model_execution_config_write', has_table_privilege(current_user,'public.bb_model_attempt_execution_configs','INSERT')),
       ('model_result_failure_write', has_table_privilege(current_user,'public.bb_model_result_failure_diagnostics','INSERT')),
+      ('ops_alert_read', has_table_privilege(current_user,'public.bb_ops_alerts','SELECT')),
+      ('ops_alert_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_ops_alerts',col,'INSERT'))
+        FROM unnest(ARRAY['id','kind','severity','dedupe_key','detail']) AS columns(col))),
+      ('performance_session_read', has_table_privilege(current_user,'public.bb_performance_sessions','SELECT')),
+      ('performance_session_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_sessions',col,'INSERT'))
+        FROM unnest(ARRAY['session_id','owner_user_id','project_id','run_id','job_id','trace_id','run_execution_id','task_kind','service_role','worker_instance_id','release_sha','started_at','ended_at','last_flush_at','closed','generated','acknowledged','dropped','invalid_attributes','flush_errors','last_sequence','complete']) AS columns(col))),
+      ('performance_session_update', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_sessions',col,'UPDATE'))
+        FROM unnest(ARRAY['ended_at','last_flush_at','closed','generated','acknowledged','dropped','invalid_attributes','flush_errors','last_sequence','complete']) AS columns(col))),
+      ('performance_span_read', has_table_privilege(current_user,'public.bb_performance_spans','SELECT')),
+      ('performance_span_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_spans',col,'INSERT'))
+        FROM unnest(ARRAY['span_id','owner_user_id','run_id','session_id','run_execution_id','trace_id','job_id','parent_span_id','stage','step_key','step_version','status','started_at','ended_at','duration_ms','last_activity_at','clock_source','attributes','span_links','sequence']) AS columns(col))),
+      ('performance_span_update', (SELECT bool_and(has_column_privilege(current_user,'public.bb_performance_spans',col,'UPDATE'))
+        FROM unnest(ARRAY['status','ended_at','duration_ms','last_activity_at','attributes','span_links','sequence']) AS columns(col))),
+      ('workflow_session_version_write', has_column_privilege(current_user,'public.bb_execution_node_sessions','workflow_protocol_version','INSERT')),
+      ('workflow_phase_read', has_column_privilege(current_user,'public.bb_jobs','execution_admission_phase','SELECT')),
+      ('restore_quarantine_read', has_table_privilege(current_user,'public.bb_database_restore_quarantines','SELECT')),
+      ('restore_reconciliation_read', has_table_privilege(current_user,'public.bb_database_restore_reconciliations','SELECT')),
+      ('restore_fence_read', has_table_privilege(current_user,'public.bb_database_restore_fence_releases','SELECT')),
+      ('restore_account_gate', has_function_privilege(current_user,to_regprocedure('public.bb_restore_account_permitted(text)'),'EXECUTE')),
+      ('workflow_eligibility_gate', has_function_privilege(current_user,to_regprocedure('public.bb_workflow_run_eligible(text)'),'EXECUTE')),
+      ('workflow_outline_gate', has_function_privilege(current_user,to_regprocedure('public.bb_workflow_preparation_calls_safe(text,jsonb)'),'EXECUTE')),
+      ('capture_config_read', has_table_privilege(current_user,'public.bb_model_attempt_execution_configs','SELECT')),
+      ('sealed_capture_read', has_table_privilege(current_user,'public.bb_sealed_model_captures','SELECT')),
+      ('sealed_capture_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_sealed_model_captures',col,'INSERT'))
+        FROM unnest(ARRAY['id','owner_user_id','project_id','run_id','job_id','attempt_id','logical_call_id','attempt_no','execution_node_id','execution_node_epoch','execution_session_id','lease_token','spool_id','manifest_sha256','call_exit_proof','raw_usage','raw_outcome','evidence_sha256']) AS columns(col))),
+      ('recovered_capture_read', has_table_privilege(current_user,'public.bb_recovered_capture_evidence','SELECT')),
+      ('recovered_capture_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_recovered_capture_evidence',col,'INSERT'))
+        FROM unnest(ARRAY['id','owner_user_id','project_id','run_id','job_id','attempt_id','logical_call_id','attempt_no','original_node_id','original_epoch','original_session_id','recovery_session_id','capture_ref','capture_sha256','byte_size','manifest_sha256','evidence_sha256']) AS columns(col))),
       ('runtime_exit_capture_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_model_call_attempt_runtime',col,'INSERT'))
         FROM unnest(ARRAY['exit_capture_status','finish_reason_capture_status']) AS columns(col)))
     ) AS required(name,allowed) WHERE NOT COALESCE(allowed,false) ORDER BY name

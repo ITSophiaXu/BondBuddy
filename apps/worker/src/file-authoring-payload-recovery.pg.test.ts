@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
 import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/billing.js';
+import { trialConfigFromEnv } from '../../api/dist/trial-guard.js';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { uploadSyntheticAudit, uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
@@ -24,8 +25,11 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
   const pool=new Pool({connectionString:connection}),owner=`payload-${uid()}`,objects=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
     getIfExistsBounded:async k=>objects.get(k)??null,exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
-  const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
+  // This synthetic suite stresses supplier recovery and billing across many
+  // uploads by one owner; trial abuse quotas have their own regression suite.
+  const trial=trialConfigFromEnv({BB_TRIAL_GUARD:'off'});
+  const app=createServer({pool,blobs,trial,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
+  const paidApp=createServer({pool,blobs,trial,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
     observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;

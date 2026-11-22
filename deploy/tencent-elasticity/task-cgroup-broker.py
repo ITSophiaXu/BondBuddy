@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Root-owned per-service containment; no shell, arbitrary paths or kill API."""
+"""Root-owned containment; only an owned, durably sealed call subtree may be killed."""
 import hashlib
 import json
 import os
@@ -91,7 +91,12 @@ class Broker:
         row = private_json(self.state / (key + ".json"))
         require(row["boot"] == self.boot and row["context"] == self.binding["context"])
         require(row["identity"] == request.get("identity"))
-        group = self.root / ("bb-task-" + key)
+        if row.get("parent_key"):
+            parent_key, parent, parent_group = self.task({"key": row["parent_key"], "identity": row["parent_identity"]})
+            require(parent_key != key and parent["worker"] == row["worker"] and not parent.get("parent_key"))
+            group = parent_group / ("bb-call-" + key)
+        else:
+            group = self.root / ("bb-task-" + key)
         if allow_retired and row.get("empty_proven") is True and not group.exists():
             require(row["sealed"])
             return key, row, group
@@ -108,12 +113,26 @@ class Broker:
         # and setsid. It excludes zombies that can no longer execute.
         events = dict(line.split() for line in (group / "cgroup.events").read_text().splitlines())
         require(events.get("populated") in ("0", "1"))
-        return {"status": "ok", "key": key, "identity": row["identity"],
-                "sealed": row["sealed"], "nativeProcesses": int(events["populated"]) or self.pending_launchers(key)}
+        result = {"status": "ok", "key": key, "identity": row["identity"],
+                  "sealed": row["sealed"], "nativeProcesses": int(events["populated"]) or self.pending_launchers(key)}
+        if row.get("parent_key"):
+            result["callBinding"] = row["scope"]
+        return result
 
     def pending_launchers(self, key):
         saved = private_json(self.worker_file)
         count = 0
+        keys = {key}
+        parent_path = self.state / (key + ".json")
+        if parent_path.exists():
+            parent = private_json(parent_path)
+            for path in self.state.glob("*.json"):
+                if re.fullmatch(r"[a-f0-9]{64}\.json", path.name):
+                    row = private_json(path)
+                    if row.get("parent_key") == key:
+                        require(row["boot"] == self.boot and row["context"] == self.binding["context"] and
+                                row["parent_identity"] == parent["identity"])
+                        keys.add(path.stem)
         # Before admission the immutable runner cannot fork or exec business
         # code. It is a direct worker child, or an init-adopted orphan. Account
         # for that pre-move window as well as the populated task subtree.
@@ -137,7 +156,7 @@ class Broker:
                     tags = [entry[19:] for entry in environment if entry.startswith(b"BB_TASK_CGROUP_KEY=")]
                     require(len(tags) == 1 and re.fullmatch(b"[a-f0-9]{64}", tags[0]) is not None)
                     require(process(pid) == before)
-                    count += int(tags[0] == key.encode())
+                    count += int(tags[0].decode() in keys)
                 except FileNotFoundError:
                     # The inspected pre-admission process has exited; any
                     # admitted descendants are already in the task subtree.
@@ -175,6 +194,27 @@ class Broker:
             group.mkdir(mode=0o755)
             info = group.stat()
             row = {"boot": self.boot, "context": self.binding["context"], "worker": worker["process"],
+                   "identity": f"{self.boot}:{info.st_dev}:{info.st_ino}", "sealed": False, "scope": scope}
+            save(self.state / (key + ".json"), row)
+            return self.result(key, row, group)
+        if action == "open_call":
+            worker = self.worker(peer)
+            parent_key, parent, parent_group = self.task(request)
+            require(parent["worker"] == worker["process"] and not parent["sealed"] and not parent.get("parent_key") and
+                    parent.get("scope", {}).get("kind") in ("job", "assistant"))
+            logical = request.get("logicalCallId")
+            generation = request.get("generation")
+            require(isinstance(logical, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", logical) and
+                    type(generation) is int and 1 <= generation <= 2147483647)
+            scope = {"kind": "call", "parentKey": parent_key, "parentIdentity": parent["identity"],
+                     "logicalCallId": logical, "generation": generation}
+            key = hashlib.sha256(json.dumps(scope, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+            group = parent_group / ("bb-call-" + key)
+            require(not group.exists() and not (self.state / (key + ".json")).exists())
+            group.mkdir(mode=0o755)
+            info = group.stat()
+            row = {"boot": self.boot, "context": self.binding["context"], "worker": worker["process"], "scope": scope,
+                   "parent_key": parent_key, "parent_identity": parent["identity"],
                    "identity": f"{self.boot}:{info.st_dev}:{info.st_ino}", "sealed": False}
             save(self.state / (key + ".json"), row)
             return self.result(key, row, group)
@@ -185,6 +225,9 @@ class Broker:
             require(saved["boot"] == self.boot and saved["context"] == self.binding["context"])
             require(worker == row["worker"] and worker["group"] == self.init["group"])
             require(peer["parent"] == worker["pid"] and peer["group"] == self.init["group"] and not row["sealed"])
+            if row.get("parent_key"):
+                _, parent, _ = self.task({"key": row["parent_key"], "identity": row["parent_identity"]})
+                require(not parent["sealed"])
             command = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
             require(command[:3] == [b"/usr/bin/python3", b"-I", b"/opt/bondbuddy/task-runner.py"] and
                     command[3:6] == [key.encode(), row["identity"].encode(), b"--"])
@@ -204,7 +247,7 @@ class Broker:
                 require(frame(connection) == b'{"moved":true}\n')
                 moved = process(pid)
                 require(moved["start"] == peer["start"] and
-                        moved["namespace"] == peer["namespace"] and moved["group"] == self.init["group"] + "/bb-task-" + key)
+                        moved["namespace"] == peer["namespace"] and moved["group"] == str(group).removeprefix("/sys/fs/cgroup"))
             finally:
                 os.close(descriptor)
             return self.result(key, row, group)
@@ -228,12 +271,22 @@ class Broker:
             row["retired"] = True
             save(self.state / (key + ".json"), row)
             return result
-        if action == "seal":
+        if action in ("seal", "close_call"):
+            if action == "close_call":
+                require(row.get("parent_key") is not None)
             if not row["sealed"]:
                 row["sealed"] = True
                 save(self.state / (key + ".json"), row)
+            if action == "close_call":
+                # No caller PID/path can select the target. task() bound the exact
+                # original parent, call inode, boot, epoch, session and worker.
+                descriptor = os.open(group / "cgroup.kill", os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+                try:
+                    os.write(descriptor, b"1")
+                finally:
+                    os.close(descriptor)
         else:
-            require(action == "inspect" and row["sealed"])
+            require(action == "inspect_live" or action == "inspect" and row["sealed"])
         return self.result(key, row, group)
 
 

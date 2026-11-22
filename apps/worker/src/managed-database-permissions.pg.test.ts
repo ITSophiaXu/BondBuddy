@@ -5,12 +5,12 @@ import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Pool} from 'pg';
-import {transaction,type PrivateBlobs} from '@bondbuddy/api/data';
-import {claim,finish,promoteWordArtifact} from '@bondbuddy/api/queue';
+import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
+import {claim,finish,promoteWordArtifact,fenceRestoredExecutionEpoch,resumeRestoredRun} from '@bondbuddy/api/queue';
 import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
 import {grantCredits,reserveCreditLots} from '../../api/dist/billing.js';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {assertGateOpen,gateState,tripEvidenceGate,resumeEvidenceGate,resetProcessGateForTests} from '@bondbuddy/api/evidence-gate';
+import {assertGateOpen,gateState,tripEvidenceGate,resumeEvidenceGate,resetProcessGateForTests,restoreCanonical,restoreBillingSnapshot,resumeDatabaseRestoreGate} from '@bondbuddy/api/evidence-gate';
 import {executionCapacityControl,configureExecutionCapacity,bindExecutionRegistration,heartbeatExecutionRuntime} from '@bondbuddy/api/execution-capacity';
 import {CodexDurableJournal} from './durable-probe-journal.js';
 import {runContainedModelCall,DEFAULT_DISABLED_FEATURES,type CodexAdapterConfig} from './codex-adapter.js';
@@ -53,7 +53,7 @@ test('captured consumer ACL supports real admission, result persistence and term
     await assert.rejects(assertManagedDatabasePrivileges(worker),(error:unknown)=>{
       assert.ok(error instanceof Error);
       const missing=error.message.replace('MANAGED_DATABASE_PRIVILEGES_MISSING:','').split(',');
-      for(const check of ['evidence_gate_lock','file_check_attempts','refund_slice_insert','refund_unit_insert'])assert.ok(missing.includes(check),check);
+      for(const check of ['evidence_gate_lock','file_check_attempts','refund_slice_insert','refund_unit_insert','authoring_scope_reservation_insert'])assert.ok(missing.includes(check),check);
       return true;
     });
     await assert.rejects(transaction(worker,c=>c.query('LOCK TABLE public.bb_evidence_gate_events IN SHARE MODE')),{code:'42501'});
@@ -73,6 +73,45 @@ test('captured consumer ACL supports real admission, result persistence and term
     await assert.rejects(worker.query("UPDATE public.bb_evidence_gate_events SET state='open'"),{code:'42501'});
     await assert.rejects(worker.query('TRUNCATE public.bb_evidence_gate_events'),{code:'42501'});
     await assert.rejects(worker.query('SELECT public.bb_lock_evidence_gate(NULL)'),{code:'22004'});
+  });
+  await t.test('preflight checks alert and performance read and every required write column',async()=>{
+    for(const [table,read,insert,update] of [
+      ['bb_ops_alerts','ops_alert_read','ops_alert_write',null],
+      ['bb_performance_sessions','performance_session_read','performance_session_insert','performance_session_update'],
+      ['bb_performance_spans','performance_span_read','performance_span_insert','performance_span_update'],
+    ] as const){
+      const captured=acl.tables.find((item:{name:string})=>item.name===table);
+      assert.ok(captured,table);
+      for(const [privilege,columns,missing] of [
+        ['SELECT',[null],read],
+        ['INSERT',captured.columns.INSERT,insert],
+        ...(update?[['UPDATE',captured.columns.UPDATE,update]]:[]),
+      ] as [string,(string|null)[],string][]){
+        for(const column of columns){
+          const grant=privilege+(column?'('+ident(column)+')':'');
+          await admin.query(`REVOKE ${grant} ON public.${ident(table)} FROM ${ident(role)}`);
+          try{
+            await assert.rejects(assertManagedDatabasePrivileges(worker),
+              new RegExp('MANAGED_DATABASE_PRIVILEGES_MISSING:'+missing+'$'),table+'.'+String(column));
+          }finally{
+            await admin.query(`GRANT ${grant} ON public.${ident(table)} TO ${ident(role)}`);
+          }
+          await assertManagedDatabasePrivileges(worker);
+        }
+      }
+      assert.equal((await admin.query("SELECT has_table_privilege($1,$2,'INSERT,UPDATE,DELETE,TRUNCATE') AS broad",
+        [role,'public.'+table])).rows[0].broad,false,table);
+    }
+  });
+  await t.test('reservation trigger checks every identity insert column without scope mutation grants',async()=>{
+    for(const column of ['owner_user_id','scope_quote_id','reservation_id']){
+      await admin.query(`REVOKE INSERT(${ident(column)}) ON public.bb_authoring_scope_reservations FROM ${ident(role)}`);
+      await assert.rejects(assertManagedDatabasePrivileges(worker),
+        /MANAGED_DATABASE_PRIVILEGES_MISSING:authoring_scope_reservation_insert$/);
+      await apply('managed-execution-prerequisites.sql');
+      await assertManagedDatabasePrivileges(worker);
+    }
+    assert.equal((await admin.query("SELECT has_table_privilege($1,'public.bb_authoring_scope_reservations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') AS broad",[role])).rows[0].broad,false);
   });
   await t.test('preflight rejects a missing indirect workpaper mutex dependency before enrollment',async()=>{
     await admin.query(`REVOKE SELECT ON public.bb_workpaper_paid_check_items FROM ${ident(role)}`);
@@ -243,5 +282,36 @@ test('captured consumer ACL supports real admission, result persistence and term
     const final=(await admin.query("SELECT state,finalized_at IS NOT NULL AS finalized FROM bb_credit_reservations WHERE id=$1",[reservation])).rows[0];
     assert.deepEqual(final,{state:'released',finalized:true});
     assert.equal((await admin.query("SELECT count(*)::int n FROM bb_credit_events WHERE reservation_id=$1 AND kind='release'",[reservation])).rows[0].n,1);
+  });
+  await t.test('ordinary consumer cannot invoke dedicated restore control or mutate its receipts',async()=>{
+    const live=await add(),restoreOwner=randomUUID(),id=randomUUID(),quarantineId=randomUUID(),controlEpoch=randomUUID(),manifest={synthetic:true},inputHash=inputManifestHash(manifest);
+    await admin.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[restoreOwner,'acl_restore_'+restoreOwner.slice(0,8)]);
+    await transaction(admin,c=>grantCredits(c,{owner:restoreOwner,source:'existing_grant',key:randomUUID(),points:42,expiresAt:null,actor:'synthetic',reason:'Synthetic restore ACL billing invariant'}));
+    await admin.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic restore ACL','generation')",[id,restoreOwner]);
+    await admin.query("INSERT INTO bb_input_revisions(project_id,owner_user_id,revision,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,1,1,$3,$4,'[]','[]')",[id,restoreOwner,inputHash,manifest]);
+    await admin.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,stage) VALUES($1,$2,$1,1,$3,$1,'generation',$3,'paused','database_restore_quarantine')",[id,restoreOwner,inputHash]);
+    await admin.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,checkpoint) VALUES($1,$2,$1,'generation','default','paused','database_restore_quarantine',$3)",[id,restoreOwner,{never_admitted_v1:{version:'never-admitted-v1',job_id:id}}]);
+    const original=(await admin.query('SELECT row_to_json(j) AS record FROM bb_jobs j WHERE id=$1',[id])).rows[0].record;
+    const body={version:'database-restore-safety-v1',restore_id:quarantineId,backup_sha256:hash,control_epoch:controlEpoch,audit:{complete:true,backup_at:new Date().toISOString(),covered_until:new Date().toISOString()},account_ids:[restoreOwner],fences:[],calls:[],billing:[{owner_user_id:restoreOwner,sha256:digest(restoreCanonical(await restoreBillingSnapshot(admin,restoreOwner))),consistent:true}],never_sent_runs:[id]};
+    const manifestSha=digest(restoreCanonical(body)),gateId=randomUUID();
+    await admin.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'paused','database_restore_quarantine','system')",[gateId]);
+    await admin.query('INSERT INTO bb_database_restore_quarantines(id,backup_sha256,manifest_sha256,control_epoch,receipt,preimage,gate_event_id) VALUES($1,$2,$3,$4,$5,$6,$7)',[quarantineId,hash,manifestSha,controlEpoch,{...body,manifest_sha256:manifestSha},{nodes:[],jobs:[original],holders:[],messages:[],waiters:[]},gateId]);
+    await admin.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('database_restore_quarantine',$2::jsonb) WHERE id=$1",[id,{restore_id:quarantineId,manifest_sha256:manifestSha,job_id:id,run_id:id,owner_user_id:restoreOwner}]);
+    await resumeDatabaseRestoreGate(admin,'synthetic-restore-operator',{quarantine_id:quarantineId,manifest_sha256:manifestSha,owner_user_ids:[restoreOwner]},async()=>{throw Error('Never-admitted restore cannot read provider evidence');});
+    const snapshot=async()=>({jobs:(await admin.query(`SELECT j.id,j.state,j.lease_token,j.attempts,j.checkpoint,r.state AS run_state,r.stage AS run_stage
+      FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.id=ANY($1::text[]) ORDER BY j.id`,[[id,live.jobId]])).rows,billing:await restoreBillingSnapshot(admin,restoreOwner)});
+    const before=await snapshot();assert.ok(before.jobs.some(row=>row.lease_token===live.token));
+    for(const table of ['bb_database_restore_quarantines','bb_database_restore_reconciliations','bb_database_restore_fence_releases']){
+      const rights=(await admin.query("SELECT has_any_column_privilege($1,$2,'INSERT,UPDATE') OR has_table_privilege($1,$2,'DELETE,TRUNCATE') AS mutate",[role,table])).rows[0];assert.equal(rights.mutate,false,table);
+      await assert.rejects(worker.query(`INSERT INTO public.${ident(table)}(id) VALUES($1)`,[randomUUID()]),{code:'42501'});
+    }
+    await assert.rejects(resumeRestoredRun(worker,'synthetic-consumer',restoreOwner,id,{quarantineId,manifestSha256:manifestSha},{blobs}),/Restore control privileges are required/);
+    await assert.rejects(fenceRestoredExecutionEpoch(worker,'synthetic-consumer',{quarantineId,manifestSha256:manifestSha,nodeId:randomUUID(),epoch:randomUUID(),expectedTokens:[{kind:'job',id:live.jobId,token:live.token}],evidenceRef:'synthetic-rejected-fence'},{readObject:async()=>{throw Error('Unauthorized restore must not read evidence');}}),/Restore control privileges are required/);
+    assert.deepEqual(await snapshot(),before,'refused restore control must retain original jobs, tokens and money');
+    assert.equal(await resumeRestoredRun(admin,'synthetic-restore-operator',restoreOwner,id,{quarantineId,manifestSha256:manifestSha},{blobs}),true,'the same valid receipt remains usable by the operator');
+    assert.deepEqual(await restoreBillingSnapshot(admin,restoreOwner),before.billing);
+    assert.equal((await admin.query('SELECT lease_token FROM bb_jobs WHERE id=$1',[live.jobId])).rows[0].lease_token,live.token);
+    await admin.query("UPDATE bb_jobs SET state='cancelled' WHERE id=$1",[id]);await admin.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[id]);
+    await finish(worker,live,'failed',{errorCode:'DATA_UNAVAILABLE'});
   });
 });

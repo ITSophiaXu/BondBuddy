@@ -32,7 +32,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish,finishM4Qa, pauseRun, isBillingBlocked, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish,finishM4Qa, pauseRun, isBillingBlocked, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint,recordWorkflowFailure, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
@@ -78,6 +78,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string; checkpoint?: Record<string, unknown> }
+  | {kind:'handoff_pending'}
   | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments' | 'report'; bytes: Buffer; mediaType?:'application/pdf' }[];
       namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
   | {kind:'qa_deliver';reply:M4AssistantReply}
@@ -89,7 +90,7 @@ export type RunStage = {
   replay?: boolean;
   run: (ctx: StageContext) => Promise<StageOutcome>;
 };
-export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
+export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped' | 'handoff_pending' | 'pause_pending';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
   runKinds?: readonly RunKind[]; interactiveOnly?: boolean;
@@ -100,6 +101,7 @@ export type RunPipelineDependencies = {
   /** #76 target-period candidate producer call point; absent = unchanged. */
   produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
   workerInstanceId?:string;
+  workflowPhase?:import('@bondbuddy/contracts').WorkflowPhase;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -505,6 +507,8 @@ export function codexModelStage(options: {
   fileWorkspace?: ContainedCallInput['fileWorkspace'];
   reviewTools?: ReviewToolData;
   onActivity?: ContainedCallInput['onActivity'];
+  callScope?: {required:true};
+  deadlineAt?:string;
   /** Test seam only: wraps the durable journal (e.g. to simulate a crash right after the intent commit). */
   wrapJournal?: (journal: CodexJournal) => CodexJournal;
 }): RunStage {
@@ -570,7 +574,7 @@ export function codexModelStage(options: {
       };
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
-        ...{beforeIntent},logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
+        ...{beforeIntent},deadlineAt:options.deadlineAt,callScope:options.callScope,logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } catch(error){
@@ -627,7 +631,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
   assertTaskExecution(pool);
   const claimStartedAt=new Date();
-  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
+  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly,workflowPhase:deps.workflowPhase });
   const claimEndedAt=new Date();
   deps.onLease?.(lease);
   if (!lease) return 'idle';
@@ -639,32 +643,42 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = startRunLeaseHeartbeat({renew:()=>renew(pool,lease,leaseSeconds),intervalMs:Math.max(1000,leaseSeconds*400),onLost:()=>abort.abort()});
   let currentStage: string | undefined;
   let traceEntered=false;
+  const isWorkflow=()=>!!(lease.checkpoint.workflow_v1||lease.checkpoint.workflow_admission_v1);
+  const pausedOutcome=():RunPipelineOutcome=>isWorkflow()?'pause_pending':'paused';
+  let workflowFailureRecorded=false;
+  const countWorkflowFailure=async()=>{
+    if(!isWorkflow()||workflowFailureRecorded)return undefined;
+    const result=await recordWorkflowFailure(pool,lease,deps.workflowPhase??(lease.checkpoint.workflow_v1 as import('@bondbuddy/contracts').AuthoringWorkflowV1).phase);
+    workflowFailureRecorded=true;return result;
+  };
   const failRun=async(options:{errorCode?:string;failedStage?:string}):Promise<RunPipelineOutcome>=>{
+    await countWorkflowFailure();
     const result=await withPerformanceSpan('run.finish',{outcome:'failed'},()=>finish(pool,lease,'failed',options));
-    return result.state==='paused'?'paused':'failed';
+    return isWorkflow()?pausedOutcome():result.state==='paused'?'paused':'failed';
   };
   const handleError=async(error:unknown):Promise<RunPipelineOutcome>=>{
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
     if(isBillingBlocked(error)){
       await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');
-      return 'paused';
+      return pausedOutcome();
     }
     if (error instanceof TrialLimitProblem) {
       if (error.limit === 'operator_deny') {
         return await failRun({ errorCode: error.code, failedStage: currentStage });
       }
       await pauseRun(pool, lease, 'trial_limit', error.limit, error.code);
-      return 'paused';
+      return pausedOutcome();
     }
     if (error instanceof Problem && (error.code.startsWith('TEST_GRANT_') || error.code==='TEST_CHANNEL_DISABLED')) {
       await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
-      return 'paused';
+      return pausedOutcome();
     }
     deps.onUnexpectedError?.(safeRunError(error, currentStage));
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
-      if (lease.attempts < maxAttempts) {
+      const workflowFailure=await countWorkflowFailure();
+      if (workflowFailure?!workflowFailure.exhausted:lease.attempts < maxAttempts) {
         // Join any renewal before expiring: a renewal already waiting on the
         // job lock must not extend the deadline after our release receipt.
         await heartbeat.stop();
@@ -674,7 +688,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       return await failRun({ errorCode: 'DATA_UNAVAILABLE', failedStage: currentStage });
     } catch (finishError) {
       if (lost(finishError)) return 'lost';
-      if(isBillingBlocked(finishError)){await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');return 'paused';}
+      if(isBillingBlocked(finishError)){await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');return pausedOutcome();}
       throw finishError;
     }
   };
@@ -697,7 +711,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     const pending=lease.checkpoint.billing_terminal as {outcome:'failed'|'succeeded'|'test_completed';artifactId?:string;artifactVersion?:number;errorCode?:string;failedStage?:string}|undefined;
     if(pending){
       const completed=await withPerformanceSpan('billing.resume_settlement',{},()=>finish(pool,lease,pending.outcome,{...pending,blobs}));
-      return completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;
+      return isWorkflow()?pausedOutcome():completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;
     }
     const qaReply=lease.checkpoint.billing_qa_reply as M4AssistantReply|undefined;
     if(qaReply){const completed=await withPerformanceSpan('billing.resume_settlement',{},()=>finishM4Qa(pool,lease,qaReply));return completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;}
@@ -734,12 +748,12 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
             (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
             await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader)
           : {kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
-        if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}
+        if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return pausedOutcome();}
         if(gate?.kind==='fail')return await failRun({errorCode:gate.code,failedStage:stage.name});
       }
       const saved = checkpoint[stage.name];
       if (saved && !stage.replay) { await withPerformanceSpan('stage.reuse',{stage:stage.name},span=>{span.end('reused');}); ctx.values.set(stage.name, saved); continue; }
-      if(await pauseAtCheckpoint(pool,lease))return 'paused';
+      if(await pauseAtCheckpoint(pool,lease))return pausedOutcome();
       await beginRunStage(pool,lease,stage.name);
       const outcome = await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
         const value=await stage.run(ctx);
@@ -759,7 +773,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         await deps.afterStage?.(stage.name, lease);
         continue;
       }
-      if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return 'paused'; }
+      if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return pausedOutcome(); }
+      if (outcome.kind === 'handoff_pending') return 'handoff_pending';
       if (outcome.kind === 'fail') {
         if(outcome.checkpoint){
           if(saved)await upgradeStageCheckpoint(pool,lease,stage.name,outcome.checkpoint);
@@ -767,7 +782,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         }
         return await failRun({ errorCode: outcome.code, failedStage: stage.name });
       }
-      if (outcome.kind === 'stopped') return 'stopped';
+      if (outcome.kind === 'stopped') return isWorkflow()?pausedOutcome():'stopped';
       if (outcome.kind === 'qa_deliver') {
         const result=await finishM4Qa(pool,lease,outcome.reply);
         return result.state==='succeeded'?'succeeded':'paused';
@@ -833,7 +848,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           await withPerformanceSpan('artifact.register',{file_count:m4Artifacts.length},()=>registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts));
           return settleM4Metering(client,run.owner_user_id,run.id);
         });span.end(result.ready?'succeeded':'paused',{outcome:result.ready?'settled':'pending'});return result;});
-        if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
+        if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return pausedOutcome();}
       }
       if (reviewExecution) {
         // A structured review has already registered its immutable report in
@@ -852,16 +867,16 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         await checkpointStage(pool, lease, 'word_delivery_pair', pair);
         ctx.checkpoint.word_delivery_pair = pair;
       }
-      if(await pauseAtCheckpoint(pool,lease))return 'paused';
+      if(await pauseAtCheckpoint(pool,lease))return pausedOutcome();
       const finished=await withPerformanceSpan('run.finish',{},()=>finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs }));
-      return finished.state==='paused'?'paused':run.channel==='non_production_test'?'test_completed':'succeeded';
+      return isWorkflow()?pausedOutcome():finished.state==='paused'?'paused':run.channel==='non_production_test'?'test_completed':'succeeded';
     }
     // Every production pipeline ends in delivery; running out of stages is never success.
     await pauseRun(pool, lease, 'capability_not_ready', 'stage_not_implemented');
-    return 'paused';
+    return pausedOutcome();
     };
     const result=await execute().catch(handleError);
-    rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'?'interrupted':'succeeded',{outcome:result});
+    rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'||result==='handoff_pending'||result==='pause_pending'?'interrupted':'succeeded',{outcome:result});
     return result;
     });
   } catch (error) {

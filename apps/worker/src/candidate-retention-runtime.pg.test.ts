@@ -8,8 +8,16 @@ import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { WorkerRuntime, type WorkerRuntimeOptions } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
+import {initializeTaskExecution} from './task-execution.js';
 
 const configured = !!process.env.BB_TEST_DATABASE_URL;
+const selected=process.env.BB_RETENTION_NATIVE_CASE;
+if(selected&&!['pending','unreadable','admission'].includes(selected))throw Error('RETENTION_NATIVE_CASE_INVALID');
+// Each case has its own enrolled process: task identity cannot be reset or
+// transferred to a different pool after a managed runtime has stopped.
+function retentionTest(id:string,name:string,options:{skip:boolean;timeout:number},run:(t:TestContext)=>Promise<void>){
+  if(!selected||selected===id)test(name,options,run);
+}
 type Retention = { pendingCount(): Promise<number> };
 
 async function until(predicate: () => Promise<boolean>) {
@@ -26,7 +34,9 @@ async function fixture(t: TestContext, label: string, retention: Retention, rele
   const pool = new Pool({ connectionString: connection, max: 4 });
   const control = executionCapacityControl(pool);
   const hash = 'a'.repeat(64);
-  const identity = { account_id: 'synthetic', region: 'synthetic', instance_id: `retention-${label}`, epoch: randomUUID() };
+  const native=process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT?JSON.parse(process.env.BB_SYNTHETIC_TASK_CGROUP_CONTEXT):null;
+  if(!native)throw Error('RETENTION_NATIVE_FIXTURE_REQUIRED');
+  const identity = native.identity;
   await configureExecutionCapacity(pool, 0, { managed_nodes: true, global_model_limit: 4, max_nodes: 2, budget_available: true });
   let operation = await control.reserveStart({ ...identity, instance_id: null, instance_count: 1, source_sha256: hash,
     image_sha256: hash, launch_manifest_sha256: hash, capabilities: ['authoring'],
@@ -44,7 +54,7 @@ async function fixture(t: TestContext, label: string, retention: Retention, rele
       run_creation: { operation_id: operation.operation_id, identity, launch_manifest_sha256: hash, launch_binding_sha256: hash,
         created_at: new Date().toISOString(), instance_status: 'RUNNING', status_request_id: 'synthetic-retention-status' } } });
   const token = 'synthetic-retention-registration-012345';
-  const sessionId = randomUUID();
+  const sessionId = native.session_id;
   await bindExecutionRegistration(pool, identity, `retention-start-${label}`, token);
   await registerExecutionRuntime(pool, { identity, session_id: sessionId }, { source_sha256: hash, image_sha256: hash,
     launch_manifest_sha256: hash, registration_token: token, service_id: 'one', capabilities: ['authoring'],
@@ -59,13 +69,14 @@ async function fixture(t: TestContext, label: string, retention: Retention, rele
     executionTransport: { refresh: async () => {}, ready: () => true, close: () => {} }, log: event => logs.push(event),
     ...overrides
   };
+  await initializeTaskExecution(pool);
   const runtime = new WorkerRuntime(options).start();
   t.after(async () => { releaseInventory(); await runtime.stop(); await pool.end(); });
   const session = async () => (await pool.query('SELECT state,ready,unpersisted_results FROM bb_execution_node_sessions WHERE session_id=$1', [sessionId])).rows[0];
   return { pool, control, identity, runtime, logs, session };
 }
 
-test('retained authoring candidates remain unpersisted work and prevent positive drain until preservation is acknowledged',
+retentionTest('pending','retained authoring candidates remain unpersisted work and prevent positive drain until preservation is acknowledged',
   { skip: !configured, timeout: 15_000 }, async t => {
     let pending = 0;
     const f = await fixture(t, 'pending', { pendingCount: async () => pending }, () => { pending = 0; });
@@ -90,7 +101,7 @@ test('retained authoring candidates remain unpersisted work and prevent positive
     assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_model_call_attempts')).rows[0].n, 0);
   });
 
-test('an unreadable retained-candidate inventory is not interpreted as zero at startup',
+retentionTest('unreadable','an unreadable retained-candidate inventory is not interpreted as zero at startup',
   { skip: !configured, timeout: 15_000 }, async t => {
     let readable = false;
     const f = await fixture(t, 'unreadable', { pendingCount: async () => {
@@ -108,7 +119,7 @@ test('an unreadable retained-candidate inventory is not interpreted as zero at s
     assert.equal((await f.session()).state, 'finished');
   });
 
-test('a newly retained candidate blocks job admission before the next database heartbeat',
+retentionTest('admission','a newly retained candidate blocks job admission before the next database heartbeat',
   { skip: !configured, timeout: 15_000 }, async t => {
     let pending = 0, executions = 0;
     const f = await fixture(t, 'admission', {pendingCount: async () => pending}, () => {pending = 0;}, {
