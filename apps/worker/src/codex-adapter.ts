@@ -18,12 +18,30 @@ import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelA
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import { CODEX_EXEC_LOG_MAX_BYTES } from '@bondbuddy/api/exec-logs';
 import type { ProbeJournal } from './deepseek-probe.js';
+import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
+import {createModelProcessPerformance,modelChildStarted,modelChildFinished} from './model-performance.js';
+import {ModelResultStoreFailure} from './durable-probe-journal.js';
 
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 /** Bounded per-attempt stdout/stderr capture, including section markers. */
 export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = CODEX_EXEC_LOG_MAX_BYTES;
+
+/** Bounded cancellation evidence; never include exception messages or request content. */
+export function modelCancellationDiagnostic(reason:unknown,phase:'before_spawn'|'native',scope?:string) {
+  const error=reason as {code?:unknown;message?:unknown}|null;
+  const code=typeof error?.code==='string'&&(/^[0-9A-Z]{5}$/.test(error.code)||
+    ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','ENOTFOUND'].includes(error.code))?error.code:null;
+  const errorClass=error?.message==='Query read timeout'?'pg_query_timeout':
+    error?.message==='Model capacity holder lost'?'holder_missing':
+    reason instanceof DOMException&&reason.name==='AbortError'?'abort':reason instanceof Error?'error':'unavailable';
+  return {kind:'model_cancellation',source:'task_signal',phase,original_error_code:code,error_class:errorClass,
+    ...(scope&&/^[A-Za-z0-9:_-]{1,180}$/.test(scope)?{scope}:{})};
+}
+function reportModelCancellation(diagnostic:ReturnType<typeof modelCancellationDiagnostic>) {
+  try { process.stderr.write(JSON.stringify(diagnostic)+'\n'); } catch { /* diagnostics cannot alter cancellation */ }
+}
 const EXEC_LOG_STDOUT_MARKER = Buffer.from('[stdout]\n');
 const EXEC_LOG_STDERR_MARKER = Buffer.from('\n[stderr]\n');
 const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MARKER.length;
@@ -43,8 +61,12 @@ export type CodexAdapterConfig = {
   credential: CodexCredential;
   work_root: string;
   timeout_ms: number;
+  timeout_origin?: 'default'|'environment'|'injected_config';
+  timeout_origin_value_ms?: number;
   /** Separate wall-clock deadline for document authoring with material reads. */
   authoring_timeout_ms?: number;
+  authoring_timeout_origin?: 'default'|'environment'|'injected_config';
+  authoring_timeout_origin_value_ms?: number;
   kill_grace_ms: number;
   max_output_bytes: number;
   /** Bounded combined stdout/stderr capture for operator diagnostics. */
@@ -177,7 +199,11 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     credential,
     work_root: env.BB_CODEX_WORK_ROOT ?? join(tmpdir(), 'bb-codex'),
     timeout_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
+    timeout_origin: env.BB_CODEX_TIMEOUT_MS ? 'environment' : 'default',
+    timeout_origin_value_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
     authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
+    authoring_timeout_origin: env.BB_CODEX_AUTHORING_TIMEOUT_MS ? 'environment' : 'default',
+    authoring_timeout_origin_value_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
     exec_log_max_bytes: Number(env.BB_CODEX_EXEC_LOG_MAX_BYTES ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES),
@@ -351,7 +377,8 @@ export function createCodexExecLogCapture(maxBytes: number) {
 // One codex process. Stdout is parsed incrementally; a bounded stderr prefix is inspected
 // for status markers. When captureExecLog is set the private caller may persist the full
 // bounded stdout/stderr evidence; it is never logged to the process output.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onBeforeSpawn?: (effectiveTimeoutMs:number,timeoutDeadlineAt:string)=>Promise<void> }): Promise<CodexProcessResult> {
+  return withPerformanceSpan('model.exec',{adapter:'codex_exec',model_id:c.model_id,model_provider:c.model_provider},async span=>{
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -364,14 +391,21 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const args = buildCodexArgs(c, o);
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
+  const performance=createModelProcessPerformance(span);
   const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
   // Cancellation can win while the durable intent is being written. In that
   // case do not launch a process, even briefly, with an already-aborted signal.
-  if (o.signal?.aborted) { r.stop = 'cancelled'; return r; }
+  if (o.signal?.aborted) { r.stop = 'cancelled'; performance.finish('cancelled',{result_status:'cancelled_before_spawn'}); return r; }
+  const timeoutDeadlineAt=new Date(Date.now()+c.timeout_ms).toISOString();
+  try { await o.onBeforeSpawn?.(c.timeout_ms,timeoutDeadlineAt); }
+  catch(error) { performance.finish('failed',{result_status:'config_evidence_failed'}); throw error; }
+  if (o.signal?.aborted) { r.stop='cancelled'; performance.finish('cancelled',{result_status:'cancelled_before_spawn'}); return r; }
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
-    catch { r.stop = 'spawn_failed'; resolveResult(r); return; }
+    catch { r.stop = 'spawn_failed'; performance.finish('failed',{result_status:r.stop}); resolveResult(r); return; }
+    const childCounted=!!child.pid;
+    if(childCounted)modelChildStarted();
     let bytes = 0, buffer = '', stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
     const capture = o.captureExecLog ? createCodexExecLogCapture(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES) : null;
     // Never persist a credential value that the child might echo. Only env credentials
@@ -399,7 +433,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       killGroup(hard ? 'SIGKILL' : 'SIGTERM');
       if (!hard) graceTimer = setTimeout(() => killGroup('SIGKILL'), c.kill_grace_ms);
     };
-    const timer = setTimeout(() => stop('timeout', false), c.timeout_ms);
+    const timer = setTimeout(() => stop('timeout', false), Math.max(1,Date.parse(timeoutDeadlineAt)-Date.now()));
     const onAbort = () => stop('cancelled', false);
     const noteProviderError = (error: unknown) => {
       const code = providerErrorCode(error);
@@ -412,6 +446,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       let ev: Record<string, unknown>;
       try { ev = JSON.parse(line); } catch { stop('broken', true); return; }
       if (!ev || typeof ev !== 'object' || typeof ev.type !== 'string') { stop('broken', true); return; }
+      performance.jsonEvent();
       o.onEvent?.(ev);
       switch (ev.type) {
         case 'thread.started': if (safeId(ev.thread_id)) r.thread_id = ev.thread_id; break;
@@ -446,10 +481,12 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
         default: break;
       }
       // Activity callbacks observe only events that passed the existing containment checks.
+      performance.activity(ev);
       o.onActivity?.(ev);
     };
     child.stdout!.setEncoding('utf8');
     child.stdout!.on('data', (chunk: string) => {
+      performance.stdout();
       capture?.stdout(captured(chunk));
       bytes += Buffer.byteLength(chunk);
       if (bytes > c.max_output_bytes) { stop('too_large', true); return; }
@@ -467,6 +504,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     child.on('close', (code, sig) => {
       if (settled) return;
       settled = true;
+      if(childCounted)modelChildFinished();
       if (buffer.trim()) handle(buffer);
       if (stderrPrefix) noteProviderError({ message: stderrPrefix });
       stderrPrefix = '';
@@ -476,9 +514,13 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       r.exit_code = code; r.exit_signal = sig;
       r.duration_ms = Number((process.hrtime.bigint() - t0) / 1000000n);
       if (capture) r.exec_log = capture.finish();
+      performance.finish(r.stop==='cancelled'?'cancelled':r.stop==='timeout'||r.stop==='broken'?'interrupted':
+        r.stop||r.turn_failed||r.saw_error||code!==0?'failed':r.turn_completed?'succeeded':'interrupted',
+        {result_status:r.stop??(r.turn_completed?'turn_completed':'turn_incomplete')});
       resolveResult(r);
     });
     child.stdin!.end(o.prompt);
+  });
   });
 }
 
@@ -510,9 +552,24 @@ export interface CodexJournal extends ProbeJournal {
   storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
   recordObservation(observation: ProviderCallObservation, options?: { retryable?: boolean }): Promise<void>;
   recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void>;
+  recordExecutionConfig?(intent: ProviderCallIntent, evidence: ModelExecutionConfigEvidence): Promise<void>;
+  recordResultFailure?(intent: ProviderCallIntent, evidence: ModelResultFailureEvidence): Promise<void>;
   latestAttempt(logicalCallId: string): Promise<PriorAttempt | null>;
   readCompleted(logicalCallId: string, attemptNo: number): Promise<{ value: unknown; result_sha256: string } | null>;
 }
+
+export type ModelExecutionConfigEvidence = {
+  effective_timeout_ms:number; timeout_deadline_at:string;
+  timeout_source:'default'|'environment'|'injected_config'|'authoring_override';
+  timeout_branch:'ordinary'|'authoring'|'file_authoring';
+  model_config_version:string; loaded_adapter_sha256:string; selected_config_sha256:string;
+  release_sha:string|null; overlay_sha256:string|null;
+};
+export type ModelResultFailureEvidence = {
+  substage:'collect'|'envelope'|'serialize'|'validate'|'object_write'|'object_verify'|'reference_record';
+  error_class:'output_validation'|'serialization'|'storage_io'|'storage_integrity'|'unknown';
+  error_code:'MODEL_RESULT_STORE_FAILED'|'MODEL_OUTPUT_SCHEMA_INVALID'|'RESULT_REFERENCE_RECORD_FAILED';
+};
 
 export type CodexSession = { mode: 'ephemeral' } | { mode: 'start' } | { mode: 'resume'; thread_id: string; codex_home: string };
 /** Host evidence only; a normalizer cannot accept model-authored read receipts. */
@@ -586,6 +643,17 @@ export function attemptRecord(intent: ProviderCallIntent, c: CodexAdapterConfig,
 // Orchestrates one logical model call: checks durable prior attempts first, records intent
 // before spawn, and re-asks only after a settled schema-invalid answer with measured usage.
 export async function runContainedModelCall(input: ContainedCallInput, journal: CodexJournal, c: CodexAdapterConfig): Promise<ContainedCallResult> {
+  return withPerformanceSpan('model.call',{logical_call_id:input.logical_call_id,model_id:c.model_id,
+    model_provider:c.model_provider,model_config_version:c.model_config_version},async span=>{
+    const result=await containedModelCall(input,journal,c);
+    span.end(result.status==='reused'?'reused':result.status==='completed'?'succeeded':
+      result.error_code==='MODEL_CANCELLED'?'cancelled':result.status==='needs_reconcile'?'paused':'failed',
+      {result_status:result.status,...(result.error_code?{error_code:result.error_code}:{})});
+    return result;
+  });
+}
+
+async function containedModelCall(input: ContainedCallInput, journal: CodexJournal, c: CodexAdapterConfig): Promise<ContainedCallResult> {
   assertCodexConfig(c);
   if(input.imageInput){
     validateModelImage(input.imageInput);
@@ -684,10 +752,29 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
-        const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
-          ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
+        const useAuthoringTimeout=!!(input.materialTools||input.fileWorkspace||input.reviewTools)&&c.authoring_timeout_ms!==undefined;
+        const executionConfig=useAuthoringTimeout?{...c,timeout_ms:c.authoring_timeout_ms!}:c;
+        const selectedConfigSha256=createHash('sha256').update(JSON.stringify({model_id:executionConfig.model_id,
+          model_provider:executionConfig.model_provider,model_config_version:executionConfig.model_config_version,
+          timeout_ms:executionConfig.timeout_ms,authoring_timeout_ms:executionConfig.authoring_timeout_ms??null,
+          credential_kind:executionConfig.credential.kind})).digest('hex');
+        const loadedAdapterSha256=createHash('sha256').update(await readFile(fileURLToPath(import.meta.url))).digest('hex');
+        const attemptResult=await withPerformanceSpan<ContainedCallResult|null>('model.attempt',
+          {logical_call_id:input.logical_call_id,call_id:intent.call_id,attempt_no:attemptNo},async attemptSpan=>{
         const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
+          onBeforeSpawn:journal.recordExecutionConfig?(effective_timeout_ms,timeout_deadline_at)=>journal.recordExecutionConfig!(intent,{
+            effective_timeout_ms,timeout_deadline_at,timeout_source:useAuthoringTimeout
+              ? c.authoring_timeout_origin_value_ms!==undefined&&c.authoring_timeout_origin_value_ms!==c.authoring_timeout_ms?'injected_config':c.authoring_timeout_origin??'authoring_override'
+              : c.timeout_origin_value_ms!==undefined&&c.timeout_origin_value_ms!==c.timeout_ms?'injected_config':c.timeout_origin??'injected_config',
+            timeout_branch:input.fileWorkspace?'file_authoring':useAuthoringTimeout?'authoring':'ordinary',
+            model_config_version:c.model_config_version,loaded_adapter_sha256:loadedAdapterSha256,
+            selected_config_sha256:selectedConfigSha256,
+            release_sha:/^[A-Za-z0-9._-]{1,128}$/.test(process.env.BB_RELEASE_SHA??'')?process.env.BB_RELEASE_SHA!:null,
+            overlay_sha256:/^[a-f0-9]{64}$/.test(process.env.BB_EXECUTION_OVERLAY_SHA256??'')?process.env.BB_EXECUTION_OVERLAY_SHA256!:null
+          }):undefined,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
+        if(raw.stop==='cancelled')reportModelCancellation(modelCancellationDiagnostic(input.signal?.reason,
+          raw.duration_ms===0&&raw.exit_code===null?'before_spawn':'native',intent.call_id));
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.
         if (raw.exec_log) try { await journal.storeExecLog?.(intent, raw.exec_log.bytes, { truncated: raw.exec_log.truncated }); } catch { /* retained failure stays visible through the observation */ }
@@ -729,13 +816,24 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
+          let resultSubstage:ModelResultFailureEvidence['substage']='collect';
           try {
-            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent,{text:raw.last_message??'',diagnostics:raw.file_diagnostics});
+            if(input.fileWorkspace)cls.value=await withPerformanceSpan('model.output.collect',{},()=>input.fileWorkspace!.collect(cwd,intent,{text:raw.last_message??'',diagnostics:raw.file_diagnostics}));
+            resultSubstage='envelope';
             if(input.materialToolsTrace)cls.value={version:'material-tool-result-v1',model_output:cls.value,tool_trace:materialToolTrace!} satisfies MaterialModelEnvelope;
             const persisted:unknown=input.reviewTools?{version:'review-model-envelope-v1',output:cls.value,tool_trace:reviewToolTrace!} satisfies ReviewModelEnvelope:cls.value;
-            obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(persisted)), input.result_schema_version) };
+            resultSubstage='serialize';
+            const resultBytes=Buffer.from(JSON.stringify(persisted));
+            resultSubstage='validate';
+            obs = { ...obs, ...await withPerformanceSpan('model.result.persist',{},()=>journal.storeResult(intent,resultBytes,input.result_schema_version)) };
           }
           catch (error) {
+            const substage=error instanceof ModelResultStoreFailure?error.substage:resultSubstage;
+            const error_class=error instanceof ModelResultStoreFailure?error.error_class:
+              error instanceof CodexOutputValidationError?'output_validation':resultSubstage==='serialize'?'serialization':'unknown';
+            try { await journal.recordResultFailure?.(intent,{substage,error_class,
+              error_code:error instanceof CodexOutputValidationError?'MODEL_OUTPUT_SCHEMA_INVALID':'MODEL_RESULT_STORE_FAILED'}); }
+            catch { /* Diagnostic failure must not replace the original result state. */ }
             obs = error instanceof CodexOutputValidationError
               ? { ...obs, outcome:'failed',error_code:'MODEL_OUTPUT_SCHEMA_INVALID' }
               : { ...obs, outcome:'pending_reconcile',error_code:'MODEL_RESULT_STORE_FAILED' };
@@ -745,19 +843,30 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
-        await journal.recordRuntime(intent, runtime);
-        await journal.recordObservation(obs, { retryable });
+        await withPerformanceSpan('model.runtime.persist',{},()=>journal.recordRuntime(intent,runtime));
+        try { await withPerformanceSpan('model.observation.persist',{},()=>journal.recordObservation(obs,{retryable})); }
+        catch(error) {
+          if(obs.result_ref!==null)try { await journal.recordResultFailure?.(intent,{substage:'reference_record',error_class:'unknown',error_code:'RESULT_REFERENCE_RECORD_FAILED'}); }
+          catch { /* Preserve the original observation failure. */ }
+          throw error;
+        }
         attempts.push(attemptRecord(intent, c, runtime, obs));
         if (retryable) {
-          if (input.signal?.aborted) return cancelledResult();
+          if (input.signal?.aborted) {attemptSpan.end('cancelled');return cancelledResult();}
           let feedback='Your previous reply failed output validation. Reply again with only the complete JSON value required by the schema.';
           if(['json_parse','missing_message'].includes(invalidCategory))feedback='Your previous reply was not a single valid JSON value. Reply again with only the complete JSON value required by the schema.';
           else if(output.kind==='json'&&output.validationFeedback)try{feedback=output.validationFeedback(parsedOutput)?.slice(0,2000)||feedback;}catch{ /* Diagnostics cannot weaken validation or stop durable retry. */ }
           prompt = `${input.prompt}\n\n${REASK_MARKER} ${feedback}`;
-          continue;
+          attemptSpan.end('failed',{error_code:obs.error_code});
+          return null;
         }
         const status = obs.outcome === 'completed' ? 'completed' : obs.outcome === 'pending_reconcile' ? 'needs_reconcile' : 'failed';
+        attemptSpan.end(status==='completed'?'succeeded':status==='needs_reconcile'?'paused':'failed',
+          {result_status:status,...(obs.error_code?{error_code:obs.error_code}:{})});
         return { status, value: status === 'completed' ? cls.value : null, ...(status==='completed' && reviewToolTrace?{reviewToolTrace}:{}), error_code: obs.error_code as ModelAdapterErrorCode | null, attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
+        });
+        if(attemptResult===null)continue;
+        return attemptResult;
       } finally {
         await rm(attemptDir, { recursive: true, force: true });
       }

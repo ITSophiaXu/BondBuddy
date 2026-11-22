@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
+import {withPerformanceSpan} from './performance-trace.js';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent, recordOperation } from './observability.js';
@@ -418,10 +419,10 @@ async function persistAvailableWord(pool:Pool,lease:Lease,inspection:DocxInspect
 // Generated pairs use file availability only; legacy processors retain their inspector.
 // Both policies require owned private storage and byte-for-byte readback.
 export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs,policy?:import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy):Promise<WordPromotionResult> {
-  const inspection=(policy==='generated_pair_v1'||policy==='generated_review_v1')?inspectGeneratedWord(candidate):inspectDocx(candidate);
+  const inspection=await withPerformanceSpan('document.inspect',{input_bytes:candidate.length},()=>(policy==='generated_pair_v1'||policy==='generated_review_v1')?inspectGeneratedWord(candidate):inspectDocx(candidate));
   const identity=wordArtifactIdentity(lease,inspection);
   if(inspection.quality_status!=='passed')return persistRejectedWord(pool,lease,inspection,identity);
-  await transaction(pool,async client=>{
+  await withPerformanceSpan('artifact.prepare_registration',{},()=>transaction(pool,async client=>{
     await assertLockedWordLease(client,lease);
     await client.query(`INSERT INTO bb_artifact_versions
       (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
@@ -429,11 +430,11 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
     [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status==='failed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact has a prior quality rejection');
-  });
-  try { await blobs.put(identity.objectKey,candidate,WORD_MEDIA_TYPE); }
+  }));
+  try { await withPerformanceSpan('artifact.upload',{input_bytes:candidate.length},()=>blobs.put(identity.objectKey,candidate,WORD_MEDIA_TYPE)); }
   catch { return persistUnavailableWord(pool,lease,inspection,identity,'blob_write_failed'); }
   let readback:Buffer|null;
-  try { readback=await blobs.getIfExistsBounded(identity.objectKey,DOCX_LIMITS.archiveBytes); }
+  try { readback=await withPerformanceSpan('artifact.readback',{operation:'promotion'},()=>blobs.getIfExistsBounded(identity.objectKey,DOCX_LIMITS.archiveBytes)); }
   catch(error) {
     const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
     return persistUnavailableWord(pool,lease,inspection,identity,code);
@@ -443,7 +444,7 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
   const readbackSha256=digest(readback);
   if(readback.length!==inspection.byte_size || readbackSha256!==inspection.sha256)
     return persistUnavailableWord(pool,lease,inspection,identity,'blob_hash_mismatch',{sha256:readbackSha256,byteSize:readback.length});
-  return persistAvailableWord(pool,lease,inspection,identity);
+  return withPerformanceSpan('artifact.register',{},()=>persistAvailableWord(pool,lease,inspection,identity));
 }
 
 /** PDF comments are source overlays checked by the trusted Python writer, not Word candidates. */
@@ -527,7 +528,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     [lease.owner,lease.runId,options.artifactId,options.artifactVersion,WORD_MEDIA_TYPE,outcome==='test_completed'?'test_only':'available']);
     artifact=q.rows[0];if(!artifact)throw new Problem(422,'DELIVERY_FAILED','Passed Word artifact unavailable');
     let bytes:Buffer|null;
-    try { bytes=await options.blobs.getIfExistsBounded(artifact.object_key,DOCX_LIMITS.archiveBytes); }
+    try { bytes=await withPerformanceSpan('artifact.readback',{operation:'finish'},()=>options.blobs!.getIfExistsBounded(artifact.object_key,DOCX_LIMITS.archiveBytes)); }
     catch(error) {
       const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
       await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,code);
@@ -545,7 +546,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_hash_mismatch',{sha256:digest(bytes),byteSize:bytes.length});
       throw new Problem(422,'DELIVERY_FAILED','Word artifact hash mismatch');
     }
-    const inspection=artifact.validator_version===GENERATED_WORD_DELIVERY_VERSION?inspectGeneratedWord(bytes):inspectDocx(bytes);
+    const inspection=await withPerformanceSpan('document.inspect',{operation:'finish',input_bytes:bytes.length},()=>artifact.validator_version===GENERATED_WORD_DELIVERY_VERSION?inspectGeneratedWord(bytes!):inspectDocx(bytes!));
     const evidence=artifact.quality_evidence as DocxInspection;
     if(inspection.quality_status!=='passed' || inspection.validator_version!==artifact.validator_version
       || inspection.sha256!==artifact.sha256.trim() || inspection.byte_size!==Number(artifact.evidence_byte_size)
@@ -553,7 +554,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       || evidence.sha256!==inspection.sha256 || evidence.byte_size!==inspection.byte_size)
       throw new Problem(422,'DELIVERY_FAILED','Word artifact quality evidence mismatch');
   }
-  return transaction(pool,async client=>{
+  return withPerformanceSpan('run.terminal_persist',{outcome},()=>transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
@@ -640,7 +641,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await registerProjectFileOutcome(client,r,artifact,j.checkpoint?.stages?.word_delivery_pair);
     }
     return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
-  });
+  }));
 }
 
 /** M4 QA completes with its persisted text result; legacy Word delivery stays unchanged. */

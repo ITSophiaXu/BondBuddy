@@ -2,18 +2,22 @@
 // ordering rules as the durable journal but persists nothing; never use it for real runs.
 import { createHash } from 'node:crypto';
 import type { ModelAttemptRuntime, ProviderCallIntent, ProviderCallObservation } from '@bondbuddy/api/provider-results';
-import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
+import type { CodexJournal, ModelExecutionConfigEvidence, ModelResultFailureEvidence, PriorAttempt } from './codex-adapter.js';
 
 export class MemoryCodexJournal implements CodexJournal {
   readonly events: string[] = [];
   readonly intents: ProviderCallIntent[] = [];
   readonly observations: { observation: ProviderCallObservation; retryable: boolean }[] = [];
   readonly runtimes: ModelAttemptRuntime[] = [];
+  readonly executionConfigs: ModelExecutionConfigEvidence[] = [];
+  readonly resultFailures: ModelResultFailureEvidence[] = [];
   readonly results = new Map<string, Buffer>();
   readonly execLogs = new Map<string, { bytes: Buffer; truncated: boolean }>();
   prior: PriorAttempt | null = null;
 
   async recordIntent(intent: ProviderCallIntent) { this.events.push(`intent:${intent.attempt_no}`); this.intents.push(intent); }
+  async recordExecutionConfig(intent: ProviderCallIntent, evidence: ModelExecutionConfigEvidence) { this.events.push(`config:${intent.attempt_no}`); this.executionConfigs.push(evidence); }
+  async recordResultFailure(intent: ProviderCallIntent, evidence: ModelResultFailureEvidence) { this.events.push(`result_failure:${intent.attempt_no}`); this.resultFailures.push(evidence); }
   async storeExecLog(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }) {
     this.execLogs.set(intent.call_id, { bytes: Buffer.from(bytes), truncated: meta.truncated });
     this.events.push(`exec_log:${intent.attempt_no}`);

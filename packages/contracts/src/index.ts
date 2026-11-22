@@ -73,6 +73,8 @@ import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
 import { adminDashboardSchemas } from './admin-dashboard.js';
 export * from './admin-dashboard.js';
+import {performanceSchemas} from './performance.js';
+export * from './performance.js';
 import {adminInspectionSchemas} from './admin-inspection.js';
 export * from './admin-inspection.js';
 import { browserErrorSchemas } from './browser-errors.js';
@@ -260,6 +262,7 @@ export const schemas = {
   ...recoverySchemas,
   ...adminSchemas,
   ...adminInspectionSchemas,
+  ...performanceSchemas,
   ...adminDashboardSchemas, // #448 operator-only per-user/per-task dashboard
   ...runtimeSchemas, // #17 worker runtime
   ...trialSchemas, // #35 trial guard

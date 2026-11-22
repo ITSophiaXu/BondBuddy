@@ -46,6 +46,7 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
 import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
 import { installAdminInspectionRoutes } from './admin-inspection.js';
+import { installPerformanceRoutes } from './performance-routes.js';
 import { readVerifiedArtifact } from './artifact-reader.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
@@ -301,6 +302,7 @@ export function createServer(settings: Settings = {}) {
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installAdminDashboardRoutes(app,{db,owner});
   installAdminInspectionRoutes(app,{db,owner});
+  installPerformanceRoutes(app,{db,owner});
   installBillingPermissions(app,{db,owner});
   installBillingPriceAdmin(app,db,owner);
   installTaskRefunds(app,{db,owner});
