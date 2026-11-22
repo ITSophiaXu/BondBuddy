@@ -1,6 +1,6 @@
 """Bounded DOCX edits and trusted replay; operation JSON is data, never code.
 
-All offsets are Unicode code points. Original node identities remain valid after
+Text offsets are Unicode code points; inspect pagination uses node indices. Original node identities remain valid after
 insertions; new nodes use op:<operation-id>:... identities returned by inspect.
 """
 from __future__ import annotations
@@ -14,6 +14,8 @@ import re
 import sys
 import tempfile
 import zlib
+import stat
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
@@ -144,10 +146,241 @@ def write_json(path, value):
                                      prefix=path.name + '.', suffix='.tmp', delete=False) as stream:
         temporary = Path(stream.name)
         json.dump(value, stream, ensure_ascii=False, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
     try:
         os.replace(temporary, path)
+        fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def fsync_directory(path):
+    # Windows has no directory fsync; atomic replacement remains the commit point.
+    if os.name != 'nt':
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def canonical_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'),
+                      allow_nan=False).encode('utf-8')
+
+
+def manifest_path(operations_path):
+    return Path(str(operations_path) + '.manifest.json')
+
+
+def workspace_id(data):
+    value = data.get('workspace_id', data['input_hash'])
+    if not isinstance(value, str) or not 1 <= len(value) <= 256:
+        error('WORD_EDIT_WORKSPACE_MISMATCH')
+    return value
+
+
+@contextmanager
+def workspace_lock(operations_path):
+    path = Path(str(operations_path) + '.lock')
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
+    if path.is_symlink() or path.parent.is_symlink():
+        error('WORD_EDIT_OUTPUT_UNSAFE')
+    fd = os.open(path, flags, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            error('WORD_EDIT_OUTPUT_UNSAFE')
+        if os.name == 'nt':
+            import msvcrt
+            if info.st_size == 0:
+                os.write(fd, b'\0')
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == 'nt':
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def object_path(operations_path, reference):
+    root = Path(operations_path).parent
+    name = '.' + Path(operations_path).name + '.objects'
+    if not isinstance(reference, str) or not re.fullmatch(re.escape(name) + r'/[a-f0-9]{64}\.json', reference):
+        error('WORD_EDIT_OBJECT_PATH_UNSAFE')
+    path = root / reference
+    if path.parent.is_symlink() or path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+        error('WORD_EDIT_OBJECT_PATH_UNSAFE')
+    return path
+
+
+def read_object(operations_path, reference, expected):
+    if not isinstance(expected, str) or not re.fullmatch('[a-f0-9]{64}', expected):
+        error('WORD_EDIT_MANIFEST_INVALID')
+    raw = regular_bytes(object_path(operations_path, reference))
+    if sha(raw) != expected:
+        error('WORD_EDIT_OBJECT_HASH_MISMATCH')
+    return decode_json(raw)
+
+
+def write_object(operations_path, value):
+    raw = canonical_json(value)
+    if not 0 < len(raw) <= MAX_LOG:
+        error('WORD_EDIT_OPERATION_LIMIT')
+    digest = sha(raw)
+    directory = Path(operations_path).parent / ('.' + Path(operations_path).name + '.objects')
+    if directory.is_symlink():
+        error('WORD_EDIT_OBJECT_PATH_UNSAFE')
+    directory.mkdir(mode=0o700, exist_ok=True)
+    fsync_directory(directory.parent)
+    reference = directory.name + '/' + digest + '.json'
+    path = object_path(operations_path, reference)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    except FileExistsError:
+        if regular_bytes(path) != raw:
+            error('WORD_EDIT_OBJECT_HASH_MISMATCH')
+    else:
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+    fsync_directory(directory)
+    return reference, digest
+
+
+def read_manifest(operations_path, data, raw):
+    path = manifest_path(operations_path)
+    if not path.exists() and not path.is_symlink():
+        return None
+    value = read_json(path)
+    required = {'version', 'workspace_id', 'run_input_hash', 'baseline_sha256', 'projection_version',
+                'operations_object_path', 'operations_sha256', 'projection_object_path', 'projection_sha256', 'receipts'}
+    if (not isinstance(value, dict) or set(value) != required or value['version'] != 'word-edit-manifest-v1'
+            or type(value['projection_version']) is not int or value['projection_version'] < 1
+            or not isinstance(value['receipts'], dict) or len(value['receipts']) > MAX_OPERATIONS):
+        error('WORD_EDIT_MANIFEST_INVALID')
+    if (value['workspace_id'] != workspace_id(data) or value['run_input_hash'] != data['input_hash']
+            or value['baseline_sha256'] != sha(raw)):
+        error('WORD_EDIT_LOG_INPUT_MISMATCH')
+    projection = read_object(operations_path, value['projection_object_path'], value['projection_sha256'])
+    if (not isinstance(projection, dict) or projection.get('version') != 'word-edit-projection-v1'
+            or any(projection.get(key) != value[key] for key in ('workspace_id', 'run_input_hash', 'baseline_sha256',
+                                                               'projection_version', 'operations_sha256'))):
+        error('WORD_EDIT_MANIFEST_INVALID')
+    for key, receipt in value['receipts'].items():
+        if (not re.fullmatch('[A-Za-z0-9_-]{1,80}', key) or not isinstance(receipt, dict)
+                or set(receipt) != {'input_hash', 'status', 'receipt_object_path', 'receipt_sha256'}
+                or receipt['status'] not in {'accepted', 'reverted'}
+                or not isinstance(receipt['input_hash'], str) or not re.fullmatch('[a-f0-9]{64}', receipt['input_hash'])):
+            error('WORD_EDIT_MANIFEST_INVALID')
+        object_path(operations_path, receipt['receipt_object_path'])
+    return value
+
+
+def commit_log(operations_path, data, raw, log, editor, prior, request=None):
+    version = prior['projection_version'] + 1 if prior else 1
+    if request is not None and prior and len(prior['receipts']) >= MAX_OPERATIONS:
+        error('WORD_EDIT_OPERATION_LIMIT')
+    operations_ref, operations_hash = write_object(operations_path, log)
+    projection = {'version': 'word-edit-projection-v1', 'workspace_id': workspace_id(data),
+                  'run_input_hash': data['input_hash'], 'baseline_sha256': sha(raw),
+                  'projection_version': version, 'operations_sha256': operations_hash,
+                  'representation': 'replay_overlay', 'operation_count': len(log['operations'])}
+    projection_ref, projection_hash = write_object(operations_path, projection)
+    receipts = copy.deepcopy(prior['receipts']) if prior else {}
+    active = {operation['id'] for operation in log['operations']}
+    for op_id, item in receipts.items():
+        if op_id not in active:
+            item['status'] = 'reverted'
+    result = None
+    if request is not None:
+        result = {'version': 'word-edit-receipt-v2', 'workspace_id': workspace_id(data),
+                  'input_hash': request['input_hash'], 'run_input_hash': data['input_hash'],
+                  'op_id': request['op_id'], 'batch_id': request['batch_id'], 'status': 'accepted',
+                  'projection_version': version, 'operations_object_path': operations_ref,
+                  'operations_sha256': operations_hash, 'projection_object_path': projection_ref,
+                  'projection_sha256': projection_hash}
+        receipt_ref, receipt_hash = write_object(operations_path, result)
+        receipts[request['op_id']] = {'input_hash': request['input_hash'], 'status': 'accepted',
+                                     'receipt_object_path': receipt_ref, 'receipt_sha256': receipt_hash}
+        result = {**result, 'receipt_object_path': receipt_ref, 'receipt_sha256': receipt_hash}
+    manifest = {'version': 'word-edit-manifest-v1', 'workspace_id': workspace_id(data),
+                'run_input_hash': data['input_hash'], 'baseline_sha256': sha(raw), 'projection_version': version,
+                'operations_object_path': operations_ref, 'operations_sha256': operations_hash,
+                'projection_object_path': projection_ref, 'projection_sha256': projection_hash, 'receipts': receipts}
+    # All three immutable objects are durable before this sole commit point.
+    write_json(manifest_path(operations_path), manifest)
+    write_json(operations_path, log)  # Derived v1 copy; readers never prefer it over the manifest.
+    return result
+
+
+def committed_operations_path(input_path, operations_path):
+    data, _, raw = load_input(input_path)
+    manifest = read_manifest(operations_path, data, raw)
+    if manifest is None:
+        return Path(operations_path)
+    read_object(operations_path, manifest['operations_object_path'], manifest['operations_sha256'])
+    return object_path(operations_path, manifest['operations_object_path'])
+
+
+def committed_operations_bytes(input_path, operations_path):
+    return regular_bytes(committed_operations_path(input_path, operations_path))
+
+
+def gc_objects(input_path, operations_path, limit=128):
+    """Host maintenance: reclaim only unreachable objects, with bounded scanning."""
+    if type(limit) is not int or not 1 <= limit <= 2000:
+        error('WORD_EDIT_GC_LIMIT_INVALID')
+    with workspace_lock(operations_path):
+        data, _, raw = load_input(input_path)
+        manifest = read_manifest(operations_path, data, raw)
+        if manifest is None:
+            return {'version': 'word-edit-gc-v1', 'scanned': 0, 'removed': 0}
+        # Verify the complete referenced graph before removing any candidates.
+        reachable = {manifest[key] for key in ('operations_object_path', 'projection_object_path')}
+        read_object(operations_path, manifest['operations_object_path'], manifest['operations_sha256'])
+        for item in manifest['receipts'].values():
+            receipt = read_object(operations_path, item['receipt_object_path'], item['receipt_sha256'])
+            reachable.add(item['receipt_object_path'])
+            for key in ('operations', 'projection'):
+                reference, digest = receipt[key + '_object_path'], receipt[key + '_sha256']
+                read_object(operations_path, reference, digest)
+                reachable.add(reference)
+        directory = object_path(operations_path, manifest['operations_object_path']).parent
+        scanned, removed = 0, 0
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if scanned >= limit:
+                    break
+                scanned += 1
+                if not re.fullmatch(r'[a-f0-9]{64}\.json', entry.name):
+                    continue
+                reference = directory.name + '/' + entry.name
+                if reference in reachable:
+                    continue
+                candidate = object_path(operations_path, reference)
+                info = candidate.lstat()
+                if stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                    candidate.unlink()
+                    removed += 1
+        if removed:
+            fsync_directory(directory)
+        return {'version': 'word-edit-gc-v1', 'scanned': scanned, 'removed': removed}
 
 
 def load_input(input_path):
@@ -864,14 +1097,86 @@ class Editor:
 
 def load_log(input_path, operations_path=None):
     data, source, raw = load_input(input_path)
-    log = read_json(operations_path) if operations_path and Path(operations_path).exists() else empty_log(data, raw)
+    manifest = read_manifest(operations_path, data, raw) if operations_path else None
+    log = (read_object(operations_path, manifest['operations_object_path'], manifest['operations_sha256']) if manifest
+           else read_json(operations_path) if operations_path and Path(operations_path).exists() else empty_log(data, raw))
     validate_log(log, data, raw)
     return data, source, raw, log
 
 
 def load_editor(input_path, operations_path=None):
-    data, source, raw, log = load_log(input_path, operations_path)
-    return data, source, raw, log, Editor(data, source).replay(log['operations'])
+    # Read one manifest snapshot so inspect never pairs an old log with a new version.
+    data, source, raw = load_input(input_path)
+    manifest = read_manifest(operations_path, data, raw) if operations_path else None
+    log = (read_object(operations_path, manifest['operations_object_path'], manifest['operations_sha256']) if manifest
+           else read_json(operations_path) if operations_path and Path(operations_path).exists() else empty_log(data, raw))
+    validate_log(log, data, raw)
+    editor = Editor(data, source).replay(log['operations'])
+    editor.workspace_id = workspace_id(data)
+    editor.projection_version = manifest['projection_version'] if manifest else 0
+    return data, source, raw, log, editor
+
+
+def apply_request(input_path, operations_path, request):
+    required = {'version', 'workspace_id', 'projection_version', 'batch_id', 'op_id', 'node_id',
+                'expected_before', 'operation', 'input_hash'}
+    if (set(request) != required or request['version'] != 'word-edit-request-v2'
+            or not isinstance(request['op_id'], str) or not re.fullmatch('[A-Za-z0-9_-]{1,80}', request['op_id'])
+            or type(request['projection_version']) is not int or request['projection_version'] < 0
+            or not isinstance(request['batch_id'], str) or not 1 <= len(request['batch_id']) <= 256
+            or not isinstance(request['operation'], dict)):
+        error('WORD_EDIT_REQUEST_INVALID')
+    try:
+        actual_hash = sha(canonical_json({key: value for key, value in request.items() if key != 'input_hash'}))
+    except (TypeError, ValueError, UnicodeError):
+        error('WORD_EDIT_REQUEST_INVALID')
+    if request['input_hash'] != actual_hash:
+        error('WORD_EDIT_REQUEST_HASH_MISMATCH')
+    data, source, raw, log, editor = load_editor(input_path, operations_path)
+    if request['workspace_id'] != workspace_id(data):
+        error('WORD_EDIT_WORKSPACE_MISMATCH')
+    prior = read_manifest(operations_path, data, raw)
+    previous = prior['receipts'].get(request['op_id']) if prior else None
+    if previous:
+        if previous['input_hash'] != actual_hash:
+            error('WORD_EDIT_OP_ID_CONFLICT')
+        if previous['status'] != 'accepted':
+            error('WORD_EDIT_OP_REVERTED')
+        receipt = read_object(operations_path, previous['receipt_object_path'], previous['receipt_sha256'])
+        if (receipt.get('version') != 'word-edit-receipt-v2' or receipt.get('op_id') != request['op_id']
+                or receipt.get('input_hash') != actual_hash or receipt.get('workspace_id') != workspace_id(data)
+                or receipt.get('run_input_hash') != data['input_hash']):
+            error('WORD_EDIT_MANIFEST_INVALID')
+        for key in ('operations', 'projection'):
+            read_object(operations_path, receipt[key + '_object_path'], receipt[key + '_sha256'])
+        return {**receipt, 'receipt_object_path': previous['receipt_object_path'], 'receipt_sha256': previous['receipt_sha256']}
+    if request['op_id'] in editor.operation_ids:
+        error('WORD_EDIT_OP_ID_CONFLICT')
+    if request['projection_version'] != editor.projection_version:
+        error('WORD_EDIT_STALE_PROJECTION', projection_version=editor.projection_version)
+    operation = request['operation']
+    if (operation.get('id') != request['op_id'] or operation.get('node_id') != request['node_id']
+            or operation.get('before') != request['expected_before']):
+        error('WORD_EDIT_REQUEST_INVALID')
+    anchor = request['expected_before']
+    if isinstance(anchor, dict):
+        if (set(anchor) != {'sha256'} or not isinstance(anchor['sha256'], str)
+                or not re.fullmatch('[a-f0-9]{64}', anchor['sha256'])):
+            error('WORD_EDIT_REQUEST_INVALID')
+        _, node = editor.target(request['node_id'])
+        current_text = node_text(node)
+        if sha(current_text.encode('utf8')) != anchor['sha256']:
+            error('WORD_EDIT_BEFORE_HASH_MISMATCH', node_id=request['node_id'])
+        # The request/receipt hash continues to bind the compact anchor. Persist only the
+        # verified full literal before, so all legacy replay/finalize consumers stay unchanged.
+        operation = {**operation, 'before': current_text}
+    elif not isinstance(anchor, str):
+        error('WORD_EDIT_REQUEST_INVALID')
+    if len(log['operations']) >= MAX_OPERATIONS:
+        error('WORD_EDIT_OPERATION_LIMIT')
+    accepted = apply_unit(editor, operation, 0)
+    log['operations'].extend(accepted)
+    return commit_log(operations_path, data, raw, log, editor, prior, request)
 
 
 def apply_unit(editor, unit, unit_index):
@@ -893,6 +1198,15 @@ def apply_unit(editor, unit, unit_index):
 
 
 def apply_batch(input_path, operations_path, additions, partial=False):
+    with workspace_lock(operations_path):
+        if any(isinstance(unit, dict) and unit.get('version') == 'word-edit-request-v2' for unit in additions):
+            if partial or len(additions) != 1:
+                error('WORD_EDIT_REQUEST_INVALID')
+            return apply_request(input_path, operations_path, additions[0])
+        return apply_legacy_batch(input_path, operations_path, additions, partial)
+
+
+def apply_legacy_batch(input_path, operations_path, additions, partial=False):
     data, source, raw, log, editor = load_editor(input_path, operations_path)
     count = sum(len(unit) if isinstance(unit, list) else 1 for unit in additions)
     if len(log['operations']) + count > MAX_OPERATIONS:
@@ -921,7 +1235,11 @@ def apply_batch(input_path, operations_path, additions, partial=False):
             editor = Editor(data, source).replay(log['operations'] + accepted)
     if accepted:
         log['operations'].extend(accepted)
-        write_json(operations_path, log)
+        prior = read_manifest(operations_path, data, raw)
+        if prior:
+            commit_log(operations_path, data, raw, log, editor, prior)
+        else:
+            write_json(operations_path, log)
     result = {'version': VERSION, 'operation_count': len(log['operations']),
               'accepted_operation_ids': [o['id'] for o in accepted][-200:],
               'added_node_ids': [key for key in editor.nodes if key.startswith('op:')][-200:]}
@@ -934,8 +1252,13 @@ def apply_batch(input_path, operations_path, additions, partial=False):
 
 
 def revert(input_path, operations_path, op_ids=None, from_op_id=None):
+    with workspace_lock(operations_path):
+        return revert_locked(input_path, operations_path, op_ids, from_op_id)
+
+
+def revert_locked(input_path, operations_path, op_ids=None, from_op_id=None):
     data, source, raw, log = load_log(input_path, operations_path)
-    if not Path(operations_path).exists():
+    if not Path(operations_path).exists() and not manifest_path(operations_path).exists():
         error('WORD_EDIT_LOG_REQUIRED')
     operations = log['operations']
     ids = [o.get('id') for o in operations]
@@ -959,16 +1282,41 @@ def revert(input_path, operations_path, op_ids=None, from_op_id=None):
     kept = {o.get('id') for o in keep}
     removed = [i for i in ids if i not in kept]
     log['operations'] = keep
-    write_json(operations_path, log)
+    prior = read_manifest(operations_path, data, raw)
+    if prior:
+        commit_log(operations_path, data, raw, log, Editor(data, source).replay(keep), prior)
+    else:
+        write_json(operations_path, log)
     return {'version': VERSION, 'operation_count': len(keep), 'removed_operation_ids': removed[-200:],
             'removed_operation_count': len(removed)}
 
 
 def reset(input_path, operations_path):
-    data, source, raw, log = load_log(input_path, operations_path)
-    removed = len(log['operations'])
-    write_json(operations_path, empty_log(data, raw))
-    return {'version': VERSION, 'operation_count': 0, 'removed_operation_count': removed}
+    with workspace_lock(operations_path):
+        data, source, raw, log = load_log(input_path, operations_path)
+        removed = len(log['operations'])
+        prior = read_manifest(operations_path, data, raw)
+        if prior:
+            commit_log(operations_path, data, raw, empty_log(data, raw), Editor(data, source), prior)
+        else:
+            write_json(operations_path, empty_log(data, raw))
+        return {'version': VERSION, 'operation_count': 0, 'removed_operation_count': removed}
+
+
+def no_changes(input_path, operations_path, reason):
+    with workspace_lock(operations_path):
+        data, source, raw, log, editor = load_editor(input_path, operations_path)
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
+            error('WORD_EDIT_NO_CHANGES_REASON_REQUIRED')
+        if editor.has_changes():
+            error('WORD_EDIT_NO_CHANGES_CONFLICT')
+        log['no_changes_reason'] = reason
+        prior = read_manifest(operations_path, data, raw)
+        if prior:
+            commit_log(operations_path, data, raw, log, editor, prior)
+        else:
+            write_json(operations_path, log)
+        return {'version': VERSION, 'no_changes': True, 'operation_count': len(log['operations'])}
 
 
 def inspect_page(editor, raw, node=None, find=None, kind=None, offset=0, limit=30, max_chars=INSPECT_MAX_CHARS):
@@ -997,7 +1345,9 @@ def inspect_page(editor, raw, node=None, find=None, kind=None, offset=0, limit=3
         used += size
     following = offset + len(nodes)
     result = {'version': 'word-edit-inspect-v1', 'baseline_sha256': sha(raw),
-              'offset_unit': 'unicode_code_points', 'total': total, 'nodes': nodes,
+              'workspace_id': getattr(editor, 'workspace_id', workspace_id(editor.data)),
+              'projection_version': getattr(editor, 'projection_version', 0),
+              'offset_unit': 'node_index', 'text_offset_unit': 'unicode_code_points', 'total': total, 'nodes': nodes,
               'next_offset': following if following < total else None}
     if len(nodes) < len(window):
         result['truncated_by_size'] = True
@@ -1017,6 +1367,7 @@ def write_package(path, parts):
 
 
 def finalize(input_path, operations_path, output_dir, skip_report=False):
+    operations_path = committed_operations_path(input_path, operations_path)
     if not Path(operations_path).exists():
         error('WORD_EDIT_LOG_REQUIRED')
     data, source, raw, log, editor = load_editor(input_path, operations_path)
@@ -1054,7 +1405,7 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight',
+    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight', 'gc',
                                             'revert', 'reset'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--operations')
@@ -1074,6 +1425,7 @@ def main():
     parser.add_argument('--op-id', action='append')
     parser.add_argument('--from-op-id')
     parser.add_argument('--confirm-reset', action='store_true')
+    parser.add_argument('--gc-limit', type=int, default=128)
     args = parser.parse_args()
     try:
         if args.command == 'prepare':
@@ -1111,6 +1463,10 @@ def main():
                 print(json.dumps(result, ensure_ascii=False))
                 print(json.dumps({'error': 'WORD_EDIT_PARTIAL_APPLY'}), file=sys.stderr)
                 return 3
+        elif args.command == 'gc':
+            if not args.operations:
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            result = gc_objects(args.input, args.operations, args.gc_limit)
         elif args.command == 'revert':
             if not args.operations:
                 error('WORD_EDIT_ARGUMENT_REQUIRED')
@@ -1120,16 +1476,12 @@ def main():
                 error('WORD_EDIT_ARGUMENT_REQUIRED', hint='reset 会清空本轮全部已保存操作，需要 --confirm-reset。')
             result = reset(args.input, args.operations)
         else:
-            data, source, raw, log, editor = load_editor(args.input, args.operations)
             if args.command == 'no_changes':
-                if not args.operations or not args.reason or not args.reason.strip() or len(args.reason) > 2000:
+                if not args.operations:
                     error('WORD_EDIT_NO_CHANGES_REASON_REQUIRED')
-                if editor.has_changes():
-                    error('WORD_EDIT_NO_CHANGES_CONFLICT')
-                log['no_changes_reason'] = args.reason
-                write_json(args.operations, log)
-                result = {'version': VERSION, 'no_changes': True, 'operation_count': len(log['operations'])}
+                result = no_changes(args.input, args.operations, args.reason)
             else:
+                data, source, raw, log, editor = load_editor(args.input, args.operations)
                 result = inspect_page(editor, raw, node=args.node, find=args.find, kind=args.kind,
                                       offset=args.offset, limit=args.limit, max_chars=args.max_chars)
         print(json.dumps(result, ensure_ascii=False))

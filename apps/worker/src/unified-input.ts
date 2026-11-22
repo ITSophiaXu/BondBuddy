@@ -18,12 +18,13 @@ import { fileURLToPath } from 'node:url';
 import { runDocumentParser } from './document-parser.js';
 import { processOcrV2 } from './ocr-v2.js';
 import { readOcrV2Checkpoint } from '@bondbuddy/api/ocr-v2';
+import {pageCoverage} from './workflow-coverage.js';
 
 export type UnifiedManifest = Record<string, unknown> & { issuer_name: string; market: Market; offering: Offering;
   update_details: UpdateDetails; authoring: UnifiedAuthoringInput;
   materials: { material_id: string; material_version: number; role: string; sha256: string }[] };
 export type UnifiedRecord = Omit<DocumentParseRecord, 'extraction_method'> & { extraction_method: 'native_text' | 'ocr' };
-export type UnifiedMaterial = { pin: UnifiedManifest['materials'][number]; filename: string; mediaType: string; objectKey: string; records: UnifiedRecord[]; pending?: string[] };
+export type UnifiedMaterial = { pin: UnifiedManifest['materials'][number]; filename: string; mediaType: string; objectKey: string; records: UnifiedRecord[]; pending?: string[]; extraction_snapshot?:Record<string,unknown> };
 export type UnifiedInput = { manifest: UnifiedManifest; materials: UnifiedMaterial[]; requirements: string[] };
 export class UnifiedInputPending extends Error {}
 
@@ -175,7 +176,7 @@ async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<Unifie
   return row && String(row.sha256).trim() === pin.sha256 ? row : null;
 }
 
-export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean } = {}): Promise<UnifiedInput> {
+export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean; partialCoverage?: boolean } = {}): Promise<UnifiedInput> {
   const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
@@ -199,10 +200,14 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     const pinnedRefs = revisionRefs.filter(ref => ref.material_id === pin.material_id && ref.material_version === pin.material_version);
     const revisionSnapshots = new Set(pinnedRefs.map(ref => ref.parse_snapshot_id));
     if (revisionSnapshots.size > 1) throw new Error('INPUT_REVISION_CONFLICT');
-    if (!revisionSnapshots.size && result.state !== 'succeeded') throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
+    if (!revisionSnapshots.size && result.state !== 'succeeded' && !options.partialCoverage) throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
+    const coveragePending:string[] = result.state !== 'succeeded' ? ['材料解析尚未完整，相关事实待人工确认。'] : [];
     const snapshotId = revisionSnapshots.size ? [...revisionSnapshots][0] : result.checkpoint?.stages?.parse_evidence?.snapshot_id;
     const snapshot = snapshotId ? await getParseSnapshot({ pool: ctx.pool }, scope, snapshotId) : null;
     if (snapshot && snapshot.contentSha256 !== pin.sha256) throw new Error('INPUT_REVISION_CONFLICT');
+    const extraction:Record<string,unknown>={material_sha256:pin.sha256,parse_state:result.state??'missing',parse_snapshot:snapshot?{snapshot_id:snapshot.snapshotId,parser_version:snapshot.parserVersion,response_sha256:snapshot.responseSha256,request_sha256:snapshot.requestHash,request_options:snapshot.requestOptions,cache_hit:snapshot.replayed,status:snapshot.response.status}:null};
+    const count=snapshot?.response.document.page_count;
+    if(typeof count==='number'&&count>0){const without=new Set((snapshot!.response.document.pages_without_native_text as number[]|undefined)??[]);extraction.native_pages=pageCoverage(count,Array.from({length:count},(_,i)=>i+1).filter(p=>!without.has(p)));}
     let records: UnifiedRecord[] = snapshot?.evidence ?? [];
     if (pinnedRefs.some(ref => !snapshot || snapshot.snapshotId !== ref.parse_snapshot_id || snapshot.responseSha256 !== ref.parse_response_sha256
         || ref.material_sha256 !== pin.sha256 || !records.some(record => record.record_id === ref.record_id
@@ -216,8 +221,13 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
         snapshot?.response.warnings.some(w => ['PDF_PAGES_WITHOUT_TEXT','PDF_IMAGES_NOT_OCRD'].includes(w.code)))) {
       const ocrScope = { owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id,
         version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token };
-      const { aggregate } = await processOcrV2(ctx.pool,ctx.blobs,ocrScope);
-      if (aggregate.coverage !== 'complete') throw new UnifiedInputPending('authoring_ocr_incomplete');
+      const { aggregate,responses } = await processOcrV2(ctx.pool,ctx.blobs,ocrScope);
+      const successful=aggregate.successful_pages.map(p=>p.page),attempted=new Set(responses.flatMap(r=>r.page_results.map(p=>p.page)));
+      extraction.ocr_snapshot={document_identity:aggregate.document,document_identity_sha256:inputManifestHash(aggregate.document),responses_sha256:inputManifestHash(responses),coverage:pageCoverage(aggregate.document.page_count,successful,responses.flatMap(r=>r.page_results.filter(p=>p.status==='failed').map(p=>p.page))),cached_pages:successful.filter(p=>!attempted.has(p)),page_refs:aggregate.successful_pages};
+      if (aggregate.coverage !== 'complete') {
+        if (!options.partialCoverage) throw new UnifiedInputPending('authoring_ocr_incomplete');
+        coveragePending.push('OCR页面覆盖不完整，未成功页面中的事实待人工确认。');
+      }
       records = [];
       for (const ref of aggregate.successful_pages) {
         const { checkpoint } = await readOcrV2Checkpoint(ctx.pool,ctx.blobs,ocrScope,aggregate.document,ref);
@@ -227,10 +237,12 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
           extraction_method:'ocr',extractor_version:'ocr-v2',confidence:record.confidence,uncertainty:[...record.uncertainty,'OCR_UNCONFIRMED'],formatting:{} });
       }
     }
-    if (!records.length) throw new UnifiedInputPending('authoring_material_unreadable');
+    if (!records.length && !options.partialCoverage) throw new UnifiedInputPending('authoring_material_unreadable');
+    if (!records.length) coveragePending.push('材料没有可信解析记录，不得据此确认事实。');
     const auxiliary = snapshot?.response.document.auxiliary_targets?.filter(t => t.text_summary?.has_text || !['empty','parsed'].includes(t.parse_status)) ?? [];
     materials.push({ pin, filename: result.filename, mediaType: result.media_type, objectKey: result.object_key, records,
-      pending: auxiliary.length ? ['原稿页眉、页脚、脚注或图形等附属内容保留原样，未自动更新，请核对其中的企业名称、期间和数值。'] : [] });
+      ...(options.partialCoverage?{extraction_snapshot:extraction}:{}),
+      pending: [...coveragePending,...(auxiliary.length ? ['原稿页眉、页脚、脚注或图形等附属内容保留原样，未自动更新，请核对其中的企业名称、期间和数值。'] : [])] });
   }
   const prior = manifest.authoring.previous_output;
   if (prior) {

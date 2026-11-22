@@ -12,8 +12,11 @@ entry cannot close another claim loop or prevent another entry's release. The
 pipeline, assistant and probe claim paths require initialized containment on an
 enrolled worker. Unenrolled main/API/parser behavior is unchanged.
 
-Each task attempt has one cgroup v2 subtree shared by all its model calls and
-native tools. Python, OCR, Word helpers, Xvfb/dbus/desktop children and Playwright
+Each task attempt has one cgroup v2 subtree. New workflow model calls additionally
+open a child subtree bound to the logical call and its attempt generation. Closing
+that child seals admission, kills its exact subtree, and proves no pending launcher
+or executing descendant remains; the parent remains open for the next chapter and
+trusted host tools. Legacy calls keep the original task boundary. Python, OCR, Word helpers, Xvfb/dbus/desktop children and Playwright
 use the central native launcher. The immutable Python runner receives one exact
 `cgroup.procs` descriptor from the trusted host broker, writes kernel PID `0`,
 closes that descriptor, and waits for verified acknowledgment before exec.
@@ -66,6 +69,41 @@ Recovery of unreadable state requires the existing audited node drain/cloud
 death and epoch reconciliation path, not a new worker's claim of emptiness.
 Archive journals only after that epoch has positively stopped and its retained
 leases/provider state have been reconciled.
+
+## Call completion and durable preservation
+
+`call_cgroup_v1` proves only its call is empty. It cannot replace the parent
+`task_cgroup_v1` proof for lease release. Parent inventory includes pending child
+launchers through their trusted journal parent binding; sealing a parent also
+rejects attachment to any open child. Call tombstones forbid reuse of a completed
+generation. The runner checks the broker's parent, logical call and generation
+binding before business exec.
+
+After that empty proof, Node copies only workspace input/scratch/output and
+private response/log evidence into the same persistent volume. File and directory
+fsyncs precede the atomic spool manifest. The original session registers this
+sealed capture and actual usage before releasing physical model capacity. It
+does not mark a timeout candidate provider-completed or settled. Missing proof,
+disk failure or failed DB registration retains responsibility and blocks the
+affected capacity; ordinary sealed upload-pending evidence does not stop unrelated
+task claims. Incomplete captures and `retained-attempt-*` directories pin readiness.
+
+`BB_DURABLE_SPOOL_ROOT` must be a private persistent bind on the same filesystem as
+the worker work directory. Defaults are 256 MiB minimum free space and the existing
+4096-file/100 MiB-file/512 MiB-total recovery limits. `durableSpoolHealth` separates
+sealed pending evidence from unsafe incomplete capture and low disk conditions.
+Node drain requires all pending evidence remotely verified and registered.
+
+The spool pump uses `/usr/bin/flock` with a single immutable Node lock keeper;
+kernel lock release follows process death, never a TTL. Upload/readback SDK work
+runs in children killed and joined after at most 120 seconds, with a five-minute
+pass budget and at most three upload attempts. Children have no enrollment, DB
+identity or model credentials. The original or separately registered recovery
+pool records only exact attempt-bound isolated capture evidence. Remote-verified
+captures retry registration without re-uploading; GC requires a recorded remote
+capture and successful registration. Do not delete incomplete markers or retained
+directories to manufacture an empty-node receipt. Their recovery requires actual
+native termination/fencing and a separately verified preservation handoff.
 
 ## Existing and future nodes
 

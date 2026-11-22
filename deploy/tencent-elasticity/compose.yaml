@@ -28,6 +28,14 @@ services:
       BB_PLATFORM_PROBE_ENABLED: '0'
       BB_WORKER_CONCURRENCY: '8'
       BB_MODEL_CALL_CONCURRENCY: '8'
+      # Explicit opt-in; the runtime reserves one authoring and one postprocess
+      # slot only after the matching DB policy and enrollment are verified.
+      BB_WORKFLOW_V1: ${BB_WORKFLOW_V1:-0}
+      BB_WORKFLOW_PHASE: ${BB_WORKFLOW_PHASE:-}
+      BB_WORKFLOW_TOKEN_LIMIT: ${BB_WORKFLOW_TOKEN_LIMIT:-0}
+      BB_CODEX_WORK_ROOT: /var/lib/bondbuddy/authoring-state/attempts
+      BB_DURABLE_SPOOL_ROOT: /var/lib/bondbuddy/authoring-state/spool
+      BB_WORKFLOW_WORK_ROOT: /var/lib/bondbuddy/authoring-state/workflows
       NODE_OPTIONS: --max-old-space-size=1024
     volumes:
       - ${BB_ELASTIC_REGISTRATION_DIR:?private enrollment required}:/run/bondbuddy/enrollment:ro
@@ -39,6 +47,7 @@ services:
         bind:
           create_host_path: false
       - ${BB_ELASTIC_TASK_SOCKET_DIR:?trusted per-service containment required}:/run/bondbuddy/task-cgroups:ro
+      - authoring-state:/var/lib/bondbuddy/authoring-state
     mem_limit: 6g
     cpus: 2
     pids_limit: 512
@@ -90,3 +99,6 @@ networks:
   default:
     external: true
     name: ${BB_ELASTIC_NETWORK:?reviewed private execution network required}
+volumes:
+  authoring-state:
+    # Never remove this volume during an update/drain: it owns pending captures.

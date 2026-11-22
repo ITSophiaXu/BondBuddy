@@ -16,7 +16,7 @@ export const knownDuration = (span: PerformanceSpan): number | null => span.ende
 
 // These wrappers establish ancestry but do not explain what occupied their interval.
 // Actual external boundaries such as model.exec (CLI spawn-close, including tools) remain measurable work.
-export const performanceContainers = new Set(['run.execution', 'stage.execute', 'model.call', 'model.attempt',
+export const performanceContainers = new Set(['workflow.chapter.call', 'spool.receipt', 'spool.io', 'run.execution', 'stage.execute', 'model.call', 'model.attempt',
   'authoring.repair', 'authoring.delivery.attempt', 'unified.read', 'unified.update', 'unified.outline', 'unified.draft',
   'unified.batch', 'unified.review_revision', 'historical.batch', 'group.plan_prepare', 'workpaper.plan_prepare']);
 

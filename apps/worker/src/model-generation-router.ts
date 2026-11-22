@@ -15,6 +15,7 @@ import { reviewFileStage } from './review-file-stage.js';
 import { reviewPublicStage } from './review-public-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
+import {workflowAuthoringStage} from './workflow-authoring-stage.js';
 import { reviewRevisionCliStage } from './review-revision-cli-stage.js';
 import { m4DocumentStage } from './m4-document-stage.js';
 import { m4QaStage } from './m4-qa-stage.js';
@@ -31,6 +32,8 @@ export interface ModelGenerationRouterOptions {
   revisionStage?: RunStage;
   legacyRevisionStage?: RunStage;
   fileStage?: RunStage;
+  workflowStage?:RunStage;
+  workflowEnabled?:boolean;
   m4Document?:RunStage;
   m4Qa?:RunStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
@@ -101,6 +104,7 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
         }
         const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
         if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
+        if(ctx.lease.checkpoint?.workflow_v1 || ctx.lease.checkpoint?.workflow_admission_v1)return (options.workflowStage??workflowAuthoringStage()).run(ctx);
         return (options.fileStage ?? fileAuthoringStage()).run(ctx);
       }
       if (ctx.run.task_kind === 'update') return update.run(ctx);

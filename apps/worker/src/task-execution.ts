@@ -8,10 +8,16 @@ import {promisify} from 'node:util';
 import type {Pool} from 'pg';
 import {executionNodeForPool} from '@bondbuddy/api/execution-capacity';
 import type {Lease,ManagedRunReleaseProof} from '@bondbuddy/api/queue';
+import {needsLeaseRelease} from './lease-outcome.js';
+import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 
 export const TASK_CGROUP_PROTOCOL_VERSION=1;
 type Scope={kind:'job'|'assistant'|'background';id:string;token:string};
-type Receipt={key:string;identity:string;sealed:boolean;empty?:boolean;retireWhenEmpty?:boolean;retirementPending?:boolean};
+type Receipt={key:string;identity:string;sealed:boolean;empty?:boolean;kind?:Scope['kind']|'call';
+ callBinding?:{kind:'call';parentKey:string;parentIdentity:string;logicalCallId:string;generation:number};
+ retireWhenEmpty?:boolean;retirementPending?:boolean};
+export type TaskCallReleaseProof={version:'call_cgroup_v1';key:string;identity:string;parentKey:string;parentIdentity:string;
+ logicalCallId:string;generation:number;epoch:string;sessionId:string;sealed:true;nativeProcesses:0};
 const current=new AsyncLocalStorage<Receipt>();
 const receipts=new Map<string,Receipt>();
 const admitting=new Set<string>();
@@ -80,20 +86,67 @@ export async function withTaskExecution<T>(pool:Pool,scope:Scope,work:()=>Promis
  let receipt:Receipt;
  try{receipt=await request({action:'open',scope});}finally{admitting.delete(key);}
  if(receipt.key!==key||receipt.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
+ receipt.kind=scope.kind;
  receipts.set(key,receipt);
  let result:T|undefined,completed=false;
  try{result=await current.run(receipt,work);completed=true;return result;}
  finally{
   // Seal admission before the empty proof. A late runner cannot execute business code.
   receipt.sealed=true;
-  receipt.retireWhenEmpty=completed&&result!=='retry';
+  receipt.retireWhenEmpty=completed&&!needsLeaseRelease(result);
   const sealed=await request({action:'seal',key,identity:receipt.identity});
   if(sealed.key!==key||sealed.identity!==receipt.identity||!sealed.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
-  if(completed&&result!=='retry'&&sealed.nativeProcesses===0){
+  if(completed&&!needsLeaseRelease(result)&&sealed.nativeProcesses===0){
    await retireReceipt(receipt);
    receipts.delete(key);
   }
  }
+}
+
+/** A chapter closes its own native subtree; the job remains open for the next call. */
+export async function withTaskCallExecution<T>(input:{logicalCallId:string;generation:number;required?:boolean;
+ onClosed?:(proof:TaskCallReleaseProof)=>void},work:()=>Promise<T>):Promise<{value:T;proof:TaskCallReleaseProof|null}>{
+ if(!managed){
+  if(input.required)throw Error('TASK_CALL_CONTAINMENT_REQUIRED');
+  return {value:await work(),proof:null};
+ }
+ const parent=current.getStore(),context=enrolledPool&&executionNodeForPool(enrolledPool);
+ if(!parent||parent.sealed||!['job','assistant'].includes(parent.kind??'')||!context||
+   !/^[A-Za-z0-9_-]{1,128}$/.test(input.logicalCallId)||!Number.isSafeInteger(input.generation)||input.generation<1)
+  throw Error('TASK_CALL_ADMISSION_CLOSED');
+ const scope={kind:'call',parentKey:parent.key,parentIdentity:parent.identity,logicalCallId:input.logicalCallId,generation:input.generation};
+ const key=createHash('sha256').update(JSON.stringify(scope)).digest('hex');
+ const receipt=await request({action:'open_call',key:parent.key,identity:parent.identity,
+  logicalCallId:input.logicalCallId,generation:input.generation});
+ if(receipt.key!==key||receipt.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
+ receipt.kind='call';
+ if(JSON.stringify(receipt.callBinding)!==JSON.stringify(scope))throw Error('TASK_CGROUP_SCOPE_MISMATCH');
+ receipts.set(key,receipt);
+ let value:T|undefined,proof:TaskCallReleaseProof|undefined;
+ try{value=await current.run(receipt,work);}
+ finally{
+  await withPerformanceSpan('model.call.close',{logical_call_id:input.logicalCallId,attempt_no:input.generation,
+   execution_node_epoch:context.identity.epoch,execution_session_id:context.session_id},async span=>{
+  receipt.sealed=true;
+  receipt.retireWhenEmpty=true;
+  for(let attempt=0;attempt<100;attempt++){
+   const closed=await request({action:'close_call',key,identity:receipt.identity});
+   span.annotate({poll_count:attempt+1,cgroup_process_count:closed.nativeProcesses});
+   if(closed.key!==key||closed.identity!==receipt.identity||!closed.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
+   if(closed.nativeProcesses===0){
+    proof={version:'call_cgroup_v1',key,identity:receipt.identity,parentKey:parent.key,parentIdentity:parent.identity,
+     logicalCallId:input.logicalCallId,generation:input.generation,epoch:context.identity.epoch,sessionId:context.session_id,sealed:true,nativeProcesses:0};
+    await retireReceipt(receipt);
+    receipts.delete(key);
+    input.onClosed?.(proof);
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  if(!proof)throw Error('TASK_CALL_NOT_QUIESCENT');
+  });
+ }
+ return {value:value!,proof:proof!};
 }
 
 export async function sweepCompletedTaskExecutions(){
@@ -103,7 +156,7 @@ export async function sweepCompletedTaskExecutions(){
    if(receipts.get(receipt.key)===receipt)receipts.delete(receipt.key);
    return;
   }
-  const proof=await request({action:'seal',key:receipt.key,identity:receipt.identity});
+  const proof=await request({action:receipt.kind==='call'?'close_call':'seal',key:receipt.key,identity:receipt.identity});
   if(proof.key!==receipt.key||proof.identity!==receipt.identity||!proof.sealed)throw Error('TASK_CGROUP_SCOPE_MISMATCH');
   if(proof.nativeProcesses===0){
    await retireReceipt(receipt);
@@ -156,7 +209,13 @@ function nativeCommand(command:string,args:readonly string[],env:NodeJS.ProcessE
  const receipt=current.getStore();
  if(!receipt||receipt.sealed)throw Error('TASK_NATIVE_ADMISSION_CLOSED');
  return {command:'/usr/bin/python3',args:['-I',runner,receipt.key,receipt.identity,'--',command,...args],
-  env:{...(env??process.env),BB_TASK_CGROUP_KEY:receipt.key,BB_TASK_CGROUP_IDENTITY:receipt.identity}};
+  env:{...(env??process.env),...nativeReceiptEnvironment(receipt)}};
+}
+function nativeReceiptEnvironment(receipt:Receipt):Record<string,string>{
+ const binding=receipt.callBinding;
+ return {BB_TASK_CGROUP_KEY:receipt.key,BB_TASK_CGROUP_IDENTITY:receipt.identity,
+  ...(binding?{BB_TASK_CALL_PARENT_KEY:binding.parentKey,BB_TASK_CALL_PARENT_IDENTITY:binding.parentIdentity,
+   BB_TASK_CALL_LOGICAL_ID:binding.logicalCallId,BB_TASK_CALL_GENERATION:String(binding.generation)}:{})};
 }
 
 /** PID-preserving exec after the host moves the runner, never spawn-then-tag. */
@@ -185,5 +244,5 @@ export function taskBrowserExecutable(){
 }
 export function taskBrowserEnvironment(env:Record<string,string>){
  const receipt=current.getStore();
- return receipt?{...env,BB_TASK_CGROUP_KEY:receipt.key,BB_TASK_CGROUP_IDENTITY:receipt.identity}:env;
+ return receipt?{...env,...nativeReceiptEnvironment(receipt)}:env;
 }

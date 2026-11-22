@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,lstat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -67,5 +67,19 @@ test('known-invalid file output is a measured failure; storage errors still requ
    assert.equal(result.error_code,expected==='failed'?'MODEL_OUTPUT_SCHEMA_INVALID':'MODEL_RESULT_STORE_FAILED');
    assert.equal(result.value,null);
   }
+ }finally{await rm(s.root,{recursive:true,force:true});}
+});
+
+test('a failed journal keeps the only candidate and invokes preservation after native exit',{skip:process.platform!=='linux'},async()=>{
+ const s=await setup();let workspace='',preserved=0;
+ try{
+  const journal=new MemoryCodexJournal();
+  journal.recordRuntime=async()=>{throw Error('synthetic_database_unavailable');};
+  await assert.rejects(runContainedModelCall({...s.input,fileWorkspace:{...s.input.fileWorkspace!,
+   prepare:async cwd=>{workspace=cwd;await s.input.fileWorkspace!.prepare(cwd);},
+   onFailure:async cwd=>{assert.equal(await readFile(join(cwd,'output/fixture.txt'),'utf8'),'synthetic file');preserved++;throw Error('synthetic_preservation_store_unavailable');}
+  }},journal,s.config),/synthetic_database_unavailable/);
+  assert.equal(preserved,1,'all journal failure paths reach preservation');
+  assert.equal((await lstat(join(workspace,'output/fixture.txt'))).isFile(),true,'failed preservation never deletes the unique candidate');
  }finally{await rm(s.root,{recursive:true,force:true});}
 });

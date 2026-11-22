@@ -45,15 +45,17 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     assert.equal(p.statusCode, 201, p.body);
     const projectId = p.json().project_id;
     const audit = await uploadSyntheticAudit(app, projectId);
-    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [audit], requirement_message_ids: [] });
+    const current = await send('GET', `/api/v1/projects/${projectId}`);
+    assert.equal(current.statusCode, 200, current.body);
+    const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: current.json().draft_revision, material_versions: [audit], requirement_message_ids: [] });
     assert.equal(input.statusCode, 201, input.body);
-    const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `synthetic-codex-${label}-${uid()}`, project_id: projectId, input_revision: 1, input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
+    const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `synthetic-codex-${label}-${uid()}`, project_id: projectId, input_revision: input.json().input_revision, input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
     assert.equal(submitted.statusCode, 202, submitted.body);
     const runId = submitted.json().run_id;
     const prompt = Buffer.from(`synthetic codex prompt ${label}`);
     const objectKey = `users/${owner}/projects/${projectId}/snapshots/prompt-${runId}`;
     await blobs.put(objectKey, prompt, 'text/plain');
-    const promptRef = await saveSnapshotRef(pool, { owner, projectId, runId, kind: 'model_request', version: 1, objectKey, sha256: createHash('sha256').update(prompt).digest('hex'), redactionVersion: 'synthetic_redaction_v1', inputRevision: 1, inputHash: input.json().input_hash, blobs });
+    const promptRef = await saveSnapshotRef(pool, { owner, projectId, runId, kind: 'model_request', version: 1, objectKey, sha256: createHash('sha256').update(prompt).digest('hex'), redactionVersion: 'synthetic_redaction_v1', inputRevision: input.json().input_revision, inputHash: input.json().input_hash, blobs });
     const lease = await claim(pool, 30);
     assert.ok(lease); assert.equal(lease.runId, runId);
     return { projectId, runId, promptRef, lease };
@@ -71,6 +73,17 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     webJournal.recordIntent=async intent=>{webIntent=intent;await recordIntent(intent);};
     const searched=await runContainedModelCall(callFor(web,'SCENARIO:web_search'),webJournal,{...config,web_search:'live'});
     assert.equal(searched.status,'completed');
+    assert.deepEqual((await pool.query('SELECT project_id FROM bb_jobs WHERE id=$1',[web.lease.jobId])).rows,
+      [{project_id:null}],'ordinary API enqueue leaves the optional job project empty');
+    assert.deepEqual((await pool.query('SELECT project_id,run_id,job_id FROM bb_model_attempt_execution_configs WHERE attempt_id=$1',[webIntent.call_id])).rows,
+      [{project_id:web.projectId,run_id:web.runId,job_id:web.lease.jobId}],'the run supplies the authoritative project identity');
+    const diagnostic={substage:'object_verify',error_class:'storage_integrity',error_code:'MODEL_RESULT_STORE_FAILED'} as const;
+    await webJournal.recordResultFailure({...webIntent,project_id:'another-project'},diagnostic);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_result_failure_diagnostics WHERE attempt_id=$1',[webIntent.call_id])).rows[0].n,0,
+      'an incorrect project cannot write diagnostics for the real attempt');
+    await webJournal.recordResultFailure(webIntent,diagnostic);
+    assert.deepEqual((await pool.query('SELECT project_id,run_id,job_id,substage FROM bb_model_result_failure_diagnostics WHERE attempt_id=$1',[webIntent.call_id])).rows,
+      [{project_id:web.projectId,run_id:web.runId,job_id:web.lease.jobId,substage:'object_verify'}]);
     const stored=(await pool.query('SELECT events,content_sha256 FROM bb_model_web_search_evidence WHERE call_id=$1',[webIntent.call_id])).rows[0];
     assert.equal(stored.events.length,1);assert.equal(stored.events[0].item.id,'search-1');
     await webJournal.recordWebSearchEvents(webIntent,stored.events);

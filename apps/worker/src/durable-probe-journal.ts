@@ -1,7 +1,11 @@
 import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool } from 'pg';
 import {randomUUID} from 'node:crypto';
-import { recordPotentialCall, setRunModelActivity, type Lease } from '@bondbuddy/api/queue';
+import { recordPotentialCall, recordSealedCapture as registerSealedCapture, setRunModelActivity, type Lease } from '@bondbuddy/api/queue';
+import {executionNodeForPool,withExecutionControlPool} from '@bondbuddy/api/execution-capacity';
+import type {TaskCallReleaseProof} from './task-execution.js';
+import type {DurableSpoolIdentity,DurableSpoolReceipt} from './durable-spool.js';
+import type {ProviderUsage} from '@bondbuddy/api/provider-results';
 import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import { recordCodexExecLog } from '@bondbuddy/api/exec-logs';
@@ -62,6 +66,37 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+  private readonly spoolIdentities=new Map<string,DurableSpoolIdentity>();
+
+  override async recordIntent(intent:ProviderCallIntent){
+    await super.recordIntent(intent);
+    // Freeze this while the original lease is valid, before any possible send.
+    // A later DB outage/lease loss cannot prevent Node-only local preservation.
+    if(executionNodeForPool(this.codexInput.pool))await this.spoolIdentity(intent);
+  }
+  async spoolIdentity(intent:ProviderCallIntent):Promise<DurableSpoolIdentity>{
+    const prior=this.spoolIdentities.get(intent.call_id);if(prior)return prior;
+    const {pool,lease}=this.codexInput,context=executionNodeForPool(pool);
+    if(!context||intent.owner_user_id!==lease.owner||intent.job_id!==lease.jobId||intent.run_id!==lease.runId)throw Error('DURABLE_SPOOL_IDENTITY_INVALID');
+    const row=(await pool.query(`SELECT r.input_hash,j.checkpoint,j.execution_node_id,j.execution_node_epoch,j.execution_session_id
+      FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
+      WHERE j.id=$1 AND j.run_id=$2 AND j.owner_user_id=$3 AND r.project_id=$4 AND j.state='running' AND j.lease_token=$5
+        AND j.lease_until>clock_timestamp() AND j.execution_node_epoch=$6 AND j.execution_session_id=$7`,
+      [lease.jobId,lease.runId,lease.owner,intent.project_id,lease.token,context.identity.epoch,context.session_id])).rows[0];
+    if(!row)throw Error('DURABLE_SPOOL_IDENTITY_INVALID');
+    const identity:DurableSpoolIdentity={ownerUserId:intent.owner_user_id,projectId:intent.project_id,runId:intent.run_id,
+      jobId:intent.job_id,attemptId:intent.call_id,logicalCallId:intent.logical_call_id,attemptNo:intent.attempt_no,leaseToken:lease.token,
+      inputHash:String(row.input_hash).trim(),planHash:row.checkpoint?.workflow_v1?.plan_hash??null,
+      originalExecution:{nodeId:row.execution_node_id,epoch:context.identity.epoch,sessionId:context.session_id}};
+    this.spoolIdentities.set(intent.call_id,identity);return identity;
+  }
+  async recordSealedCapture(intent:ProviderCallIntent,receipt:DurableSpoolReceipt,proof:TaskCallReleaseProof,raw:{usage:ProviderUsage;outcome:string}){
+    const identity=this.spoolIdentities.get(intent.call_id);
+    if(!identity)throw Error('DURABLE_SPOOL_IDENTITY_NOT_FROZEN');
+    await withExecutionControlPool(this.codexInput.pool,control=>registerSealedCapture(control,this.codexInput.lease,{attemptId:intent.call_id,logicalCallId:intent.logical_call_id,
+      attemptNo:intent.attempt_no,originalExecution:identity.originalExecution,spoolId:receipt.spoolId,
+      localManifestSha256:receipt.manifestSha256,callExitProof:proof,rawUsage:raw.usage,rawOutcome:raw.outcome}));
+  }
 
   async recordResultFailure(intent:ProviderCallIntent,evidence:ModelResultFailureEvidence):Promise<void> {
     const {pool,lease}=this.codexInput;
@@ -117,10 +152,19 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
       await setRunModelActivity(pool,lease,requestId,'active');
       let releasePromise:Promise<void>|undefined;
       const acquired=permit;
-      return {...acquired,release:()=>releasePromise??=(async()=>{
-        try{await setRunModelActivity(pool,lease,requestId,acquired.signal.aborted?'abandoned':'finished');}
+      return {...acquired,release:()=>{
+        if(releasePromise)return releasePromise;
+        const attempt=(async()=>{
+        try{
+          const write=(control:Pool)=>setRunModelActivity(control,lease,requestId,acquired.signal.aborted?'abandoned':'finished');
+          if(executionNodeForPool(pool))await withExecutionControlPool(pool,write);else await write(pool);
+        }
         finally{await acquired.release();}
-      })()};
+        })();
+        releasePromise=attempt;
+        void attempt.catch(()=>{if(releasePromise===attempt)releasePromise=undefined;});
+        return attempt;
+      }};
     }catch(error){
       // acquire returns outside the adapter's try/finally. Clean up a real slot
       // even if recording its grant fails. Preserve the original failure.
