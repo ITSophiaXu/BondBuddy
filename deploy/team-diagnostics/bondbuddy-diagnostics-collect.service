@@ -1,0 +1,21 @@
+[Unit]
+Description=Collect and forward retained BondBuddy diagnostics
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/bb-diagnostics --collect
+TimeoutStartSec=600
+Nice=10
+MemoryMax=256M
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bondbuddy-diagnostics
+StandardOutput=journal
+StandardError=journal
