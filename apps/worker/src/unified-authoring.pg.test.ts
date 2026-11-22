@@ -66,8 +66,13 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
           // New uploads do not schedule parsing; explicitly seed this legacy fixture.
           await transaction(pool,client=>enqueueMaterialParse(client,{owner,projectId:project,
             materialId:complete.json().material_id,materialVersion:1,sha256:declaration.sha256,traceId:randomUUID()}));
-          assert.equal(await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)},
-            parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}}),'succeeded');
+          const parseOutcome=await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)},
+            parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}});
+          if(parseOutcome!=='succeeded'){
+            const errors=(await pool.query(`SELECT e.code,e.category,e.stage,e.recovery_status FROM bb_observability_errors e
+              JOIN bb_jobs j ON j.id=e.job_id WHERE j.project_id=$1 AND j.job_type='parse' ORDER BY e.created_at DESC LIMIT 3`,[project])).rows;
+            assert.fail(`material parse ${parseOutcome}: ${JSON.stringify(errors)}`);
+          }
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
         const uploadedProject=await send('GET',`/api/v1/projects/${project}`);

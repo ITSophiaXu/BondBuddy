@@ -1,6 +1,8 @@
 // SYNTHETIC PostgreSQL/Azurite test for the Codex adapter journal. It claims jobs globally,
 // so it runs in its own clone of the migrated template (BB_TEST_CODEX_DATABASE_URL, else
 // BB_TEST_DATABASE_URL; see test-database.ts). The fake codex replays synthetic JSONL; no provider is called.
+// Run with the Linux worker runtime: capacity fencing reads /proc. Containers without
+// /etc/machine-id must set a test-only BB_MODEL_EXECUTION_HOST_ID.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
@@ -36,7 +38,8 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
   const app = createServer({ pool, blobs, historicalBillingFixture: true, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin: 'http://bondbuddy.test' }, payload: payload as any });
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-durable-'));
-  const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null, credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 400, kill_grace_ms: 100, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin' };
+  const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null, credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 5000, kill_grace_ms: 100, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin' };
+  const hangConfig: CodexAdapterConfig = { ...config, timeout_ms: 400 };
   async function fixture(label: string) {
     const p = await send('POST', '/api/v1/projects', { name: `Synthetic codex ${label}`, kind: 'update', issuer_name: null, market: null, offering: null });
     assert.equal(p.statusCode, 201, p.body);
@@ -129,7 +132,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
 
     // Timeout: recorded with unknown usage and the job pauses for reconciliation.
     const slow = await fixture('timeout');
-    const t = await runContainedModelCall(callFor(slow, 'SCENARIO:hang'), journalFor(slow), config);
+    const t = await runContainedModelCall(callFor(slow, 'SCENARIO:hang'), journalFor(slow), hangConfig);
     assert.equal(t.error_code, 'MODEL_TIMEOUT');
     const tr = (await pool.query('SELECT a.status,a.usage_status,o.input_tokens,t.error_code,t.exit_signal FROM bb_model_call_attempts a JOIN bb_provider_call_observations o ON o.attempt_id=a.id JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id WHERE a.job_id=$1', [slow.lease.jobId])).rows[0];
     assert.deepEqual([tr.status, tr.usage_status, tr.input_tokens, tr.error_code], ['pending_reconcile', 'unknown', null, 'MODEL_TIMEOUT']);
@@ -146,7 +149,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
       await runReconcileCommand(pool, ['resolve', slow.runId, prior.call_id, 'retry_unknown_usage', 'synthetic_timeout_recovery'], 'synthetic-operator');
       const lease = await claim(pool, 30); assert.ok(lease); assert.equal(lease.runId, slow.runId);
       recovered = { ...slow, lease };
-      const retry = await runContainedModelCall(callFor(recovered, attemptNo === 2 ? 'SCENARIO:hang' : 'SCENARIO:structured'), journalFor(recovered), config);
+      const retry = await runContainedModelCall(callFor(recovered, attemptNo === 2 ? 'SCENARIO:hang' : 'SCENARIO:structured'), journalFor(recovered), attemptNo === 2 ? hangConfig : config);
       assert.equal(retry.status, attemptNo === 2 ? 'needs_reconcile' : 'completed');
       assert.deepEqual(retry.attempts.map(a => a.attempt_no), [attemptNo]);
     }
