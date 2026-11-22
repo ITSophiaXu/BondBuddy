@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./performance-trace": {"types":"./dist/performance-trace.d.ts","default":"./dist/performance-trace.js"},
     "./upload-confirmation": {"types":"./dist/upload-confirmation.d.ts","default":"./dist/upload-confirmation.js"},
     "./test-authoring-source": {"types":"./dist/test-authoring-source.d.ts","default":"./dist/test-authoring-source.js"},
     "./none-baseline": {"types":"./dist/none-baseline.d.ts","default":"./dist/none-baseline.js"},

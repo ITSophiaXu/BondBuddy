@@ -1,3 +1,4 @@
+import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 import {validateWorkpaperCoverage} from './workpaper-content.js';
 import {collectDirectWorkpaper} from './workpaper-direct-output.js';
 import {writeFile} from 'node:fs/promises';
@@ -103,12 +104,12 @@ export function m4DocumentDeliveryStage(): RunStage {
     const result = ctx.values.get('model_generation');
     if (!validM4DocumentResult(result, ctx) || result.error) return {kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE'};
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;
-    const read = async (name: string) => {
+    const read = async (name: string) => withPerformanceSpan('artifact.readback_verify',{artifact_kind:name==='document.docx'?'document':'preparation_note'},async()=>{
       const file = result.files[name]!;
       const bytes = await ctx.blobs.getIfExistsBounded(file.key, M4_FILE_MAX);
       if (!bytes || bytes.length !== file.byte_size || digest(bytes) !== file.sha256) throw Error('M4_OUTPUT_BLOB_MISMATCH');
       return bytes;
-    };
+    });
     await recordM4Progress(ctx, 'm4_registering_artifacts');
     const document=await read('document.docx'),note=await read('preparation-note.docx');
     if(result.workpaper_decision)await publishWorkpaperItemResult(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.workpaper_decision,
