@@ -12,6 +12,7 @@ The production baseline has no model gateway. This candidate records gateway mea
 Verification in this workspace:
 
 - TypeScript compilation: contracts, domain, rule-pack registry, rule applicability context, API, worker, and web passed with workspace-local links to installed dependencies.
+- Production Vite web bundle completed from `apps/web` (593 modules transformed).
 - `node --test` Codex adapter and model-performance: 56/56 passed.
 - API performance: 9/9 passed; web review timeline: 9/9 passed.
 - Diagnostics SecurityTests: 12/12 passed. Full diagnostics Python suite on Windows had 5 Linux-only recovery errors (`fcntl`, `os.geteuid`, and shell execution), requiring Linux validation.
