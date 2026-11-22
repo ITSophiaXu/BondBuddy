@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "node": "azure",
+  "state_directory": "/var/lib/bondbuddy-diagnostics",
+  "compose_projects": ["bb-execution"],
+  "explicit_containers": [],
+  "journal_units": [],
+  "expected_sources": ["azure"],
+  "actors": {},
+  "ingest_sources": {},
+  "upload": {"target": "bondbuddy-log-hub", "ssh_config": "/etc/bondbuddy-diagnostics/upload-ssh.conf"}
+}
