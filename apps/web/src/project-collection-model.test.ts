@@ -24,6 +24,18 @@ test('all runtime states have accurate actions and unknown phases never leak log
   assert.equal(taskView(task('succeeded')).tone,'done');assert.equal(taskView(task('test_completed')).tone,'attention');
   assert.equal(taskView({...task(),stage:'private prompt contents'}).detail,'正在更新募集书');
 });
+test('question recognition remains preparation in the project task list',()=>{
+  const recognizing={...task('running','generation'),operation:'qa_prepare',stage:'model_generation'};
+  assert.equal(taskLabel(recognizing),'理解问题清单');
+  assert.equal(taskView(recognizing).label,'识别中');
+  assert.equal(taskView(recognizing).action,'查看识别状态');
+  assert.match(taskView(recognizing).detail,/尚未开始回答/);
+  const ready={...recognizing,state:'succeeded' as const};
+  assert.equal(taskView(ready).action,'继续准备回答');
+  assert.equal(taskView(ready).label,'已识别');
+  assert.doesNotMatch(taskView(ready).detail,/下载|成果/);
+  assert.equal(taskLabel({...recognizing,operation:'qa_answer'}),'项目问答 · 回填问题清单');
+});
 
 test('batch member links open the exact source-project batch for active, completed and retried runs',()=>{
   const batch={batch_id:'batch / 历史&1',project_id:'source / 项目'};
