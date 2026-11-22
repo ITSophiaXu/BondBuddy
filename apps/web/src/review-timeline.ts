@@ -44,7 +44,7 @@ const failureLabels: Record<string, string> = {
   MODEL_PROVIDER_BALANCE_EXHAUSTED: '处理服务暂时无法继续。请联系管理员恢复服务后再开始。',
   MODEL_PROVIDER_REQUEST_REJECTED: '处理服务拒绝了本轮请求。请联系管理员核对服务配置后再开始。',
   MODEL_OUTPUT_SCHEMA_INVALID: '本轮响应未符合成果格式，未登记为有效报告。',
-  MODEL_RESULT_STORE_FAILED: '本轮成果保存失败，未登记为有效报告。请联系支持核对任务结果。',
+  MODEL_RESULT_STORE_FAILED: '本轮成果处理未完成，未登记为有效报告。请联系支持核对任务结果。',
   MODEL_PRIOR_ATTEMPT_UNRESOLVED: '先前调用的结果尚未核实，请等待核对后再继续，避免重复执行。',
   TRIAL_QUOTA_EXCEEDED:'本轮暂受处理额度限制，限制解除后会自动继续。',
   MODEL_CALLS_SUSPENDED:'复核服务暂时停用，服务恢复后本任务会自动继续。',

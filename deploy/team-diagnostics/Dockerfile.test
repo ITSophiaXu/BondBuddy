@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server openssh-client sudo python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY . /opt/diagnostics
+WORKDIR /opt/diagnostics
+CMD ["python", "-B", "test_ssh.py"]

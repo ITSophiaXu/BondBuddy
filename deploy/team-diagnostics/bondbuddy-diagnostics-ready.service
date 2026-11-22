@@ -1,0 +1,14 @@
+[Unit]
+Description=Verify diagnostic archive before execution-node admission
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/local/sbin/bb-diagnostics --collect --require-synced
+TimeoutStartSec=600
+RemainAfterExit=yes
+ExecStop=/usr/local/sbin/bb-diagnostics --collect --require-synced
+TimeoutStopSec=600
