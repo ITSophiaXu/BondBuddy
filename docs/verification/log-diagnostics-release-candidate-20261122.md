@@ -15,7 +15,7 @@ Verification in this workspace:
 - Production Vite web bundle completed from `apps/web` (593 modules transformed).
 - `node --test` Codex adapter and model-performance: 56/56 passed.
 - API performance: 9/9 passed; web review timeline: 9/9 passed.
-- Diagnostics SecurityTests: 12/12 passed. Full diagnostics Python suite on Windows had 5 Linux-only recovery errors (`fcntl`, `os.geteuid`, and shell execution), requiring Linux validation.
+- Diagnostics SecurityTests: 12/12 passed on Windows. The full 41-test diagnostics suite passed in a disconnected Python 3.11 Linux container with the source mounted read-only.
 - Fresh isolated PostgreSQL 16: all migrations through `0198` applied. Diagnostics reader view installation passed, and the restricted role queried sessions, execution configs, result failures and performance spans. The temporary container was removed.
 
 Before deployment: resolve #1681 gateway timing scope, run the complete exact-SHA Linux quality gate and real-model golden-case acceptance, obtain the private release receipt, validate the fixed local integration version with the user, and check live main/execution component versions, in-flight jobs, migration state, deployment locks and rollback preimages. No production service or database was changed by this checkpoint.
