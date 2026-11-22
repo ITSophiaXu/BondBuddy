@@ -12,7 +12,7 @@
 - 主站、Azure、腾讯弹性节点使用同一采集程序。每个节点独立的机器 key 只能上传其绑定来源；开发使用个人账号/key，只能查询。节点的上传重试按不可变序号/哈希去重，中央确认落盘后才推进上传位置。
 - 中央归档可按来源、服务、容器和时间分页；单页条数/字节限制不再限制总查询范围。默认保留180天，可配置30–3650天。旧于保留期的内容清理后仍保留去重哈希，尚未上传的本地记录不清理。
 - `sources` 同时显示丢失、超过120秒未更新、采集错误和待上传条数；主站核对执行节点登记表，列出 starting/ready/draining 但没有新鲜采集回执的节点。缺失来源不会冒充空日志。
-- 25类数据库诊断投影：用户ID/用户名、任务、jobs、模型尝试/运行/用量/观测、结构化错误、事件、操作、outbox、提示词/提交版本/结果/执行日志引用、积分/冻结/计费拒绝、执行节点/会话/心跳和浏览器错误。过滤字段按项目/用户/run/job/attempt/状态/时间开放。没有任意 SQL 接口，不授予业务表全库读取。
+- 29类数据库诊断投影：用户ID/用户名、任务、jobs、模型尝试/运行/用量/观测、启动前配置、结果失败阶段、结构化错误、事件、操作、outbox、提示词/提交版本/结果/执行日志引用、积分/冻结/计费拒绝、执行节点/会话/心跳、浏览器错误和性能会话/步骤。过滤字段按项目/用户/run/job/attempt/状态/时间开放。没有任意 SQL 接口，不授予业务表全库读取。
 - `content` 通过数据库引用读取私有 Blob，先检查主体状态、删除/清理记录、对象路径、大小、ETag和SHA256，再脱敏并按字节分页。原执行日志已截断时返回 `capture_truncated`，导出报告保留该标记。可看所有**已保存**的授权日志；未记录、已经轮转/清理的字节不能恢复。
 
 ## 开发使用
@@ -69,6 +69,7 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 ## 历史 RCA 的扩展读取范围
 
 - 重新安装本版本的数据库视图 SQL 后，`bb-logs` 可按 `db performance-sessions --run RUN_ID` 和 `db performance-spans --run RUN_ID` 分页读取性能会话、步骤时长及经固定白名单筛选的诊断属性。`run RUN_ID` 也列出这两类数据。只授予 `bb_diagnostics` 视图 SELECT，不授予业务表或任意 SQL 权限；缺表时 `collections` 明确显示 unavailable。发布者须用实际 `bb-logs` 身份核对读取成功和原表访问被拒绝。
+- 本次 v1.0.0 回植后，`db execution-configs --run RUN_ID` 可读取启动前记录的实际超时、配置摘要与来源；`db result-failures --run RUN_ID` 可读取结果验证或存储失败阶段，`db runtime --run RUN_ID` 可区分进程退出及完成原因是否被采集。旧运行不会补造这些字段；当前基线没有执行节点会话表或模型网关，因此相应集合/网关请求指标仍显示 unavailable 或不产生记录。
 - 主站现有 `journal_units` 已包含 `bondbuddy-elastic-proxy-mtls.service` 和 `bondbuddy-integrity-egress.service`；新增实测存在但未登记的 `bondbuddy-integrity-proxy-mtls.service`，以 `logs 服务名 --source main` 查询。Compose 的 `egress` 与 `bb-elastic-execution-egress` 容器日志沿用现有范围。发布者须合并现有配置并核对采集结果，不能用通配 journal 或整个宿主日志代替。
 - 执行节点启用 `node_config_snapshot` 后，`sources` 显示当前安全摘要，`logs node-config --source INSTANCE_ID` 保留每次配置哈希变更的摘要。摘要只含版本哈希、服务能力、运行 UID、代理端口和槽数，不含原始 env、角色绑定、私钥或完整配置。首次采集时间以前的配置不能凭当前文件倒推；已有备份应由获授权运维按原时间戳脱敏导出。
 - 生产升级必须使用统一发布锁、保存当前诊断配置和 ACL 前像，并在独立测试环境验证后由指定发布 chat 执行。代码提交、安装 SQL 的语法通过与生产账号实际读取成功是三个不同状态。

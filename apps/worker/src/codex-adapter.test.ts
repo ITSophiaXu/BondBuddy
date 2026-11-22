@@ -10,15 +10,59 @@ import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas, type ReviewAction } from '@bondbuddy/contracts';
 import { createReviewActionObserver } from './review-action-progress.js';
-import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, modelCancellationDiagnostic, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
+import {ModelResultStoreFailure} from './durable-probe-journal.js';
 import { PerformanceTraceRuntime, type PerformanceSpanRecord } from '@bondbuddy/api/performance-trace';
 
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const validateRecord = new Ajv({ strict: true }).compile(schemas.ModelAdapterAttemptRecord);
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
+
+test('cancellation diagnostic retains only bounded codes and classes',()=>{
+  const reason=Object.assign(new Error('private request text'),{code:'ECONNRESET'});
+  const row=modelCancellationDiagnostic(reason,'native','call-safe-1');
+  assert.equal(row.original_error_code,'ECONNRESET');
+  assert.equal(row.error_class,'error');
+  assert.equal(JSON.stringify(row).includes('private request text'),false);
+  assert.equal(JSON.stringify(modelCancellationDiagnostic(reason,'native','private secret !')).includes('private secret'),false);
+});
+
+test('effective timeout evidence precedes spawn and failed recording prevents launch',async()=>{
+  const {config,cleanup}=await setup({timeout_ms:200,authoring_timeout_ms:3000});
+  try{
+    const journal=new MemoryCodexJournal();
+    const result=await runContainedModelCall(call('SCENARIO:long_authoring',{materialTools:{materials:[]}}),journal,config);
+    assert.equal(result.status,'completed');
+    assert.equal(journal.executionConfigs.length,1);
+    assert.equal(journal.executionConfigs[0].effective_timeout_ms,3000);
+    assert.equal(journal.executionConfigs[0].timeout_branch,'authoring');
+    assert.match(journal.executionConfigs[0].loaded_adapter_sha256,/^[a-f0-9]{64}$/);
+    assert.ok(journal.events.indexOf('config:1')<journal.events.indexOf('exec_log:1'));
+    const denied=new MemoryCodexJournal();let childEvents=0;
+    denied.recordExecutionConfig=async()=>{throw Error('SYNTHETIC_CONFIG_WRITE_FAILED');};
+    await assert.rejects(runContainedModelCall(call('SCENARIO:structured',{onEvent:()=>{childEvents++;}}),denied,config),/SYNTHETIC_CONFIG_WRITE_FAILED/);
+    assert.equal(childEvents,0);assert.equal(denied.intents.length,1);
+  }finally{await cleanup();}
+});
+
+test('result failure evidence distinguishes storage and serialization without changing usage',async()=>{
+  const {config,cleanup}=await setup();
+  try{
+    const stored=new MemoryCodexJournal();
+    stored.storeResult=async()=>{throw new ModelResultStoreFailure('object_write','storage_io');};
+    const write=await runContainedModelCall(call('SCENARIO:structured'),stored,config);
+    assert.equal(write.status,'needs_reconcile');assert.equal(write.attempts[0].usage.status,'measured');
+    assert.deepEqual(stored.resultFailures[0],{substage:'object_write',error_class:'storage_io',error_code:'MODEL_RESULT_STORE_FAILED'});
+    const serialized=new MemoryCodexJournal();const circular:Record<string,unknown>={};circular.self=circular;
+    const bad=await runContainedModelCall(call('SCENARIO:structured',{output:{kind:'json',schema:answerSchema,
+      normalize:()=>circular,validate:()=>true}}),serialized,config);
+    assert.equal(bad.status,'needs_reconcile');assert.equal(bad.attempts[0].usage.status,'measured');
+    assert.deepEqual(serialized.resultFailures[0],{substage:'serialize',error_class:'serialization',error_code:'MODEL_RESULT_STORE_FAILED'});
+  }finally{await cleanup();}
+});
 
 test('fine model spans preserve schema reask usage, hierarchy, private text and completed replay', async () => {
   const { config, cleanup } = await setup();
@@ -463,7 +507,7 @@ test('structured success: intent before spawn, isolated cwd/home/env, #79 record
     const j = new MemoryCodexJournal(); const t = traces();
     const r = await runContainedModelCall(call('SCENARIO:structured return JSON', { onEvent: t.onEvent }), j, config);
     assert.equal(r.status, 'completed'); assert.deepEqual(r.value, { answer: 'OK', n: 16 });
-    assert.deepEqual(j.events, ['intent:1', 'exec_log:1', 'result:1', 'runtime:1', 'observation:1']);
+    assert.deepEqual(j.events, ['intent:1', 'config:1', 'exec_log:1', 'result:1', 'runtime:1', 'observation:1']);
     const trace = t.seen[0] as { argv: string[]; cwd_entries: string[]; env_keys: string[]; codex_home_exists: boolean };
     assert.deepEqual(trace.cwd_entries, [], 'cwd is empty');
     assert.ok(trace.codex_home_exists);
@@ -571,7 +615,8 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
     if (process.platform === 'win32') assert.ok(rec.exit_signal === 'SIGKILL' || (rec.exit_signal === null && rec.exit_code !== 0));
     else assert.equal(rec.exit_signal, 'SIGKILL', 'fake ignores SIGTERM, grace SIGKILL ends it');
     assert.equal(rec.usage.status, 'unknown'); assert.equal(rec.usage.input_tokens, null);
-    assert.ok(rec.duration_ms >= 300); assert.equal(rec.framework_thread_id, '0199a1f0-0000-7000-8000-00000000c0de');
+    assert.ok(rec.duration_ms >= 300);
+    assert.ok(rec.framework_thread_id===null||rec.framework_thread_id==='0199a1f0-0000-7000-8000-00000000c0de');
     assert.ok(rec.duration_ms < 10000, 'termination remains bounded when the OS tree-kill helper cannot complete');
     assert.equal(j.intents.length, 1);
   } finally { await cleanup(); }

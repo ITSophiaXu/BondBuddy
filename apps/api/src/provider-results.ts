@@ -123,18 +123,23 @@ export async function persistProviderResultObject(input: {
   bytes: Buffer;
   resultSchemaVersion: string;
   validate: ProviderResultValidator;
+  onFailure?: (substage:'validate'|'object_write'|'object_verify',errorClass:'output_validation'|'storage_io'|'storage_integrity')=>void;
 }): Promise<ProviderResultReference> {
   assertIntent(input.intent);
   if (!safeVersion(input.resultSchemaVersion) || input.bytes.length < 1 || input.bytes.length > 10485760) throw new Problem(422,'DELIVERY_FAILED','Invalid provider result size or schema version');
   // Validation can yield. Bind the persisted bytes to the exact snapshot checked,
   // even if the caller subsequently changes its mutable Buffer.
   const bytes = Buffer.from(input.bytes);
-  await parseAndValidate(bytes,input.validate);
+  try { await parseAndValidate(bytes,input.validate); }
+  catch(error) { input.onFailure?.('validate','output_validation'); throw error; }
   const sha256 = digest(bytes);
   const resultRef = providerResultObjectKey(input.intent,sha256);
-  await input.blobs.put(resultRef,bytes,'application/json');
-  const stored = await input.blobs.get(resultRef);
-  if (stored.length !== bytes.length || digest(stored) !== sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob verification failed');
+  try { await input.blobs.put(resultRef,bytes,'application/json'); }
+  catch(error) { input.onFailure?.('object_write','storage_io'); throw error; }
+  let stored:Buffer;
+  try { stored = await input.blobs.get(resultRef); }
+  catch(error) { input.onFailure?.('object_verify','storage_io'); throw error; }
+  if (stored.length !== bytes.length || digest(stored) !== sha256) { input.onFailure?.('object_verify','storage_integrity'); throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob verification failed'); }
   return {result_ref:resultRef,result_sha256:sha256,result_schema_version:input.resultSchemaVersion,result_byte_size:bytes.length};
 }
 
@@ -483,8 +488,9 @@ export async function recordModelAttemptRuntime(pool: Pool, lease: Lease, intent
       if (!same) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Model attempt already has different runtime evidence');
       return {idempotent:true};
     }
-    await client.query('INSERT INTO bb_model_call_attempt_runtime(id,owner_user_id,project_id,job_id,run_id,trace_id,attempt_id,logical_call_id,attempt_no,adapter,adapter_version,model_provider,model_config_version,provider_request_id_status,framework_thread_id,started_at,duration_ms,exit_code,exit_signal,finish_reason,error_code,tool_attempts,pricing_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)',
-      [uid(),intent.owner_user_id,intent.project_id,intent.job_id,intent.run_id,intent.trace_id,a.id,intent.logical_call_id,intent.attempt_no,runtime.adapter,runtime.adapter_version,runtime.model_provider,runtime.model_config_version,runtime.provider_request_id_status,runtime.framework_thread_id,runtime.started_at,runtime.duration_ms,runtime.exit_code,runtime.exit_signal,runtime.finish_reason,runtime.error_code,runtime.tool_attempts,runtime.pricing_status]);
+    await client.query('INSERT INTO bb_model_call_attempt_runtime(id,owner_user_id,project_id,job_id,run_id,trace_id,attempt_id,logical_call_id,attempt_no,adapter,adapter_version,model_provider,model_config_version,provider_request_id_status,framework_thread_id,started_at,duration_ms,exit_code,exit_signal,finish_reason,error_code,tool_attempts,pricing_status,exit_capture_status,finish_reason_capture_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)',
+      [uid(),intent.owner_user_id,intent.project_id,intent.job_id,intent.run_id,intent.trace_id,a.id,intent.logical_call_id,intent.attempt_no,runtime.adapter,runtime.adapter_version,runtime.model_provider,runtime.model_config_version,runtime.provider_request_id_status,runtime.framework_thread_id,runtime.started_at,runtime.duration_ms,runtime.exit_code,runtime.exit_signal,runtime.finish_reason,runtime.error_code,runtime.tool_attempts,runtime.pricing_status,
+        runtime.exit_code!==null||runtime.exit_signal!==null?'captured':'unavailable',runtime.finish_reason!==null?'captured':'unavailable']);
     return {idempotent:false};
   });
 }
