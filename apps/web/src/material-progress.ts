@@ -12,7 +12,6 @@ function activityLabel(e:RunEvent):string|null {
   if(activity)return materialWords(activity);
   const states:Record<string,string>={succeeded:'正文 Word 和编制说明已生成，可以下载',cancelled:'本次生成已结束',failed:'本次生成未完成',rejected:'本次生成未开始'};
   if(states[e.state])return states[e.state];
-  if(e.stage==='billing_reconcile')return '正在核对积分账务，已保存进度并暂停';
   if(e.stage==='credits_exhausted')return '积分已用完，已保存进度并暂停';
   if(e.stage==='user_paused')return '已保存进度，生成已暂停';
   if(e.payload.reason==='user_pause_requested')return '已收到暂停请求，正在保存进度';

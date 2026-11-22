@@ -8,7 +8,7 @@ import unittest
 
 MODULES = (
     'test_file_authoring', 'test_reverse_audit_fixed', 'test_period_definition_guard', 'test_fixed_edit', 'test_format_plan', 'test_fixed_edit_authorized', 'test_source_outline',
-    'test_document_quality', 'test_document_size', 'test_document_size_render', 'test_authorized_docx_regression', 'test_authorized_authoring_quality',
+    'test_document_quality', 'test_authorized_docx_regression', 'test_authorized_authoring_quality',
 )
 
 if __name__ == '__main__':

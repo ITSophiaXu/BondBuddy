@@ -103,7 +103,6 @@ type ZipEntry = {
   uncompressedSize: number;
   localOffset: number;
   directory: boolean;
-  directoryByMode: boolean;
   dataOffset: number;
   recordEnd: number;
 };
@@ -262,16 +261,15 @@ function parseZipDirectory(bytes: Buffer, report: DocxInspection): ZipEntry[] {
     names.add(canonical); foldedNames.add(folded);
     inspectExtraFields(bytes, nameStart + nameLength, extraLength);
 
-    let directoryByMode = false;
     if (madeBy >>> 8 === 3) {
       const unixMode = externalAttributes >>> 16;
       const fileType = unixMode & 0o170000;
       if (fileType !== 0 && fileType !== 0o100000 && fileType !== 0o040000) fail('DOCX_UNSAFE_PART_TYPE');
-      directoryByMode = fileType === 0o040000;
+      if (fileType === 0o040000 && (uncompressedSize !== 0 || compressedSize !== 0)) fail('DOCX_ZIP_INVALID');
     }
     const directory = name.endsWith('/');
-    if ((directory || directoryByMode) && uncompressedSize !== 0) fail('DOCX_ZIP_INVALID');
-    entries.push({ name: canonical, nameBytes, flags, method, crc32: crc, compressedSize, uncompressedSize, localOffset, directory, directoryByMode, dataOffset: 0, recordEnd: 0 });
+    if (directory && (uncompressedSize !== 0 || compressedSize !== 0)) fail('DOCX_ZIP_INVALID');
+    entries.push({ name: canonical, nameBytes, flags, method, crc32: crc, compressedSize, uncompressedSize, localOffset, directory, dataOffset: 0, recordEnd: 0 });
     cursor += headerLength;
   }
   if (cursor !== centralOffset + centralSize) fail('DOCX_ZIP_INVALID');
@@ -315,26 +313,6 @@ function parseZipDirectory(bytes: Buffer, report: DocxInspection): ZipEntry[] {
     expectedOffset = recordEnd;
   }
   if (expectedOffset !== centralOffset) fail('DOCX_ZIP_TRAILING_OR_POLYGLOT');
-  // Readers skip directory bodies, so validate them here before returning any
-  // entries. ZIP_DEFLATED legitimately represents an empty directory as 03 00.
-  for (const entry of entries) {
-    if (!entry.directory && !entry.directoryByMode) continue;
-    const compressed = bytes.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize);
-    let content: Buffer;
-    try {
-      if (entry.method === 0) content = compressed;
-      else {
-        const result = inflateRawSync(compressed, { maxOutputLength: 1, info: true }) as unknown as { buffer: Buffer; engine: { bytesWritten: number } };
-        if (result.engine.bytesWritten !== compressed.length) fail('DOCX_DEFLATE_TRAILING_DATA');
-        content = result.buffer;
-      }
-    } catch (error) {
-      if (error instanceof InspectionFailure) throw error;
-      fail('DOCX_DECOMPRESSION_FAILED');
-    }
-    if (content.length !== 0) fail('DOCX_ZIP_SIZE_MISMATCH');
-    if (entry.crc32 !== 0) fail('DOCX_CRC_MISMATCH');
-  }
   report.checks.zip_structure = 'passed';
   return entries;
 }

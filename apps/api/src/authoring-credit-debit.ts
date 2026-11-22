@@ -1,21 +1,19 @@
 import type { PoolClient } from 'pg';
 import { creditBalanceExact, lockCreditAccount } from './billing.js';
 import {int64,minInt64,shortageInt64,subtractInt64,serializeInt64} from '@bondbuddy/contracts';
-import { uid,Problem } from './data.js';
+import { uid } from './data.js';
 
 export const DYNAMIC_AUTHORING_POLICY = 'authoring_balance_v2';
 
 /** Caller holds run then job locks. Account serialization prevents concurrent runs overdrawing. */
 export async function debitAuthoringCredits(c: PoolClient, run: any, target: number) {
   if (!run.reservation_id) return null;
-  const policy=(await c.query('SELECT billing_policy FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2',[run.reservation_id,run.owner_user_id])).rows[0];
-  if(policy?.billing_policy!==DYNAMIC_AUTHORING_POLICY)return null;
   await lockCreditAccount(c, run.owner_user_id);
   const reservation = (await c.query('SELECT * FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',
     [run.reservation_id, run.owner_user_id])).rows[0];
   if (!reservation || reservation.billing_policy !== DYNAMIC_AUTHORING_POLICY) return null;
   const previous = int64(reservation.charged_points ?? 0), ceiling = int64(reservation.points);
-  if (reservation.state !== 'held') throw new Problem(409,'BILLING_NOT_READY','Original task billing contract is already finalized');
+  if (reservation.state !== 'held') return { charged: previous, available: (await creditBalanceExact(c, run.owner_user_id)).available, ceiling };
   const balance = await creditBalanceExact(c, run.owner_user_id);
   // The host has accepted an explanation for this exact authoring attempt. The
   // terminal transaction refunds prior progress debits; never charge the balance.

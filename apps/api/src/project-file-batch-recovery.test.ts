@@ -90,7 +90,7 @@ test('an accepted receipt is returned before inspecting a changed current source
   const response=await h.send();assert.equal(response.statusCode,200,response.body);
   const batch=response.json<ProjectFileBatch>();assert.equal(batch.batch_id,'accepted-batch');assert.equal(batch.state,'queued');
   assert.deepEqual(batch.items,[{document_type:'issuer',run_id:null,state:'queued',error:null}]);
-  const lock=h.calls.findIndex(c=>c.sql.startsWith('SELECT p.*,i.input_hash')&&c.sql.endsWith('FOR NO KEY UPDATE OF p'));
+  const lock=h.calls.findIndex(c=>c.sql.startsWith('SELECT p.*,i.input_hash')&&c.sql.endsWith('FOR UPDATE OF p'));
   const receipt=h.calls.findIndex(c=>c.sql.includes('FROM bb_project_file_batches WHERE owner_user_id=$1 AND request_id=$2'));
   assert.ok(lock>=0&&receipt>lock);assert.ok(h.calls.some(c=>c.sql==='COMMIT'));h.assertNoBatchWrite();
 });

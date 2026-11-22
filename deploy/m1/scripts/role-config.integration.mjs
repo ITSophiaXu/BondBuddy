@@ -104,7 +104,7 @@ networks:
  assert.ok(hostIp,'an external host interface is required for negative PG probe');
  const reachable=await new Promise(r=>{const s=createConnection({host:hostIp,port:pgPort});s.setTimeout(2000);s.once('connect',()=>{s.destroy();r(true);});s.once('error',()=>r(false));s.once('timeout',()=>{s.destroy();r(false);});});
  assert.equal(reachable,false);pass('host non-loopback interface cannot reach published PG port');
- sql("CREATE TABLE synthetic_marker (value text); INSERT INTO synthetic_marker VALUES ('same-volume'); CREATE TABLE bb_schema_migrations(filename text); CREATE TABLE bb_jobs(state text); CREATE TABLE bb_review_messages(lease_token text); CREATE TABLE bb_outbox(event_type text,lease_token text,delivered_at timestamptz)");
+ sql("CREATE TABLE synthetic_marker (value text); INSERT INTO synthetic_marker VALUES ('same-volume'); CREATE TABLE bb_schema_migrations(filename text); CREATE TABLE bb_jobs(state text); CREATE TABLE bb_review_messages(lease_token text)");
  sql('INSERT INTO bb_schema_migrations VALUES '+readdirSync(join(root,'db/migrations')).filter(n=>/^\d+.*\.sql$/.test(n)).map(n=>`('${n.replaceAll("'","''")}')`).join(','));
  probe('main','schema');pass('current role-probe reads authenticated SQL and synthetic migration state through ordinary entry');
  compose('execution','up','-d','--no-deps','--wait','pg-tunnel');writeFileSync(join(temp,'execution-state/current'),'synthetic\n');probe('execution','schema');
@@ -119,7 +119,6 @@ networks:
  for(const image of [runtime,alternate,runtime]){values.main.BB_SYNTHETIC_APP_IMAGE=image;writeEnv('main');compose('main','up','-d','--no-deps','--force-recreate','api');assert.equal(JSON.parse(docker('inspect',compose('main','ps','-q','api').trim()))[0].Image,image);assert.equal(compose('main','ps','-q','postgres').trim(),pgId);assert.equal(sql('SELECT value FROM synthetic_marker'),'same-volume');}
  pass('synthetic application switch and rollback verify actual image IDs without recreating PG or changing its data/volume');
  sql("INSERT INTO bb_jobs VALUES ('running')");probe('execution','idle',76);sql('TRUNCATE bb_jobs');probe('execution','idle');pass('real read-only SQL gate refuses in-flight synthetic jobs and passes after drain');
- sql("INSERT INTO bb_outbox VALUES ('upload.complete_requested','synthetic-token',NULL)");probe('execution','idle',76);sql('TRUNCATE bb_outbox');probe('execution','idle');pass('role idle gate also refuses in-flight upload confirmations');
  const original=readFileSync(join(temp,'main.env'));
  delete values.main.BB_ROLE_OVERRIDE_FILE;delete values.main.BB_ROLE_OVERRIDE_SHA256;writeEnv('main');assert.equal(attempt('main',['up','-d','postgres']).status,2);writeFileSync(join(temp,'main.env'),original);values.main.BB_ROLE_OVERRIDE_FILE=join(temp,'main.yaml');values.main.BB_ROLE_OVERRIDE_SHA256=hash(join(temp,'main.yaml'));
  writeFileSync(join(temp,'main.yaml'),readFileSync(join(temp,'main.yaml'),'utf8')+'\n# drift\n');assert.equal(attempt('main',['up','-d','postgres']).status,2);

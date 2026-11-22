@@ -108,8 +108,8 @@ function run(receiptPath, release = true) {
   };
   check('build', 'npm', ['run', 'build']);
   check('contracts', 'npm', ['run', 'check:contracts']);
-  check('gate-regressions', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
-    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/verify-prospectus-expanded-amounts.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
+  check('gate-regressions', process.execPath, ['--test', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
+    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
     'deploy/m1/scripts/codex-bwrap.test.mjs'], parseTap);
   check('database-migrations', process.execPath, ['db/migrate.mjs']);
   check('api-source-selection', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
@@ -118,7 +118,6 @@ function run(receiptPath, release = true) {
   check('browser-input-chain', process.execPath, ['scripts/prospectus-input-browser.mjs'], parseTap);
   check('worker-authoring', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/worker/dist/file-authoring-quality.test.js', 'apps/worker/dist/file-authoring-delivery.test.js',
-    'apps/worker/dist/file-authoring-repair.test.js',
     'apps/worker/dist/file-authoring-format.test.js', 'apps/worker/dist/file-authoring-quality.pg.test.js',
     'apps/worker/dist/authoring-material-tools.test.js', 'apps/worker/dist/codex-exec-log.test.js',
     'apps/worker/dist/none-baseline.test.js'], parseTap);

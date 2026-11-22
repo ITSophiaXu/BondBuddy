@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
-import { digest, uid, transaction, type PrivateBlobs } from '@bondbuddy/api/data';
-import {grantCredits,publishPrices,creditBalanceExact} from '../../api/dist/billing.js';
+import { digest, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
-import { emptyUpdateDetails,INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { claim, finish, pauseRun, recordPotentialCall, recoverUnifiedTimeout, repairUnifiedTimeoutRetry } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime, recordProviderCallObservation, latestProviderAttempt, READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
@@ -19,11 +18,10 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
     const owner=`timeout-${uid()}`, bytes=new Map<string,Buffer>();
     const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,b);},get:async k=>bytes.get(k)!,getIfExists:async k=>bytes.get(k)??null,
       getIfExistsBounded:async k=>bytes.get(k)??null,exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-    const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
-    const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
+    const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
     const logical='unified-v3-read_0_10_part_0';
-    type EvidenceOptions={paid?:boolean;unified?:boolean;runtime?:boolean;observation?:boolean;error?:string;observationError?:string;exited?:boolean;tools?:number;measured?:boolean;logical?:string;adapterVersion?:string};
+    type EvidenceOptions={unified?:boolean;runtime?:boolean;observation?:boolean;error?:string;observationError?:string;exited?:boolean;tools?:number;measured?:boolean;logical?:string;adapterVersion?:string};
     async function fixture(options:EvidenceOptions={}){
       const p=await send('POST','/api/v1/projects',{name:'Synthetic timeout',kind:'update',issuer_name:'合成企业',market:'sse',offering:'private',
         ...(options.unified!==false?{update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}}:{})});
@@ -32,14 +30,8 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       const materials=options.unified!==false?await uploadSyntheticReference(app,project):{draft_revision:1,material_versions:[],requirement_message_ids:[]};
       const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,materials);
       assert.equal(input.statusCode,201,input.body);
-      let quote:string|undefined;
-      if(options.paid){
-        const q=await paidApp.inject({method:'POST',url:`/api/v1/projects/${project}/credit-quote`,headers:{origin:'http://bondbuddy.test'},payload:{input_revision:1,input_hash:input.json().input_hash}});
-        assert.equal(q.statusCode,200,q.body);quote=q.json().quote.quote_id;
-      }
-      const request={execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.json().input_hash,...(quote?{quote_id:quote}:{}),
-        task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
-      const started=options.paid?await paidApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request}):await send('POST','/api/v1/runs/execute',request);
+      const started=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.json().input_hash,
+        task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});
       assert.equal(started.statusCode,202,started.body);
       const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,started.json().run_id);
       await pool.query(`UPDATE bb_jobs SET checkpoint=checkpoint||'{"stages":{"kept":{"hash":"synthetic"}},"provider_results":{"completed_batch":"synthetic"}}'::jsonb WHERE id=$1`,[lease.jobId]);
@@ -136,25 +128,5 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'error_code'='MODEL_OUTPUT_SCHEMA_INVALID'",[repairLease.runId])).rows[0].n,1,'original failure stays in history');
       assert.equal((await pool.query("SELECT count(*)::int n FROM bb_call_usage WHERE job_id=$1 AND usage_status='unknown'",[repairLease.jobId])).rows[0].n,2);
       assert.equal((await claim(pool,30))?.runId,repairLease.runId);
-      // The same old timeout failure on a paid contract has already released and
-      // compensated its debit. Requeueing it would create an unpayable task.
-      await publishPrices(pool,{id:'synthetic-paid-timeout',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'Historical paid contract regression'});
-      await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'paid_timeout_'+uid().slice(0,8)]);
-      await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1000000,expiresAt:null,actor:'synthetic',reason:'Synthetic paid timeout'}));
-      // The prior unpaid repaired task is running; close it before the paid fixture.
-      await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[repairLease.runId]);
-      const paid=await fixture({paid:true});assert.equal(await paid.recover(),true);
-      let paidLease=await claim(pool,30);assert.ok(paidLease);
-      const paidSecond=await timeout(paidLease,paid.project,2);assert.equal(await paidSecond.recover(),true);
-      paidLease=await claim(pool,30);assert.ok(paidLease);
-      await finish(pool,paidLease,'failed',{errorCode:'MODEL_OUTPUT_SCHEMA_INVALID',failedStage:'model_generation'});
-      const paidBefore=(await pool.query('SELECT state,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paidLease.runId])).rows[0];
-      assert.equal(paidBefore.state,'released');const balanceBefore=await creditBalanceExact(pool,owner);
-      const eventsBefore=(await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[paidLease.runId])).rows;
-      for(let n=0;n<2;n++)await assert.rejects(repairUnifiedTimeoutRetry(pool,{runId:paidLease.runId,attemptId:paidSecond.attempt,actor:'synthetic-paid-repair'}),{code:'BILLING_NOT_READY'});
-      assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[paidLease.runId])).rows[0].state,'failed');
-      assert.deepEqual((await pool.query('SELECT state,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paidLease.runId])).rows[0],paidBefore);
-      assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[paidLease.runId])).rows,eventsBefore);
-      assert.deepEqual(await creditBalanceExact(pool,owner),balanceBefore);
-    }finally{await app.close();await paidApp.close();await pool.end();}
+    }finally{await app.close();await pool.end();}
   });

@@ -16,7 +16,7 @@ test('paid quota retry reserves only one task and never charges a rejected attem
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),
     enableSyntheticQueue:true,enablePaidAuthoring:true,
     trial:{...trialConfigFromEnv({BB_TRIAL_GUARD:'on'}),active_runs_per_user:1,global_active_runs:100,
       runs_per_user_per_day:1,projects_per_user_per_day:1,upload_bytes_per_user_per_day:1,model_tokens_per_user_per_day:1}});

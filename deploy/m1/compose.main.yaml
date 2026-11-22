@@ -41,8 +41,6 @@ services:
       BB_WORKER_JOB_KINDS: parse
       BB_WORKER_GROUP: parse
       BB_UPLOAD_CONFIRMATION_ENABLED: ${BB_UPLOAD_CONFIRMATION_ENABLED:-0}
-      BB_UPLOAD_CONFIRMATION_LANE: ${BB_UPLOAD_CONFIRMATION_LANE:-general}
-      BB_UPLOAD_CONFIRMATION_SMALL_SLOT: ${BB_UPLOAD_CONFIRMATION_SMALL_SLOT:-0}
       BB_UPLOAD_SPOOL_DIR: /var/lib/bondbuddy/parse-staging/upload-confirmation
       BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:-134217728}
       BB_WORKER_CONCURRENCY: '1'
@@ -62,7 +60,6 @@ services:
       no_proxy: postgres,api,localhost,127.0.0.1
     volumes: !override [materialstaging:/var/lib/bondbuddy/parse-staging]
     security_opt: !override [no-new-privileges:true]
-    stop_grace_period: 10m
     deploy:
       replicas: ${BB_ROLE_PARSE_REPLICAS:-0}
       resources: {limits: {cpus: '0.5', memory: 1G}}

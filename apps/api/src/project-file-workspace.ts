@@ -1,5 +1,3 @@
-import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
-import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -61,32 +59,33 @@ export async function readProjectFileWorkspace(db:Pool,owner:string,id:string,co
 
 /** The worker starts each frozen item after its predecessor; closing the browser cannot lose a batch. */
 export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
-  const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
-  const result=await transaction(pool,async c=>{
+  return transaction(pool,async c=>{
     const row=(await c.query(`SELECT b.* FROM bb_project_file_batches b JOIN bb_projects p ON p.owner_user_id=b.owner_user_id AND p.id=b.project_id
       WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!row)return false;
     const items=row.items as BatchItem[];
-    let next=-1,active=0;
+    let next=-1;
     for(const [i,item] of items.entries()){
-      if(!item.run_id){if(next<0)next=i;continue;}
+      if(!item.run_id){next=i;break;}
       const r=(await c.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[row.owner_user_id,item.run_id])).rows[0];
-      if(!r)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
-      if(!terminal.includes(r.state)){active++;continue;}
+      if(!r||!terminal.includes(r.state)){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
       if(r.state!=='succeeded'){
         item.error='该文件任务未完成，请核对任务状态后继续。';
         await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
       }
     }
-    if(active>=SHARED_BATCH_CAPACITY||next<0&&active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
     if(next<0){await c.query("UPDATE bb_project_file_batches SET state='complete',updated_at=now() WHERE id=$1",[row.id]);return true;}
     const item=items[next],m=item.manifest,owner=row.owner_user_id;
+    const active=(await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+      WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
+      AND NOT(r.state=ANY($3::text[])) LIMIT 1`,[owner,m.execution_scope_project_id,terminal])).rowCount;
+    if(active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
     await c.query('SAVEPOINT start_file');
     try{
     const ids=[...new Set([m.execution_scope_project_id,m.input.source_material!.source_project_id])];
-    const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[owner,ids])).rows;
+    const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[owner,ids])).rows;
     if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目已归档或来源不可用，请恢复后继续。');
-    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type);
+    if((await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,m.execution_scope_project_id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有任务正在执行。');
     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
     if(!t)throw missing();
     const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);
@@ -96,8 +95,7 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
     const run=await startPinnedM4Run(c,owner,t,request,inputManifestHash({batch:row.id,index:next,attempt:item.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
     item.run_id=run.id;
     await c.query("UPDATE bb_project_file_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);
-    await event(c,owner,row.project_id,'project.file_generation_started',{batch_id:row.id,run_id:run.id});
-    dispatch.value={scope:{ownerUserId:owner,projectId:run.project_id,runId:run.id,batchId:row.id,workItemId:String(next),itemAttempt:item.attempt},batchCreatedAt:row.created_at,operation:'project_file_generation'};return true;
+    await event(c,owner,row.project_id,'project.file_generation_started',{batch_id:row.id,run_id:run.id});return true;
     }catch(error){
       await c.query('ROLLBACK TO SAVEPOINT start_file');
       if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((error as {code?:string}).code??'')){
@@ -107,8 +105,6 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
       await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
     }
   });
-  recordCommittedPerformanceDispatch(pool,dispatch.value,startedAt,new Date());
-  return result;
 }
 
 export async function createProjectFileBatch(c:PoolClient,user:string,projectId:string,b:Static<typeof projectFileSchemas.ProjectFileBatchRequest>,commercial=false){

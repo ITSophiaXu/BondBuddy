@@ -23,7 +23,7 @@ function inventory(records,initial=false) {
  for(const id of ids) {
   const field=f=>docker(['inspect','--format',f,id]);
   const service=field('{{ index .Config.Labels "com.docker.compose.service" }}');
-  if(['api','ops','web','migrate','worker','worker-review','worker-parse','upload-confirmation'].includes(service)) consumers=true;
+  if(['api','ops','web','migrate','worker','worker-review','worker-parse'].includes(service)) consumers=true;
   if(field('{{ index .Config.Labels "com.docker.compose.project" }}')!==expected) fail();
   const actual=field('{{.Image}}');
   if(service==='postgres') {
@@ -58,8 +58,7 @@ try {
    if(name==='postgres') {
     snapshot.postgres={image_id:docker(['image','inspect','--format','{{.Id}}',s.image]),volume:c.volumes.pgdata};continue;
    }
-   if(name==='upload-confirmation' && Number(s.deploy?.replicas)===0) continue;
-   const allowed=role==='main'?['api','ops','migrate','web','egress','worker-parse']:['worker','worker-review','worker-parse','egress','pg-tunnel','upload-confirmation','integrity-beijing-tunnel','integrity-egress'];
+   const allowed=role==='main'?['api','ops','migrate','web','egress','worker-parse']:['worker','worker-review','worker-parse','egress','pg-tunnel','integrity-beijing-tunnel','integrity-egress'];
    if(!allowed.includes(name) || s.image!==imageRef(name,commit) || !/^[a-f0-9]{64}$/.test(hashes[name])) fail();
    const source=docker(['image','inspect','--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}',s.image]);
    if(source!==commit) fail();

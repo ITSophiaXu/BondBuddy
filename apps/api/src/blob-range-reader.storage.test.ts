@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import {Readable} from 'node:stream';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, mock } from 'node:test';
@@ -10,24 +9,6 @@ import { azureBlobs, digest } from './data.js';
 import { BLOB_RANGE_BYTES, BLOB_RANGE_MIN_BYTES } from './blob-range-reader.js';
 
 const storage = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
-
-test('a bounded single stream waits for cancellation cleanup and preserves caller-owned files', {skip:!storage}, async()=>fixture(async({blobs,path,dir})=>{
-  await blobs.put('seed',Buffer.from('synthetic'),'application/octet-stream');
-  let closed=false;
-  const body=new Readable({read(){this.push(Buffer.alloc(8,120));},destroy(error,callback){setTimeout(()=>{closed=true;callback(error);},25);}});
-  const intercepted=mock.method(BlockBlobClient.prototype,'download',async()=>({readableStreamBody:body,etag:'"synthetic"',contentLength:undefined}));
-  try{
-    await assert.rejects(blobs.readToFile!('seed',path,16),{status:413});
-    assert.equal(closed,true,'slot cannot return while the cancelled source is still closing');
-    assert.deepEqual(await readdir(dir),[],'writer has settled and its partial spool is gone');
-  }finally{intercepted.mock.restore();}
-  await writeFile(path,'caller-owned');
-  const existing=mock.method(BlockBlobClient.prototype,'download',async()=>({readableStreamBody:Readable.from([Buffer.from('synthetic')]),etag:'"synthetic"',contentLength:9}));
-  try{
-    await assert.rejects(blobs.readToFile!('seed',path,16),{code:'EEXIST'});
-    assert.equal(await readFile(path,'utf8'),'caller-owned');
-  }finally{existing.mock.restore();}
-}));
 async function fixture(work: (f: { blobs: ReturnType<typeof azureBlobs>; path: string; dir: string }) => Promise<void>) {
   const name = 'bb-ranges-' + randomUUID().replaceAll('-', '');
   const container = BlobServiceClient.fromConnectionString(storage!).getContainerClient(name);

@@ -22,12 +22,6 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
   if(!['update','generation','review'].includes(r.task_kind))return;
   const j=(await c.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id])).rows[0];
   if(!j||String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1')return;
-  // Control-only billing pauses must remain writable while the money ledger is
-  // isolated. Freeze the clock without creating a progress debit or catch-up bill.
-  if(next?.stage==='billing_reconcile'||j.stage==='billing_reconcile'){
-    await c.query('UPDATE bb_authoring_progress SET clock_at=clock_timestamp(),lease_until=NULL WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
-    return;
-  }
   await c.query('INSERT INTO bb_authoring_progress(run_id,owner_user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[r.id,r.owner_user_id]);
   const m=(await c.query('SELECT *,clock_timestamp() AS sampled_at FROM bb_authoring_progress WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
   const active=measuredActiveMs(m,new Date(m.sampled_at));
@@ -46,23 +40,14 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
   // Freeze the meter immediately; the worker saves its current operation before releasing its lease.
   if(exhausted && !j.credit_pause_requested && !['failed','cancelled','rejected'].includes(next?.state??r.state))
     await c.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[j.id]);
-  const modelActivity=(await c.query(`SELECT
-    count(*) FILTER(WHERE state IN ('waiting','abandoned'))::int waiting,
-    count(*) FILTER(WHERE state='active')::int active
-    FROM bb_run_model_activity WHERE job_id=$1 AND owner_user_id=$2 AND run_id=$3 AND lease_token=$4`,[j.id,r.owner_user_id,r.id,j.lease_token])).rows[0];
-  const capacityBlocked=modelActivity.waiting>0&&modelActivity.active===0;
-  const running=(next?.state??r.state)==='running'&&j.state==='running'&&!j.user_pause_requested&&!j.credit_pause_requested&&!exhausted&&!capacityBlocked;
+  const running=(next?.state??r.state)==='running'&&j.state==='running'&&!j.user_pause_requested&&!j.credit_pause_requested&&!exhausted;
   await c.query('UPDATE bb_authoring_progress SET active_ms=$2,work_bps=$3,accrued_points=$4,clock_at=$6,lease_until=$5 WHERE run_id=$1',
     [r.id,active,work,serializeInt64(debit?.charged??amount),running?j.lease_until:null,m.sampled_at]);
 }
 export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runId:string):Promise<BillingWireDto<AuthoringProgress,'authoringProgress'>|undefined>{
   const row=(await db.query(`SELECT r.state,j.state AS job_state,j.created_at AS queued_at,j.user_pause_requested,j.credit_pause_requested,
     m.active_ms,m.work_bps,m.accrued_points,m.clock_at,m.lease_until,m.last_activity_at,
-    c.billing_policy,c.points,c.state AS charge_state,c.charged_points,clock_timestamp() AS sampled_at,
-    (r.state='running' AND j.state='running' AND j.lease_until>clock_timestamp()
-      AND NOT j.user_pause_requested AND NOT j.credit_pause_requested
-      AND EXISTS(SELECT 1 FROM bb_run_model_activity a WHERE a.job_id=j.id AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id AND a.lease_token=j.lease_token AND a.state='waiting')
-      AND NOT EXISTS(SELECT 1 FROM bb_run_model_activity a WHERE a.job_id=j.id AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id AND a.lease_token=j.lease_token AND a.state='active')) AS model_waiting,
+    c.billing_policy,c.points,c.state AS charge_state,c.charged_points,now() AS sampled_at,
     CASE WHEN r.state='queued' THEN (SELECT count(*)::int FROM bb_jobs ahead
       WHERE ahead.job_type=j.job_type AND ahead.state='queued' AND (ahead.created_at,ahead.id)<(j.created_at,j.id)) ELSE NULL END AS queue_ahead
     FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
@@ -77,7 +62,7 @@ export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runI
   return encodeBillingDto('authoringProgress',{...(dynamic?{credit_exhausted:row.credit_pause_requested,available_points:(await creditBalanceExact(db,owner)).available}:{}),policy:row.billing_policy??'on_delivery',active_ms:active,
     accrued_points:terminal||dynamic?charged:Math.max(Number(row.accrued_points??0),accruedAuthoringPoints(points,active,Number(row.work_bps??0))),
     charged_points:charged,released_points:!dynamic&&row.charge_state&&row.charge_state!=='held'?points-charged:0,
-    model_waiting:row.model_waiting,pause_requested:row.user_pause_requested,queued_at:date(row.queued_at),sampled_at:date(row.sampled_at),
+    pause_requested:row.user_pause_requested,queued_at:date(row.queued_at),sampled_at:date(row.sampled_at),
     last_activity_at:row.last_activity_at?date(row.last_activity_at):null,queue_ahead:row.queue_ahead,
     clock_running:!terminal&&row.state==='running'&&!row.user_pause_requested&&!row.credit_pause_requested&&!!row.lease_until&&new Date(row.lease_until)>new Date(row.sampled_at)});
 }

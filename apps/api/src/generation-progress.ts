@@ -24,12 +24,10 @@ export async function readGenerationProgress(db:Db,owner:string,id:string,kind:'
       WHERE owner_user_id=$1 AND project_id=$2
         AND (id IN (SELECT id FROM recent) OR id IN (SELECT workpaper_batch_id FROM fg) OR id=$4)
     ), wi AS (
-      SELECT i.batch_id,i.item_id,i.run_id,i.attempt,i.state,i.error,r.state AS run_state,r.stage,r.event_cursor,
-        coalesce(r.state='running' AND j.state='running' AND (j.lease_token IS NULL OR j.lease_until IS NULL OR j.lease_until<=now()),false) AS lease_interrupted,
+      SELECT i.batch_id,i.item_id,i.run_id,i.attempt,i.state,i.error,r.state AS run_state,r.stage,
         w.result_hash FROM bb_workpaper_items i
       JOIN wb ON wb.id=i.batch_id
       LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
-      LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
       LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id
       WHERE i.owner_user_id=$1
     ), db AS (
@@ -43,8 +41,8 @@ export async function readGenerationProgress(db:Db,owner:string,id:string,kind:'
     SELECT
       (EXISTS(SELECT 1 FROM wb WHERE state IN ('queued','running')) OR
        EXISTS(SELECT 1 FROM db WHERE state IN ('queued','running')) OR
-       EXISTS(SELECT 1 FROM wi WHERE run_state IN ('queued','preparing','running','validating','delivering','settlement_pending')) OR
-       EXISTS(SELECT 1 FROM di WHERE state IN ('queued','preparing','running','validating','delivering','settlement_pending'))) AS active,
+       EXISTS(SELECT 1 FROM wi WHERE run_state IN ('queued','preparing','running','validating','delivering')) OR
+       EXISTS(SELECT 1 FROM di WHERE state IN ('queued','preparing','running','validating','delivering'))) AS active,
       (SELECT jsonb_agg(to_jsonb(fg) ORDER BY id) FROM fg) AS generation,
       (SELECT jsonb_agg(to_jsonb(wb) ORDER BY id) FROM wb) AS batches,
       (SELECT jsonb_agg(to_jsonb(wi) ORDER BY batch_id,item_id) FROM wi) AS items,

@@ -1,5 +1,5 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {fixtureJson,serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureJson} from './billing-fixture-wire';
 import {DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type DataPolicy} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 
@@ -81,18 +81,4 @@ test('an external recharge return target is discarded',async({page})=>{
   await expect(page.locator('[data-pack="cny200"]')).toBeVisible();
   await expect(page.getByRole('link',{name:'返回刚才的工作'})).toHaveCount(0);
   await expect(page.locator('a[href^="https://example.com"]')).toHaveCount(0);
-});
-
-test('disabled subscriptions preserve legacy purchases and existing orders without a subscription checkout intent',async({page})=>{
-  const {calls}=await setup(page);
-  await page.route('**/api/v1/**',async route=>{if(!await serveDisabledBillingCatalog(route))await route.fallback();});
-  await page.goto('/#/account');
-  await expect(page.locator('[data-pack="cny200"]')).toBeVisible();
-  await page.locator('[data-pack="cny200"]').click();
-  await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();
-  await expect(page.locator('.simple-payment')).toContainText('¥200.00');
-  expect(calls.filter(c=>c.method==='POST').map(c=>c.path)).toEqual(['/credits/recharge-orders']);
-  expect(calls.filter(c=>c.path==='/subscriptions/account'||c.path.startsWith('/commerce/topups'))).toHaveLength(0);
 });

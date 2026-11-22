@@ -1,6 +1,3 @@
-import {bindExecutionRegistration,executionCloudExpenseLedger,executionCapacityControl} from '@bondbuddy/api/execution-capacity';
-import {fileURLToPath} from 'node:url';
-import {resolve,dirname} from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -28,7 +25,7 @@ import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBond
 
 export type TaskOutcome = { ok: boolean; errorCode?: string; detail?: Record<string, string | number> };
 export type ScheduledTask = { name: OpsScheduledTask; intervalMs: number; leaseMs: number; run: () => Promise<TaskOutcome> };
-export type SchedulerOptions = { pool: Pool; tasks: ScheduledTask[]; owner?: string; tickMs?: number; jitter?: number; log?: (line: Record<string, unknown>) => void; executionPoolTick?:()=>Promise<void> };
+export type SchedulerOptions = { pool: Pool; tasks: ScheduledTask[]; owner?: string; tickMs?: number; jitter?: number; log?: (line: Record<string, unknown>) => void };
 
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
 const token = () => randomBytes(12).toString('base64url');
@@ -56,32 +53,18 @@ export async function finishTask(pool: Pool, task: string, lease: string, outcom
 /** Symmetric jitter so instances and tasks drift apart instead of firing together. */
 export const jittered = (ms: number, jitter: number, random = Math.random) => Math.round(ms * (1 + jitter * (2 * random() - 1)));
 
-type SchedulerLoop = { timer?: NodeJS.Timeout; running?: Promise<void> };
-
 export class OpsScheduler {
   private stopped = false;
-  private started = false;
-  private readonly tasks: SchedulerLoop = {};
-  private readonly executionPool: SchedulerLoop = {};
+  private timer: NodeJS.Timeout | null = null;
+  private running: Promise<void> | null = null;
   readonly owner: string;
   constructor(private readonly options: SchedulerOptions) {
     this.owner = options.owner ?? defaultOwner();
     for (const task of options.tasks) if (!safeCode.test(task.name) || task.intervalMs < 1000 || task.leaseMs < 1000) throw new Error(`Invalid scheduled task ${task.name}`);
   }
 
-  private async tickExecutionPool() {
-    if (this.stopped || !this.options.executionPoolTick) return;
-    try { await this.options.executionPoolTick(); }
-    catch { this.options.log?.({ scheduler: 'execution_pool_tick_failed' }); }
-  }
-
+  /** One pass over all tasks; runs each task this instance wins, one at a time to keep memory flat. */
   async tick() {
-    await this.tickExecutionPool();
-    await this.tickTasks();
-  }
-
-  /** One pass over due maintenance tasks, keeping each task's existing PG lease. */
-  private async tickTasks() {
     const { pool, tasks, jitter = 0.1, log = () => {} } = this.options;
     for (const task of tasks) {
       if (this.stopped) return;
@@ -101,30 +84,19 @@ export class OpsScheduler {
   }
 
   start() {
-    if (this.started || this.stopped) return this;
-    this.started = true;
     const tickMs = this.options.tickMs ?? 5000;
-    const startLoop = (state: SchedulerLoop, tick: () => Promise<void>) => {
-      const loop = () => {
-        state.timer = undefined;
-        if (this.stopped) return;
-        state.running = tick().finally(() => {
-          state.running = undefined;
-          if (!this.stopped) state.timer = setTimeout(loop, jittered(tickMs, 0.2));
-        });
-      };
-      loop();
+    const loop = () => {
+      if (this.stopped) return;
+      this.running = this.tick().finally(() => { this.running = null; if (!this.stopped) this.timer = setTimeout(loop, jittered(tickMs, 0.2)); });
     };
-    if (this.options.executionPoolTick) startLoop(this.executionPool, () => this.tickExecutionPool());
-    startLoop(this.tasks, () => this.tickTasks());
+    loop();
     return this;
   }
 
   async stop() {
     this.stopped = true;
-    clearTimeout(this.executionPool.timer);
-    clearTimeout(this.tasks.timer);
-    await Promise.all([this.executionPool.running, this.tasks.running]);
+    if (this.timer) clearTimeout(this.timer);
+    await this.running;
   }
 }
 
@@ -267,13 +239,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   let scheduler: OpsScheduler;
   try {
     const tasks = tasksFromEnv(pool);
-    let executionPoolTick:(()=>Promise<void>)|undefined;
-    if(process.env.BB_EXECUTION_POOL_CONFIG){
-      const module=await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)),'../../../deploy/tencent-elasticity/ops-handler.mjs')).href);
-      const handler=await module.createExecutionPoolOpsHandler({control:executionCapacityControl(pool),expenseLedger:()=>executionCloudExpenseLedger(pool),enrollmentBinder:(identity:Parameters<typeof bindExecutionRegistration>[1],opId:string,token:string)=>bindExecutionRegistration(pool,identity,opId,token),configPath:process.env.BB_EXECUTION_POOL_CONFIG,log});
-      executionPoolTick=()=>handler.tick();
-    }
-    scheduler = new OpsScheduler({ pool, tasks,executionPoolTick, tickMs: intEnv(process.env, 'BB_OPS_TICK_SECONDS', 5, 1, 300) * 1000, log }).start();
+    scheduler = new OpsScheduler({ pool, tasks, tickMs: intEnv(process.env, 'BB_OPS_TICK_SECONDS', 5, 1, 300) * 1000, log }).start();
     log({ scheduler: 'started', owner: scheduler.owner, tasks: tasks.map(t => t.name).join(',') });
   } catch (error) {
     process.stderr.write(`ops-scheduler: ${error instanceof Error ? error.message : 'configuration failed'}\n`);

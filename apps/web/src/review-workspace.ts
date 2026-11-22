@@ -1,5 +1,4 @@
 import {uploadPicker,uploadPickerContent} from './upload-picker';
-import {orderedUploadPipeline,UploadPreparationError} from './upload-scheduler';
 import { documentDeliverable } from './document-deliverable';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml} from './upload-progress';
@@ -1187,20 +1186,17 @@ export class ReviewWorkspace {
           for(const {key} of remaining)this.uploadRows.delete(key);
           for(const item of envelope.items){this.uploadFiles.set(item.id,remaining[item.index].file);this.uploadProgress.set(item.id,{percent:0,phase:'queued'});}
           this.scanUploadRecovery();this.renderMaterials();
-          const original=envelope;
-          const finished=await orderedUploadPipeline(original.items,
-            (item,_index,signal)=>this.reviewUploads.transfer(original.id,item.index,{file:this.uploadFiles.get(item.id),signal,...this.uploadCallbacks(item.id)}),
-            async (_material,item)=>{
+          let finished=true;
+          for(const item of envelope.items){
             currentIndex=item.index;
-            const result=await this.reviewUploads.resume(original.id,item.index,{...this.uploadCallbacks(item.id)});
-            if(!this.live())return false;
+            const result=await this.reviewUploads.resume(envelope.id,item.index,{file:this.uploadFiles.get(item.id),...this.uploadCallbacks(item.id)});
+            if(!this.live())return;
             this.applyUploadResult(result,item.index);
-            return ['adopted','complete'].includes(result.state)&&result.applyToPage;
-          },this.controller.signal);
+            if(!['adopted','complete'].includes(result.state)||!result.applyToPage){finished=false;break;}
+          }
           batch.done(finished);if(!finished)break;
         }catch(error){
           if(!this.live())return;
-          if(error instanceof UploadPreparationError){currentIndex=error.index;error=error.original;}
           const text=this.uploadErrorText(error);
           if(envelope)this.recordUploadError(envelope.items[currentIndex].id,error);
           else{this.scanUploadRecovery();for(const {key} of remaining){const row=this.uploadRows.get(key);if(row){row.state=text;row.error=true;}}}
@@ -1267,7 +1263,7 @@ type ReviewProjectFields=Pick<Dto<'ProjectResponse'>,'name'|'issuer_name'|'marke
 export function reviewProjectFields(value:ReviewProjectFields,autoName=false){
   const period=cutoffSelection(value.update_details?.reporting_cutoff??null);
   const option=(key:string,label:string,selected:unknown)=>`<option value="${esc(key)}"${key===selected?' selected':''}>${esc(label)}</option>`;
-  return `<div class="review-form-row"><div><label for="issuer">发行人全称</label><input id="issuer" name="issuer"${autoName?' required':''} maxlength="200" value="${esc(value.issuer_name??'')}" placeholder="填写待复核募集书的发行人" aria-describedby="review-issuer-note"><p id="review-issuer-note" class="review-field-note">填写法定全称，用于识别本次复核主体。</p></div>${autoName?`<div><label for="generated-review-name">项目名称 <span class="optional">自动生成</span></label><output id="generated-review-name" for="issuer market offering" aria-live="polite" aria-describedby="review-name-note">${esc(generatedProjectName(value.issuer_name,value.market,value.offering,'review'))||'填写发行人后自动生成'}</output><p id="review-name-note" class="review-field-note">无需填写，创建后可在项目信息中修改。</p></div>`:`<div><label for="name">项目名称</label><input id="name" name="name" required maxlength="160" value="${esc(value.name)}"></div>`}<div><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${Object.entries(MARKET_LABELS).map(([key,label])=>option(key,label,value.market)).join('')}</select></div><div><label for="offering">品种</label><select id="offering" name="offering"${value.market?'':' disabled'}><option value="">${value.market?'请选择':'请先选择发行市场'}</option>${(value.market?MARKET_OFFERINGS[value.market]:[]).map(key=>option(key,OFFERING_LABELS[key],value.offering)).join('')}</select></div></div><div class="review-period"><label for="reporting-year">目标报告期</label><div class="period-row"><select id="reporting-year" name="reporting_year" aria-label="目标报告期年份">${period.years.map(year=>option(year,`${year} 年`,period.year)).join('')}</select><div class="quarter-grid">${QUARTER_ENDS.map(([q,label])=>`<label class="quarter"><input type="radio" name="reporting_quarter" value="${q}"${period.quarter===q?' checked':''}>${label}</label>`).join('')}</div></div>${period.legacy?`<p class="review-muted" id="legacy-cutoff">已保存报告期：${esc(value.update_details?.reporting_cutoff)}；选择期末后更新。</p>`:''}</div>`;
+  return `<div class="review-form-row"><div><label for="issuer">发行人全称</label><input id="issuer" name="issuer"${autoName?' required':''} maxlength="200" value="${esc(value.issuer_name??'')}" placeholder="填写待复核募集书的发行人" aria-describedby="review-issuer-note"><p id="review-issuer-note" class="review-field-note">填写法定全称，用于识别本次复核主体。</p></div>${autoName?`<div><label for="generated-review-name">项目名称 <span class="optional">自动生成</span></label><output id="generated-review-name" for="issuer market offering" aria-live="polite" aria-describedby="review-name-note">${esc(generatedProjectName(value.issuer_name,value.market,value.offering,'review'))||'填写发行人后自动生成'}</output><p id="review-name-note" class="review-field-note">无需填写，创建后可在项目信息中修改。</p></div>`:`<div><label for="name">项目名称</label><input id="name" name="name" required maxlength="160" value="${esc(value.name)}"></div>`}<div><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${Object.entries(MARKET_LABELS).map(([key,label])=>option(key,label,value.market)).join('')}</select></div><div><label for="offering">品种</label><select id="offering" name="offering"${value.market?'':' disabled'}><option value="">${value.market?'请选择':'请先选择发行市场'}</option>${(value.market?MARKET_OFFERINGS[value.market]:[]).map(key=>option(key,OFFERING_LABELS[key],value.offering)).join('')}</select></div></div><div class="review-period"><label for="reporting-year">最新报告期</label><div class="period-row"><select id="reporting-year" name="reporting_year" aria-label="最新报告期年份">${period.years.map(year=>option(year,`${year} 年`,period.year)).join('')}</select><div class="quarter-grid">${QUARTER_ENDS.map(([q,label])=>`<label class="quarter"><input type="radio" name="reporting_quarter" value="${q}"${period.quarter===q?' checked':''}>${label}</label>`).join('')}</div></div>${period.legacy?`<p class="review-muted" id="legacy-cutoff">已保存报告期：${esc(value.update_details?.reporting_cutoff)}；选择期末后更新。</p>`:''}</div>`;
 }
 export function bindReviewProjectFields(form:HTMLFormElement,changed?:(value:ReviewProjectFields)=>void,initial?:ReviewProjectFields){
   const market=form.querySelector<HTMLSelectElement>('#market')!,offering=form.querySelector<HTMLSelectElement>('#offering')!;

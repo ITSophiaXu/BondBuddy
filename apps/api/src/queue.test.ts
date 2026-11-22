@@ -18,8 +18,7 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
   const pool=new Pool({connectionString:database});
   let owner=`resume-owner-${randomUUID()}`;
   const origin='http://bondbuddy.test';
-  // This historical queue-mechanics fixture does not create a commercial authoring commission.
-  const app=createServer({pool,historicalBillingFixture:true,enablePaidAuthoring:false,enableOutcomePricing:false,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try{
     const project=(await send('POST','/api/v1/projects',{name:'Synthetic resume gate',kind:'update',issuer_name:null,market:'sse',offering:'private'})).json().project_id;

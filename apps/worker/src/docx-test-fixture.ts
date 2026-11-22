@@ -1,7 +1,7 @@
 import { deflateRawSync } from 'node:zlib';
 
 // Synthetic OOXML package for the worker queue integration test only.
-export function makeWorkerDocxFixture(options:{externalLink?:boolean;text?:string;paragraphs?:string[]}={}):Buffer {
+export function makeWorkerDocxFixture(options:{externalLink?:boolean;text?:string}={}):Buffer {
   const pRel='http://schemas.openxmlformats.org/package/2006/relationships';
   const pTypes='http://schemas.openxmlformats.org/package/2006/content-types';
   const pWord='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -15,10 +15,7 @@ export function makeWorkerDocxFixture(options:{externalLink?:boolean;text?:strin
     .map(([filename,content])=>options.externalLink===false && filename==='word/document.xml'
       ? [filename,`<w:document xmlns:w="${pWord}"><w:body><w:p><w:r><w:t>Synthetic worker upload fixture</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`] as const
       : [filename,content] as const).map(([filename,content])=>[filename,options.text!==undefined&&filename==='word/document.xml'
-        ? content.replace(/Synthetic worker (?:upload|delivery) fixture/g,options.text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')) : content] as const)
-    .map(([filename,content])=>[filename,options.paragraphs!==undefined&&filename==='word/document.xml'
-      ? content.replace(/<w:p>[\s\S]*?<\/w:p>/,options.paragraphs.map(text=>`<w:p><w:r><w:t>${text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</w:t></w:r></w:p>`).join(''))
-      : content] as const);
+        ? content.replace(/Synthetic worker (?:upload|delivery) fixture/g,options.text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')) : content] as const);
   const crc32=(bytes:Buffer)=>{
     let value=0xffffffff;
     for(const byte of bytes){value^=byte;for(let bit=0;bit<8;bit++)value=value&1?0xedb88320^(value>>>1):value>>>1;}

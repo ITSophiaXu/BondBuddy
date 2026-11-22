@@ -12,5 +12,5 @@ export const GenerationProgressQuerySchema=Type.Object({
 
 /** Paused queues only need refresh while an already-started item is settling. */
 export function generationBatchActive(batch:{state:string;items:{state:string;run_id:string|null}[]}):boolean{
-  return ['queued','running'].includes(batch.state)||batch.items.some(item=>!!item.run_id&&['queued','preparing','running','validating','delivering','settlement_pending'].includes(item.state));
+  return ['queued','running'].includes(batch.state)||batch.items.some(item=>!!item.run_id&&['queued','preparing','running','validating','delivering'].includes(item.state));
 }

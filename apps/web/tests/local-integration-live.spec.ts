@@ -20,7 +20,7 @@ test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and
   await page.getByLabel('发行人全称',{exact:true}).fill('本地自动化验收有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('szse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('目标报告期年份',{exact:true}).selectOption('2026');
+  await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2026');
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
   await expect(page.locator('#project-heading')).toHaveText('本地自动化验收有限公司-深交所-普通私募公司债-募集书更新');

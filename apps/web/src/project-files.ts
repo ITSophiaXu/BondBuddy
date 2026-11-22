@@ -626,8 +626,7 @@ export class ProjectFiles {
         if(run.project_id!==f.project_id||run.state!=='succeeded')throw new ApiError(0,'DATA_UNAVAILABLE');
         bytes=await this.api.artifactBytes(a,this.controller.signal);
         const registered=this.registered(f);
-        // The delivered artifact name is frozen; the file catalog can have a different name/version.
-        filename=a.filename??(registered?.revision_asset?resultFilename({project:registered.filename.replace(/\.[^.]+$/,''),kind:revision?'修订版':'清洁版',version:registered.sequence,createdAt:f.created_at,mediaType:a.media_type}):artifactFilename(a));
+        filename=registered?.revision_asset?resultFilename({project:registered.filename.replace(/\.[^.]+$/,''),kind:revision?'修订版':'清洁版',version:registered.sequence,createdAt:f.created_at,mediaType:a.media_type}):artifactFilename(a);
       }
       else{const m=await this.api.material(f.project_id,f.file_id,this.controller.signal,f.version);if(m.material_version!==f.version||m.sha256!==f.sha256)throw new ApiError(409,'INPUT_REVISION_CONFLICT');bytes=await this.api.materialBytes(f.project_id,m,this.controller.signal);}
       if(!this.live())return;this.downloads.save(bytes,filename);if(status)status.textContent='文件已交给浏览器下载。';

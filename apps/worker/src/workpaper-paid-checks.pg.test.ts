@@ -93,8 +93,7 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     const generated=(await ok('GET',wp+'/library')).items,first=generated[0],second=generated[1];
     assert.ok(first.file&&second.file);assert.equal(generated[2].file,undefined,'object-only explanation never receives a fake Word version');
     assert.equal(first.file.original.version_id,first.file.current.version_id);
-    assert.equal(first.links_count,1,'library summaries expose the retained source-link count');
-    assert.equal((await pool.query('SELECT jsonb_array_length(links) AS n FROM bb_project_file_versions WHERE owner_user_id=$1 AND id=$2',[user,first.file.current.version_id])).rows[0].n,1,'full evidence stays in the owned stored version');
+    assert.equal(first.file.current.links.length,1);
     const next=await upload(id,'synthetic-v2.docx',makeSyntheticDocxFixture({text:text.replace('100','200')}),docx,'historical');versions=await ok('GET',base+'/prospectus-versions');
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:versions.versions.find((v:any)=>v.material_id===next.material_id).version_id});
     await app.close();app=server(true);

@@ -10,7 +10,7 @@ import {isolatedTestDatabase} from './test-database.js';
 const database=await isolatedTestDatabase(undefined,'reviewed-scope');
 test('synthetic scope quote: persistent pending, different same-task prices, immutable evidence and no browser price approval',{skip:!database,timeout:60000},async()=>{
  const pool=new Pool({connectionString:database});let actor='scope-owner';
- const app=createServer({pool,historicalBillingFixture:true,enableOutcomePricing:true,paymentProviders:[],principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://scope.test'});
+ const app=createServer({pool,enableOutcomePricing:true,paymentProviders:[],principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://scope.test'});
  try{
   await pool.query("INSERT INTO bb_users(id,username) VALUES('scope-owner','synthetic_scope_owner'),('scope-other','synthetic_scope_other'); INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES('scope-project','scope-owner','Synthetic scope','update')");
   const first={periods:['2026-06'],sections:['financials']},second={periods:['2025-12','2026-06'],sections:['financials','covenants']};

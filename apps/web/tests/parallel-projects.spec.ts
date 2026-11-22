@@ -61,51 +61,6 @@ test('parallel project summaries show synchronization and exact linked task dest
   expect(state.taskReads.filter(r => r.projectId === ids.a)).toHaveLength(2);
 });
 
-test('the first project page is usable while later pages are still loading', async ({ page }) => {
-  const state = fixture();
-  state.projects.push(...Array.from({ length: 98 }, (_, index) => ({
-    ...state.projects[2], project_id: `parallel-extra-${index}`,
-    name: index === 97 ? '尾页专有项目' : `合成额外项目 ${index}`,
-    updated_at: new Date(Date.parse(now) - (index + 1) * 120000).toISOString()
-  })));
-  let release!: () => void;
-  state.projectGate = async cursor => { if (cursor) await new Promise<void>(resolve => { release = resolve; }); };
-  await setup(page, state);
-  await expect.poll(() => state.projectReads.length).toBe(2);
-  await expect(page.locator('.collection-project')).toHaveCount(30);
-  await expect(page.locator('#project-list')).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('[data-count="all"]')).toHaveText('100+');
-  await expect(page.locator('#list-count')).toContainText('已读取 100 个项目');
-  await page.locator('#project-search').fill('尾页专有项目');
-  await expect(page.locator('#project-list')).toContainText('筛选结果尚未完整');
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  release();
-  await expect(page.locator('#project-list')).toHaveAttribute('aria-busy', 'false');
-  await page.waitForTimeout(100);
-  expect(state.projectReads).toHaveLength(2);
-  await expect(page.locator('.collection-project')).toHaveCount(1);
-  await expect(page.locator('#project-count')).toHaveText('1');
-  await expect(page.locator('#list-count')).toContainText('显示 1 / 1 个项目');
-});
-
-test('a later project page failure keeps visible rows but never claims a complete count', async ({ page }) => {
-  const state = fixture();
-  state.projects.push(...Array.from({ length: 98 }, (_, index) => ({
-    ...state.projects[2], project_id: `parallel-extra-${index}`,
-    updated_at: new Date(Date.parse(now) - (index + 1) * 120000).toISOString()
-  })));
-  state.projectGate = async cursor => { if (cursor) state.failProjects = true; };
-  await setup(page, state);
-  await expect(page.locator('#collection-error')).toContainText('仅显示已读取的项目');
-  await expect(page.locator('.collection-project')).toHaveCount(30);
-  await expect(page.locator('[data-count="all"]')).toHaveText('100+');
-  await expect(sync(page)).toContainText('尚未完成同步');
-  state.projectGate = undefined; state.failProjects = false;
-  await page.locator('#refresh-projects').click();
-  await expect(page.locator('#collection-error')).toBeHidden();
-  await expect(page.locator('[data-count="all"]')).toHaveText('101');
-});
-
 test('B completion and a slow B receipt preserve A older tasks, focused exact link and reading position', async ({ page }) => {
   const state = await setup(page); await ready(page); await expand(page, ids.b); await older(page);
   const y = await viewportAnchor(page), old = task(page, runId('a', 7)).locator('a');

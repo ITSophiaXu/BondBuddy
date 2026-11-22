@@ -33,24 +33,20 @@ async function wholeCorrected(c:PoolClient,r:Reservation){
 async function legacyUnit(c:PoolClient,r:Reservation){
   if((await c.query('SELECT 1 FROM bb_task_refund_units WHERE reservation_id=$1',[r.id])).rowCount)return;
   const charged=exact(r.charged_points??r.points);if(!charged)return;
-  const allocations=(await c.query('SELECT lot_id,bb_credit_allocation_charge(reservation_id,lot_id)::text points FROM bb_credit_allocations WHERE reservation_id=$1',[r.id])).rows;
-  if(allocations.some(a=>a.points===null))throw evidence();
-  const chargedAllocations=allocations.filter(a=>exact(a.points)>0n);
+  const allocations=(await c.query('SELECT lot_id,COALESCE(charged_points,points)::text points FROM bb_credit_allocations WHERE reservation_id=$1 AND COALESCE(charged_points,points)>0',[r.id])).rows;
   if(sum(allocations,'points')!==charged)throw evidence();
   const item='legacy-'+digest(r.id).slice(0,32);
   await c.query(`INSERT INTO bb_task_refund_units(owner_user_id,reservation_id,item_id,run_id,ordinal,source_item_key,label,points,evidence_kind,evidence)
     VALUES($1,$2,$3,$4,0,'legacy-task','历史原任务整体成果（原账单无独立分配）',$5,'legacy_task',$6)`,
     [r.owner_user_id,r.id,item,r.run_id,String(charged),{capture:'historical_whole_task',reason:'No original independent item allocation exists; exact original lot allocations retained.'}]);
-  for(const a of chargedAllocations)await c.query('INSERT INTO bb_task_refund_unit_slices VALUES($1,$2,$3,$4)',[r.id,item,a.lot_id,a.points]);
+  for(const a of allocations)await c.query('INSERT INTO bb_task_refund_unit_slices VALUES($1,$2,$3,$4)',[r.id,item,a.lot_id,a.points]);
 }
 async function rawUnits(c:PoolClient,r:Reservation){
-  return(await c.query(`SELECT u.*,actual.points effective_points,actual.unknown_charge,
-    (SELECT COALESCE(sum(t.points),0)::text FROM bb_task_refund_credits t WHERE t.reservation_id=u.reservation_id AND t.item_id=u.item_id) returned_points,
+  return(await c.query(`SELECT u.*,
     EXISTS(SELECT 1 FROM bb_task_refund_returned_items x WHERE x.reservation_id=u.reservation_id AND x.item_id=u.item_id) AS returned,
     EXISTS(SELECT 1 FROM bb_task_refund_request_items i WHERE i.reservation_id=u.reservation_id AND i.item_id=u.item_id
       AND NOT EXISTS(SELECT 1 FROM bb_task_refund_decisions d WHERE d.request_id=i.request_id)) AS pending,
     s.action FROM bb_task_refund_units u LEFT JOIN bb_scope_quotations s ON s.id=u.scope_quote_id AND s.owner_user_id=u.owner_user_id
-    LEFT JOIN LATERAL(SELECT COALESCE(sum(a.points),0)::text points,bool_or(a.points IS NULL) unknown_charge FROM bb_task_refund_actual_slices(u.reservation_id,u.item_id) a) actual ON true
     WHERE u.reservation_id=$1 ORDER BY u.ordinal`,[r.id])).rows;
 }
 /** Successful batch delivery is checked against its actual independent results. */
@@ -70,17 +66,13 @@ async function deliveredKeys(c:PoolClient,r:Reservation,units:any[]):Promise<Set
 export async function readTaskRefundRecord(c:PoolClient,id:string,owner?:string):Promise<TaskRefundRecord>{
   const r=(await c.query(`SELECT r.*,d.created_at decided_at,d.reason decision_reason FROM bb_task_refund_requests r
     LEFT JOIN bb_task_refund_decisions d ON d.request_id=r.id WHERE r.id=$1 AND ($2::text IS NULL OR r.owner_user_id=$2)`,[id,owner??null])).rows[0];if(!r)throw missing();
-  const items=(await c.query(`SELECT u.item_id,u.label,COALESCE(amount.points,u.points)::text points,
-    (SELECT COALESCE(sum(t.points),0)::text FROM bb_task_refund_credits t JOIN bb_task_refund_returned_items x USING(reservation_id,item_id)
-      WHERE x.request_id=i.request_id AND x.item_id=i.item_id) refunded_points,
-    EXISTS(SELECT 1 FROM bb_task_refund_returned_items x
+  const items=(await c.query(`SELECT u.item_id,u.label,u.points::text,EXISTS(SELECT 1 FROM bb_task_refund_returned_items x
     WHERE x.request_id=i.request_id AND x.item_id=i.item_id) approved FROM bb_task_refund_request_items i
-    JOIN bb_task_refund_units u USING(reservation_id,item_id) LEFT JOIN bb_task_refund_requested_amounts amount USING(request_id,item_id)
-    WHERE i.request_id=$1 ORDER BY u.ordinal`,[id])).rows;
-  const refunded=sum(items,'refunded_points'),requested=sum(items,'points');
+    JOIN bb_task_refund_units u USING(reservation_id,item_id) WHERE i.request_id=$1 ORDER BY u.ordinal`,[id])).rows;
+  const refunded=sum(items.filter(i=>i.approved),'points'),requested=sum(items,'points');
   return{refund_request_id:r.id,request_id:r.request_id,run_id:r.run_id,reason:r.reason,created_at:date(r.created_at),decided_at:r.decided_at?date(r.decided_at):null,
     decision_reason:r.decision_reason??null,state:!r.decided_at?'requested':refunded===0n?'rejected':refunded===requested?'approved':'partially_approved',
-    requested_points:String(requested),refunded_points:String(refunded),items:items.map(({refunded_points,...item})=>item)};
+    requested_points:String(requested),refunded_points:String(refunded),items};
 }
 async function eligibility(c:PoolClient,r:Reservation):Promise<TaskRefundEligibility>{
   const settled=r.state==='settled'&&r.run_state==='succeeded',charged=r.state==='settled'?exact(r.charged_points??r.points):0n;
@@ -90,10 +82,9 @@ async function eligibility(c:PoolClient,r:Reservation):Promise<TaskRefundEligibi
   const requests=await c.query('SELECT id FROM bb_task_refund_requests WHERE owner_user_id=$1 AND run_id=$2 ORDER BY created_at DESC,id DESC LIMIT 200',[r.owner_user_id,r.run_id]);
   let reason='',keys:Set<string>|null=null;
   if(settled)try{keys=await deliveredKeys(c,r,rows);}catch{reason='独立条目的原交付证据需要核实，请联系售后并保留任务编号。';}
-  if(rows.some(u=>u.unknown_charge))reason='原任务实际扣费分配需要核实，请联系售后并保留任务编号。';
   const units=rows.map(u=>{const valid=settled&&!reason&&!old&&!u.returned&&(!keys||keys.has(u.source_item_key));return{
-    item_id:u.item_id,source_item_key:u.source_item_key,label:u.label,charged_points:String(exact(u.effective_points)),
-    refunded_points:old?String(exact(u.effective_points)):String(exact(u.returned_points)),available_points:valid&&!u.pending?String(exact(u.effective_points)):'0',pending:u.pending,evidence_kind:u.evidence_kind,
+    item_id:u.item_id,source_item_key:u.source_item_key,label:u.label,charged_points:String(exact(u.points)),
+    refunded_points:old||u.returned?String(exact(u.points)):'0',available_points:valid&&!u.pending?String(exact(u.points)):'0',pending:u.pending,evidence_kind:u.evidence_kind,
   };});
   const enabled=units.some(u=>exact(u.available_points)>0n);
   const records:TaskRefundRecord[]=[];for(const request of requests.rows)records.push(await readTaskRefundRecord(c,request.id,r.owner_user_id));
@@ -111,10 +102,7 @@ export async function createTaskRefund(pool:Pool,owner:string,run:string,input:T
     const e=await eligibility(c,r),selected=e.units.filter(u=>input.item_ids.includes(u.item_id));
     if(selected.length!==input.item_ids.length||selected.some(u=>exact(u.available_points)===0n))throw changed();
     const id=uid();await c.query(`INSERT INTO bb_task_refund_requests(id,owner_user_id,run_id,reservation_id,request_id,request_hash,reason) VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,owner,run,r.id,input.request_id,fingerprint,input.reason.trim()]);
-    for(const item of selected){
-      await c.query('INSERT INTO bb_task_refund_request_items VALUES($1,$2,$3)',[id,r.id,item.item_id]);
-      await c.query('INSERT INTO bb_task_refund_requested_amounts VALUES($1,$2,$3)',[id,item.item_id,item.available_points]);
-    }
+    for(const item of selected)await c.query('INSERT INTO bb_task_refund_request_items VALUES($1,$2,$3)',[id,r.id,item.item_id]);
     return readTaskRefundRecord(c,id,owner);
   });
 }
@@ -133,14 +121,13 @@ export async function decideTaskRefund(pool:Pool,actor:string,id:string,input:Ta
     if(selected.length!==wanted.size||selected.some(u=>!original.items.some(i=>i.item_id===u.item_id)||u.returned)||selected.length&&(r.state!=='settled'||r.run_state!=='succeeded'||await wholeCorrected(c,r)||selected.some(u=>keys&&!keys.has(u.source_item_key))))throw changed();
     // Check every selected return as one issuance while holding the same account
     // lock as recharges. Overflow leaves the decision and all original rights pending.
-    if(selected.some(u=>u.unknown_charge||exact(u.effective_points)===0n))throw evidence();
-    if(selected.length)await assertCreditIssuanceFits(c,r.owner_user_id,sum(selected,'effective_points'));
+    if(selected.length)await assertCreditIssuanceFits(c,r.owner_user_id,sum(selected,'points'));
     await c.query('INSERT INTO bb_task_refund_decisions(request_id,decision_id,actor,permission_grant_id,request_hash,reason) VALUES($1,$2,$3,$4,$5,$6)',[id,input.request_id,actor,grant,fingerprint,input.reason.trim()]);
     for(const unit of selected){
       await c.query('INSERT INTO bb_task_refund_returned_items VALUES($1,$2,$3)',[r.id,unit.item_id,id]);
-      const slices=(await c.query(`SELECT s.*,l.source,l.expires_at FROM bb_task_refund_actual_slices($1,$2) s JOIN bb_credit_lots l ON l.id=s.origin_lot_id
-        WHERE s.points>0 ORDER BY l.id FOR UPDATE OF l`,[r.id,unit.item_id])).rows;
-      if(sum(slices,'points')!==exact(unit.effective_points))throw evidence();
+      const slices=(await c.query(`SELECT s.*,l.source,l.expires_at FROM bb_task_refund_unit_slices s JOIN bb_credit_lots l ON l.id=s.origin_lot_id
+        WHERE s.reservation_id=$1 AND s.item_id=$2 ORDER BY l.id FOR UPDATE OF l`,[r.id,unit.item_id])).rows;
+      if(sum(slices,'points')!==exact(unit.points))throw evidence();
       for(const slice of slices){
         const credit=uid(),lot=uid(),amount=String(exact(slice.points)),source=slice.source==='purchase'?'purchase':slice.source==='subscription'?'subscription':'correction';
         // Platform quality return: preserve permanent cash rights; an expiring
@@ -164,9 +151,7 @@ export async function listTaskRefunds(pool:Pool,actor:string,query:{cursor?:stri
       WHERE ($1::timestamptz IS NULL OR (r.created_at,r.id)<($1::timestamptz,$2::text))
       AND ($3::text IS NULL OR CASE WHEN d.request_id IS NULL THEN 'requested'
        WHEN NOT EXISTS(SELECT 1 FROM bb_task_refund_returned_items x WHERE x.request_id=r.id) THEN 'rejected'
-       WHEN (SELECT COALESCE(sum(t.points),0) FROM bb_task_refund_credits t JOIN bb_task_refund_returned_items x USING(reservation_id,item_id) WHERE x.request_id=r.id)=
-        (SELECT sum(COALESCE(a.points,u.points)) FROM bb_task_refund_request_items i JOIN bb_task_refund_units u USING(reservation_id,item_id) LEFT JOIN bb_task_refund_requested_amounts a USING(request_id,item_id) WHERE i.request_id=r.id)
-        THEN 'approved' ELSE 'partially_approved' END=$3)
+       WHEN (SELECT count(*) FROM bb_task_refund_returned_items x WHERE x.request_id=r.id)=(SELECT count(*) FROM bb_task_refund_request_items x WHERE x.request_id=r.id) THEN 'approved' ELSE 'partially_approved' END=$3)
       ORDER BY r.created_at DESC,r.id DESC LIMIT 101`,[cursor?.created_at??null,cursor?.id??null,query.state??null])).rows;
     const items:TaskRefundRecord[]=[];for(const row of rows.slice(0,100))items.push(await readTaskRefundRecord(c,row.id));
     return{items,next_cursor:rows.length>100?rows[99].id:null};

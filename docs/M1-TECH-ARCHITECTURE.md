@@ -1,7 +1,3 @@
-> 2026-11-16：#1459/#1462 为托管消费者增加本进程已完成重试的安全交接：等待续约、所有执行槽及原生进程结束，锁定原 node/epoch/session/token 后清除旧租约；未知供应商调用仍暂停，租约过期本身不解除隔离。0189 把终态恢复审计封装为固定搜索路径、限定原触发器的 SECURITY DEFINER 函数，保持消费者不能直接写审计。完整 worker 包及 0182 既有表的权限依赖见[验收与发布说明](acceptance/issue-1459-1462-managed-run-recovery.md)。
-> 2026-11-15：#1385 为当前任务租约新增模型等待/活动计费投影；纯等待冻结有效时长和动态积分，任一并行活动仍按原规则计费，恢复不追补等待时间。追加0182，公共进度新增可选model_waiting，不改变共享许可、run状态或固定报价。实现及验证见[模型等待计费修复](acceptance/issue-1385-model-wait-billing.md)。
-> 2026-11-11：按用户对篇幅门禁的补充要求（#995），`file-authoring-repair` 在同一任务内对可信篇幅拒绝最多执行两轮修复，使用固定逻辑调用ID、独立报告和格式计划保存恢复依据。原始基线和输入不变，修复后仍走完整交付检查；预算耗尽暂停待处理，渲染故障重试检查，delivery-only恢复不追加模型调用。无公共枚举、迁移或计费政策变化，见[同日决定](product-decisions/2026-11-11-reference-text-flexibility.md)。
-
 > 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。启动层补充 Mac/Windows 本机 Docker 连接、路径、挂载和权限处理，Windows 使用 PowerShell 与 Docker Desktop Linux 容器；统一操作入口见根 README。本轮平台适配按用户要求未重跑测试，Windows 实机验收尚未记录。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
 
 > 2026-11-07：#906/#908 已完成双端迁移；腾讯云主站恒常运行网页/API/唯一PG/运维和纯解析，Azure 执行端仅编制/复核，经专用受限 SSH 转发复用 PG 队列。继续使用私有 Azure Blob、业务 Codex 1M窗口/900K压缩及既有诚信出口。迁移仅在主站执行；角色、资产与恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。#911 负责统一配置生命周期的采纳与验收。
@@ -9,8 +5,6 @@
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
-> 2026-11-11：按[参考募集书文字灵活更新及同日篇幅补充](product-decisions/2026-11-11-reference-text-flexibility.md)，`quality.verify` 取消全文及分节文字相似度／逐章字数比例的硬门槛，保留章节编号、层级、顺序及格式校验；标题措辞可变，章节正文按结构位置检查清空。`document_size` 独立检查整篇长稿正文总量70%下限，并用同环境LibreOffice实际分页检查至少50页的原稿：页数低于70%且减少至少20页即拒绝。需渲染但不可用时失败关闭，已有质量失败可以跳过渲染且不宣称页数通过。`format_diff` 与 `preflight` 同步执行新口径，可信重放、双稿一致性、期间／公式／事实锚点检查保持。PDF 原文保真用于重建基线，随后改写执行相同的文字灵活与整体规模规则。不改公共请求契约或数据库。
-
 > 2026-11-01：按[募集书质量与发布门禁](product-decisions/2026-11-01-prospectus-quality-gate.md)，原件身份、双 Word 修订一致性、结构/内容保留和模板检查改为宿主交付前必要条件。失败保存私有报告与检查点，不进入正常交付；重放不增加模型调用。部署与镜像导出必须验证绑定候选 commit/tree 的 Linux 回归凭据；运行时机械检查、真实模型事实验收与页面验收分别记录。本要求覆盖旧“生成文件即交付”的冲突说明。见[本次审计](acceptance/prospectus-quality-regression-20261101.md)。
 
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。
@@ -916,18 +910,6 @@ pin 登记、过期上传清理登记与实际 Blob 删除共用 owner/object ad
 
 公共浏览器夹具可在准确 API 编译后运行 `node scripts/upload-confirmation-fixtures.mjs <isolated-output-directory>` 生成两份 synthetic DOCX 与 hash/大小清单。原页面选择文件，记录短 202，确认期间刷新或重开后恢复原 upload ID；最终 200 的 material/version/hash 与刷新后的已保存材料一致。在大文件验证期间保存同项目说明并提交小文件，确认这些请求不会等待项目长锁。
 
-### 2026-11-11 计价退役、实扣审计与任务恢复
-
-按用户要求执行三份积分排查报告的合并修复。新 HTTP 委托统一进入自动范围报价，旧固定价/人工报价 CLI 停止发布，本地旧 API 入口退役。历史执行显式加载原合同与版本；Node 测试夹具必须声明旧策略，不能用生产开关重新开放旧委托。
-
-contracts 统一定义 `billing_reconcile` 暂停阶段及 `BILLING_REQUEST_REJECTED` 确定拒绝码。钱包隔离时保留成果、租约安全停止并持久化取消意图；独立修复与显式恢复后复用原 Word 交付或释放原预留。未知供应商状态先转入既有 reconcile 流程。已释放的付费超时任务不能通过私有修复入口复活。
-
-新增迁移 0167/0168/0170—0174：补实际 lot 扣费投影及可证明的历史只读重建；退款上限使用实际已扣及已退；拒绝收据与业务接受共用锁并提供数据库互斥；诚信收费必须有持久化成功查询证据；文件包报价保存不可变 owner/input/price/expiry，并仅允许一次绑定批次。已受理子任务按原批次合同执行，不受普通未接受报价的七天期限阻断。所有新增财务行为继续使用既有账户/lot 锁、不可变事件及终态结算事务。
-
-诚信 v4 商业标准为基础 2,000 + 每项适用可执行主体/官网栏目 85，最高 22,738；按锁定范围内不同成功组合结算，全部失败释放。分页和重试不增加收费单位，成本未知保持 null。规则和历史边界见[商业决定](product-decisions/2026-11-11-integrity-scope-pricing.md)。年度退款输入使用原订单可退额度，旧请求只有收到持久化确定拒绝后才允许安全创建新请求；网络不明继续保留原键重放。
-
-代码完成，尚未部署，待统一发布。合成回归不代表真实官网、模型、商户支付或最终用户验收。
-
 ### 可协商的私有 Blob 直传
 
 材料上传保留原同源 `/bytes` → 204 通道。API 的 `BB_DIRECT_BLOB_UPLOADS` 默认 `0`；设为 `1` 后，也只为通过公共契约 `X-BB-Upload-Transport: azure_blob` 请求头明确声明能力的客户端签发直传会话。旧客户端继续得到同源地址；新客户端连接旧 API 时，旧 API 忽略该头并继续返回同源会话。响应可选 `upload_transport` 标记由 `packages/contracts` 唯一定义。页面、进度文案、100 MiB 单文件上限及计费规则不变。
@@ -939,48 +921,3 @@ API 将传输方式与不可变的 owner/project/upload/object key 一起保存�
 直传对象通过既有异步确认消费器完整下载，校验实际大小、SHA 及声明类型白名单，并在提交事务中再次比对同一 ETag、归属与不可变会话。沿用原件直存政策，不嗅探、解压或扫描文档内容；保存不证明内容类型或安全。只有字节完整性和归属检查通过才记录 received 和唯一材料；HEAD 存在或客户端 201 均不作为已保存证明。确定性拒收仅在归属、租约及材料引用检查后以拒收版本的 ETag 条件回收，不能删除替换版本。SAS 无法绑定字节上限，服务端实际读取仍执行 100 MiB 上限。
 
 启用前，在私有 Blob 服务 CORS 中保留已有规则并增量允许正式应用 Origin、方法 `PUT`、请求头 `content-type,x-ms-blob-type,if-none-match`。无需暴露响应头。Web CSP 的 `connect-src` 只增加配置对应的 `https://myopenhands.blob.core.windows.net`，不放开通配 Azure 域名；外层代理若另加 CSP，也须允许同一精确 Origin。正式浏览器验收需确认 CORS/CSP 均未拦截，并完成小文件和至少 6 MiB synthetic 文件上传、刷新恢复及 SHA/归属复核。回退采用关闭新会话 flag，既有直传会话仍可完成；保留新增迁移，不在回退时删除材料。部署继续遵守当前 commit/tree 的质量与发布凭据要求。
-
-
-### #943 upload confirmation placement
-
-The optional standalone `upload-confirmation-runtime.ts` consumes only the existing upload outbox event, using the API's unchanged confirmation lease/fence and full integrity receipts. It does not construct the general runtime or claim run/parse work. The explicit size-split placement keeps one small-only confirmation loop in the existing main parser and one large-only loop in the standalone service near Blob. Claim SQL filters before taking a lease: small includes 16 MiB, large starts at 16 MiB + 1 byte, using the API constant. Wrong-lane events consume neither attempts nor leases. Each process retains its own 128 MiB disk-backed spool; legacy general/optional small-slot configuration remains the default. Main shutdown separately awaits confirmation settlement without changing run/parse drain limits; its parser has a 10-minute stop grace. Project commit locks still serialize, so small-first completion is not guaranteed. A dedicated standalone spool and process lock protect its files. The main API continues its existing cached ETag/receipt response. Placement, immutable image identity and configuration remain under the existing role binding/pending release protections; mixed component releases require component-only changes. See [split deployment](runbooks/m1-split-deployment.md) for opt-in configuration, drain and rollback. No public contract, migration or model behavior changes.
-
-The runbook records the November 14 move to the existing `execution` placement: one general loop plus a reserved small loop in the standalone process near Blob, with main confirmation disabled. The general loop can also process small files. Both loops share the existing 128 MiB spool and 0.5 CPU / 512 MiB service limits. The duplicate-read and browser scheduling changes below preserve this placement and its protected configuration; release the API package in the actual standalone confirmation consumer as well as the HTTP API to update the asynchronous confirmation path.
-
-Every newly uploaded object still receives a full size/SHA/ETag check. On a duplicate, the existing canonical material can reuse an owner/project/material/version/object/hash/size-scoped integrity receipt only when its current Blob ETag matches. Missing, stale or unsupported version proof falls back to a full read. Canonical pins and final transactional ETag validation remain in place, so a replaced or deleted object cannot borrow an old receipt. This removes a redundant second download without trusting a new object's HEAD as content proof.
-
-Browser byte transfers share four actual HTTP PUT slots per page, across all ApiClient instances; a slot is released when HTTP settles, never when progress reaches 100%. Original-byte SHA preparation is a separate shared single lane, with incremental SHA-256 over 1 MiB file slices and event-loop yields between slices. Four selected large files therefore do not require four whole-file ArrayBuffers. Main material uploads allow four operations to overlap confirmation. Review, project QA and M4 source/material batches prepare at most four files ahead while preserving ordered business adoption and recovery journals. Identity reset/navigation cancels pending transport, and stopped/failed adoption prevents later items from being applied. Template import/merge and legacy multi-draft supplementary adoption retain their sequential business flow. Confirmation remains necessary before a file is shown as saved; transport concurrency is separate from server throughput.
-
-The explicit standalone four-lane profile sets `BB_UPLOAD_CONFIRMATION_CONCURRENCY=4`, general lane and reserved small slot. Four general loops and one small-only loop share exactly 448 MiB disk-backed spool, 1 CPU and 1.5 GiB memory with a 384 MiB Node heap; four 100 MiB declarations plus one 16 MiB declaration reserve 416 MiB. Startup requires another 16 MiB of free disk beyond the configured budget. Runtime ownership, renewal/fence, canonical pins, project commit locks and final transactional size/SHA/ETag validation are unchanged. The pool has 12 connections so concurrent work does not consume all renewal capacity. The legacy one-general profile retains 128 MiB / 512 MiB / 0.5 CPU. These are opt-in deployment profiles; neither a code merge nor local resource tests imply production activation or a fourfold speed improvement.
-
-### 冻结批次的四路处理（#1349）
-
-新底稿、普通文件生成和文件更新批次默认最多准入四个独立子任务。历史批次保留原有一或二路策略；章节顺序、试生成确认、来源与模板版本及输入 hash 均不改变。项目互斥只对同一冻结批次中的不同目标放宽，同一文件和修订版本链仍串行，文件更新继续校验 `expected_current_version_id`。
-
-新普通底稿沿冻结目录按章节每八份形成计划组，优先准入不同组的唯一作者，其他条目复用已持久化的组结果；共享来源和历史整批计划只有唯一作者。不确定的模型调用保留对账记录并阻止重发。全部目录项各自交付 Word 或明确的不适用说明，呈现顺序仍为原目录顺序。
-
-多题答复最多同时调用四路，准入策略保存在独立冻结执行字段，不改变公开 manifest 或其 hash，既有页面仍可严格校验原格式。每题保存独立 prompt、调用意图、用量和结果。单题异常先停止新准入，等待已接受的兄弟调用持久化后才聚合任务终态；已有成功答案可复用。Word 合成始终只有一个写入者。批次和答复均复用公共模型调用预算，四路准入不等于每个任务各自拥有四个额外模型额度；单篇长文书仍按原业务路径处理。
-
-### 执行节点容量与排空
-
-执行池继续使用唯一 PostgreSQL 的既有任务租约与模型调用账本。新增迁移 `0181_execution_node_capacity.sql` 保存可信云实例身份、启动代际、预期服务清单与持久云操作；公共控制类型由 `packages/contracts/src/execution-capacity.ts` 定义，不增加公开业务 DTO 或第二任务队列。
-
-默认全池四个模型调用。托管池的全局名额由 PostgreSQL 策略设置，不能超过已核准的供应商配额。超过默认值时须记录供应商和费用策略的凭据摘要，扩容控制器校验供应商摘要与运维配置一致，再走现有费用核准。旧控制器配置中的全局值可继续作为一致性校验，省略后使用 PG 全局值。每节点的槽位跨编制和复核进程共享，生产为八槽且最多两台。托管模式在领取和模型发放事务中校验节点与服务代际。
-
-降低全局配额只约束新发放，已有 holder 即使槽号超过新值，仍可续租、绑定进程和正常释放。排空停止新领取，当前有效租约可按原预留继续模型阶段和成果提交。预期服务缺席、心跳过期或未知调用均不能充当进程已经结束的证据。
-
-云停止调用前持久化不可逆操作意图，响应丢失保持未知且禁止重新启动。准确云实例、启动代际及最新操作请求编号匹配的完成证据才授权回收旧容量；未知用量、费用与成果回执仍由原账本处理。积压只统计已经准入并具有可执行依赖的任务，共享来源与计划等待项不计需求。现有运维定时入口推进异步操作和空闲检查，未配置控制器时不调用云 API。
-
-预算或需求变化后，完全未派发的启动意图可在重新核验需求、费用、库存与当前策略后以 CAS 续授权，保留原操作编号、启动代际、请求及幂等令牌；也可取消并保留审计。备用实例取消启动时必须对完整节点前像进行 CAS，恢复先前已停止的代际与停止证据，版本号仍递增。已派发或结果未知的操作禁止用此路径取消或重发。仅使用内存账本的合成探测命令在托管及生产环境拒绝执行，业务探测沿持久租约和共享预算入口处理。
-
-托管节点的文件编制与只读调用都使用命名文件权限，在模型意图持久化前实际验证登记、服务配置与系统配置目录不可被工具子命令读取；父进程仍可读取自己的私有配置。只读调用保留原工具禁用与固定材料接口，且无可写目录。云幂等令牌由 API 导出的同一纯函数生成，控制器构造启动 manifest 与数据库保存请求时不得各自猜测 hash 算法。
-
-### 每节点八路运行准入（#1361）
-
-迁移 0188 在既有唯一 PostgreSQL 内将可配置的节点领取与模型槽扩为八路，当前全群和供应商许可仍为八路，最多两台、最低零台。十一类业务继续共享该容量；同一冻结批次（包括250文件批次）的独立子文件最多八个在途。历史输入、hash、max_parallel 与章节/计划组、确认关口、同文件串行约束保持；运行准入不再受旧四路门槛限制。纯解析保持四路。
-
-16GB执行配置采用编制6GiB、复核7GiB，各2核、pids512，Node heap维持1/2GiB，tmpfs各512MiB计入容器内存。保留系统余量，不代表八份大型文书已完成压力或专业验收。公开增量沿既有只读组件覆盖路径分发，保留原OCI、续租与停机授权保护；先排空再替换进程。空闲300秒且租约/原生进程/未持久成果归零后仍使用SOFT与STOP_CHARGING，盘及固定费用继续计入。
-
-## 细粒度性能追踪（#1415）
-
-运行性能使用独立 span/session 存储和有界异步写入器，沿用 `log_reader` 与日志保留策略；业务阶段事件和模型强制证据语义不变。字段、时间口径、采集边界、管理 API 和发布顺序见 [细粒度任务性能追踪](FINE-STEP-PERFORMANCE.md)。

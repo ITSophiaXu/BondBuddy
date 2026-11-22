@@ -21,6 +21,6 @@ export const AuthoringProgressSchema=Type.Object({
   pause_requested:Type.Boolean(), queued_at:utc, sampled_at:utc,
   last_activity_at:Type.Union([utc,Type.Null()]),
   queue_ahead:Type.Union([Type.Integer({minimum:0}),Type.Null()]),
-  clock_running:Type.Boolean(), model_waiting:Type.Optional(Type.Boolean()),
+  clock_running:Type.Boolean(),
 },{additionalProperties:false});
 export type AuthoringProgress=Static<typeof AuthoringProgressSchema>;

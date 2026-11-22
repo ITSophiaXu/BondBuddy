@@ -6,9 +6,6 @@ import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
 import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
 import {advanceWorkpaperBatch,makeWorkpaperExplanation,publishWorkpaperItemResult} from '@bondbuddy/api/workpapers';
-import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
-import {enqueue} from '@bondbuddy/api/queue';
-import {projectFileSource} from '../../api/dist/project-file-storage.js';
 import {WORKPAPER_PRICE,type WorkpaperDecision,type WorkpaperBatch,type M4DocumentManifest} from '@bondbuddy/contracts';
 import {grantCredits} from '../../api/dist/billing.js';
 import {debitAuthoringCredits} from '../../api/dist/authoring-credit-debit.js';
@@ -23,7 +20,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
   const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
   const store=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
@@ -84,20 +81,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     const request={start_mode:'direct' as const,request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.slice(0,300).map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'缺少资料标记待补充',price_version:WORKPAPER_PRICE.version,expected_points:String(300*WORKPAPER_PRICE.points)};
     // A previous free preflight stays recorded but cannot block direct authoring.
     const {start_mode,price_version,expected_points,...oldRequest}=request;
-    // Seed a persisted historical task. Do not rely on creating a new free
-    // assessment through the retired production admission route.
-    const retiredRequest={...oldRequest,request_id:randomUUID()},retiredId=randomUUID();
-    await transaction(pool,async c=>{
-      const current=await projectFileSource(c,user,id),project=(await c.query('SELECT draft_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[user,id])).rows[0];
-      const manifest={version:'workpaper-assessment-v1',request:retiredRequest,source:current,entries:cat.entries.slice(0,300)},hash=inputManifestHash(manifest);
-      const revision=Number((await c.query('SELECT coalesce(max(revision),0)+1 n FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].n);
-      await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,'[]','[]')",[id,revision,user,project.draft_revision,hash,manifest]);
-      const row=(await c.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *",[retiredId,user,id,revision,hash,'workpaper-assessment:'+retiredRequest.request_id,inputManifestHash({id,...retiredRequest})])).rows[0];
-      await c.query('INSERT INTO bb_workpaper_assessments(run_id,owner_user_id,project_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)',[retiredId,user,id,manifest,hash]);
-      await c.query('UPDATE bb_projects SET latest_input_revision=$3 WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
-      await enqueue(c,row,'workpaper_assessment_v1');
-    });
-    const retired=await ok('POST',base+'/assessments',retiredRequest);assert.equal(retired.assessment_id,retiredId);
+    const retired=await ok('POST',base+'/assessments',{...oldRequest,request_id:randomUUID()});
     await ok('POST','/api/v1/runs/'+retired.assessment_id+'/pause',{reason:'synthetic_retired_preflight'});
     assert.equal((await send('POST',base+'/batches',{...request,expected_points:'1'})).statusCode,409);
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;

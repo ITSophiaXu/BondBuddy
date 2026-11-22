@@ -1,5 +1,3 @@
-import {withPerformanceSpan} from './performance-trace.js';
-import {executionClaimGate,lockExecutionReleaseContext} from './execution-capacity.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -18,44 +16,8 @@ import { registerProjectFileOutcome } from './project-file-storage.js';
 import { syncAuthoringProgress } from './authoring-progress.js';
 import { creditBalanceExact,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
-import { lockWalletSafetyForControl } from './billing-safety.js';
-import { integrityQueryEvidenceReady } from './integrity-billing-evidence.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
-/** Includes only the trusted SQL safety failure, never unrelated SQL 55000s. */
-export function isBillingBlocked(error:unknown):boolean {
-  return error instanceof Problem&&error.code==='BILLING_NOT_READY'||
-    !!error&&typeof error==='object'&&(error as {code?:string}).code==='55000'&&
-      /^BILLING_NOT_READY: wallet is isolated$/.test(String((error as {message?:string}).message));
-}
-async function walletIsolated(client:PoolClient,r:any){
-  if(!r.reservation_id)return false;
-  await lockWalletSafetyForControl(client,r.owner_user_id);
-  return !!(await client.query("SELECT 1 FROM bb_billing_safety_blocks WHERE scope_key=$1 AND resume_event_id IS NULL",['wallet:'+r.owner_user_id])).rowCount;
-}
-async function billingContractRecoverable(client:PoolClient,r:any,j:any){
-  if(!r.reservation_id)return true;
-  const contract=(await client.query('SELECT state,billing_policy,charged_points FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2',[r.reservation_id,r.owner_user_id])).rows[0];
-  if(contract?.state==='held')return true;
-  // Existing private, delivery-only authorizations retain their prior zero
-  // charge release. A timeout retry has neither of these evidence contracts.
-  if(contract?.state!=='released'||contract.billing_policy!=='on_delivery'||String(contract.charged_points)!=='0')return false;
-  if(j.checkpoint?.word_pair_delivery_recovery?.policy==='generated_pair_v1')return true;
-  if(j.checkpoint?.review_assembly_recovery)
-    return (await client.query('SELECT bb_review_assembly_recovery_credit_ready(r) ready FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2',[r.id,r.owner_user_id])).rows[0]?.ready===true;
-  return false;
-}
-async function parkBilling(client:PoolClient,r:any,j:any,reason='wallet_isolated',cancel=false,restoreAttempt=false){
-  await client.query(`UPDATE bb_jobs SET state='paused',stage='billing_reconcile',lease_token=NULL,lease_until=NULL,
-    billing_resume_stage=CASE WHEN stage='billing_reconcile' THEN billing_resume_stage ELSE stage END,
-    billing_cancel_requested_at=CASE WHEN $2 THEN COALESCE(billing_cancel_requested_at,now()) ELSE billing_cancel_requested_at END,
-    attempts=GREATEST(0,attempts-CASE WHEN $3 THEN 1 ELSE 0 END),updated_at=now() WHERE id=$1`,[j.id,cancel,restoreAttempt]);
-  await event(client,r,'paused','billing_reconcile',reason,'BILLING_NOT_READY');
-}
-async function finalizePendingCancellation(client:PoolClient,r:any,j:any){
-  await client.query("UPDATE bb_jobs SET state='cancelled',stage='cancelled',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
-  await event(client,r,'cancelled','cancelled','user_cancelled_after_billing_reconcile');
-}
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
 export type RunKind = typeof TASK_KINDS[number];
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
@@ -64,9 +26,8 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
   return [...kinds];
 }
 
-async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={}) {
+async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string>={}) {
   await syncAuthoringProgress(client,r,{state,stage,reason});
-  if(terminal.has(state))await client.query('DELETE FROM bb_run_model_activity WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
@@ -106,7 +67,7 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-export async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id
@@ -125,14 +86,11 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean}={}):Promise<Lease|null> {
   const runKinds = checkedRunKinds(options.runKinds);
   return transaction(pool,async client=>{
-    await executionClaimGate(client,pool);
     // Lock order is run then job in every transition, including cancellation.
-    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND NOT (j.execution_node_id IS NOT NULL AND j.lease_token IS NOT NULL) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
+    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
-    if(await walletIsolated(client,r)){await parkBilling(client,r,j);return null;}
-    if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return null;}
     if(r.channel==='non_production_test'){
       try { await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash}); }
       catch(error){
@@ -148,88 +106,21 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
       return null;
     }
     const token=uid();
-    await client.query('DELETE FROM bb_run_model_activity WHERE job_id=$1',[j.id]);
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
     return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }
 
-async function lockedLease(client:PoolClient, lease:Lease, renewing=false) {
+async function lockedLease(client:PoolClient, lease:Lease) {
   const r=await run(client,lease.owner,lease.runId,true);
-  const j=(await client.query(renewing
-    ? `SELECT *,transaction_timestamp()<lease_until AS renewal_started_in_time FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE`
-    : 'SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
-  // Only a renewal already waiting before expiry may survive a long delivery
-  // transaction's run/job locks. A new request after expiry, a different token,
-  // or any terminal/control transition still loses. Other writes remain strict.
-  const expired=j && new Date(j.lease_until).getTime()<=Date.now();
-  if(!j || j.lease_token!==lease.token || j.state!=='running' || expired&&!(renewing&&j.renewal_started_in_time===true) || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
+  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
+  if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   return {r,j};
 }
 
-/** A request is registered before either the local or shared model-capacity queue.
- * Do not change run state/stage: an executing job waiting for a model still owns
- * its lease. Only this lease's complete set of requests controls its meter. */
-export async function setRunModelActivity(pool:Pool,lease:Lease,requestId:string,state:'waiting'|'active'|'finished'|'abandoned'):Promise<boolean>{
-  if(!/^[a-f0-9-]{36}$/.test(requestId))throw new Problem(422,'VALIDATION_FAILED','Invalid model activity request');
-  return transaction(pool,async client=>{
-    let locked;
-    try{locked=await lockedLease(client,lease);}
-    catch(error){
-      if((state==='finished'||state==='abandoned')&&error instanceof Problem&&['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;
-      throw error;
-    }
-    const {r}=locked;
-    const prior=(await client.query('SELECT * FROM bb_run_model_activity WHERE request_id=$1',[requestId])).rows[0];
-    if(prior&&(prior.owner_user_id!==lease.owner||prior.run_id!==lease.runId||prior.job_id!==lease.jobId||prior.lease_token!==lease.token))
-      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity request belongs to another lease');
-    if(prior?.state===state)return true;
-    if(state==='waiting'&&prior||state==='active'&&prior?.state!=='waiting')
-      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity cannot be reopened');
-    if((state==='finished'||state==='abandoned')&&!prior)return false;
-    if(state==='finished'&&prior.state!=='active')return false;
-    // Settle the old interval before the transition, then start/freeze the new
-    // interval at the database clock. Renewals and cancellation use these locks.
-    await syncAuthoringProgress(client,r);
-    if(state==='waiting'){
-      await client.query(`INSERT INTO bb_run_model_activity(request_id,owner_user_id,run_id,job_id,lease_token,state)
-        VALUES($1,$2,$3,$4,$5,'waiting')`,[requestId,lease.owner,lease.runId,lease.jobId,lease.token]);
-    }else if(state==='finished'){
-      await client.query('DELETE FROM bb_run_model_activity WHERE request_id=$1',[requestId]);
-    }else{
-      await client.query('UPDATE bb_run_model_activity SET state=$2,updated_at=clock_timestamp() WHERE request_id=$1',[requestId,state]);
-
-    }
-    // An abandoned wait remains a frozen marker until work explicitly resumes.
-    // Deleting the last failed waiter here would start charging before the
-    // caller has persisted its pause/failure (possibly behind a blocked DB lock).
-    await syncAuthoringProgress(client,r);
-    return true;
-  });
-}
-
-
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
-  const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease,true);
-    if(await walletIsolated(client,r)){await parkBilling(client,r,j,'wallet_isolated',false,true);return true;}
-    await syncAuthoringProgress(client,r);
-    // now() is the transaction start, which can be minutes before these locks
-    // become available. Publish the next lease at the end using wall-clock time.
-    // The running meter inherits the same deadline; a paused meter stays frozen.
-    // A bookkeeping lock can also outlive the old lease after its clock sample.
-    // Shift only that unconfirmed gap out of the cursor, preserving the pending
-    // valid delta for the next dynamic debit instead of advancing active_ms here.
-    await client.query(`WITH renewed AS (
-      UPDATE bb_jobs SET lease_until=clock_timestamp()+($2::integer * interval '1 second'),updated_at=clock_timestamp()
-      WHERE id=$1 RETURNING run_id,owner_user_id,lease_until,updated_at AS renewed_at
-    ) UPDATE bb_authoring_progress progress SET
-      clock_at=progress.clock_at+GREATEST(interval '0 seconds',renewed.renewed_at-GREATEST(progress.clock_at,progress.lease_until)),
-      lease_until=renewed.lease_until FROM renewed
-      WHERE progress.run_id=renewed.run_id AND progress.owner_user_id=renewed.owner_user_id AND progress.lease_until IS NOT NULL`,[lease.jobId,leaseSeconds]);return false;});
-  // Commit the control pause before revoking the caller's lease. Heartbeats
-  // abort in-flight work immediately instead of waiting for another renewal.
-  if(parked)throw new Problem(409,'ALREADY_TERMINAL','Lease paused for billing reconciliation');
+  await transaction(pool,async client=>{const {r}=await lockedLease(client,lease);await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);await syncAuthoringProgress(client,r);});
 }
 
 /** Progress is an owner/lease-checked projection; it never advances the execution stage. */
@@ -263,7 +154,6 @@ export async function recordReviewAction(pool:Pool, lease:Lease, action:ReviewAc
 export async function pauseAtCheckpoint(pool:Pool,lease:Lease):Promise<boolean>{
   return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
-    if(await walletIsolated(client,r)){await parkBilling(client,r,j,'wallet_isolated',false,true);return true;}
     await syncAuthoringProgress(client,r);
     const creditPause=(await client.query('SELECT credit_pause_requested FROM bb_jobs WHERE id=$1',[j.id])).rows[0].credit_pause_requested;
     if(creditPause){
@@ -281,8 +171,6 @@ export async function beginRunStage(pool:Pool,lease:Lease,stage:string){
   await transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     if(!['update','generation'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))return;
-    await syncAuthoringProgress(client,r);
-    await client.query("DELETE FROM bb_run_model_activity WHERE job_id=$1 AND lease_token=$2 AND state='abandoned'",[j.id,lease.token]);
     await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[j.id,stage]);
     await event(client,r,'running',stage,'stage_started',undefined,'run.progress');
   });
@@ -327,10 +215,6 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     // check uses the locked database checkpoint, never a caller's stale lease copy.
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
-    // Admission may wait on the shared model budget. Check again while holding
-    // the lease/job locks, before the durable intent can authorize a new call.
-    if(j.user_pause_requested||j.credit_pause_requested)
-      throw new Problem(409,'CAPABILITY_NOT_READY','Run paused before provider admission');
     if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
     // Re-check the kill switch and deny override before every new call; daily usage is uncapped.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);
@@ -379,28 +263,6 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j)throw missing();
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
-    if(kind==='cancel'||kind==='resume'||kind==='pause'){
-      if(await walletIsolated(client,r)){
-        if(kind==='pause'){
-          if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
-            throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
-          await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
-          if(j.stage!=='billing_reconcile')await parkBilling(client,r,j);
-          return runDto(r);
-        }
-        if(kind==='cancel'){
-          if(!j.billing_cancel_requested_at){
-            await parkBilling(client,r,j,'cancellation_waiting_billing_reconcile',true);
-            if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:'run_cancel',status:'submitted'});
-          }
-          return runDto(r);
-        }
-        throw new Problem(409,'BILLING_NOT_READY','余额核对完成后将继续原任务；已请求取消的任务将释放原预留。');
-      }
-      if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return runDto(r);}
-      if(kind==='resume'&&j.stage==='billing_reconcile'&&!await billingContractRecoverable(client,r,j))
-        throw new Problem(409,'BILLING_NOT_READY','Original task billing contract requires independent verification');
-    }
     if(kind==='pause'){
       if(!['update','generation','review'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))
         throw new Problem(422,'VALIDATION_FAILED','This task does not support pausing');
@@ -556,10 +418,10 @@ async function persistAvailableWord(pool:Pool,lease:Lease,inspection:DocxInspect
 // Generated pairs use file availability only; legacy processors retain their inspector.
 // Both policies require owned private storage and byte-for-byte readback.
 export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs,policy?:import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy):Promise<WordPromotionResult> {
-  const inspection=await withPerformanceSpan('document.inspect',{input_bytes:candidate.length},()=> (policy==='generated_pair_v1'||policy==='generated_review_v1')?inspectGeneratedWord(candidate):inspectDocx(candidate));
+  const inspection=(policy==='generated_pair_v1'||policy==='generated_review_v1')?inspectGeneratedWord(candidate):inspectDocx(candidate);
   const identity=wordArtifactIdentity(lease,inspection);
   if(inspection.quality_status!=='passed')return persistRejectedWord(pool,lease,inspection,identity);
-  await withPerformanceSpan('artifact.prepare_registration',{},()=>transaction(pool,async client=>{
+  await transaction(pool,async client=>{
     await assertLockedWordLease(client,lease);
     await client.query(`INSERT INTO bb_artifact_versions
       (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
@@ -567,11 +429,11 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
     [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey]);
     const artifact=await ensureWordArtifact(client,lease,inspection,identity);
     if(artifact.quality_status==='failed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact has a prior quality rejection');
-  }));
-  try { await withPerformanceSpan('artifact.upload',{input_bytes:candidate.length},()=>blobs.put(identity.objectKey,candidate,WORD_MEDIA_TYPE)); }
+  });
+  try { await blobs.put(identity.objectKey,candidate,WORD_MEDIA_TYPE); }
   catch { return persistUnavailableWord(pool,lease,inspection,identity,'blob_write_failed'); }
   let readback:Buffer|null;
-  try { readback=await withPerformanceSpan('artifact.readback',{operation:'promotion'},()=>blobs.getIfExistsBounded(identity.objectKey,DOCX_LIMITS.archiveBytes)); }
+  try { readback=await blobs.getIfExistsBounded(identity.objectKey,DOCX_LIMITS.archiveBytes); }
   catch(error) {
     const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
     return persistUnavailableWord(pool,lease,inspection,identity,code);
@@ -581,7 +443,7 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
   const readbackSha256=digest(readback);
   if(readback.length!==inspection.byte_size || readbackSha256!==inspection.sha256)
     return persistUnavailableWord(pool,lease,inspection,identity,'blob_hash_mismatch',{sha256:readbackSha256,byteSize:readback.length});
-  return withPerformanceSpan('artifact.register',{},()=>persistAvailableWord(pool,lease,inspection,identity));
+  return persistAvailableWord(pool,lease,inspection,identity);
 }
 
 /** PDF comments are source overlays checked by the trusted Python writer, not Word candidates. */
@@ -665,7 +527,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     [lease.owner,lease.runId,options.artifactId,options.artifactVersion,WORD_MEDIA_TYPE,outcome==='test_completed'?'test_only':'available']);
     artifact=q.rows[0];if(!artifact)throw new Problem(422,'DELIVERY_FAILED','Passed Word artifact unavailable');
     let bytes:Buffer|null;
-    try { bytes=await withPerformanceSpan('artifact.readback',{operation:'finish'},()=>options.blobs!.getIfExistsBounded(artifact.object_key,DOCX_LIMITS.archiveBytes)); }
+    try { bytes=await options.blobs.getIfExistsBounded(artifact.object_key,DOCX_LIMITS.archiveBytes); }
     catch(error) {
       const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
       await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,code);
@@ -683,7 +545,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_hash_mismatch',{sha256:digest(bytes),byteSize:bytes.length});
       throw new Problem(422,'DELIVERY_FAILED','Word artifact hash mismatch');
     }
-    const inspection=await withPerformanceSpan('document.inspect',{operation:'finish',input_bytes:bytes.length},()=>artifact.validator_version===GENERATED_WORD_DELIVERY_VERSION?inspectGeneratedWord(bytes!):inspectDocx(bytes!));
+    const inspection=artifact.validator_version===GENERATED_WORD_DELIVERY_VERSION?inspectGeneratedWord(bytes):inspectDocx(bytes);
     const evidence=artifact.quality_evidence as DocxInspection;
     if(inspection.quality_status!=='passed' || inspection.validator_version!==artifact.validator_version
       || inspection.sha256!==artifact.sha256.trim() || inspection.byte_size!==Number(artifact.evidence_byte_size)
@@ -691,14 +553,8 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       || evidence.sha256!==inspection.sha256 || evidence.byte_size!==inspection.byte_size)
       throw new Problem(422,'DELIVERY_FAILED','Word artifact quality evidence mismatch');
   }
-  return withPerformanceSpan('run.terminal_persist',{outcome},()=>transaction(pool,async client=>{
+  return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
-    if(await walletIsolated(client,r)){
-      await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('billing_terminal',$2::jsonb) WHERE id=$1",
-        [j.id,JSON.stringify({outcome,artifactId:options.artifactId,artifactVersion:options.artifactVersion,errorCode:options.errorCode,failedStage:options.failedStage})]);
-      await parkBilling(client,r,j,'wallet_isolated',false,true);return runDto(r);
-    }
-    if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return runDto(r);}
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
       const coveredZero=(await client.query(`SELECT (EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
@@ -726,7 +582,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
           throw new Problem(422,'DELIVERY_FAILED','Question coverage and filled Word required');
       }else if(j.subtype==='integrity_v1'){
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
-        if(!ready.rowCount||ready.rows[0].operation==='check'&&!await integrityQueryEvidenceReady(client,r.owner_user_id,r.id,ready.rows[0].result?.records??[]))
+        if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
           throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
       }else if(j.subtype==='project_file_v1'&&(await client.query("SELECT 1 FROM bb_project_file_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation='check'",[r.owner_user_id,r.id])).rowCount){
         // Checks deliver one report Word. The locked structured result must cover every selected version.
@@ -784,19 +640,15 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
       await registerProjectFileOutcome(client,r,artifact,j.checkpoint?.stages?.word_delivery_pair);
     }
     return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
-  }));
+  });
 }
 
 /** M4 QA completes with its persisted text result; legacy Word delivery stays unchanged. */
 export async function finishM4Qa(pool:Pool,lease:Lease,reply:M4AssistantReply) {
   const {completeM4Qa,settleM4Metering}=await import('./m4-workspace.js');
-  return withPerformanceSpan('run.qa_finish',{},()=>transaction(pool,async client=>{
+  return transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     if(j.subtype!=='m4_qa_v1' || r.task_kind!=='qa' || r.channel!=='production')throw new Problem(422,'VALIDATION_FAILED','M4 QA lease required');
-    if(await walletIsolated(client,r)){
-      await client.query("UPDATE bb_jobs SET checkpoint=checkpoint||jsonb_build_object('billing_qa_reply',$2::jsonb) WHERE id=$1",[j.id,JSON.stringify(reply)]);
-      await parkBilling(client,r,j,'wallet_isolated',false,true);return runDto(r);
-    }
     if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','QA provider call needs reconciliation');
     const artifact=await completeM4Qa(client,lease.owner,lease.runId,reply);
     const metering=await settleM4Metering(client,lease.owner,lease.runId);
@@ -809,7 +661,7 @@ export async function finishM4Qa(pool:Pool,lease:Lease,reply:M4AssistantReply) {
     await client.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId]);
     await event(client,r,'succeeded','succeeded','qa_text_delivered');
     return runDto({...r,artifact_id:artifact.artifactId,artifact_version:artifact.artifactVersion,updated_at:new Date()});
-  }));
+  });
 }
 
 /**
@@ -867,12 +719,7 @@ export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:R
       checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
       WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
     lease.checkpoint=q.rows[0].checkpoint;
-    if(completed){
-      const started=(await client.query(`SELECT GREATEST(0,EXTRACT(EPOCH FROM (now()-occurred_at))*1000)::bigint AS ms
-        FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND stage=$3 AND payload->>'reason'='stage_started'
-        ORDER BY seq DESC LIMIT 1`,[lease.owner,lease.runId,stage])).rows[0];
-      await event(client,r,'running',stage,'stage_completed',undefined,'run.progress',started?{duration_ms:Number(started.ms)}:{});
-    }
+    if(completed)await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
   });
 }
 
@@ -900,33 +747,17 @@ export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAG
   if(errorCode && !(ERROR_CODES as readonly string[]).includes(errorCode))throw new Problem(422,'VALIDATION_FAILED','Invalid pause error code');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
-    if(stage==='billing_reconcile'){
-      const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0];
-      await parkBilling(client,r,j,reason,false,true);return;
-    }
     await client.query("UPDATE bb_jobs SET state='paused',stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId,stage]);
     await event(client,r,'paused',stage,reason,errorCode);
   });
 }
 
 /** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
-export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared'|'credits_recharged'|'billing_reconciled') {
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared'|'credits_recharged') {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
     if(!j||!['paused','settlement_pending'].includes(r.state)||j.state!=='paused')return false;
-    if(reason==='billing_reconciled'){
-      if(r.stage!=='billing_reconcile'||j.stage!=='billing_reconcile'||await walletIsolated(client,r))return false;
-      if(!await billingContractRecoverable(client,r,j))return false;
-      if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return true;}
-      if(await providerCallNeedsReconciliation(client,j.id)){
-        // An in-flight supplier result can become unknown during isolation.
-        // Hand it to the existing reconciliation sweep once funds are healthy.
-        await client.query("UPDATE bb_jobs SET stage='provider_reconcile',updated_at=now() WHERE id=$1",[j.id]);
-        await event(client,r,'paused','provider_reconcile','provider_reconciliation_required');
-        return false;
-      }
-    }else if(j.stage==='billing_reconcile')return false;
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
@@ -948,7 +779,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
       const {settleM4Metering}=await import('./m4-billing.js');
       const metered=await settleM4Metering(client,owner,runId);if(!metered.ready)return false;
     }
-    const nextStage=reason==='credits_recharged'?'queued':reason==='billing_reconciled'?(j.billing_resume_stage??'queued'):j.stage;
+    const nextStage=reason==='credits_recharged'?'queued':j.stage;
     await client.query("UPDATE bb_jobs SET state='queued',stage=$2,credit_pause_requested=false,updated_at=now() WHERE id=$1",[j.id,nextStage]);
     await event(client,r,'queued',nextStage,reason);
     return true;
@@ -1168,10 +999,6 @@ export async function repairUnifiedTimeoutRetry(pool:Pool,input:{runId:string;at
     if(!r)throw missing();
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
     if(!j)throw missing();
-    if(r.reservation_id){
-      const billing=(await client.query('SELECT state FROM bb_credit_reservations WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[r.reservation_id,r.owner_user_id])).rows[0];
-      if(!billing||billing.state!=='held')throw new Problem(409,'BILLING_NOT_READY','Finalized paid task requires a separately authorized repair billing contract');
-    }
     const repaired=j.checkpoint?.timeout_retry_repairs?.[input.attemptId];
     if(repaired)return {run_id:r.id,attempt_id:input.attemptId,idempotent:true};
     const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','Run does not match the interrupted timeout retry');
@@ -1279,8 +1106,7 @@ export async function resolveOperatorReconciliation(pool:Pool,input:{runId:strin
   });
 }
 
-/** Expire only. Managed consumers retain the token until their local completion
- * barrier calls completeManagedRunRelease; expiry is never proof of process death. */
+/** Graceful shutdown: expire our lease now so the next claim resumes from the checkpoint without waiting. */
 export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released') {
   await transaction(pool,async client=>{
     let locked;
@@ -1288,41 +1114,4 @@ export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released'
     await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
     await event(client,locked.r,'running',locked.j.stage,reason,undefined,'run.progress');
   });
-}
-
-/** Private worker handoff, never a user/operator timeout-recovery endpoint.
- * The proof is supplied only after the current consumer has awaited its pipeline,
- * renewal and other execution loops, blocked new claims, and counted no native
- * processes. A restarted consumer cannot submit another session's receipt. */
-export async function completeManagedRunRelease(pool:Pool,lease:Lease,proof:{nativeProcesses:0;activeExecutions:0}) {
- if(proof.nativeProcesses!==0||proof.activeExecutions!==0)throw Error('EXECUTION_RELEASE_NOT_QUIESCENT');
- return transaction(pool,async client=>{
-  const context=await lockExecutionReleaseContext(client,pool);if(!context)return 'blocked' as const;
-  const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[lease.runId,lease.owner])).rows[0];
-  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[lease.jobId,lease.runId,lease.owner])).rows[0];
-  if(!r||!j||terminal.has(r.state)||j.state!=='running'||j.lease_token!==lease.token)return 'stale' as const;
-  if(j.execution_node_id!==context.nodeId||j.execution_node_epoch!==context.epoch||j.execution_session_id!==context.sessionId)throw Error('EXECUTION_RELEASE_OWNER_MISMATCH');
-  if(!j.lease_until||new Date(j.lease_until).getTime()>=Date.now())return 'blocked' as const;
-  const unknown=await providerCallNeedsReconciliation(client,j.id);
-  const stage=unknown?'provider_reconcile':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
-  const state=stage==='queued'?'queued':'paused';
-  await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,state,stage]);
-  await event(client,r,state,stage,unknown?'provider_reconciliation_required':'worker_retry_released',undefined,'run.state_changed',
-    {release_proof:'local_quiescence_v1',native_processes:0,active_executions:0,execution_session_id:context.sessionId});
-  return state;
- });
-}
-
-/** Cloud death is a capacity fence, never authority to replay a supplier call.
- * Preserve the existing journal and publish the recovery pause atomically. */
-export async function fenceStoppedExecutionEpoch(client:PoolClient,nodeId:string,epoch:string){
- const runs=(await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.execution_node_id=$1 AND j.execution_node_epoch=$2 AND j.lease_token IS NOT NULL ORDER BY r.id FOR UPDATE OF r`,[nodeId,epoch])).rows;
- for(const r of runs){const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
-  await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
-  await event(client,r,'paused','provider_reconcile','execution_epoch_stopped');
- }
- const messages=(await client.query('SELECT * FROM bb_review_messages WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[nodeId,epoch])).rows;
- for(const m of messages){await client.query("UPDATE bb_review_messages SET reply_status='unknown',error='EXECUTION_EPOCH_STOPPED',lease_token=NULL,lease_until=NULL WHERE id=$1",[m.id]);
-  await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'review.assistant_replied',$4)",[uid(),m.owner_user_id,m.project_id,{message_id:m.id,status:'unknown',error:'EXECUTION_EPOCH_STOPPED'}]);
- }
 }

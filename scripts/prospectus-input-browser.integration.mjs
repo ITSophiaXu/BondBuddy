@@ -6,7 +6,6 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import { validateTestDatabase } from './prospectus-quality-gate.mjs';
-import { browserStorageHostPort } from './prospectus-input-browser.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const loopback = host => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host);
@@ -39,11 +38,10 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     };
     cleanup.push(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, { chromium, expect }, { createServer: createViteServer }, { createServer },
-      { azureBlobs, transaction }, { creditBalanceExact, grantCredits }, { makeSyntheticDocxFixture }, { pdfSample },
+      { azureBlobs }, { makeSyntheticDocxFixture }, { pdfSample },
       { inputManifestHash }, { editingSource }, { loadUnifiedInput, unifiedInputGate }, { runUploadConfirmationOnce }] = await Promise.all([
       import('pg'), import('@playwright/test'), import('vite'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/data.js'),
-      import('../apps/api/dist/billing.js'),
       import('../apps/api/dist/docx-fixtures.js'), import('../apps/api/dist/upload-safety.samples.js'),
       import('../apps/api/dist/production-rule-pin.js'), import('../apps/worker/dist/file-authoring-stage.js'),
       import('../apps/worker/dist/unified-input.js'), import('../apps/api/dist/upload-confirmation.js')
@@ -55,7 +53,7 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     assert.ok(version >= 160000 && version < 170000, 'PostgreSQL 16 is required');
     const work = await mkdtemp(resolve(process.env.HOME, 'browser-fixture-'));
     cleanup.push(() => rm(work, { recursive: true, force: true }));
-    const storagePort = browserStorageHostPort(process.env.BB_PROSPECTUS_BROWSER_STORAGE_PORT);
+    const storagePort = Number(process.env.BB_PROSPECTUS_BROWSER_STORAGE_PORT);
     assert.ok(storagePort > 0 && storagePort <= 65535);
     // SDK expands only the public Azurite development account, never a production key.
     const developmentKey = 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
@@ -87,59 +85,12 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       if (['http:', 'https:'].includes(url.protocol) && url.origin !== origin) browserExternal.push(url.origin);
     });
     const page = await context.newPage();
-    // Read-only, bounded diagnostics: no request bodies, cookies, headers or URL
-    // queries are recorded. They survive parent cleanup in the normal TAP log.
-    const uploadTrace = [];
-    const trace = value => {
-      uploadTrace.push({ at: new Date().toISOString(), ...value });
-      if (uploadTrace.length > 300) uploadTrace.shift();
-    };
-    const requestMeta = request => {
-      const url = new URL(request.url());
-      return { method: request.method(), path: url.pathname, resource: request.resourceType() };
-    };
-    page.on('request', request => trace({ event: 'request', ...requestMeta(request) }));
-    page.on('response', response => trace({ event: 'response', ...requestMeta(response.request()), status: response.status() }));
-    page.on('requestfailed', request => trace({ event: 'requestfailed', ...requestMeta(request), error: request.failure()?.errorText }));
-    page.on('pageerror', error => trace({ event: 'pageerror', error: error.message.slice(0, 1000) }));
-    await page.addInitScript(() => {
-      const nodes = new WeakMap(); let sequence = 0;
-      const id = node => { if (!nodes.has(node)) nodes.set(node, ++sequence); return nodes.get(node); };
-      const events = [];
-      const record = (event, node) => {
-        if (!(node instanceof HTMLInputElement) || node.type !== 'file') return;
-        events.push({ event, node: id(node), id: node.id, label: node.getAttribute('aria-label'),
-          connected: node.isConnected, disabled: node.disabled, files: [...(node.files ?? [])].map(file => ({ name: file.name, size: file.size })) });
-        if (events.length > 100) events.shift();
-      };
-      for (const event of ['input', 'change']) document.addEventListener(event, e => record(event, e.target), true);
-      new MutationObserver(records => {
-        for (const recordValue of records) for (const [event, nodesChanged] of [['added', recordValue.addedNodes], ['removed', recordValue.removedNodes]])
-          for (const node of nodesChanged) {
-            record(event, node);
-            if (node instanceof Element) for (const input of node.querySelectorAll('input[type="file"]')) record(event, input);
-          }
-      }).observe(document, { subtree: true, childList: true });
-      window.__bbSyntheticUploadObservation = () => ({ events: [...events],
-        inputs: [...document.querySelectorAll('input[type="file"]')].map(node => ({ node: id(node), id: node.id,
-          label: node.getAttribute('aria-label'), connected: node.isConnected, disabled: node.disabled,
-          files: [...(node.files ?? [])].map(file => ({ name: file.name, size: file.size })) })),
-        text: document.body?.innerText.slice(-12000) ?? '' });
-    });
     const username = `bb${randomUUID().replaceAll('-', '').slice(0, 16)}`, password = `Synthetic-${randomUUID()}-Only`;
     // Fixture account setup uses HTTP registration; the browser logs in through the normal UI.
     const registration = await context.request.post(`${origin}/api/v1/auth/register`, {
       headers: { origin }, data: { username, password, accepted_terms_version: 'synthetic-browser-input-v1' } });
     assert.equal(registration.status(), 201, await registration.text());
     const owner = (await registration.json()).user_id;
-    // Fund only this HTTP-registered synthetic account in the owned clone through
-    // the real immutable lot/event ledger. No billing flag or balance is mocked.
-    const syntheticCredits = 10_000;
-    assert.deepEqual(await creditBalanceExact(pool, owner), { available: 0n, frozen: 0n });
-    await transaction(pool, client => grantCredits(client, { owner, source: 'existing_grant',
-      key: `synthetic-browser-input:${owner}`, points: syntheticCredits, expiresAt: null,
-      actor: 'synthetic-browser-input', reason: 'Isolated browser input test credit; no payment or model execution' }));
-    assert.deepEqual(await creditBalanceExact(pool, owner), { available: BigInt(syntheticCredits), frozen: 0n });
     await context.clearCookies();
     const login = async target => {
       await target.goto('/');
@@ -162,32 +113,10 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     const projectUrl = page.url();
     const sourceBytes = makeSyntheticDocxFixture({ text: '合成原稿；2024年度；只验证输入链，不是客户资料。' });
     const financialBytes = pdfSample({ tag: 'synthetic-2025-Q3' });
-    const observeUpload = async phase => {
-      const dom = await page.evaluate(() => window.__bbSyntheticUploadObservation());
-      const database = (await pool.query({ text: `SELECT json_build_object(
-        'uploads',(SELECT coalesce(json_agg(json_build_object('id',id,'filename',filename,'state',state,
-          'byte_size',byte_size,'received_bytes',received_bytes,'created_at',created_at)), '[]'::json)
-          FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2),
-        'confirmations',(SELECT coalesce(json_agg(json_build_object('upload_id',upload_id,'state',state,
-          'updated_at',updated_at,'last_error',last_error,'error',error)), '[]'::json)
-          FROM bb_upload_confirmations WHERE owner_user_id=$1 AND project_id=$2),
-        'outbox',(SELECT coalesce(json_agg(json_build_object('id',id,'event_type',event_type,
-          'aggregate_id',aggregate_id,'delivered_at',delivered_at,'lease_token_present',to_jsonb(o)->>'lease_token' IS NOT NULL)), '[]'::json)
-          FROM bb_outbox o WHERE owner_user_id=$1 AND aggregate_id IN
-          (SELECT id FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2))) value`,
-        values: [owner, projectId], query_timeout: 5000 })).rows[0].value;
-      t.diagnostic('BROWSER_UPLOAD_OBSERVATION ' + JSON.stringify({ phase, projectId, dom, database, trace: uploadTrace }));
-    };
     const uploaded = async (label, name, mimeType, buffer) => {
-      try {
-      const input = page.getByLabel(label, { exact: true });
-      // setInputFiles itself does not wait for enabled controls. Match the real
-      // user's picker availability while project/version reads release the lock.
-      // Use Playwright's existing expectation deadline; no sleep or wider timeout.
-      await expect(input).toBeEnabled();
       const pending = page.waitForResponse(r => r.request().method() === 'POST' &&
         r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete'));
-      await input.setInputFiles({ name, mimeType, buffer });
+      await page.getByLabel(label, { exact: true }).setInputFiles({ name, mimeType, buffer });
       const confirming = await pending;
       assert.equal(confirming.status(), 202, await confirming.text());
       assert.equal(confirming.request().headers().prefer, 'respond-async');
@@ -216,11 +145,6 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       assert.deepEqual(confirmation[0].result, material);
       assert.ok(confirmation[0].delivered_at);
       return material;
-      } catch (error) {
-        try { await observeUpload(`failed:${name}`); }
-        catch (diagnosticError) { t.diagnostic('BROWSER_UPLOAD_DIAGNOSTIC_FAILED ' + diagnosticError.message); }
-        throw error;
-      }
     };
     const source = await uploaded('募集书新版本文件', 'synthetic-source.docx',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sourceBytes);
@@ -268,10 +192,6 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     const runRow = (await pool.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [run.run_id, owner])).rows[0];
     assert.equal(runRow.input_hash.trim(), input.input_hash);
     assert.equal(runRow.state, 'queued');
-    assert.ok(runRow.reservation_id, 'Execution must use the real credit reservation');
-    const reservedBalance = await creditBalanceExact(pool, owner);
-    assert.ok(reservedBalance.frozen > 0n);
-    assert.equal(reservedBalance.available + reservedBalance.frozen, BigInt(syntheticCredits));
     // Stop at the actual worker input boundary. No worker/model executor is started.
     assert.equal(await unifiedInputGate(pool, runRow, persisted), null);
     const loaded = await loadUnifiedInput({ pool, run: runRow }, { originalFiles: true });

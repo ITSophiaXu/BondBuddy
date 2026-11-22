@@ -4,10 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./performance-trace": {"types":"./dist/performance-trace.d.ts","default":"./dist/performance-trace.js"},
-    "./execution-capacity": {"types":"./dist/execution-capacity.d.ts","default":"./dist/execution-capacity.js"},
-    "./upload-spool": {"types":"./dist/upload-spool.d.ts","default":"./dist/upload-spool.js"},
-    "./integrity-billing-evidence": {"types":"./dist/integrity-billing-evidence.d.ts","default":"./dist/integrity-billing-evidence.js"},
     "./upload-confirmation": {"types":"./dist/upload-confirmation.d.ts","default":"./dist/upload-confirmation.js"},
     "./test-authoring-source": {"types":"./dist/test-authoring-source.d.ts","default":"./dist/test-authoring-source.js"},
     "./none-baseline": {"types":"./dist/none-baseline.d.ts","default":"./dist/none-baseline.js"},

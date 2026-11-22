@@ -23,18 +23,18 @@ test('format template selection is owner-scoped, exact, PATCH-compatible and imm
         update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1' } });
       assert.equal(result.statusCode, 201, result.body); return result.json();
     };
-    const addMaterial = async (projectId: string, suffix: string, role: 'reference' | 'audit' = 'reference') => {
+    const addMaterial = async (projectId: string, suffix: string) => {
       const id = `${suffix}-${randomUUID()}`, uploadId = randomUUID(), sha256 = suffix === 'z-first' ? 'a'.repeat(64) : 'b'.repeat(64);
       await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,
-        state,received_sha256,received_bytes) VALUES($1,$2,$3,'synthetic.docx',$4,10,$5,'${role}',$6,now()+interval '1 hour','completed',$5,10)`,
+        state,received_sha256,received_bytes) VALUES($1,$2,$3,'synthetic.docx',$4,10,$5,'reference',$6,now()+interval '1 hour','completed',$5,10)`,
       [uploadId, owner, projectId, docx, sha256, `synthetic/${uploadId}`]);
       await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
-        VALUES($1,1,$2,$3,$4,'${role}','synthetic.docx',$5,10,$6,$7,'persisted')`,
+        VALUES($1,1,$2,$3,$4,'reference','synthetic.docx',$5,10,$6,$7,'persisted')`,
       [id, owner, projectId, uploadId, docx, sha256, `synthetic/${id}`]);
       return { material_id: id, material_version: 1, sha256 };
     };
     try {
-      const p = await create(), first = await addMaterial(p.project_id, 'z-first'), second = await addMaterial(p.project_id, 'a-second'), audit = await addMaterial(p.project_id, 'audit', 'audit');
+      const p = await create(), first = await addMaterial(p.project_id, 'z-first'), second = await addMaterial(p.project_id, 'a-second');
       const source = (pin: typeof first): SourceProspectus => ({ ...pin, issuer_name: null, relation: 'same_issuer', market: 'sse', offering: 'private',
         reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: null, status: 'needs_confirmation', evidence_refs: [] }], status: 'user_asserted' });
       const details = { ...p.update_details, source_prospectuses: [source(first), source(second)] };
@@ -51,7 +51,7 @@ test('format template selection is owner-scoped, exact, PATCH-compatible and imm
       saved = await send('PATCH', `/api/v1/projects/${p.project_id}`, { update_details: { ...details, other_information: 'legacy browser edit' } }, revision);
       assert.equal(saved.statusCode, 200, saved.body); revision = saved.json().draft_revision;
       assert.deepEqual(saved.json().update_details.format_template, second, 'omitted new field preserves the selected template');
-      const refs = [first, second, audit].map(({ material_id, material_version }) => ({ material_id, material_version }));
+      const refs = [first, second].map(({ material_id, material_version }) => ({ material_id, material_version }));
       const lock = (materials = refs) => send('POST', `/api/v1/projects/${p.project_id}/input-revisions`,
         { draft_revision: revision, material_versions: materials, requirement_message_ids: [] });
       const deselected = await lock([refs[0]]);

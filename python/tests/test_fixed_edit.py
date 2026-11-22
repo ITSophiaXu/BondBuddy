@@ -639,28 +639,6 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertEqual(result['factual_accuracy'], 'not_verified')
         self.assertEqual(result['visual_review'], 'not_run')
 
-    def test_whole_manuscript_collapse_is_rejected_identically_by_preflight_and_host(self):
-        from bondbuddy_file_authoring.quality import verify
-        doc = Document(self.source)
-        self.financial *= 4
-        doc.paragraphs[3].text = self.financial
-        for _ in range(19):
-            doc.add_paragraph(self.financial)
-        doc.save(self.source)
-        self.data['baseline_sha256'] = sha(self.source.read_bytes())
-        self.log = empty_log(self.data, self.source.read_bytes())
-        nodes = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == self.financial]
-        self.assertEqual(len(nodes), 20)
-        self.log['operations'] = [{'id': f'condense-{i}', 'kind': 'replace_text', 'node_id': n['node_id'],
-                                   'before': n['text'], 'after': '本期财务信息已更新为新的简短说明。'} for i, n in enumerate(nodes)]
-        self.save()
-        result = self.check()
-        finalize(self.input, self.log_path, self.root / 'delivered', skip_report=True)
-        self.assertEqual(result['quality_report'], verify(self.input))
-        self.assertEqual(result['status'], 'failed')
-        self.assertIn('WORD_DOCUMENT_SIZE_REDUCED', {i['code'] for i in result['issues']})
-        self.assertEqual(result['quality_report']['metrics']['ratios']['nonempty_paragraphs'], 1)
-
     def test_preflight_preserves_locked_files_and_formal_outputs_and_cleans_temporary_area(self):
         paths = [self.input, self.source, self.log_path, self.root / 'output/tracked.docx', self.root / 'output/clean.docx']
         for path in paths[-2:]:
@@ -672,7 +650,7 @@ class WordQualityPreflightTests(unittest.TestCase):
 
     def test_chapter_loss_has_source_current_text_and_stable_node_locations(self):
         from bondbuddy_file_authoring.quality import verify
-        self.log['operations'] = [self.operation('')]
+        self.log['operations'] = [self.operation('本期净资产120万元，其他事项【待人工确认】。')]
         self.save()
         result = self.check()
         finalize(self.input, self.log_path, self.root / 'delivered', skip_report=True)
@@ -689,7 +667,7 @@ class WordQualityPreflightTests(unittest.TestCase):
     def test_heading_change_has_both_stable_heading_locations(self):
         heading = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == '第二章 财务会计信息')
         self.log['operations'].append({'id': 'heading', 'kind': 'replace_text', 'node_id': heading['node_id'],
-                                      'before': heading['text'], 'after': '第三章 财务会计信息'})
+                                      'before': heading['text'], 'after': '第二章 精简摘要'})
         self.save()
         result = self.check()
         self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', {i['code'] for i in result['issues']})
@@ -697,38 +675,14 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertEqual(change['before'][0]['node_id'], heading['node_id'])
         self.assertEqual(change['after'][0]['node_id'], heading['node_id'])
         self.assertEqual(change['before'][0]['recognition'], 'outline')
-        self.assertEqual(result['diagnostics']['chapter_content'], [])
-
-    def test_renamed_section_empty_body_keeps_current_diagnostic_locations(self):
-        heading = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == '第二章 财务会计信息')
-        self.log['operations'] = [self.operation(''), {'id': 'heading', 'kind': 'replace_text',
-                                 'node_id': heading['node_id'], 'before': heading['text'], 'after': '第二章 目标发行人财务信息'}]
-        self.save()
-        result = self.check()
-        self.assertEqual(result['diagnostics']['outline']['status'], 'unchanged')
         finding = result['diagnostics']['chapter_content'][0]
         self.assertFalse(finding['current_key_found'])
-        self.assertEqual(finding['current_chapter_key'][0], '第二章目标发行人财务信息')
-        self.assertEqual(finding['current']['paragraphs'][1]['node_id'], self.node['node_id'])
         self.assertEqual(finding['current_matching_source_nodes']['paragraphs'][0]['node_id'], heading['node_id'])
-
-    def test_preflight_and_host_accept_rewritten_heading_and_concise_body(self):
-        from bondbuddy_file_authoring.quality import verify
-        heading = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == '第二章 财务会计信息')
-        self.log['operations'] = [self.operation('合成目标主体的本期合并净资产为120万元。'),
-                                 {'id': 'heading', 'kind': 'replace_text', 'node_id': heading['node_id'],
-                                  'before': heading['text'], 'after': '第二章 目标发行人财务信息'}]
-        self.save()
-        result = self.check()
-        finalize(self.input, self.log_path, self.root / 'delivered', skip_report=True)
-        self.assertEqual(result['quality_report'], verify(self.input))
-        self.assertEqual(result['status'], 'passed', result)
-        self.assertEqual(result['diagnostics']['chapter_content'], [])
+        self.assertEqual(finding['current_matching_source_nodes']['paragraphs'][0]['text'], '第二章 精简摘要')
 
     def test_table_content_loss_reports_ancestor_cell_operation_and_paragraph_node(self):
         doc = Document(self.source)
         cell_text = '原表格重要财务披露必须逐项保留。' * 40
-        doc.add_heading('第三章 财务报表', level=1)
         doc.add_table(rows=1, cols=1).cell(0, 0).text = cell_text
         doc.save(self.source)
         self.data['baseline_sha256'] = sha(self.source.read_bytes())
@@ -758,7 +712,7 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.data['baseline_sha256'] = sha(self.source.read_bytes())
         self.log = empty_log(self.data, self.source.read_bytes())
         self.node = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == self.financial)
-        self.log['operations'] = [self.operation('')]
+        self.log['operations'] = [self.operation('不完整的新期内容。')]
         self.save()
         finding = self.check()['diagnostics']['chapter_content'][0]
         self.assertEqual(finding['source']['paragraphs'][1]['paragraph_index'], 3)
@@ -769,12 +723,12 @@ class WordQualityPreflightTests(unittest.TestCase):
     def test_cumulative_replay_reports_final_text_and_new_operations_hash(self):
         first = self.check()
         intermediate = self.log['operations'][0]['after']
-        self.log['operations'].append(self.operation('', 'second', intermediate))
+        self.log['operations'].append(self.operation('本期仅保留少量信息。', 'second', intermediate))
         self.save()
         second = self.check()
         self.assertNotEqual(first['operations_sha256'], second['operations_sha256'])
         finding = second['diagnostics']['chapter_content'][0]
-        self.assertEqual(finding['current']['paragraphs'][1]['text'], '')
+        self.assertEqual(finding['current']['paragraphs'][1]['text'], '本期仅保留少量信息。')
         self.assertEqual(finding['operation_ids'], ['update', 'second'])
 
     def test_missing_or_empty_log_overwrites_fake_pass_with_failure(self):
@@ -825,7 +779,7 @@ class WordQualityPreflightTests(unittest.TestCase):
         fake = self.root / 'scratch/fake-passed.json'
         fake.write_text('{"status":"passed","release_authorized":true}', encoding='utf-8')
         fake_before = fake.read_bytes()
-        self.log['operations'] = [self.operation('')]
+        self.log['operations'] = [self.operation('不完整更新。')]
         self.save()
         self.assertEqual(self.check()['status'], 'failed')
         self.assertEqual(fake.read_bytes(), fake_before)
@@ -960,7 +914,7 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertIn('流动资产', json.dumps(formula, ensure_ascii=False))
 
     def test_cli_failure_returns_report_path_without_dumping_private_paragraphs(self):
-        self.log['operations'] = [self.operation('')]
+        self.log['operations'] = [self.operation('不完整更新。')]
         self.save()
         run = subprocess.run([sys.executable, '-m', 'bondbuddy_file_authoring.fixed_edit', 'preflight',
                               '--input', str(self.input), '--operations', str(self.log_path), '--report', str(self.report_path)],

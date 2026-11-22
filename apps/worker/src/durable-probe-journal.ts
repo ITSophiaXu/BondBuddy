@@ -1,7 +1,5 @@
-import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool } from 'pg';
-import {randomUUID} from 'node:crypto';
-import { recordPotentialCall, setRunModelActivity, type Lease } from '@bondbuddy/api/queue';
+import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
 import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import { recordCodexExecLog } from '@bondbuddy/api/exec-logs';
@@ -51,31 +49,6 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
-
-  async acquireCallSlot(signal?: AbortSignal) {
-    const {pool,lease}=this.codexInput, requestId=randomUUID();
-    signal?.throwIfAborted();
-    await setRunModelActivity(pool,lease,requestId,'waiting');
-    let permit:Awaited<ReturnType<ReturnType<typeof modelCallBudgetFor>['acquire']>>|undefined;
-    try{
-      permit=await modelCallBudgetFor(pool).acquire(signal,`run:${lease.runId}`,{kind:'job',id:lease.jobId,token:lease.token});
-      permit.signal.throwIfAborted();
-      await setRunModelActivity(pool,lease,requestId,'active');
-      let releasePromise:Promise<void>|undefined;
-      const acquired=permit;
-      return {...acquired,release:()=>releasePromise??=(async()=>{
-        try{await setRunModelActivity(pool,lease,requestId,acquired.signal.aborted?'abandoned':'finished');}
-        finally{await acquired.release();}
-      })()};
-    }catch(error){
-      // acquire returns outside the adapter's try/finally. Clean up a real slot
-      // even if recording its grant fails. Preserve the original failure.
-      try{await setRunModelActivity(pool,lease,requestId,'abandoned');}
-      catch{ /* persisted waiting state stays frozen; a new lease discards it */ }
-      finally{await permit?.release();}
-      throw error;
-    }
-  }
 
   async recordWebSearchEvents(intent: ProviderCallIntent, events: NonNullable<import('./codex-adapter.js').CodexProcessResult['web_search_events']>) {
     const { pool, lease } = this.codexInput;

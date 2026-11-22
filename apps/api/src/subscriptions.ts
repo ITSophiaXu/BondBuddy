@@ -140,7 +140,7 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
     if(s){
       if(s.current_period_end&&new Date(s.current_period_end).getTime()>observed(s))return reject('当前订阅周期尚未结束；额度不足可直接充值，下周期再调整方案。');
       if((await c.query("SELECT 1 FROM bb_subscription_periods WHERE subscription_id=$1 AND status='pending'",[s.id])).rowCount)throw invalid('已有订阅付款待核对，请继续原订单，避免重复付款。');
-      if(s.mandate_status==='active'||s.mandate_status==='pending'||s.mandate_status==='cancel_pending')return reject('请先关闭并核实原自动续费授权，再手动开通下一周期。');
+      if(s.mandate_status==='active'||s.mandate_status==='pending'||s.mandate_status==='cancel_pending')throw invalid('请先关闭并核实原自动续费授权，再手动开通下一周期。');
       s=(await c.query(`UPDATE bb_subscriptions SET plan_id=$2,provider=$3,merchant_id=$4,status='pending',auto_renew=false,auto_renew_requested=false,
         task_price_version=$5,billing_cycle=$6,billing_amount_fen=$7,updated_at=now() WHERE id=$1 RETURNING *`,[s.id,p.id,provider.name,provider.merchantId,taskPriceVersion,billingCycle,amountFen])).rows[0];
     }else{

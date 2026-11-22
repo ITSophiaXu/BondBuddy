@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {AuthoringActivity,AuthoringProgress,Run,RunEvent} from './billing-types.js';
-import {authoringCreditReceipt,authoringEventLabel,authoringStatus,authoringVisibleEvents,retainAuthoringEvents} from './authoring-progress.js';
+import {authoringEventLabel,authoringStatus,authoringVisibleEvents,retainAuthoringEvents} from './authoring-progress.js';
 
 const at='2026-10-14T05:41:00Z';
 const run={run_id:'run',state:'running',stage:'file_authoring',event_cursor:1000} as Run;
@@ -82,44 +82,6 @@ test('a failed activity reports a step error without declaring task failure or r
   assert.equal(status.title,'处理步骤遇到问题');
   assert.equal(status.summary,'该步骤出错，任务尚未结束；后续状态会自动更新。');
   assert.doesNotMatch(status.title+status.summary,/本次处理未完成|本轮未完成|任务失败|已重试|已恢复|已修复/);
-});
-
-test('a pure model wait is distinct from connection recovery and leaves prior activity in history',()=>{
-  const events=[event(1,{code:'write_document',state:'started',summary})];
-  const waiting={...progress,clock_running:false,model_waiting:true};
-  const status=authoringStatus(run,events,waiting)!;
-  assert.equal(status.title,'正在等待模型处理名额');
-  assert.match(status.summary,/可用后会自动继续.*等待期间积分不增加.*无需重复提交/);
-  assert.doesNotMatch(status.title+status.summary,/执行连接正在恢复|前方有|已完成目录核对/);
-  assert.equal(authoringVisibleEvents(run,events)[0].payload.authoring_activity?.summary,summary);
-  assert.match(authoringStatus(run,events,{...progress,model_waiting:false})!.summary,/最近一次模型进度/);
-  assert.match(authoringStatus(run,events,{...progress,clock_running:false})!.summary,/执行连接正在恢复/);
-});
-
-test('controls and terminal outcomes take priority over a stale model-wait signal',()=>{
-  const waiting={...progress,clock_running:false,model_waiting:true};
-  assert.match(authoringStatus(run,[],{...waiting,pause_requested:true})!.title,/保存进度后暂停/);
-  assert.match(authoringStatus(run,[],{...waiting,credit_exhausted:true})!.title,/积分已用完/);
-  assert.equal(authoringStatus({...run,state:'paused',stage:'user_paused'},[],waiting)!.title,'任务已暂停');
-  assert.match(authoringStatus({...run,state:'paused',stage:'billing_reconcile'},[],waiting)!.title,/核对积分账务/);
-  assert.match(authoringStatus({...run,state:'queued'},[],{...waiting,queued_at:at})!.summary,/等待执行服务接单/);
-  for(const state of ['succeeded','test_completed','failed','cancelled','rejected'] as const)assert.equal(authoringStatus({...run,state},[],waiting),undefined);
-});
-
-test('dynamic credit receipt explains frozen model-wait billing without overriding control or final amounts',()=>{
-  const paidRun={...run,billing_mode:'fixed_credits' as const};
-  const waiting={...progress,policy:'authoring_balance_v2' as const,accrued_points:'1830',charged_points:'1830',released_points:'0',available_points:'5000',pause_requested:false,clock_running:false,model_waiting:true};
-  const receipt=authoringCreditReceipt(paidRun,waiting);
-  assert.match(receipt,/等待模型处理名额，积分不会增加/);
-  assert.match(receipt,/1,830/);assert.match(receipt,/可用余额 5,000/);
-  for(const control of [{pause_requested:true},{credit_exhausted:true}]){
-    const frozen=authoringCreditReceipt(paidRun,{...waiting,...control});
-    assert.match(frozen,/积分已冻结/);assert.doesNotMatch(frozen,/等待模型处理名额/);
-  }
-  const resumed=authoringCreditReceipt(paidRun,{...waiting,clock_running:true,model_waiting:false});
-  assert.match(resumed,/已按实际进度扣减/);assert.doesNotMatch(resumed,/等待模型处理名额/);
-  const ended=authoringCreditReceipt({...paidRun,state:'cancelled'},waiting);
-  assert.match(ended,/本次已扣费/);assert.match(ended,/1,830/);assert.doesNotMatch(ended,/等待模型处理名额/);
 });
 
 test('later completed steps and public summaries advance current progress without erasing a failed step',()=>{

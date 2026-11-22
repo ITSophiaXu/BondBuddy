@@ -46,8 +46,8 @@ async function fixture(sourceMedia = docx, kind: 'update' | 'generation' = 'upda
     assert.equal(created.statusCode, 201, created.body);
     const projectId = created.json().project_id, base = `/api/v1/projects/${projectId}`;
     const materialId = `z-synthetic-source-${randomUUID()}`;
-    const addMaterial = async (id: string, version: number, role: 'historical' | 'reference' | 'financial' | 'audit', sha256: string,
-      media = ['financial','audit'].includes(role) ? 'text/plain' : docx) => {
+    const addMaterial = async (id: string, version: number, role: 'historical' | 'reference' | 'financial', sha256: string,
+      media = role === 'financial' ? 'text/plain' : docx) => {
       const uploadId = randomUUID();
       await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,
         expires_at,state,received_sha256,received_bytes)
@@ -60,7 +60,7 @@ async function fixture(sourceMedia = docx, kind: 'update' | 'generation' = 'upda
     };
     const older = await addMaterial(materialId, 1, 'historical', 'a'.repeat(64));
     const source = await addMaterial(materialId, 2, 'historical', 'b'.repeat(64), sourceMedia);
-    const supporting = await addMaterial(`a-synthetic-financial-${randomUUID()}`, 1, 'audit', 'c'.repeat(64));
+    const supporting = await addMaterial(`a-synthetic-financial-${randomUUID()}`, 1, 'financial', 'c'.repeat(64));
     const versionId = randomUUID();
     await pool.query(`INSERT INTO bb_prospectus_versions(id,owner_user_id,project_id,sequence,origin,filename,sha256,material_id,material_version)
       VALUES($1,$2,$3,1,'upload',$7,$4,$5,$6)`,
@@ -181,7 +181,7 @@ test('a conflicting explicit reference format creates no input until the old for
       source_prospectuses: [f.declaration, { ...f.declaration, ...reference }] } }, f.saved.json().draft_revision);
     assert.equal(saved.statusCode, 200, saved.body);
     const payload = { draft_revision: saved.json().draft_revision, prospectus_selection_revision: f.selectionRevision,
-      material_versions: [f.ref(reference), f.ref(f.source), f.ref(f.supporting)], requirement_message_ids: [] };
+      material_versions: [f.ref(reference), f.ref(f.source)], requirement_message_ids: [] };
     const rejected = await f.send('POST', `${f.base}/input-revisions`, payload);
     assert.equal(rejected.statusCode, 409, rejected.body);
     assert.equal(rejected.json().code, 'INPUT_REVISION_CONFLICT');

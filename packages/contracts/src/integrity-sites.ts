@@ -1,5 +1,4 @@
 import { REGION_PORTALS } from './integrity-regions.js';
-import { INTEGRITY_VERIFIED_ENDPOINTS } from './integrity-site-availability.js';
 export type IntegritySite = { id: string; name: string; group: string; topic: string; companyOnly?: boolean; legacy?: boolean; queryTerms?: string[]; links: { label: string; url: string }[] };
 const site = (id: string, name: string, group: string, topic: string, url: string, companyOnly = false): IntegritySite => ({ id, name, group, topic, companyOnly, links: [{ label: '官网入口', url }] });
 // Website inventory follows http://127.0.0.1:4318/ (2026-10-19).
@@ -89,15 +88,10 @@ const CATALOG_SITES: IntegritySite[] = [
 
   ...PREVIOUS_SITES.filter(s => s.group === '属地监管'),
 ];
-// New checks use portals that render a usable page and screenshot. Search
-// completion, empty results and captcha/login are per-run outcomes, not eligibility.
-// Keep all metadata below for immutable historical runs, evidence and free exports.
-export const isRetiredIntegritySite = (id: string): boolean => {
-  const item = CATALOG_SITES.find(site => site.id === id) ?? PREVIOUS_SITES.find(site => site.id === id);
-  if (!item) return false; // Unknown IDs still receive the API's explicit validation error.
-  const verified = INTEGRITY_VERIFIED_ENDPOINTS[id] ?? [];
-  return id === 'local-csrc' || id === 'local-tax' ? verified.length === 0 : !item.links.every(link => verified.includes(link.url));
-};
+// User decision 2026-10-30 (#819): retire these query items from new checks.
+// Keep their exact metadata for immutable queued runs, evidence and free re-exports.
+const RETIRED_SITE_IDS = new Set(['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit']);
+export const isRetiredIntegritySite = (id: string): boolean => RETIRED_SITE_IDS.has(id);
 export const removeRetiredIntegritySites = (ids: readonly string[]): string[] => ids.filter(id => !isRetiredIntegritySite(id));
 export const INTEGRITY_SELECTABLE_SITES: IntegritySite[] = CATALOG_SITES.filter(s => !isRetiredIntegritySite(s.id));
 
@@ -129,23 +123,6 @@ export function resolveIntegritySite(site:IntegritySite,subject:{province:string
   const p=integrityPortal(subject.province,subject.city);
   return {...site,name:p?p.name+(site.id==='local-csrc'?'证监局':'税务局'):site.name,links:p?[{label:'官网入口',url:site.id==='local-csrc'?p.csrc:p.tax}]:[]};
 }
-export type IntegrityAvailabilitySubject = {name: string; kind: string; province: string; city: string};
-/** A regional checkbox applies to every company in a draft. Do not silently drop one company's scope. */
-export function isIntegritySiteAvailableForSubjects(id: string, subjects: readonly IntegrityAvailabilitySubject[]) {
-  if (isRetiredIntegritySite(id)) return false;
-  if (id !== 'local-csrc' && id !== 'local-tax') return true;
-  const companies = subjects.filter(subject => subject.kind === 'company');
-  const site = INTEGRITY_SITES.find(site => site.id === id)!;
-  return companies.length > 0 && companies.every(subject => {
-    const resolved = resolveIntegritySite(site, {...subject, ...inferIntegrityRegion(subject)});
-    return resolved.links.length > 0 && resolved.links.every(link => INTEGRITY_VERIFIED_ENDPOINTS[id]?.includes(link.url));
-  });
-}
-export const removeUnavailableIntegritySites = (ids: readonly string[], subjects: readonly IntegrityAvailabilitySubject[]): string[] =>
-  ids.filter(id => isIntegritySiteAvailableForSubjects(id, subjects));
-export const integritySelectableSitesForSubjects = (subjects: readonly IntegrityAvailabilitySubject[]): IntegritySite[] =>
-  INTEGRITY_SELECTABLE_SITES.filter(site => isIntegritySiteAvailableForSubjects(site.id, subjects));
-
 /** Regional CSRC evidence must belong to that bureau, not another bureau on the same host. */
 export function integritySourceAllowed(site:IntegritySite,value:string){
   try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.port)return false;

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import {uploadFileSha256} from './upload-file-digest.js';
 import { isReviewReport, type ReviewContext, type ReviewDraft, type ReviewDraftInput, type ReviewMaterialPin, type ReviewReport, type ReviewWorkspace } from '@bondbuddy/contracts';
 import { ApiError, type Dto } from './api.js';
 import { ReviewUploadRecovery, ReviewUploadRecoveryError, reviewUploadAdoptionInput, reviewUploadContext, reviewUploadRecordMatches, reviewUploadSame, reviewUploadValidInput } from './review-upload-recovery.js';
@@ -53,33 +52,11 @@ function harness(input = base()) {
   const helper = make(), apply = (draft: ReviewDraft) => { const { version, ...input } = draft; state.page = { version, input: structuredClone(input) }; };
   const envelopeKey = () => [...store.data.keys()].find(key => key.startsWith('bb-review-upload-v1:'))!;
   const coreKeys = () => [...store.data.keys()].filter(key => key.startsWith('bondbuddy:upload-recovery:v1:'));
-  return { helper, make, state, store, calls, materials, apply, envelopeKey, coreKeys, held };
+  return { helper, make, state, store, calls, materials, apply, envelopeKey, coreKeys };
 }
 const methods = (h: ReturnType<typeof harness>) => h.calls.map(call => call.method);
 const drafts = (h: ReturnType<typeof harness>) => h.calls.filter(call => call.method === 'draft');
 const cacheKey = 'bb-review-input:owner:project';
-
-test('parallel transport saves later files without changing the ordered review draft',async()=>{
- const h=harness(),files=[file('first.pdf','first bytes'),file('second.pdf','second bytes')],e=await h.helper.prepare(files,'audit');
- await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
- assert.deepEqual(h.helper.list(),[e]);assert.equal(h.state.draftWrites,0);
- assert.ok(h.helper.transportRecords().every(r=>r.stage==='saved'));
- await assert.rejects(h.helper.resume(e.id,1));
- const first=await h.helper.resume(e.id,0);h.apply(first.draft!);
- const second=await h.helper.resume(e.id,1);h.apply(second.draft!);
- assert.equal(second.state,'complete');assert.equal(h.state.draftWrites,2);assert.equal(methods(h).filter(m=>m==='put').length,2);
- assert.deepEqual(h.state.server.material_versions.map(p=>p.material_id),[first.draft!.material_versions[0].material_id,second.draft!.material_versions[1].material_id]);
-});
-
-test('failed review adoption keeps a preuploaded later file recoverable and unadopted',async()=>{
- const h=harness(),files=[file(),file('second.pdf','second bytes')],e=await h.helper.prepare(files,'audit');
- await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
- h.state.failDraftBefore=true;const first=await h.helper.resume(e.id,0);assert.equal(first.state,'retryable');
- await assert.rejects(h.helper.resume(e.id,1));assert.equal(h.state.server.material_versions.length,0);
- assert.equal(h.helper.list()[0].items[1].stage,'prepared');assert.equal(h.helper.transportRecords().find(r=>r.id===e.items[1].id)!.stage,'saved');
- h.state.failDraftBefore=false;const recovered=await h.make().resume(e.id,0,{retryAdoption:true});h.apply(recovered.draft!);
- const second=await h.make().resume(e.id,1);assert.equal(second.state,'complete');assert.equal(methods(h).filter(m=>m==='put').length,2);
-});
 test('explicit single-source upload replaces the selected source after refresh and a lost save response', async () => {
   const h=harness(), firstFile=file('旧稿.docx','old source');
   const first=await h.helper.prepare([firstFile],'historical');
@@ -290,20 +267,4 @@ for (const tamper of ['unknown-field', 'body', 'digest', 'target', 'stage-prefix
   const { h, e } = await unknownDraft(), key = h.envelopeKey(), value = JSON.parse(h.store.getItem(key)!);
   if (tamper === 'unknown-field') value.upload_url = '/private-bytes'; if (tamper === 'body') value.items[0].adoptionRequest.input.requirements = ['rewritten']; if (tamper === 'digest') value.digest = 'a'.repeat(64); if (tamper === 'target') value.targetContext = target(); if (tamper === 'stage-prefix') value.items[0].index = 1;
   h.store.setItem(key, JSON.stringify(value)); const before = h.calls.length; assert.throws(() => h.helper.list()); await assert.rejects(h.helper.resume(e.id, 0)); assert.equal(h.calls.length, before);
-});
-
-test('cancelled review preparation leaves its lock and original cache while queued for default SHA',async()=>{
- let release!:()=>void,entered!:()=>void;
- const wait=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r),blocker=new Blob(['unrelated original']);
- const original=blocker.slice.bind(blocker);blocker.slice=(...args)=>{const part=original(...args),read=part.arrayBuffer.bind(part);part.arrayBuffer=async()=>{entered();await wait;return read();};return part;};
- const heldHash=uploadFileSha256(blocker);await started;
- const h=harness(),controller=new AbortController(),helper=h.make({digest:undefined,signal:controller.signal}),selected=file();let reads=0;
- selected.slice=()=>{reads++;throw Error('cancelled review original read');};
- const work=helper.prepare([selected],'other');
- try{
-  await new Promise<void>(r=>setImmediate(r));assert.equal(h.held.size,1);controller.abort();
-  let timer:ReturnType<typeof setTimeout>|undefined;
-  try{await Promise.race([assert.rejects(work,{name:'AbortError'}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('review preparation retained its lock during cancelled SHA')),2000);})]);}finally{clearTimeout(timer);}
-  assert.equal(reads,0);assert.equal(h.held.size,0);assert.deepEqual(methods(h),['get-draft']);assert.equal(h.store.length,0);assert.equal(h.state.draftWrites,0);
- }finally{release();await heldHash;}
 });

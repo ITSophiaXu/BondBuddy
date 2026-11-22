@@ -4,7 +4,7 @@ import {docker,ownership,pendingImageUpgrade,runtimeSourceHashes,verifyBuild,wri
 import {actualSecurityProfiles,seccompSources} from './seccomp.mjs';
 const isMain=fileURLToPath(import.meta.url)===process.argv[1];
 if(isMain)delegate(fileURLToPath(import.meta.url));
-export const requiredServices=['postgres','azurite','api','worker','worker-review','worker-parse','ops','egress','web'];
+export const requiredServices=['postgres','azurite','api','api-legacy','worker','worker-review','worker-parse','ops','egress','web'];
 export async function inspectStatus(config,{record=true}={}) {
   const receipt=await verifyBuild(config),items=await ownership(config);
   const services=items.map(item=>({name:item.Config.Labels['com.docker.compose.service'],id:item.Id,image:item.Image,state:item.State.Status,health:item.State.Health?.Status??null}));
@@ -21,7 +21,7 @@ export async function inspectStatus(config,{record=true}={}) {
     ready=ready&&probe.code===0&&checks.ready===true;
   }else ready=false;
   const status={instanceId:config.instanceId,database:config.database,projectName:config.projectName,origin:config.origin,releaseSha:receipt.releaseSha,ready,
-    services,checks,securityProfiles,seccompDerivation,pendingUpgrade,checkedAt:new Date().toISOString(),syntheticPayment:true,realWorker:true,legacyPricingRetired:true};
+    services,checks,securityProfiles,seccompDerivation,pendingUpgrade,checkedAt:new Date().toISOString(),syntheticPayment:true,realWorker:true,legacyPolicyOrigin:config.origin+'/__legacy/api/v1/'};
   if(record)status.runtimeSourceHashes=await runtimeSourceHashes(items,receipt.releaseSha);
   if(record)writeReceipt('status',status);
   return status;

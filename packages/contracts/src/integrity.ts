@@ -2,7 +2,6 @@ import {Type,type Static} from '@sinclair/typebox';
 import {M4MaterialPinSchema} from './m4-workspace.js';
 import {INTEGRITY_SITE_LIMIT} from './integrity-sites.js';
 import {CommerceMetadataFields,OutcomePriceVersionSchema} from './commerce.js';
-import {IntegrityScopeMeasurementSchema} from './integrity-billing.js';
 export * from './integrity-sites.js';
 export const INTEGRITY_PRICE={points:5000,version:'integrity-round-5000-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
@@ -39,7 +38,7 @@ export const IntegrityRecordSchema=obj({subject_id:id,site_id:id,site_name:short
 export type IntegrityRecord=Static<typeof IntegrityRecordSchema>;
 export * from './integrity-presentation.js';
 export const IntegrityInputSchema=obj({...CommerceMetadataFields,version:Type.Literal('integrity-round-v1'),operation:Type.Union([Type.Literal('check'),Type.Literal('export')]),
-  round_id:id,scope_round_id:Type.Optional(id),scope_measurement:Type.Optional(IntegrityScopeMeasurementSchema),project_name:short,draft:IntegrityDraftSchema,price_version:integrityPriceVersion,points:Type.Integer({minimum:0}),
+  round_id:id,project_name:short,draft:IntegrityDraftSchema,price_version:integrityPriceVersion,points:Type.Integer({minimum:0}),
   records:Type.Array(IntegrityRecordSchema,{maxItems:100*INTEGRITY_SITE_LIMIT}),evidence_ids:Type.Array(id,{maxItems:2000}),collector:Type.Optional(Type.Literal('official-browser-v1'))});
 export type IntegrityInput=Static<typeof IntegrityInputSchema>;
 export const IntegrityManualSchema=obj({request_id:id,subject_id:id,site_id:id,queried_at:time,url:Type.String({maxLength:4096}),note:text,
@@ -57,9 +56,9 @@ export const integritySchemas={
  IntegrityWorkspaceResponse:IntegrityWorkspaceSchema,IntegrityRunResponse:obj({run_id:id}),
  IntegrityQuery:obj({run_id:Type.Optional(id)}),
  IntegrityDraftRequest:obj({expected_revision:Type.Integer({minimum:0}),draft:IntegrityDraftSchema}),
- IntegrityQuoteRequest:obj({expected_revision:Type.Integer({minimum:0}),round_id:Type.Optional(id)}),
+ IntegrityQuoteRequest:obj({expected_revision:Type.Integer({minimum:0})}),
  IntegrityQuoteResponse:obj({...CommerceMetadataFields,points:Type.Integer({minimum:0}),price_version:integrityPriceVersion}),
- IntegrityRunRequest:obj({scope_quote_id:Type.Optional(id),round_id:Type.Optional(id),request_id:id,expected_revision:Type.Integer({minimum:0}),price_version:integrityPriceVersion,expected_points:Type.Integer({minimum:0,maximum:100000000})}),
+ IntegrityRunRequest:obj({scope_quote_id:Type.Optional(id),request_id:id,expected_revision:Type.Integer({minimum:0}),price_version:integrityPriceVersion,expected_points:Type.Integer({minimum:0,maximum:100000000})}),
  IntegrityExportRequest:obj({request_id:id,expected_evidence_ids:Type.Array(id,{uniqueItems:true,maxItems:2000})}),
  IntegrityManualRequest:IntegrityManualSchema,
  IntegrityCaptureParams:obj({project_id:id,run_id:id,capture_id:id}),

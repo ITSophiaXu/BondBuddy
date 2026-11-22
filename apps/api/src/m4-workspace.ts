@@ -62,7 +62,7 @@ async function bindHandoff(db:PoolClient,owner:string,topicId:string,b:M4Handoff
   // overlapping transactions into a retryable conflict instead of a deadlock.
   const ids=[...new Set([t.project_id,pin.source_project_id,scope,b.target_project_id])].sort();
   let locked:any[];
-  try{locked=(await db.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT`,[owner,ids])).rows;}
+  try{locked=(await db.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE NOWAIT`,[owner,ids])).rows;}
   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','项目正在保存或提交任务，请稍后重试采用来源。');throw error;}
   if(locked.length!==ids.length)throw missing();
   const source=locked.find(p=>p.id===pin.source_project_id)!,target=locked.find(p=>p.id===b.target_project_id)!;
@@ -321,7 +321,7 @@ async function executeDocument(c:PoolClient,owner:string,t:any,b:M4ExecuteReques
   const sourceId=manifest.input.source_material?.source_project_id||manifest.input.edit_base?.source_project_id||t.source_project_id;
   const scopeIds=[...new Set([manifest.execution_scope_project_id,...(sourceId?[sourceId]:[])])].sort();
   let scopeProjects:any[];
-  try{scopeProjects=(await c.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT`,[owner,scopeIds])).rows;}
+  try{scopeProjects=(await c.query(`SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE NOWAIT`,[owner,scopeIds])).rows;}
   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','来源项目正在保存或提交任务，请稍后重新核对并执行。');throw error;}
   if(scopeProjects.length!==scopeIds.length)throw missing();
   if(sourceId){const source=scopeProjects.find(p=>p.id===sourceId)!;if((source.execution_scope_project_id||source.id)!==manifest.execution_scope_project_id)stale();}

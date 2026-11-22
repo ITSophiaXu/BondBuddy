@@ -116,10 +116,7 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
 export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string|undefined,topicId:string,intentHash:string) {
   if(!quoteId)throw new Problem(409,'QUOTE_REQUIRED','请先查看本次费用，再明确执行。');
   const q=(await c.query('SELECT * FROM bb_m4_quotes WHERE owner_user_id=$1 AND id=$2 AND topic_id=$3',[owner,quoteId,topicId])).rows[0];
-  if(!q || q.intent_hash.trim()!==intentHash)throw new Problem(409,'QUOTE_CHANGED','任务输入或报价已变化，请重新核对后明确执行。');
-  // Only an owned, persisted batch acceptance can outlive quote expiry. Its
-  // exact manifest/amount/cancellation checks below precede the wallet hold.
-  if(!q.scope_acceptance_id&&new Date(q.expires_at).getTime()<=Date.now())throw new Problem(409,'QUOTE_CHANGED','任务报价已过期，请重新核对后开始。');
+  if(!q || q.intent_hash.trim()!==intentHash || new Date(q.expires_at).getTime()<=Date.now())throw new Problem(409,'QUOTE_CHANGED','任务输入或报价已变化，请重新核对后明确执行。');
   if(q.task_type==='m4_Q00'||q.task_type==='m4_task_assistance')return;
   const fixed=q.billing_method==='fixed',outcome=q.pricing_mode===OUTCOME_MODE;
   if(outcome){

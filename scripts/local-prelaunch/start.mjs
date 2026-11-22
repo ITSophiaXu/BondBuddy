@@ -41,10 +41,6 @@ async function start() {
   if(!webOwned)await new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',()=>reject(Error('Local browser port is occupied; no resources changed.')));server.listen(config.port,'127.0.0.1',()=>server.close(resolve));});
   const log=path.join(stateDir,'receipts/start.log');
   await validateCompose(config);
-  // ownedStartAction required the current API's idle proof before reaching this
-  // point with a running legacy service. Retain its container and private data.
-  for(const item of items)if(item.State.Running&&item.Config.Labels['com.docker.compose.service']==='api-legacy')
-    await docker(['stop',item.Id]);
   console.log('Starting dedicated PostgreSQL, Blob, current production API, three worker groups and web.');
   await compose(config,['up','-d','--no-build'],{log});
   let status;

@@ -4,7 +4,6 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { INITIAL_FIXED_PRICES, emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
-import {uploadSyntheticAudit} from './test-authoring-source.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { creditBalance, grantCredits, publishPrices } from './billing.js';
 import { checkpointStage, claim, finish, promoteWordArtifact, recordPotentialCall } from './queue.js';
@@ -21,7 +20,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
   const failures:string[]=[];app.addHook('onError',async(_request,_reply,error)=>{failures.push(String(error)+' '+((error as any).where??''));});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));
@@ -49,9 +48,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
         source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:role==='historical'?'Synthetic issuer':'Synthetic reference issuer',relation:role==='historical'?'same_issuer':'similar_business',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':String(draftRevision)});
       assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
     }
-    const audit=role==='audit'?[]:[await uploadSyntheticAudit(app,id)];
-    const currentDraft=await send('GET',`/api/v1/projects/${id}`);draftRevision=currentDraft.json().draft_revision;
-    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1},...audit],requirement_message_ids:[]});
+    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
     assert.equal(input.statusCode,201,input.body+' '+failures.join('\n'));return input.json();
   };
   const quote=async(i:any)=>{const q=await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});assert.equal(q.statusCode,200,q.body);return q.json();};
@@ -68,7 +65,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     const tooPoor=await send('POST','/api/v1/runs/execute',req);assert.equal(tooPoor.statusCode,402,tooPoor.body);
     assert.equal(await count('bb_runs'),0);assert.equal(await count('bb_credit_reservations'),0);
     assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_jobs WHERE owner_user_id=$1 AND job_type IN ('update','generation')",[owner])).rows[0].n),0);
-    const materialCount=await count('bb_material_versions');assert.equal(materialCount,2);
+    const materialCount=await count('bb_material_versions');assert.equal(materialCount,1);
     await fund(P-1,'seed');
     await Promise.all([fund(1,'last-point'),fund(1,'last-point')]);
     assert.deepEqual(await creditBalance(pool,owner),{available:P,frozen:0});
@@ -162,9 +159,8 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.deepEqual(await creditBalance(pool,owner),{available:P+20,frozen:0});
     const corrections=await Promise.all([correctSettlement(pool,{runId:id,actor:'test-operator',reason:'synthetic erroneous debit'}),correctSettlement(pool,{runId:id,actor:'test-operator',reason:'synthetic erroneous debit'})]);
     assert.deepEqual(corrections[0],corrections[1]);assert.deepEqual(await creditBalance(pool,owner),{available:2*P+20,frozen:0});
-    const expiryInput=await newInput(),expiryQuote=await quote(expiryInput);
-    // Start the expiry window after both required uploads have completed.
     const expiry=new Date(Date.now()+3000).toISOString(),promo=await fund(50,'synthetic-expiring',expiry);
+    const expiryInput=await newInput(),expiryQuote=await quote(expiryInput);
     const expiryRun=await send('POST','/api/v1/runs/execute',request(expiryInput,expiryQuote));assert.equal(expiryRun.statusCode,202,expiryRun.body);
     assert.equal(Number((await pool.query('SELECT frozen FROM bb_credit_lots WHERE id=$1',[promo])).rows[0].frozen),0);
     const expiryLease=await claim(pool);assert.ok(expiryLease);

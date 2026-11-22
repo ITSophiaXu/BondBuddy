@@ -3,7 +3,6 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
-import {hasAuthoringAudit,AUDIT_REPORT_REQUIRED_MESSAGE} from '@bondbuddy/contracts';
 
 // Exercise the real submission controller with an intentionally stale render.
 // The upload queue can change while an asynchronous save or request hash runs.
@@ -11,13 +10,13 @@ function controller(readBlock:()=>string, request:()=>Promise<unknown>=async()=>
   const source=readFileSync(new URL('../src/project-execution.ts',import.meta.url),'utf8');
   const exports:Record<string,any>={};
   runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,
-    {exports,require:()=>({executionRequest:request,executionTaskKind:()=> 'update',sourceProspectusInputGaps:()=>[],hasAuthoringAudit,AUDIT_REPORT_REQUIRED_MESSAGE}),AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
+    {exports,require:()=>({executionRequest:request,executionTaskKind:()=> 'update',sourceProspectusInputGaps:()=>[]}),AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
   const messages={version:1,content_sha256:'messages',message_ids:[]};
   const draft={project:{project_id:'synthetic',kind:'update',market:'sse',offering:'private'},state:'saved',valid:true,dirty:false,
     fields:{market:'sse',offering:'private',update_details:{authoring_mode:'unified_v1',target_reporting_periods:[{}]}},save:async()=>true};
   const execution=new exports.ProjectExecution({},draft,{flush:async()=>true,currentRef:async()=>messages},undefined,undefined,'',undefined,undefined,readBlock);
   execution.render=()=>{};execution.action=async(work:()=>Promise<void>)=>work();
-  execution.materialReady=true;execution.materials=[{material_id:'saved',material_version:1,role:'audit'}];
+  execution.materialReady=true;execution.materials=[{material_id:'saved',material_version:1}];
   execution.selected=true;execution.selectedMessages=messages;execution.input={};execution.preflight={status:'ready'};
   return {execution,draft};
 }

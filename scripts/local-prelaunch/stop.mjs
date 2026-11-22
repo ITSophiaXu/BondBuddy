@@ -1,7 +1,7 @@
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {delegate,readConfig,stateDir} from './config.mjs';
-import {compose,docker,lock,ownership,stopOwnedStack,writeReceipt} from './runtime.mjs';
+import {compose,docker,lock,ownership,writeReceipt} from './runtime.mjs';
 delegate(fileURLToPath(import.meta.url));
 const drainActive=process.argv.slice(2).includes('--drain-active');
 if(process.argv.slice(2).some(arg=>arg!=='--drain-active'))throw Error('Unknown stop option');
@@ -21,8 +21,7 @@ try {
       const after=await docker(['exec',`${config.projectName}-api-1`,'node','/app/scripts/local-prelaunch/probe.mjs','idle'],{allowFailure:true});
       try{afterDrain=JSON.parse(after.stdout.trim());}catch{afterDrain={probeExit:after.code};}
     }
-    await stopOwnedStack(items,{stopContainer:id=>docker(['stop',id]),
-      stopCompose:()=>compose(config,['stop'],{log:path.join(stateDir,'receipts/stop.log')})});
+    await compose(config,['stop'],{log:path.join(stateDir,'receipts/stop.log')});
   }
   const remaining=await ownership(config);
   if(remaining.some(item=>item.State.Running))throw Error('Some owned containers are still running; data retained.');

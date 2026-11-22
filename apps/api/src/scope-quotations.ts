@@ -209,15 +209,8 @@ async function mutateScope(pool:Pool,owner:string,id:string,requestId:string,act
     }else{
       if(!['declined','expired','unavailable'].includes(row.status))throw new Problem(409,'QUOTE_CHANGED','Close the prior quotation before requesting a revision');
       const later=(await c.query('SELECT * FROM bb_scope_quotations WHERE owner_user_id=$1 AND previous_quote_id=$2',[owner,id])).rows[0];
-      if(automaticBillingEnabled(c)){
-        if(row.action==='integrity_round'&&(!row.snapshot?.round_id||!row.snapshot?.scope_measurement))
-          throw new Problem(422,'SCOPE_UNSUPPORTED','请返回诚信核查页准备新一轮核查，再按当前适用官网范围报价。');
-        const renewed=await requestAutomaticScope(c,owner,row.project_id,row.action,row.input_hash.trim(),row.snapshot);
-        result=(await c.query('SELECT * FROM bb_scope_quotations WHERE id=$1',[renewed.scope_quote_id])).rows[0];
-      }else{
-        result=later??(await c.query('INSERT INTO bb_scope_quotations(id,owner_user_id,project_id,action,input_hash,snapshot,revision,previous_quote_id,price_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[uid(),owner,row.project_id,row.action,row.input_hash,row.snapshot,row.revision+1,id,OUTCOME_PRICE_VERSION])).rows[0];
-        if(!later)await event(c,result,'requested',{action:row.action,previous_quote_id:id});
-      }
+      result=later??(await c.query('INSERT INTO bb_scope_quotations(id,owner_user_id,project_id,action,input_hash,snapshot,revision,previous_quote_id,price_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[uid(),owner,row.project_id,row.action,row.input_hash,row.snapshot,row.revision+1,id,OUTCOME_PRICE_VERSION])).rows[0];
+      if(!later)await event(c,result,'requested',{action:row.action,previous_quote_id:id});
     }
     await c.query('INSERT INTO bb_scope_quotation_requests(owner_user_id,request_id,request_hash,action,scope_quote_id,result_quote_id) VALUES($1,$2,$3,$4,$5,$6)',[owner,requestId,hash,action,id,result.id]);return {quotation:quotationDto(result)};
   });
@@ -229,9 +222,10 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const {Pool}=await import('pg'),pool=new Pool({connectionString:process.env.DATABASE_URL});
   try{
     const [command,file]=process.argv.slice(2);
-    if(command==='publish'||command==='classify')throw new Problem(409,'QUOTE_CHANGED','旧范围报价发布已退役，请通过现行价格管理发布完整自动价表；历史合同可继续查询和执行。');
+    if(command==='publish'&&file)process.stdout.write(JSON.stringify(await publishScopeQuote(pool,JSON.parse(readFileSync(file,'utf8'))))+'\n');
+    else if(command==='classify'&&file)process.stdout.write(JSON.stringify(await publishStandardScopeQuote(pool,JSON.parse(readFileSync(file,'utf8'))))+'\n');
     else if(command==='unavailable'&&file)process.stdout.write(JSON.stringify(await markScopeUnavailable(pool,JSON.parse(readFileSync(file,'utf8'))))+'\n');
     else if(command==='inspect'&&file){const row=(await pool.query('SELECT * FROM bb_scope_quotations WHERE id=$1',[file])).rows[0];if(!row)throw missing();process.stdout.write(JSON.stringify(row,null,2)+'\n');}
-    else throw Error('Use inspect QUOTATION_ID or unavailable FILE. Legacy quotation publication is retired. Keep private scope in the authorised operational environment.');
+    else throw Error('Use inspect QUOTATION_ID, classify FILE (standard business plan), publish FILE (legacy exception) or unavailable FILE. Keep private scope in the authorised operational environment.');
   }finally{await pool.end();}
 }

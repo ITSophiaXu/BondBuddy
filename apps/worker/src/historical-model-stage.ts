@@ -1,6 +1,4 @@
 import { promptTable, historicalRulePrompt } from './historical-prompt-tables.js';
-import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
-import { withModelStagePerformance } from './model-performance.js';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { factIdentityKey } from '@bondbuddy/domain/facts';
 import { updateContentHash, type HistoricalUpdatePlan } from '@bondbuddy/domain/historical-update';
@@ -133,7 +131,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
   return { name: 'model_generation', replay: true, run: async ctx => {
     if (ctx.run.task_kind !== 'update') return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_update_task_kind_required' };
     try {
-      const input = await withPerformanceSpan('historical.input.load',{},()=>(options.load ?? loadHistoricalGenerationInput)(ctx));
+      const input = await (options.load ?? loadHistoricalGenerationInput)(ctx);
       const template = input.ruleGuidance.version === 'historical-candidate-rule-guidance-v1' ? 'historical-sse-private-test-v3' : TEMPLATE;
       if (input.locked.context.ownerUserId !== ctx.run.owner_user_id || input.locked.context.projectId !== ctx.run.project_id ||
         input.locked.context.inputRevision !== ctx.run.input_revision || input.locked.context.inputHash !== ctx.run.input_hash.trim()) throw new Error('UPDATE_INPUT_LOCK_MISMATCH');
@@ -190,7 +188,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
           await input.revalidateEvidenceReviews?.();
           return await ctx.validateBeforeModelCall?.() ?? null;
         } };
-        const result = await withModelStagePerformance('historical.batch',{batch_index:i,logical_call_id:`${template}-${i}`},()=>model.run(modelContext));
+        const result = await model.run(modelContext);
         if (result.kind !== 'done') return result;
         await input.revalidateEvidenceReviews?.();
         parts.push(inventoryOf(result.value));
@@ -205,9 +203,9 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       ]).map(factIdentityKey));
       const selected = input.facts.filter(f => keys.has(factIdentityKey(f.candidate.identity)));
       await input.revalidateEvidenceReviews?.();
-      const plan = await withPerformanceSpan('historical.plan.prepare',{},()=>(options.prepare ?? prepareHistoricalUpdate)({ pool: ctx.pool }, { ...input.locked, ...inventory,
+      const plan = await (options.prepare ?? prepareHistoricalUpdate)({ pool: ctx.pool }, { ...input.locked, ...inventory,
         factCandidateIds: selected.map(f => f.candidate.candidateId), factsHash: historicalUpdateFactsHash(selected,
-          input.decisions.filter(d => keys.has(factIdentityKey(d.identity)))) }, input.planReaders));
+          input.decisions.filter(d => keys.has(factIdentityKey(d.identity)))) }, input.planReaders);
       await input.revalidateEvidenceReviews?.();
       // A preserved original can be delivered only as a clearly pending test artifact.
       // Never admit zero supported changes as a completed production update.

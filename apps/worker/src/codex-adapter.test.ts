@@ -13,68 +13,11 @@ import { createReviewActionObserver } from './review-action-progress.js';
 import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
-import { PerformanceTraceRuntime, type PerformanceSpanRecord } from '@bondbuddy/api/performance-trace';
 
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const validateRecord = new Ajv({ strict: true }).compile(schemas.ModelAdapterAttemptRecord);
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
-
-test('fine model spans preserve schema reask usage, hierarchy, private text and completed replay', async () => {
-  const { config, cleanup } = await setup();
-  const rows = new Map<string, PerformanceSpanRecord>();
-  const telemetry = new PerformanceTraceRuntime(async (_sessions, batch) => { for (const row of batch) rows.set(row.span_id, row); });
-  const scope = { ownerUserId: 'user-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic', jobId: 'job-synthetic' };
-  const journal = new MemoryCodexJournal();
-  const input = call('SCENARIO:invalid_json REASK_SCENARIO:structured PRIVATE_PROMPT_TEXT');
-  try {
-    const result = await telemetry.trace(scope, () => runContainedModelCall(input, journal, config));
-    assert.equal(result.status, 'completed'); assert.equal(result.attempts.length, 2);
-    assert.ok(result.attempts.every(attempt => attempt.usage.status === 'measured'));
-    assert.equal(journal.observations.length, 2); assert.equal(journal.observations[0].retryable, true);
-    await telemetry.drain();
-    const attempts = [...rows.values()].filter(row => row.step_key === 'model.attempt');
-    assert.deepEqual(attempts.map(row => (row.attributes as Record<string, unknown>).attempt_no), [1, 2]);
-    assert.deepEqual(attempts.map(row => row.status), ['failed', 'succeeded']);
-    const execs = [...rows.values()].filter(row => row.step_key === 'model.exec');
-    assert.equal(execs.length, 2);
-    for (const row of execs) {
-      const attributes = row.attributes as Record<string, unknown>;
-      assert.ok(attempts.some(attempt => attempt.span_id === row.parent_span_id));
-      assert.equal(attributes.logical_call_id, input.logical_call_id);
-      assert.equal(attributes.ttft_ms, null);
-      assert.equal(attributes.ttft_availability, 'not_exposed');
-      assert.equal(typeof attributes.first_stdout_ms, 'number');
-      assert.equal(typeof attributes.first_event_ms, 'number');
-    }
-    assert.equal(JSON.stringify([...rows.values()]).includes('PRIVATE_PROMPT_TEXT'), false);
-    const prior = result.attempts[1];
-    journal.prior = { call_id: prior.call_id, attempt_no: prior.attempt_no, status: 'completed', observed: true };
-    journal.readCompleted = async () => ({ value: result.value, result_sha256: prior.result_sha256! });
-    const replay = await telemetry.trace(scope, () => runContainedModelCall(input, journal, config));
-    assert.equal(replay.status, 'reused'); assert.equal(journal.intents.length, 2);
-    await telemetry.drain();
-    assert.equal([...rows.values()].filter(row => row.step_key === 'model.exec').length, 2, 'replay never fabricates model execution');
-    assert.ok([...rows.values()].some(row => row.step_key === 'model.call' && row.status === 'reused'));
-  } finally { await cleanup(); }
-});
-
-test('telemetry storage failure cannot resend unknown calls or alter settled provider usage', async () => {
-  const { config, cleanup } = await setup();
-  const telemetry = new PerformanceTraceRuntime(async () => { throw Error('SYNTHETIC_TELEMETRY_FAILURE'); });
-  const scope = { ownerUserId: 'user-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic' };
-  try {
-    const journal = new MemoryCodexJournal();
-    const result = await telemetry.trace(scope, () => runContainedModelCall(call('SCENARIO:structured'), journal, config));
-    assert.equal(result.status, 'completed'); assert.equal(journal.intents.length, 1);
-    assert.equal(result.attempts[0].usage.status, 'measured');
-    const pending = new MemoryCodexJournal();
-    pending.prior = { call_id: 'call-unknown', attempt_no: 1, status: 'pending_reconcile', observed: true };
-    const unresolved = await telemetry.trace(scope, () => runContainedModelCall(call('SCENARIO:structured'), pending, config));
-    assert.equal(unresolved.status, 'needs_reconcile'); assert.equal(pending.intents.length, 0);
-    await telemetry.drain();
-  } finally { await cleanup(); }
-});
 
 test('M3 search requires durable tool evidence and retains the ordinary read-only containment', async () => {
   const { config, cleanup } = await setup({ web_search: 'live' });
@@ -455,32 +398,6 @@ test('invocation is contained: read-only, tools disabled, no danger-full-access,
   } finally { await cleanup(); }
 });
 
-test('managed read-only invocations carry named credential denies without enabling tools or writes', async () => {
-  const { config, cleanup } = await setup();
-  try {
-    const loaded=loadCodexAdapterConfig({BB_EXECUTION_ENROLLMENT_FILE:'/run/bondbuddy/enrollment/review.json'});
-    assert.equal(loaded.protected_runtime_files,true);
-    const args=buildCodexArgs({...config,protected_runtime_files:true},{cwd:'/x/cwd',schemaFile:null,ephemeral:true,resumeThreadId:null});
-    for(const path of ['/run/bondbuddy/enrollment','/run/bondbuddy/service','/etc/bondbuddy'])assert.ok(args.some(a=>a.includes(`${JSON.stringify(path)}="deny"`)));
-    assert.ok(args.includes('default_permissions="bb_file"'));
-    assert.ok(!args.some(a=>a.includes('="write"')));
-    assert.ok(!args.includes('--enable'));assert.ok(!args.includes('--sandbox'));
-    for(const f of ['shell_tool','unified_exec','view_image'])assert.ok(args.join(' ').includes(`--disable ${f}`));
-    assert.ok(args.includes('model_context_window=1000000'));
-    assert.equal(args.at(-1),'-');
-  } finally { await cleanup(); }
-});
-
-test('managed sandbox verification failure releases permit without a model intent or observation',async()=>{
-  const {config,cleanup}=await setup({protected_runtime_files:true,command:[process.execPath,'-e',"process.stdout.write('UNVERIFIED_BOUNDARY')",'--']});
-  try {
-    const journal=new MemoryCodexJournal() as MemoryCodexJournal & import('./codex-adapter.js').CodexJournal;let released=0,modelSpawns=0;
-    journal.acquireCallSlot=async()=>({signal:new AbortController().signal,bindProcess:async()=>{modelSpawns++;},renew:async()=>{},release:async()=>{released++;}});
-    await assert.rejects(runContainedModelCall(call('synthetic'),journal,config),/AUTHORING_FILE_SANDBOX_UNAVAILABLE/);
-    assert.equal(journal.intents.length,0);assert.equal(journal.observations.length,0);assert.equal(journal.runtimes.length,0);assert.equal(journal.results.size,0);assert.equal(modelSpawns,0);assert.equal(released,1);
-  }finally{await cleanup();}
-});
-
 test('structured success: intent before spawn, isolated cwd/home/env, #79 record with thread id and unknown request id', async () => {
   const { config, cleanup } = await setup();
   process.env.BB_SYNTHETIC_DEEPSEEK_KEY = 'synthetic-key-value';
@@ -606,7 +523,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
 test('interrupted, non-zero exit, broken stream and turn.failed map to stable codes with unknown usage', async () => {
   const { config, cleanup } = await setup();
   try {
-    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED']];
+    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED']];
     for (const [scenario, status, code] of cases) {
       const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
       assert.equal(r.status, status, scenario); assert.equal(r.error_code, code, scenario);
@@ -758,43 +675,5 @@ test('schema re-ask uses bounded host feedback, preserves usage and rejects a se
    output:{kind:'json',schema:answerSchema,validate:isAnswer,validationFeedback:()=>{throw Error('must not override JSON parse failure');}}
   }),new MemoryCodexJournal(),config);
   assert.equal(fallback.status,'completed');
- }finally{await cleanup();}
-});
-
-test('capacity wait does not prepare a large workspace or record an intent; fresh gates and release precede send',async()=>{
- const {config,cleanup}=await setup();
- const controller=new AbortController();let granted!:()=>void;
- const ready=new Promise<void>(resolve=>{granted=resolve;});let releases=0,prepared=0,gateChecks=0;
- const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
- journal.acquireCallSlot=async()=>{await ready;return {signal:controller.signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{releases++;}};};
- try {
-  const task=runContainedModelCall(call('large',{output:{kind:'text'},fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>null},beforeIntent:async()=>{gateChecks++;throw new Error('FRESH_GATE_CLOSED');}}),journal,config);
-  await new Promise(r=>setTimeout(r,30));assert.equal(prepared,0);assert.equal(journal.intents.length,0);
-  granted();await assert.rejects(task,/FRESH_GATE_CLOSED/);
-  assert.equal(gateChecks,1);assert.equal(prepared,0);assert.equal(journal.intents.length,0);assert.equal(releases,1);
- } finally {await cleanup();}
-});
-
-test('every schema reask re-enters capacity and releases even when persistence fails',async()=>{
- const {config,cleanup}=await setup({max_schema_reasks:1});let grants=0,releases=0;
- const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
- journal.acquireCallSlot=async()=>{grants++;return {signal:new AbortController().signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{releases++;}};};
- try {
-  await runContainedModelCall(call('SCENARIO:invalid_json'),journal,config);
-  assert.equal(grants,2);assert.equal(releases,2);
-  journal.recordIntent=async()=>{throw new Error('INTENT_WRITE_FAILED');};
-  await assert.rejects(runContainedModelCall(call('ordinary'),journal,config),/INTENT_WRITE_FAILED/);
-  assert.equal(grants,3);assert.equal(releases,3);
- }finally{await cleanup();}
-});
-
-test('a gate closing during workspace preparation prevents intent and spawn after the second fresh check',async()=>{
- const {config,cleanup}=await setup();let gates=0,prepared=0,released=0;
- const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
- journal.acquireCallSlot=async()=>({signal:new AbortController().signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{released++;}});
- try {
-  await assert.rejects(runContainedModelCall(call('synthetic',{output:{kind:'text'},beforeIntent:async()=>{gates++;if(prepared)throw new Error('INPUT_GATE_CHANGED');},fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>null}}),journal,config),/INPUT_GATE_CHANGED/);
-  assert.equal(gates,2);assert.equal(prepared,1);assert.equal(journal.intents.length,0);assert.equal(released,1);
-  assert.deepEqual(await readdir(config.work_root),[]);
  }finally{await cleanup();}
 });

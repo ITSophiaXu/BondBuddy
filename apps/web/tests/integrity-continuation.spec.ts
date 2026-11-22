@@ -183,7 +183,7 @@ test('a matching-looking unrelated check is never treated as an unknown paid rec
   page.on('dialog',dialog=>void dialog.accept());await page.reload();await expectPending(page);expect(state.checks).toHaveLength(1);expect(state.accepted.size).toBe(0);
 });
 
-for(const code of ['BILLING_REQUEST_REJECTED'] as const)test(`durable ${code} rejection retains preparation and requires another explicit 5,000 confirmation`,async({page})=>{
+for(const code of ['CREDITS_INSUFFICIENT','INPUT_REVISION_CONFLICT','QUOTE_CHANGED'] as const)test(`definitive ${code} rejection retains preparation and requires another explicit 5,000 confirmation`,async({page})=>{
   const state=await open(page);await adopt(page);state.rejectCheck=code;await start(page);await expect.poll(()=>state.checks.length).toBe(1);await expect(page.locator('#integrity-retry-pending')).toHaveCount(0);await expect(page.locator('#integrity-preparation-controls')).toHaveJSProperty('disabled',false);await expectLocal(page,[...preparedDraft().site_ids,'tax']);
   if(await modal(page).isVisible())await modal(page).locator('[data-close]').click();expect(state.accepted.size).toBe(0);await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();expect(state.checks).toHaveLength(1);await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(2);expect(state.checks[1].expected_points).toBe(5000);
 });

@@ -44,7 +44,7 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
   await page.getByLabel('发行人全称',{exact:true}).fill('任丘市建设投资集团有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('目标报告期年份',{exact:true}).selectOption('2025');
+  await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2025');
   await page.locator('[name="reporting_quarter"][value="09-30"]').check();
   const creation=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/projects'&&r.request().method()==='POST');
   await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();

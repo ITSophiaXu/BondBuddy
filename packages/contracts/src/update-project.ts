@@ -78,19 +78,6 @@ export function isSourceProspectusRequiredFieldError(value: unknown): boolean {
   const field = value as Record<string, unknown>;
   return field.field === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.field && field.code === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.code;
 }
-/** Only a saved audit-role material satisfies the authoring audit requirement. */
-export function hasAuthoringAudit(materials: readonly Pick<SourceMaterialPin, 'role'>[]): boolean {
-  return materials.some(material => material.role === 'audit');
-}
-export const AUDIT_REPORT_REQUIRED_MESSAGE = '请先上传并保存审计报告（可含报表及附注），再开始更新募集书。';
-export const AUDIT_REPORT_REQUIRED_FIELD_ERROR = {
-  field: 'materials.audit', code: 'AUDIT_REPORT_REQUIRED', message: AUDIT_REPORT_REQUIRED_MESSAGE,
-} as const;
-export function isAuditReportRequiredFieldError(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const field = value as Record<string, unknown>;
-  return field.field === AUDIT_REPORT_REQUIRED_FIELD_ERROR.field && field.code === AUDIT_REPORT_REQUIRED_FIELD_ERROR.code;
-}
 export const FormatTemplatePinSchema = Type.Object({
   material_id: Type.String({ minLength: 1, maxLength: 128 }),
   material_version: Type.Integer({ minimum: 1 }),

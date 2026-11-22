@@ -30,10 +30,6 @@ const responseFamily=(path:string,method:string):BillingWireDtoName|undefined=>{
 const json=(route:Route,status:number,body:unknown)=>{const path=new URL(route.request().url()).pathname.replace('/api/v1',''),family=responseFamily(path,route.request().method());return route.fulfill({status,contentType:'application/json',body:JSON.stringify(status<400&&family?encodeBillingDto(family,body):body)});};
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
 async function regionEvidence(page:Page,name:string,selector:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});const region=page.locator(selector);await region.evaluate(element=>element.scrollIntoView({block:'center'}));await region.screenshot({path:join(directory,name)});}
-async function expectPurchasesHidden(page:Page){
-  await expect(page.locator('.subscription-current,.subscription-management,.subscription-plans,.subscription-topup')).toHaveCount(0);
-  await expect(page.getByRole('button',{name:/^(选择套餐|管理订阅|充值并前往支付)$/})).toHaveCount(0);
-}
 async function setup(page:Page,options:{alipay?:boolean;payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;uncertainTopup?:boolean;expired?:boolean;refundHeld?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion;subscriptionCatalog?:SubscriptionCatalog;cancelPending?:boolean;zeroTask?:boolean;periodHistoryOverflow?:boolean;periodUnavailable?:404|503;topupOrder?:boolean;annual?:boolean;closeResult?:'pending'|'paid'|'expired';closeUnknown?:boolean}={}){
   const calls:{method:string;path:string;body:any}[]=[];let attempts=0,topupAttempts=0,cancelRefreshes=0,periodUnavailable=options.periodUnavailable;
   const priceVersion=options.priceVersion??AUTOMATIC_PRICE_VERSION,tariff=automaticTaskTariff(priceVersion);
@@ -248,7 +244,7 @@ test('late original-order verification cannot repaint after navigation',async({p
 test('closing the selected unpaid order allows a new amount only after the original is confirmed closed',async({page})=>{
   const {calls}=await setup(page,{payment:true});await page.goto('/#/account');
   await page.getByRole('button',{name:'开通轻量',exact:true}).click();
-  await expectPurchasesHidden(page);
+  await expect(page.getByRole('button',{name:'充值并前往支付',exact:true})).toBeDisabled();
   const original=await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!));
   await page.getByRole('button',{name:'取消本次付款并重新选择',exact:true}).click();
   await expect(page.getByRole('heading',{name:'订单已过期',exact:true})).toBeVisible();
@@ -262,94 +258,14 @@ test('closing the selected unpaid order allows a new amount only after the origi
   expect(topup?.body.request_id).not.toBe(original.request_id);
 });
 
-test('continuing the displayed order updates its payment link without a hash change or a replacement charge',async({page})=>{
-  const {calls,settle}=await setup(page,{payment:true,alipay:true});await page.goto('/#/account');
-  await page.getByRole('button',{name:'开通专业',exact:true}).click();
-  const proceed=page.locator('#subscription-continue-payment');
-  await expect(page.locator('.subscription-payment')).toBeVisible();await expect(proceed).toBeEnabled();
-  const originalUrl=page.url(),original=await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!));
-  let release:()=>void=()=>{},refreshes=0;const response=new Promise<void>(resolve=>{release=resolve;});
-  const refreshedLink='https://openapi.alipay.com/gateway.do?synthetic=refreshed-original-order';
-  const refresh=async(route:Route)=>{refreshes++;await response;await json(route,200,{...original.order,currency:'CNY',checkout_url:refreshedLink,project_id:null,expires_at:end,credited_at:null});};
-  await page.route('**/api/v1/commerce/topups/subscription-order-1/refresh',refresh);
-  await proceed.click();
-  await expect.poll(()=>refreshes).toBe(1);
-  await expect(page.locator('.payment-check-status')).toContainText('正在核对本订单');
-  await expect(proceed).toBeDisabled();release();
-  await expect(page.getByRole('link',{name:'前往支付宝',exact:false})).toHaveAttribute('href',refreshedLink);
-  await expect(page.locator('.subscription-message')).toContainText('付款');
-  await expect(page.locator('.subscription-payment')).toBeFocused();
-  expect(page.url()).toBe(originalUrl);await expectPurchasesHidden(page);
-  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!));
-  expect(saved.request_id).toBe(original.request_id);expect(saved.order.order_id).toBe(original.order.order_id);
-  await page.evaluate(()=>window.scrollTo(0,0));await evidence(page,'payment-page-continued-original-1440.png');
-  await page.setViewportSize({width:390,height:844});await expectPurchasesHidden(page);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.evaluate(()=>window.scrollTo(0,0));await evidence(page,'payment-page-continued-original-390.png');await page.setViewportSize({width:1440,height:960});
-  await page.unroute('**/api/v1/commerce/topups/subscription-order-1/refresh',refresh);settle();await proceed.click();
-  await expect(page.locator('.subscription-message')).toContainText('付款成功');
-  await expect(page.locator('.payment-receipt')).toContainText('积分已到账');
-  await expect(page.locator('.subscription-plans')).toBeVisible();
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/subscriptions')).toHaveLength(1);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/commerce/topups')).toHaveLength(0);
-});
-
-for(const availability of ['disabled','provider-removed'] as const)test(`existing order can be continued when new checkout is ${availability}`,async({page})=>{
-  const {calls}=await setup(page,{payment:true});await page.goto('/#/account');
-  await page.getByRole('button',{name:'开通轻量',exact:true}).click();
-  await expect(page.locator('.subscription-payment')).toBeVisible();
-  const original=await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!));
-  await page.route('**/api/v1/subscriptions/catalog',route=>json(route,200,{enabled:availability!=='disabled',version:'bb-subscriptions-20261029-v1',plans,providers:availability==='disabled'?['wechat']:[],auto_renew_available:false}));
-  await page.reload();
-  const proceed=page.getByRole('button',{name:'继续原付款',exact:true});await expect(proceed).toBeEnabled();
-  const checks=calls.filter(c=>c.path==='/commerce/topups/subscription-order-1/refresh').length;
-  await proceed.click();
-  await expect.poll(()=>calls.filter(c=>c.path==='/commerce/topups/subscription-order-1/refresh').length).toBe(checks+1);
-  await expect(page.locator('.subscription-message')).toContainText('付款');
-  await expect(page.locator('.subscription-payment')).toBeFocused();await expectPurchasesHidden(page);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!).request_id)).toBe(original.request_id);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/subscriptions')).toHaveLength(1);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/commerce/topups')).toHaveLength(0);
-});
-
-test('continuing an unavailable payment shows payment-only recovery and keeps new purchases hidden',async({page})=>{
-  const {calls}=await setup(page,{payment:true});await page.goto('/#/account');
-  await page.getByRole('button',{name:'开通轻量',exact:true}).click();
-  await expect(page.locator('.subscription-payment')).toBeVisible();
-  await page.route('**/api/v1/commerce/topups/subscription-order-1/refresh',route=>json(route,503,{code:'PAYMENT_UNAVAILABLE'}));
-  await page.getByRole('button',{name:'继续原付款',exact:true}).click();
-  await expect(page.locator('.account-billing-error')).toContainText('支付');
-  await expect(page.locator('.account-billing-error')).not.toContainText('材料');
-  await expect(page.locator('.account-billing-error')).toBeFocused();
-  await expect(page.locator('.account-billing-error')).toBeInViewport();
-  await expect(page.locator('.subscription-payment')).toHaveAttribute('data-payment-state','pending');
-  await expectPurchasesHidden(page);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/subscriptions')).toHaveLength(1);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/commerce/topups')).toHaveLength(0);
-});
-
-test('unknown checkout reports a closed channel without silently dropping the retry or replacing its request',async({page})=>{
-  const {calls}=await setup(page,{payment:true,uncertainTopup:true});await page.goto('/#/account');
-  await page.locator('#subscription-topup-amount').fill('12.18');await page.getByRole('button',{name:'充值并前往支付',exact:true}).click();
-  await expect(page.locator('.account-billing-error')).toBeVisible();
-  const original=await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!));
-  await page.route('**/api/v1/subscriptions/catalog',route=>json(route,200,{enabled:false,version:'bb-subscriptions-20261029-v1',plans,providers:[],auto_renew_available:false}));
-  await page.reload();await page.getByRole('button',{name:'继续原付款',exact:true}).click();
-  await expect(page.locator('.account-billing-error')).toContainText('支付');
-  await expect(page.locator('.account-billing-error')).not.toContainText('材料');
-  await expectPurchasesHidden(page);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('bondbuddy:checkout-intent:v1:subscription-owner')!))).toEqual(original);
-  expect(calls.filter(c=>c.method==='POST'&&c.path==='/commerce/topups')).toHaveLength(1);
-});
-
 for(const scenario of ['pending','unknown'] as const)test(`unconfirmed payment closure (${scenario}) retains the same order and prevents replacement`,async({page})=>{
   const {calls}=await setup(page,{payment:true,...(scenario==='pending'?{closeResult:'pending' as const}:{closeUnknown:true})});await page.goto('/#/account');
   await page.getByRole('button',{name:'开通轻量',exact:true}).click();
   await page.getByRole('button',{name:'取消本次付款并重新选择',exact:true}).click();
   await expect(page.getByText(scenario==='pending'?'原订单关闭结果仍在核对。请刷新同一订单，确认结束后再重新选择。':/原付款关闭结果尚未确认/)).toBeVisible();
-  await expectPurchasesHidden(page);
+  await expect(page.getByRole('button',{name:'充值并前往支付',exact:true})).toBeDisabled();
   await page.reload();await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
-  await expectPurchasesHidden(page);
+  await expect(page.getByRole('button',{name:'充值并前往支付',exact:true})).toBeDisabled();
   expect(calls.filter(c=>c.method==='POST'&&c.path==='/subscriptions')).toHaveLength(1);
   expect(calls.filter(c=>c.method==='POST'&&c.path==='/commerce/topups')).toHaveLength(0);
 });
@@ -470,13 +386,17 @@ test('subscription account shows point rights and disables unavailable payment c
   await evidence(page,'subscription-account-390.png');
 });
 
-test('account ignores obsolete quotation deep links and retains credit history without fetching scope records',async({page})=>{
+test('subscription quotation deep link shows its original scope and point amount without a purchase confirmation',async({page})=>{
   const {calls}=await setup(page);
+  const original={id:'original-scope',project_id:'project-1',action:'review',input_hash:'a'.repeat(64),price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready',amount_fen:27195,scope_lines:[{key:'review',label:'锁定募集说明书与材料',quantity:1,unit:'轮',unit_price_fen:27195,amount_fen:27195,evidence:['原材料版本保持不变']}],reason:'本次范围记录',created_at:now,published_at:now,expires_at:end,closed_at:null,decline_reason:'',closure_reason:'',revision:1,previous_quote_id:null};
+  await page.route('**/api/v1/commerce/quotations',route=>json(route,200,{items:[original,{...original,id:'expired-scope',quote_status:'expired',closure_reason:'原范围已过期'}]}));
   await page.goto('/#/account?quotation=original-scope');
-  await expect(page.locator('[data-record="response-settled"] .credit-history-amount')).toContainText('消耗 1,218 积分');
-  await expect(page.getByText('任务范围与历史报价',{exact:true})).toHaveCount(0);
-  await expect(page.locator('#subscription-quotation-details,#subscription-quotations,[data-quotation]')).toHaveCount(0);
-  expect(calls.filter(call=>call.path==='/commerce/quotations')).toHaveLength(0);
+  await expect(page.locator('#subscription-quotation-details')).toHaveAttribute('open','');
+  const selected=page.locator('[data-quotation="original-scope"]');
+  await expect(selected.locator('[data-quotation-details]')).toHaveAttribute('open','');
+  await expect(selected).toContainText('27,195 积分');await expect(selected).toContainText('原材料版本保持不变');await expect(selected).not.toContainText('¥271.95');
+  await expect(page.locator('[data-quotation="expired-scope"]')).toContainText('原范围已过期');
+  await expect(page.locator('[data-decline-quote],[data-requote],[data-commerce-accept]')).toHaveCount(0);
   expect(calls.filter(call=>call.method==='POST')).toEqual([]);
 });
 
@@ -508,8 +428,7 @@ test('checkout retries one selected plan and never sends a client-controlled pri
   const {calls}=await setup(page,{payment:true,uncertainCheckout:true});await page.goto('/#/account');
   await page.getByRole('button',{name:'开通专业',exact:true}).click();
   await expect(page.locator('.account-billing-error')).toBeVisible();
-  await expectPurchasesHidden(page);
-  await page.getByRole('button',{name:'继续原付款',exact:true}).click();
+  await page.getByRole('button',{name:'开通专业',exact:true}).click();
   await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
   await expect(page.getByRole('img',{name:'本订单微信支付二维码'})).toHaveAttribute('src',/^data:image\/png;base64,/);
   const orders=calls.filter(call=>call.path==='/subscriptions'&&call.method==='POST');
@@ -553,41 +472,13 @@ test('small topup uses exact fen and preserves the non-subscription entry',async
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 });
 
-for(const width of [1440,900,390])test(`topup controls align and stay within the card at ${width}px`,async({page})=>{
-  const {calls}=await setup(page,{payment:true});await page.setViewportSize({width,height:960});await page.goto('/#/account');
-  await page.locator('#subscription-topup-amount').fill('12.18');
-  const provider=page.locator('#subscription-topup-provider'),amount=page.locator('#subscription-topup-amount'),submit=page.locator('.subscription-topup-submit');
-  await expect(provider).toBeVisible();await expect(submit).toBeVisible();
-  const boxes=await Promise.all([provider,amount,submit].map(control=>control.boundingBox()));
-  expect(boxes.every(box=>box!==null)).toBe(true);
-  const [methodBox,amountBox,submitBox]=boxes as {x:number;y:number;width:number;height:number}[];
-  const card=(await page.locator('.subscription-topup').boundingBox())!;
-  for(const box of [methodBox,amountBox,submitBox]){
-    expect(box.x).toBeGreaterThanOrEqual(card.x);expect(box.x+box.width).toBeLessThanOrEqual(card.x+card.width);
-    expect(box.height).toBeGreaterThanOrEqual(42);
-  }
-  if(width>650){
-    expect(Math.abs(methodBox.y-amountBox.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(methodBox.height-amountBox.height)).toBeLessThanOrEqual(1);
-    if(width>1100){expect(Math.abs(submitBox.y-amountBox.y)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.height-amountBox.height)).toBeLessThanOrEqual(1);}
-  }else{
-    expect(Math.abs(methodBox.x-amountBox.x)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.x-amountBox.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(methodBox.width-amountBox.width)).toBeLessThanOrEqual(1);expect(Math.abs(submitBox.width-amountBox.width)).toBeLessThanOrEqual(1);
-    expect(amountBox.y).toBeGreaterThanOrEqual(methodBox.y+methodBox.height);expect(submitBox.y).toBeGreaterThanOrEqual(amountBox.y+amountBox.height);
-  }
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await regionEvidence(page,`payment-page-topup-aligned-${width}.png`,'.subscription-topup');
-  expect(calls.filter(c=>c.method==='POST')).toHaveLength(0);
-});
-
-test('unknown topup survives reload and another tab without offering a replacement purchase',async({page,context})=>{
+test('unknown topup survives reload and another tab; changing the amount cannot create a replacement',async({page,context})=>{
   const first=await setup(page,{payment:true,uncertainTopup:true});await page.goto('/#/account');
   await page.locator('#subscription-topup-amount').fill('12.18');await page.getByRole('button',{name:'充值并前往支付',exact:true}).click();
-  await expect(page.locator('.account-billing-error')).toBeVisible();
-  await expect(page.locator('.account-billing-error')).not.toContainText('材料');
-  await expectPurchasesHidden(page);await page.reload();
+  await expect(page.locator('.account-billing-error')).toBeVisible();await page.reload();
   await expect(page.getByRole('button',{name:'继续原付款',exact:true})).toBeVisible();
-  await expectPurchasesHidden(page);
+  await page.locator('#subscription-topup-amount').fill('50');await page.getByRole('button',{name:'充值并前往支付',exact:true}).click();
+  await expect(page.locator('.account-billing-error')).toContainText('已有原付款待核对');
   expect(first.calls.filter(call=>call.path==='/commerce/topups'&&call.method==='POST')).toHaveLength(1);
   const secondPage=await context.newPage(),second=await setup(secondPage,{payment:true});await secondPage.goto('/#/account');
   await secondPage.getByRole('button',{name:'继续原付款',exact:true}).click();
@@ -948,9 +839,9 @@ test('annual checkout displays the full 10-percent-discount price and monthly re
   await evidence(page,'subscription-final-annual-1440.png');
   await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await evidence(page,'subscription-final-annual-390.png');await page.setViewportSize({width:1440,height:960});
   await page.getByRole('button',{name:'开通专业',exact:true}).click();await expect(page.locator('.account-billing-error')).toBeVisible();
-  await expectPurchasesHidden(page);
-  await page.reload();await expectPurchasesHidden(page);
-  await expect(page.locator('.subscription-original-checkout')).toContainText('专业年付订阅');
+  await page.getByRole('radio',{name:'月付',exact:true}).click();await page.getByRole('button',{name:'开通专业',exact:true}).click();
+  await expect(page.locator('.account-billing-error')).toContainText('已有原付款待核对');
+  await page.reload();await expect(page.getByRole('radio',{name:'年付 · 9折',exact:true})).toHaveAttribute('aria-checked','true');
   await page.getByRole('button',{name:'继续原付款',exact:true}).click();await expect(page.locator('.subscription-payment')).toContainText('¥5,389.20');
   await expect(page.locator('[data-payment-validity]')).toHaveText('全年 660,000 积分，按月到账 55,000 积分，每批有效90天');
   const requests=calls.filter(c=>c.path==='/subscriptions'&&c.method==='POST');expect(requests).toHaveLength(2);expect(requests[0].body).toEqual(requests[1].body);
@@ -1037,7 +928,7 @@ for(const scenario of [{name:'professional monthly upgrade',annual:false,partial
     await page.getByRole('button',{name:'支付 ¥'+scenario.pay+' 并切换',exact:true}).click();
     await expect(page.locator('.payment-amount')).toHaveText('¥'+scenario.pay);await expect(page.locator('[data-change-held]')).toBeVisible();
     await expect(page.locator('.subscription-payment [data-change-funding]')).toContainText('本次实付 ¥'+scenario.pay);
-    await expectPurchasesHidden(page);fixture.settle();await page.getByRole('button',{name:'刷新支付状态',exact:true}).click();
+    await expect(page.locator('.subscription-current')).toContainText('专业 · 月付订阅');fixture.settle();await page.getByRole('button',{name:'刷新支付状态',exact:true}).click();
     await expect(page.locator('.subscription-payment')).toHaveCount(0);await expect(page.locator('.subscription-current')).toContainText(scenario.monthly+' 积分');
     await expect(page.locator('[data-period="period-original"]')).toContainText('已转换至新套餐');await expect(page.locator('[data-period="period-original"]')).toContainText('任务预留 2,000 积分，继续按原任务结算');
     await expect(page.locator('[data-period="period-changed"] [data-change-funding]')).toContainText('本次实付 ¥'+scenario.pay);

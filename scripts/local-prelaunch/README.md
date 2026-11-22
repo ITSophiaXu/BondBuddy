@@ -22,7 +22,7 @@
 
 This launcher runs the **current production Dockerfile and full product stack** in an isolated Docker Compose project. The API uses `createProductionServer` with the local synthetic payment provider; generation, parsing, reviewed-context loaders, task queues, immutable inputs and billing settlement remain product code. Synthetic payment is visibly labelled in the local browser. It does not connect to a merchant or production account.
 
-New tasks use the current automatic scope tariff. The `legacy-billing` profile and `api-legacy` service are retired; `/__legacy/api/v1/` returns 410. Historical receipts and accepted contracts remain readable and executable through the current API under their stored policy. This source change does not remove existing containers, volumes or data; the existing ownership and idle checks still guard an upgrade from an older local stack.
+The launcher also enables the `legacy-billing` profile: `/__legacy/api/v1/` reaches `api-legacy`, using the **same current API image**, database, authentication and loaders with subscription/outcome policy selection disabled and paid authoring/review enabled. This supports persisted `authoring_balance_v2` compatibility scenarios against the current production worker. It is a configuration of current code, not an old binary. This profile starts with the web service so its nginx upstream is always available.
 
 From this checkout on Windows (WSL distribution `BondBuddyM3`) or Linux:
 

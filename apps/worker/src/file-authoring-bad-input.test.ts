@@ -24,17 +24,8 @@ function fixture(bytes:Buffer){
   return {input,ctx};
 }
 
-function encryptedSource(){
-  const bytes=Buffer.alloc(1536);Buffer.from('d0cf11e0a1b11ae1','hex').copy(bytes);
-  bytes.writeUInt16LE(0xfffe,28);bytes.writeUInt16LE(9,30);
-  for(const [offset,name] of [[512,'EncryptionInfo'],[640,'EncryptedPackage']] as const){
-    const marker=Buffer.from(name+'\0','utf16le');marker.copy(bytes,offset);bytes.writeUInt16LE(marker.length,offset+64);bytes[offset+66]=2;
-  }
-  return bytes;
-}
-
-for(const fault of ['truncated','not-zip','encrypted'] as const)test(`actual prepare classifies ${fault} DOCX before any supplier call`,{skip:!python},async()=>{
-  const bytes=fault==='encrypted'?encryptedSource():fault==='truncated'?makeWorkerDocxFixture({externalLink:false}).subarray(0,150):Buffer.from('SYNTHETIC bad DOCX');
+for(const fault of ['truncated','not-zip'] as const)test(`actual prepare classifies ${fault} DOCX before any supplier call`,{skip:!python},async()=>{
+  const bytes=fault==='truncated'?makeWorkerDocxFixture({externalLink:false}).subarray(0,150):Buffer.from('SYNTHETIC bad DOCX');
   const {input,ctx}=fixture(bytes),root=await mkdtemp(join(tmpdir(),'bb-source-fault-'));let supplierCalls=0;
   try{
     const stage=fileAuthoringStage({load:async()=>input,model:options=>({name:'model_generation',run:async()=>{
@@ -43,7 +34,7 @@ for(const fault of ['truncated','not-zip','encrypted'] as const)test(`actual pre
       await options.fileWorkspace!.prepare(root);supplierCalls++;
       assert.fail('An unreadable source reached the supplier');
     }})});
-    assert.deepEqual(await stage.run(ctx),{kind:'fail',code:fault==='encrypted'?'MATERIAL_ENCRYPTED':'MATERIAL_UNREADABLE'});
+    assert.deepEqual(await stage.run(ctx),{kind:'fail',code:'MATERIAL_UNREADABLE'});
     assert.equal(supplierCalls,0);
   }finally{await rm(root,{recursive:true,force:true});}
 });

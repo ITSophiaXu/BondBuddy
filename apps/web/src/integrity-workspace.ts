@@ -2,11 +2,11 @@ import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
-import {int64,INTEGRITY_SUBJECT_LIMIT,INTEGRITY_COMMERCIAL_RULE,integrityRoundPoints,integrityScopeMeasurement} from '@bondbuddy/contracts';
+import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge,displayCharge} from './commerce';
 import {displayPrice,isCnyPrice,cny,scopeReady,scopeLinesHtml,copyCommercePrice,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
-import {removeUnavailableIntegritySites,isIntegritySiteAvailableForSubjects} from '@bondbuddy/contracts';
+import {removeRetiredIntegritySites} from '@bondbuddy/contracts';
 import {integrityRecordPresentation,integrityFindingLabel,inferIntegrityRegion,INTEGRITY_SITES,INTEGRITY_PROVINCES,INTEGRITY_PRICE,IntegrityWorkspaceSchema,integritySchemas,schemas,resolveIntegritySite,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,type IntegrityWorkspace as Workspace,type IntegritySubject,type IntegrityRound,type IntegrityManual,type M4MaterialPin,type IntegrityDraft} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
@@ -37,7 +37,6 @@ export class IntegrityWorkspace {
  private cache?:IntegrityRecoveryCache;private journal?:IntegrityRecoveryJournal;private cached:IntegrityRecoveryValue|null=null;private pending?:IntegrityRecoveryPending;private evidenceDraft?:IntegrityEvidenceDraft;private sourceRun?:string;private problem='';private message='';private conflict=false;private detached=false;private journalChoices:IntegrityRecoveryValue[]=[];private filter='all';private expanded=new Set<string>();private openedRound?:string;private focusPair?:string;
  private confirmed?:{previous:IntegrityRecoveryValue;next:IntegrityRecoveryValue;runId?:string;draft?:Workspace};private foreignCompleted=false;private selectedFile?:{key:string;file:File};private pendingDraftMismatch=false;
  private evidenceUploads?:UploadRecovery;
- private roundId?:string;
  constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id?:string,private owner?:string){window.addEventListener('storage',this.storageChanged);}
  private storageChanged=()=>{if(!this.state||!this.live()||this.cacheMatches())return;this.problem='另一页面已更改本机准备。原请求仍保存在独立记录中，请重新读取并核对。';this.dialog?.close();this.paint();};
  private live(){return this.current()&&!this.controller.signal.aborted;}
@@ -50,9 +49,9 @@ export class IntegrityWorkspace {
  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){const run=new URLSearchParams(location.hash.split('?')[1]).get('run');if(method==='GET'&&!suffix&&run)suffix='?run_id='+encodeURIComponent(run);return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/integrity${suffix}`,body,headers,this.controller.signal);}
  private error(e:unknown,operation:'read'|'save'|'download'|'submit'|'action'='action'){return e instanceof UploadRecoveryNeedsFileError?'需要重新上传，请选择相同内容的文件后继续。':friendlyError(e,operation);}
  private async read(suffix=''){const fresh=await this.request<Workspace>('GET',suffix);if(!Value.Check(IntegrityWorkspaceSchema,fresh))throw new ApiError(0,'DATA_UNAVAILABLE');return fresh;}
- private currentPrice(){if(this.state?.price.version===INTEGRITY_COMMERCIAL_RULE.version){const pairs=integrityScopeMeasurement(this.state.draft).executable_pairs;return pairs?integrityRoundPoints(pairs).toLocaleString('zh-CN')+' 积分（预估预留）':'按可查询范围计算';}return displayPrice(this.state?.price,this.state?.price.points??INTEGRITY_PRICE.points);}
+ private currentPrice(){return displayPrice(this.state?.price,this.state?.price.points??INTEGRITY_PRICE.points);}
  private locked(){return !!this.pending||!!this.confirmed||this.foreignCompleted||!!this.problem||this.conflict||!!this.journalChoices.length;}
- private snapshot():IntegrityRecoveryValue{return {revision:this.state!.revision,draft:structuredClone(this.state!.draft),...(this.roundId?{roundId:this.roundId}:{}),...(this.sourceRun?{sourceRun:this.sourceRun}:{}),...(this.pending?{pending:structuredClone(this.pending)}:{}),...(this.evidenceDraft?{evidenceDraft:structuredClone(this.evidenceDraft)}:{})};}
+ private snapshot():IntegrityRecoveryValue{return {revision:this.state!.revision,draft:structuredClone(this.state!.draft),...(this.sourceRun?{sourceRun:this.sourceRun}:{}),...(this.pending?{pending:structuredClone(this.pending)}:{}),...(this.evidenceDraft?{evidenceDraft:structuredClone(this.evidenceDraft)}:{})};}
  private cacheMatches(){const read=this.cache?.read();return read?.status==='empty'?this.cached===null:read?.status==='valid'&&sameRecovery(read.value,this.cached);}
  private cacheError(status:string){this.problem=status==='conflict'?'另一页面已更改本机准备。请重新读取并核对；当前输入和原请求仍保留。':status==='invalid'?'本机恢复记录无法核实，请保留本页内容并联系支持。':'本机保存暂不可用，请允许浏览器保存本站数据后重试。确认写入前无法提交。';this.status(this.problem);}
  private persist(){
@@ -61,7 +60,7 @@ export class IntegrityWorkspace {
   if(this.detached&&this.pending){this.problem='';return true;}
   const saved=this.cache.save(value,this.cached);if(saved.status!=='valid'){this.cacheError(saved.status);return false;}this.cached=saved.value;this.problem='';return true;
  }
- private adopt(value:IntegrityRecoveryValue){this.state!.draft=structuredClone(value.draft);this.state!.revision=value.revision;this.roundId=value.roundId;this.sourceRun=value.sourceRun;this.pending=value.pending?structuredClone(value.pending):undefined;this.evidenceDraft=value.evidenceDraft?structuredClone(value.evidenceDraft):undefined;this.dirty=!integritySameDraft(value.draft,this.server!.draft)||value.revision!==this.server!.revision;}
+ private adopt(value:IntegrityRecoveryValue){this.state!.draft=structuredClone(value.draft);this.state!.revision=value.revision;this.sourceRun=value.sourceRun;this.pending=value.pending?structuredClone(value.pending):undefined;this.evidenceDraft=value.evidenceDraft?structuredClone(value.evidenceDraft):undefined;this.dirty=!integritySameDraft(value.draft,this.server!.draft)||value.revision!==this.server!.revision;}
  private restore(fresh:Workspace){
   this.state=structuredClone(fresh);this.server=structuredClone(fresh);const saved=this.cache!.read();
   if(saved.status==='empty'){this.cached=null;return;}if(saved.status!=='valid'){this.cacheError(saved.status);return;}
@@ -69,7 +68,7 @@ export class IntegrityWorkspace {
   if(this.conflict)this.message='本机准备与服务器版本不同，请核对两份名单后选择。';else if(this.dirty)this.message='已恢复本机准备，尚未保存到服务器或开始新核查。';
  }
  private scanJournal(){const read=this.journal!.readAll();if(read.status!=='valid'){this.cacheError(read.status);return;}this.journalChoices=read.values.filter(v=>!this.pending||!sameRecovery(v,this.snapshot()));}
- private summary(d:IntegrityDraft){const scope=integrityScopeMeasurement(d);return `<p>${d.subjects.length} 个对象 · ${d.site_ids.length} 个网站 · ${scope.executable_pairs} 项可查询 · ${scope.excluded_pairs} 项不适用 · ${scope.unresolved_pairs} 项属地待确认</p><ul>${d.subjects.map(s=>`<li>${s.kind==='company'?'企业':'人员'}：${esc(s.name)} · ${esc(s.role)} · ${esc(s.province)} ${esc(s.city)}</li>`).join('')}</ul><p>网站：${d.site_ids.map(id=>esc(INTEGRITY_SITES.find(s=>s.id===id)?.name??id)).join('、')}</p><p>说明：${esc(d.notes||'未填写')}</p>`;}
+ private summary(d:IntegrityDraft){return `<p>${d.subjects.length} 个对象 · ${d.site_ids.length} 个网站</p><ul>${d.subjects.map(s=>`<li>${s.kind==='company'?'企业':'人员'}：${esc(s.name)} · ${esc(s.role)} · ${esc(s.province)} ${esc(s.city)}</li>`).join('')}</ul><p>网站：${d.site_ids.map(id=>esc(INTEGRITY_SITES.find(s=>s.id===id)?.name??id)).join('、')}</p><p>说明：${esc(d.notes||'未填写')}</p>`;}
  private historyLabel(runId:string){const r=this.state!.rounds.find(r=>r.run_id===runId);return r?`${date(r.created_at)} · 第 ${r.sequence} 次${r.operation==='export'?'底稿导出':'核查'}`:'已保存的历史核查';}
  private recoveryHtml(){
   if(this.confirmed)return `<section class="panel integrity-recovery" id="integrity-recovery"><h2>服务器已确认，本机保存待恢复</h2><p>本次请求已确认，无需再次提交。${esc(this.problem)}</p>${this.confirmed.runId?`<p>已确认任务：${esc(this.confirmed.runId)}</p>`:''}<button class="btn secondary" id="integrity-finish-confirmed">重试本机记录保存</button></section>`;
@@ -113,12 +112,10 @@ export class IntegrityWorkspace {
    if(p.kind==='draft'){const fresh=await this.request<Workspace>('POST','/draft',p.request);if(!Value.Check(IntegrityWorkspaceSchema,fresh)||fresh.revision!==p.request.expected_revision+1||!integritySameDraft(fresh.draft,p.request.draft))throw new ApiError(0,'DATA_UNAVAILABLE');if(this.live()&&!this.completeDraft(fresh))throw new UserFacingError(this.problem);return;}
    if(p.kind==='evidence'){const fresh=await this.request<Workspace>('POST',`/runs/${encodeURIComponent(p.roundId)}/evidence`,p.request);if(!Value.Check(IntegrityWorkspaceSchema,fresh))throw new ApiError(0,'DATA_UNAVAILABLE');if(!this.live())return;this.state!.rounds=fresh.rounds;if(!this.completeEvidence(fresh,p)&&!this.confirmed)await this.readPending();if(this.pending&&!this.confirmed)throw new ApiError(0,'DATA_UNAVAILABLE');this.dialog?.close();this.paint();if(!this.confirmed)this.status('证据已保存；此版底稿不变，免费重新导出后可包含新增证据。');return;}
    const result=await this.request<Dto<'IntegrityRunResponse'>>('POST',p.kind==='check'?'/runs':`/runs/${encodeURIComponent(p.roundId)}/exports`,p.request,p.kind==='check'?billingRecoveryHeaders('IntegrityRunRequest',p.request):{});if(!Value.Check(integritySchemas.IntegrityRunResponse,result))throw new ApiError(0,'DATA_UNAVAILABLE');if(!this.live())return;
-   const previous=this.snapshot(),{pending:removed,...next}=previous;if(p.kind==='check')delete next.roundId;this.confirmed={previous,next,runId:result.run_id};if(!this.finish(previous,next)){this.dialog?.close();this.paint();return;}this.confirmed=undefined;this.pending=undefined;if(p.kind==='check')this.roundId=undefined;this.dialog?.close();location.hash=this.href({run:result.run_id});
+   const previous=this.snapshot(),{pending:removed,...next}=previous;this.confirmed={previous,next,runId:result.run_id};if(!this.finish(previous,next)){this.dialog?.close();this.paint();return;}this.confirmed=undefined;this.pending=undefined;this.dialog?.close();location.hash=this.href({run:result.run_id});
   }catch(error){
    if(!this.live())throw error;
-   // The wire layer checks the original owner/project/key before refusing an
-   // unaccepted legacy request. No new request is sent until the user requotes.
-   const rejected=error instanceof ApiError&&error.status>=400&&error.status<500&&(p.kind==='check'?error.code==='BILLING_REQUEST_REJECTED':['INPUT_REVISION_CONFLICT','PROJECT_RUN_ACTIVE','QUOTE_CHANGED','INPUT_REQUIRED','VALIDATION_FAILED','MATERIAL_UNREADABLE'].includes(error.code));
+   const rejected=error instanceof ApiError&&error.status>=400&&error.status<500&&['INPUT_REVISION_CONFLICT','PROJECT_RUN_ACTIVE','CREDITS_INSUFFICIENT','QUOTE_CHANGED','INPUT_REQUIRED','VALIDATION_FAILED','MATERIAL_UNREADABLE'].includes(error.code);
    if(rejected){const previous=this.snapshot(),{pending:removed,...next}=previous;this.confirmed={previous,next};if(this.finish(previous,next)){this.confirmed=undefined;this.pending=undefined;this.dialog?.close();this.status(this.error(error,['draft','evidence'].includes(p.kind)?'save':'submit'));this.paint();try{const fresh=await this.read();if(this.live()){this.server=structuredClone(fresh);this.state!.rounds=fresh.rounds;this.conflict=this.state!.revision!==fresh.revision;}}catch{/* The known rejection remains authoritative if refreshing fails. */}}}
    this.dialog?.close();this.status(this.error(error,['draft','evidence'].includes(p.kind)?'save':'submit'));this.paint();throw error;
   }
@@ -143,17 +140,17 @@ export class IntegrityWorkspace {
  private paintDraft(){
   // Pending requests must retain their original payload until their receipt is resolved.
   if(!this.locked()){
-   const ids=removeUnavailableIntegritySites(this.state!.draft.site_ids,this.state!.draft.subjects);
+   const ids=removeRetiredIntegritySites(this.state!.draft.site_ids);
    if(ids.length!==this.state!.draft.site_ids.length){this.state!.draft.site_ids=ids;this.changed();this.message='已从本轮准备中移除停用的网站，请核对并保存当前范围。';}
-   for(const subject of this.state!.draft.subjects){const region=inferIntegrityRegion(subject);if(region.province!==subject.province){Object.assign(subject,region);this.changed();}}
   }
+  for(const subject of this.state!.draft.subjects){const region=inferIntegrityRegion(subject);if(region.province!==subject.province){Object.assign(subject,region);this.changed();}}
   const d=this.state!.draft;
-  this.shell(`${this.header(2)}${this.sourceRun?`<p class="integrity-notice">已采用历史名单与网站范围，来源：${esc(this.historyLabel(this.sourceRun))}。请核对后保存；尚未开始新核查。</p>`:""}<fieldset id="integrity-preparation-controls" ${this.locked()?"disabled":""}><legend class="sr-only">名单与网站范围准备</legend><section class="panel integrity-panel integrity-roster-panel"><div class="pf-section-head"><div><h2>核查对象名单 <small id="integrity-subject-count">${d.subjects.length}</small></h2><p>直接在行内编辑企业与人员，保存后可在本项目继续使用。</p></div><div class="integrity-actions"><button class="btn secondary" id="integrity-issuer">带入发行人</button><button class="btn secondary" id="integrity-add">＋ 添加企业</button><button class="btn secondary" id="integrity-person">＋ 添加人员</button></div></div><div class="integrity-roster" id="integrity-roster">${this.subjectRows()}</div><p class="integrity-roster-help">人员识别信息用于内部核对，不会传入公开搜索，底稿仅显示尾号。</p><details class="integrity-batch"><summary>批量添加名单</summary><p>每行一个对象，使用制表符分隔：类型（企业或人员）、名称、关系或职务、身份标识（选填）。每轮最多 5 个对象。</p><label>批量名单<textarea id="integrity-batch" rows="4" placeholder="企业&#9;企业全称&#9;子公司&#10;人员&#9;姓名&#9;董事"></textarea></label><button class="btn secondary" id="integrity-import">添加到名单</button><p id="integrity-batch-status" role="status"></p></details></section>
-  <section class="panel integrity-panel integrity-sites-panel">${integritySitePicker(d.site_ids,d.subjects,this.locked())}
+  this.shell(`${this.header(2)}${this.sourceRun?`<p class="integrity-notice">已采用历史名单与网站范围，来源：${esc(this.historyLabel(this.sourceRun))}。请核对后保存；尚未开始新核查。</p>`:""}<fieldset id="integrity-preparation-controls" ${this.locked()?"disabled":""}><legend class="sr-only">名单与网站范围准备</legend><section class="panel integrity-panel integrity-roster-panel"><div class="pf-section-head"><div><h2>核查对象名单 <small id="integrity-subject-count">${d.subjects.length}</small></h2><p>直接在行内编辑企业与人员，保存后可在本项目继续使用。</p></div><div class="integrity-actions"><button class="btn secondary" id="integrity-issuer">带入发行人</button><button class="btn secondary" id="integrity-add">＋ 添加企业</button><button class="btn secondary" id="integrity-person">＋ 添加人员</button></div></div><div class="integrity-roster" id="integrity-roster">${this.subjectRows()}</div><p class="integrity-roster-help">人员识别信息用于内部核对，不会传入公开搜索，底稿仅显示尾号。</p><details class="integrity-batch"><summary>批量添加名单</summary><p>每行一个对象，使用制表符分隔：类型（企业或人员）、名称、关系或职务、身份标识（选填）。最多 100 个对象。</p><label>批量名单<textarea id="integrity-batch" rows="4" placeholder="企业&#9;企业全称&#9;子公司&#10;人员&#9;姓名&#9;董事"></textarea></label><button class="btn secondary" id="integrity-import">添加到名单</button><p id="integrity-batch-status" role="status"></p></details></section>
+  <section class="panel integrity-panel integrity-sites-panel">${integritySitePicker(d.site_ids)}
    <div class="integrity-registration"><h3>企业注册地 · 自动识别与匹配</h3><p>优先使用已有注册地；企业名称含明确省份时自动带入，可直接修改。深圳、大连、宁波、厦门、青岛单独匹配。</p><div id="integrity-regions">${this.regionRows()}</div></div>
    <p class="integrity-contact">网站还在持续补充，找不到所需网站？<button class="text-button" id="integrity-contact">联系我们加网站 →</button></p></section>
   <section class="panel integrity-panel integrity-notes-panel"><label for="integrity-notes">本轮核查说明 <span>选填</span></label><textarea id="integrity-notes" rows="3" maxlength="12000" placeholder="补充核查范围与需要关注的事项">${esc(d.notes)}</textarea></section><section class="panel integrity-panel"><h2>生成核查底稿文件</h2><p>包含核查汇总、各网站查询记录、取证索引、待办说明与签字页。</p><ul><li>3-1-1 发行人诚信信息汇总清单及查询记录</li><li>1-5-3-4 董事及高级管理人员诚信信息汇总清单及查询记录</li></ul><p>按名单分别生成企业、人员底稿，归档至 4 底稿文件 / 4.3 诚信核查。</p></section><p id="integrity-status" role="status" hidden></p>
-  ${this.state!.price.version===INTEGRITY_COMMERCIAL_RULE.version?'<p class="muted">基础底稿 2,000 积分＋每项“主体×可查询适用官网栏目”85 积分，整轮封顶 22,738 积分。不适用及未定位属地项目不预留；交付按有证据的成功查询项目结算，官网明确零结果计为完成查询，全部失败不扣费。分页、跳转、重试和原范围修复不加费。</p>':''}<footer class="pf-footer"><button class="btn secondary" id="integrity-save">保存名单与范围</button><div><span>本轮 <strong id="integrity-price-estimate">${this.currentPrice()}</strong> · 同轮重新导出免费</span><button class="btn primary" id="integrity-start" ${d.subjects.length&&d.site_ids.length?'':'disabled'}>开始诚信核查</button></div></footer>
+  <footer class="pf-footer"><button class="btn secondary" id="integrity-save">保存名单与范围</button><div><span>本轮 <strong>${this.currentPrice()}</strong> · 同轮重新导出免费</span><button class="btn primary" id="integrity-start" ${d.subjects.length&&d.site_ids.length?'':'disabled'}>开始诚信核查</button></div></footer>
   </fieldset>${this.state!.rounds.length?`<section class="panel integrity-panel"><h2>核查历史与底稿</h2>${this.state!.rounds.map(r=>`<a class="integrity-history" href="${esc(this.href({run:r.run_id}))}"><span><strong>${r.operation==='check'?'诚信核查':'核查底稿导出'} · 第 ${r.sequence} 次任务</strong><small>${esc(date(r.created_at))} · ${r.manifest.draft.subjects.length} 个对象 · ${r.manifest.draft.site_ids.length} 个网站</small></span><span>${esc((runStateLabel[r.state as keyof typeof runStateLabel]??r.state))} →</span></a>`).join('')}</section>`:''}`,'integrity');
   document.querySelector('#integrity-add')!.addEventListener('click',()=>this.addSubject('company'));
   document.querySelector('#integrity-person')!.addEventListener('click',()=>this.addSubject('person'));
@@ -166,29 +163,20 @@ export class IntegrityWorkspace {
    if(field!=='name'&&field!=='role'&&field!=='identifier')return;s[field]=n.value;this.changed();this.subjectError(s.id);
    if(field==='name'){const label=document.getElementById('integrity-region-name-'+s.id);if(label)label.textContent=s.name.trim()||'未填写企业名称';}
   });
-  document.querySelector('#integrity-roster')!.addEventListener('focusout',e=>{const n=e.target;if(!(n instanceof HTMLInputElement)||n.dataset.field!=='name')return;const subject=d.subjects.find(s=>s.id===n.dataset.subject);if(!subject||subject.province)return;const region=inferIntegrityRegion(subject);if(region.province){Object.assign(subject,region);this.changed();document.querySelector('#integrity-regions')!.innerHTML=this.regionRows();this.refreshAvailableSites();}});
+  document.querySelector('#integrity-roster')!.addEventListener('focusout',e=>{const n=e.target;if(!(n instanceof HTMLInputElement)||n.dataset.field!=='name')return;const subject=d.subjects.find(s=>s.id===n.dataset.subject);if(!subject||subject.province)return;const region=inferIntegrityRegion(subject);if(region.province){Object.assign(subject,region);this.changed();document.querySelector('#integrity-regions')!.innerHTML=this.regionRows();}});
   document.querySelector('#integrity-roster')!.addEventListener('click',e=>{
    const b=(e.target as Element).closest<HTMLButtonElement>('[data-remove]');if(!b||this.busy)return;const index=d.subjects.findIndex(s=>s.id===b.dataset.remove);if(index<0)return;
    d.subjects.splice(index,1);this.changed();this.paintSubjects(d.subjects[Math.min(index,d.subjects.length-1)]?.id);if(!d.subjects.length)document.querySelector<HTMLButtonElement>('#integrity-add')!.focus();
   });
-  bindIntegritySitePicker(()=>d.site_ids,ids=>{d.site_ids=ids;this.changed();this.updateCount();},document,()=>d.subjects);
-  document.querySelector('#integrity-regions')!.addEventListener('input',e=>{const n=e.target;if(!(n instanceof HTMLInputElement||n instanceof HTMLSelectElement)||!n.dataset.region)return;const s=d.subjects.find(s=>s.id===n.dataset.region);if(!s||(n.dataset.field!=='province'&&n.dataset.field!=='city'))return;s[n.dataset.field]=n.value;this.changed();document.getElementById('integrity-region-'+s.id)!.innerHTML=this.regional(s);this.refreshAvailableSites();});
+  bindIntegritySitePicker(()=>d.site_ids,ids=>{d.site_ids=ids;this.changed();this.updateCount();});
+  document.querySelector('#integrity-regions')!.addEventListener('input',e=>{const n=e.target;if(!(n instanceof HTMLInputElement||n instanceof HTMLSelectElement)||!n.dataset.region)return;const s=d.subjects.find(s=>s.id===n.dataset.region);if(!s||(n.dataset.field!=='province'&&n.dataset.field!=='city'))return;s[n.dataset.field]=n.value;this.changed();document.getElementById('integrity-region-'+s.id)!.innerHTML=this.regional(s);});
   document.querySelector('#integrity-notes')!.addEventListener('input',e=>{d.notes=(e.target as HTMLTextAreaElement).value;this.changed();});
   document.querySelector('#integrity-save')!.addEventListener('click',()=>{if(this.validateSubjects())void this.act(async()=>{await this.save();this.status('名单与网站范围已保存。');},'save');});
   document.querySelector('#integrity-start')!.addEventListener('click',()=>this.confirmStart());
   document.querySelector('#integrity-contact')!.addEventListener('click',()=>void this.act(async()=>{const a=await this.api.agreement();if(this.live())this.modal('联系我们加网站',`<p>请提供网站名称、官网网址和需要查询的事项。</p><p>${esc(a.support_contact||'请通过账号帮助渠道联系 BondBuddy 服务团队。')}</p>`);},'read'));
  }
- private refreshAvailableSites(){
-  if(this.locked())return;
-  const d=this.state!.draft,ids=removeUnavailableIntegritySites(d.site_ids,d.subjects);
-  if(ids.length!==d.site_ids.length){d.site_ids=ids;this.changed();this.status('已移除当前注册地不可用的网站，请核对本轮范围。');}
-  const picker=document.querySelector('.integrity-site-picker');if(!picker)return;
-  picker.outerHTML=integritySitePicker(d.site_ids,d.subjects);
-  bindIntegritySitePicker(()=>d.site_ids,next=>{d.site_ids=next;this.changed();this.updateCount();},document,()=>d.subjects);
-  this.updateCount();
- }
- private regional(s:IntegritySubject){return ['local-csrc','local-tax'].map(id=>{const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,s);return site.links.length?`<div>${links({...site,links:site.links.map(l=>({...l,label:site.name}))})}${isIntegritySiteAvailableForSubjects(id,[s])?'':'<small>当前入口访问测试未通过，暂停查询</small>'}</div>`:'<small>待补注册地 / 网站</small>';}).join('');}
- private changed(){if(this.pending)return;this.roundId=undefined;this.dirty=true;this.persist();const controls=document.querySelector<HTMLFieldSetElement>('#integrity-preparation-controls');if(controls)controls.disabled=this.locked();const estimate=document.querySelector('#integrity-price-estimate');if(estimate)estimate.textContent=this.currentPrice();}
+ private regional(s:IntegritySubject){return ['local-csrc','local-tax'].map(id=>{const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,s);return site.links.length?`<div>${links({...site,links:site.links.map(l=>({...l,label:site.name}))})}</div>`:'<small>待补注册地 / 网站</small>';}).join('');}
+ private changed(){if(this.pending)return;this.dirty=true;this.persist();const controls=document.querySelector<HTMLFieldSetElement>('#integrity-preparation-controls');if(controls)controls.disabled=this.locked();}
  private updateCount(){document.querySelector('#integrity-site-count')!.textContent=`（已选 ${this.state!.draft.site_ids.length} 个）`;document.querySelector<HTMLButtonElement>('#integrity-start')!.disabled=!this.state!.draft.subjects.length||!this.state!.draft.site_ids.length;}
  private async save(){if(this.locked())throw new UserFacingError('请先核对未确认的请求或名单版本。');if(!this.validateSubjects())throw new UserFacingError('请先修正名单中标出的内容，或移除不需要的行。');this.state!.draft={...this.state!.draft,subjects:this.state!.draft.subjects.map(s=>({...s,name:s.name.trim(),role:s.role.trim(),identifier:s.identifier.trim()}))};this.pendingDraftMismatch=false;this.pending={kind:'draft',request:{expected_revision:this.state!.revision,draft:structuredClone(this.state!.draft)}};if(!this.persist()){this.paint();throw new UserFacingError(this.problem);}await this.sendPending();if(this.pending)throw new UserFacingError('原名单保存结果尚未确认。');}
  private modal(title:string,body:string){this.dialog?.remove();const d=document.createElement('dialog');d.className='pf-modal integrity-modal';d.innerHTML=`<header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="关闭">×</button></header>${body}<p role="status"></p>`;document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.busy)d.close();});d.addEventListener('cancel',e=>{if(this.busy)e.preventDefault();});d.addEventListener('close',()=>d.remove());this.dialog=d;return d;}
@@ -209,11 +197,11 @@ export class IntegrityWorkspace {
  private subjectField(id:string,field:string){return document.querySelector<HTMLInputElement|HTMLSelectElement>(`[data-subject="${CSS.escape(id)}"][data-field="${field}"]`);}
  private paintSubjects(focusId?:string,field='name'){
   // Replace only the roster and registration rows: pending batch text, notes and scope stay intact.
-  document.querySelector('#integrity-roster')!.innerHTML=this.subjectRows();document.querySelector('#integrity-regions')!.innerHTML=this.regionRows();document.querySelector('#integrity-subject-count')!.textContent=String(this.state!.draft.subjects.length);this.refreshAvailableSites();this.updateCount();
+  document.querySelector('#integrity-roster')!.innerHTML=this.subjectRows();document.querySelector('#integrity-regions')!.innerHTML=this.regionRows();document.querySelector('#integrity-subject-count')!.textContent=String(this.state!.draft.subjects.length);this.updateCount();
   if(focusId)this.subjectField(focusId,field)?.focus();
  }
  private addSubject(kind:IntegritySubject['kind'],name='',role=''){
-  if(this.busy)return;if(this.state!.draft.subjects.length>=INTEGRITY_SUBJECT_LIMIT){this.status('每轮最多 5 个对象。');return;}
+  if(this.busy)return;if(this.state!.draft.subjects.length>=100){this.status('每轮最多 100 个对象。');return;}
   const s={id:crypto.randomUUID(),kind,name,role,identifier:'',province:'',city:''};Object.assign(s,inferIntegrityRegion(s));this.state!.draft.subjects.push(s);this.changed();this.paintSubjects(s.id);
  }
  private subjectError(id:string,message='',field='name'){
@@ -221,7 +209,6 @@ export class IntegrityWorkspace {
   for(const name of ['name','identifier']){const input=this.subjectField(id,name);if(message&&name===field)input?.setAttribute('aria-invalid','true');else input?.removeAttribute('aria-invalid');}
  }
  private validateSubjects(){
-  if(this.state!.draft.subjects.length>INTEGRITY_SUBJECT_LIMIT){this.status('每轮最多 5 个对象，请减少名单后保存。');return false;}
   const seen=new Map<string,number>();let first:HTMLInputElement|HTMLSelectElement|undefined;
   for(const [i,s] of this.state!.draft.subjects.entries()){
    const key=JSON.stringify([s.kind,s.name.trim(),s.identifier.trim()]);let error='',field='name';
@@ -236,7 +223,7 @@ export class IntegrityWorkspace {
   const input=document.querySelector<HTMLTextAreaElement>('#integrity-batch')!,status=document.querySelector('#integrity-batch-status')!,existing=this.state!.draft.subjects;
   const rows=input.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean),added:IntegritySubject[]=[];
   if(!rows.length){status.textContent='请先粘贴名单。';return;}
-  if(existing.length+rows.length>INTEGRITY_SUBJECT_LIMIT){status.textContent='每轮最多 5 个对象，请减少名单后重试。';return;}
+  if(existing.length+rows.length>100){status.textContent='每轮最多 100 个对象，请减少名单后重试。';return;}
   for(const [index,line] of rows.entries()){
    const [type,name='',role='',identifier='',...extra]=line.split('\t').map(s=>s.trim()),kind=type==='企业'?'company':['人员','个人'].includes(type)?'person':null;
    if(!kind||!name||extra.length||[name,role,identifier].some(s=>s.length>200)||(kind==='company'&&identifier&&!/^[0-9A-Z]{18}$/.test(identifier))){status.textContent=`第 ${index+1} 行格式不正确，请按“类型、名称、关系、身份标识”四列核对。`;return;}
@@ -248,19 +235,19 @@ export class IntegrityWorkspace {
  private confirmStart(){
   if(this.busy||this.locked()||!this.validateSubjects())return;
   const draft=this.state!.draft;
-  if(draft.subjects.some(subject=>!draft.site_ids.some(id=>{const site=INTEGRITY_SITES.find(s=>s.id===id);return site&&!(subject.kind==='person'&&site.companyOnly)&&resolveIntegritySite(site,subject).links.length>0;}))){this.status('每个对象至少需要一个可查询的适用官网，请核对人员适用网站和企业注册地。');return;}
+  if(draft.subjects.some(s=>s.kind==='person')&&!draft.site_ids.some(id=>!INTEGRITY_SITES.find(s=>s.id===id)?.companyOnly)){this.status('人员需要选择支持人员核查的网站。');return;}
   void this.act(async()=>{
    await this.save();if(!this.live()||this.locked())return;
    const revision=this.state!.revision,draft=structuredClone(this.state!.draft),commercial=isCnyPrice(this.state!.price);
-   this.roundId??=crypto.randomUUID();if(!this.persist())throw new UserFacingError(this.problem);const roundId=this.roundId;
-   const quote=commercial?await this.request<Dto<'IntegrityQuoteResponse'>>('POST','/quote',{expected_revision:revision,round_id:roundId}):undefined;
+   const quote=commercial?await this.request<Dto<'IntegrityQuoteResponse'>>('POST','/quote',{expected_revision:revision}):undefined;
    if(!this.live()||this.state!.revision!==revision||canonical(this.state!.draft)!==canonical(draft))throw new ApiError(409,'QUOTE_CHANGED');
    if(quote&&!scopeReady(quote)){const pending=this.modal(scopeStatusLabel(quote),scopeLifecycleHtml(quote)+'<button class="btn primary" id="integrity-refresh-scope">刷新范围报价</button>');pending.querySelector('#integrity-refresh-scope')!.addEventListener('click',()=>{pending.close();this.confirmStart();});return;}
    const price=quote??this.state!.price,points=quote?.points??this.state!.price.points,priceVersion=quote?.price_version??this.state!.price.version,total=displayPrice(price,points);
    const submit=async()=>{
     if(quote&&!scopeReady(quote))throw new ApiError(409,'QUOTE_EXPIRED');
     if(this.state!.revision!==revision||canonical(this.state!.draft)!==canonical(draft))throw new ApiError(409,'QUOTE_CHANGED');
-    this.pending={kind:'check',...(commercial?{price:copyCommercePrice(price)}:{}),request:{request_id:crypto.randomUUID(),round_id:roundId,expected_revision:revision,price_version:priceVersion,expected_points:points,...(quote?.scope_quote_id?{scope_quote_id:quote.scope_quote_id}:{})}};await this.sendPending();
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode([this.owner,this.id,revision].join('\0'))),request_id='integrity-check-'+[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+    this.pending={kind:'check',...(commercial?{price:copyCommercePrice(price)}:{}),request:{request_id,expected_revision:revision,price_version:priceVersion,expected_points:points,...(quote?.scope_quote_id?{scope_quote_id:quote.scope_quote_id}:{})}};await this.sendPending();
    };
    if(isAutomaticCharge(price)){await submit();return;}
    const d=this.modal('开始本轮诚信核查',`${this.summary(draft)}<p>本轮费用 <strong>${total}</strong>，开始时预留，底稿交付后结算。未完成交付将释放预留。</p>${scopeLinesHtml(price)}<p>新轮重新查询全部所列对象和网站，不沿用旧查询时间、结论或人工证据。部分网站受限仍可能交付并收取本轮费用；注册地缺失与人员不适用项会如实记录。同轮重新导出免费。</p><button class="btn primary" id="integrity-confirm">确认并开始 · ${total}</button>`);
@@ -293,7 +280,7 @@ export class IntegrityWorkspace {
    });}finally{b.textContent=label;b.removeAttribute('aria-busy');}
   },'download')));
   document.querySelectorAll<HTMLButtonElement>('[data-run-action]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{if(this.locked())return;await this.api.runAction(r.run_id,b.dataset.runAction as 'pause'|'resume'|'cancel',this.controller.signal);await this.refresh();})));
-  document.querySelector('#integrity-use-round')?.addEventListener('click',()=>{if(!writable)return;const prepared={...structuredClone(r.manifest.draft),site_ids:removeUnavailableIntegritySites(r.manifest.draft.site_ids,r.manifest.draft.subjects)};const d=this.modal('采用此轮名单准备新核查',`${this.summary(prepared)}<p>将替换当前准备名单、网站范围和说明，仅带入当前可用网站，原核查记录及底稿保留。采用只保存到本机，不查询网站。新一轮仍需确认本次范围与费用。</p>${this.dirty?'<details><summary>当前尚未保存的名单将被替换</summary>'+this.summary(this.state!.draft)+'</details>':''}<button class="btn primary" id="integrity-adopt-confirm">采用到本轮准备</button>`);d.querySelector('#integrity-adopt-confirm')!.addEventListener('click',()=>{this.state!.draft=structuredClone(prepared);this.sourceRun=r.run_id;this.dirty=true;if(this.persist()){d.close();location.hash=this.href();}else d.querySelector('[role=status]')!.textContent=this.problem;});});
+  document.querySelector('#integrity-use-round')?.addEventListener('click',()=>{if(!writable)return;const prepared={...structuredClone(r.manifest.draft),site_ids:removeRetiredIntegritySites(r.manifest.draft.site_ids)};const d=this.modal('采用此轮名单准备新核查',`${this.summary(prepared)}<p>将替换当前准备名单、网站范围和说明，仅带入当前可用网站，原核查记录及底稿保留。采用只保存到本机，不查询网站。新一轮仍需确认本次范围与费用。</p>${this.dirty?'<details><summary>当前尚未保存的名单将被替换</summary>'+this.summary(this.state!.draft)+'</details>':''}<button class="btn primary" id="integrity-adopt-confirm">采用到本轮准备</button>`);d.querySelector('#integrity-adopt-confirm')!.addEventListener('click',()=>{this.state!.draft=structuredClone(prepared);this.sourceRun=r.run_id;this.dirty=true;if(this.persist()){d.close();location.hash=this.href();}else d.querySelector('[role=status]')!.textContent=this.problem;});});
   document.querySelector('#integrity-export')?.addEventListener('click',()=>{if(!writable||!bound.original||!terminal.has(bound.original.state))return;const evidenceIds=bound.original.evidence.map(e=>e.id),d=this.modal('免费重新导出本轮底稿',`<p>沿用原核查轮的完整名单和查询记录，包含当前 ${evidenceIds.length} 份人工证据。本次导出包含在原任务内，不重新查询官网，旧版底稿仍保留。</p><p>企业、人员分别生成底稿；PDF / Word 原件列入证据索引，不合并正文。</p><button class="btn primary" id="integrity-export-free-confirm">确认导出新版本 · 免费</button>`);d.querySelector('#integrity-export-free-confirm')!.addEventListener('click',()=>void this.act(async()=>{this.pending={kind:'export',roundId:bound.roundId!,request:{request_id:crypto.randomUUID(),expected_evidence_ids:evidenceIds}};await this.sendPending();},'submit'));});
   document.querySelectorAll<HTMLButtonElement>('[data-evidence]').forEach(b=>b.addEventListener('click',()=>{const [index,siteId]=b.dataset.evidence!.split(':');this.evidenceModal(r,r.manifest.draft.subjects[Number(index)],siteId);}));
   if(!done)this.poll();

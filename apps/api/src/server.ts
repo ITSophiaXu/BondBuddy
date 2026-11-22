@@ -46,7 +46,6 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
 import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
 import { installAdminInspectionRoutes } from './admin-inspection.js';
-import { installPerformanceRoutes } from './performance-routes.js';
 import { readVerifiedArtifact } from './artifact-reader.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
@@ -78,7 +77,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertAuthoringAuditRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -107,7 +106,7 @@ import {installPaymentReconciliation} from './payment-reconciliation.js';
 import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { /** Node test runner only: replay synthetic historical billing policies. */ historicalBillingFixture?: boolean; directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -161,14 +160,10 @@ export function createServer(settings: Settings = {}) {
   // Fastify runs onClose hooks in reverse registration order. Register the
   // owned pool first so in-flight payment/statement reconciliation drains first.
   if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
-  // Historical tariffs remain executable through their persisted contracts. They
-  // are no longer selectable by deployment flags for a new HTTP commission.
-  // The explicit fixture seam exists only inside Node's test runner.
-  if(settings.historicalBillingFixture&&!process.env.NODE_TEST_CONTEXT)throw new Error('Historical billing fixtures require node --test');
-  const subscriptionBilling=settings.historicalBillingFixture?settings.enableSubscriptionBilling??false:true;
+  const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
   configureAutomaticBilling(pool,subscriptionBilling);
   app.addHook('onRequest',(_request,_reply,done)=>withAutomaticBillingRequest(subscriptionBilling,done));
-  const commercial = subscriptionBilling || (!!settings.historicalBillingFixture&&settings.enableOutcomePricing===true);
+  const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
   const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
   const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
   const paymentProviders = settings.paymentProviders ?? paymentProvidersFromEnv(process.env).providers;
@@ -306,7 +301,6 @@ export function createServer(settings: Settings = {}) {
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installAdminDashboardRoutes(app,{db,owner});
   installAdminInspectionRoutes(app,{db,owner});
-  installPerformanceRoutes(app,{db,owner});
   installBillingPermissions(app,{db,owner});
   installBillingPriceAdmin(app,db,owner);
   installTaskRefunds(app,{db,owner});
@@ -783,7 +777,6 @@ export function createServer(settings: Settings = {}) {
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
         assertAuthoringSourceInformation(resolved, p.update_details.source_prospectuses);
-      if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode !== 'unified_v1') assertAuthoringAuditRequired(resolved);
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
       let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
@@ -926,10 +919,7 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
-        if (['update','generation'].includes(p.kind)) {
-          assertAuthoringSourceRequired(resolved, authoring.previous_output);
-          assertAuthoringAuditRequired(resolved);
-        }
+        if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
         inheritPreviousOutputFormat(authoring);
         try {
           const snapshot=await lockNoneBaseline(client,{owner:user,projectId:id},p.kind,resolved,authoring,b.first_draft_confirmation,new Date().toISOString());
@@ -1523,7 +1513,6 @@ export function createServer(settings: Settings = {}) {
         assertAuthoringSourceRequired(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.previous_output);
         assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
       }
-      if (['update','generation'].includes(lockedKind)) assertAuthoringAuditRequired(input.rows[0].manifest.materials);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);

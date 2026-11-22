@@ -53,7 +53,7 @@ for(const width of [1440,390])test(`ZIP preparation counts, elapsed time and pac
   await expect(bar).toHaveCSS('animation-name','wp-download-wait');
   await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-packaging-${width}.png`});
   await page.evaluate(()=>{(window as any).oldDownloadFeedback=document.getElementById('wp-download-feedback');});
-  await page.getByRole('link',{name:'返回本项目文件',exact:true}).click();
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
   const last=await page.evaluate(()=>(window as any).oldDownloadFeedback.textContent),lastReads=reads;
   await page.clock.fastForward(6000);
@@ -95,7 +95,7 @@ test('leaving during the polling delay cancels further download requests',async(
   });
   await page.goto(s.href);await targetPanel(page).getByRole('button',{name:'下载已完成文件（ZIP）'}).click();
   await expect.poll(()=>reads).toBe(1);
-  await page.getByRole('link',{name:'返回本项目文件',exact:true}).click();
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
   await page.waitForTimeout(1200);expect(reads).toBe(1);
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
@@ -119,7 +119,7 @@ for(const streaming of [false,true])test(`leaving an unfinished ZIP download kee
   },{streaming});
   await page.goto(s.href);await targetPanel(page).getByRole('button',{name:'下载已完成文件（ZIP）'}).click();
   await expect(page.locator('#wp-download-feedback')).toContainText(streaming?'50%':'正在准备下载');
-  await page.getByRole('link',{name:'返回本项目文件',exact:true}).click();
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
   await expect.poll(()=>page.evaluate(()=>(window as any).zipReadAborted)).toBe(true);
   expect(await page.evaluate(()=>(window as any).zipReadCount)).toBe(1);
@@ -136,7 +136,7 @@ test('a failed ZIP can retry successfully and then leave the result page',async(
   await page.goto(s.href);const button=targetPanel(page).getByRole('button',{name:'下载已完成文件（ZIP）'});
   await button.click();await expect(page.locator('#wp-download-feedback')).toContainText('暂时无法读取');await expect(button).toBeEnabled();
   const download=page.waitForEvent('download');await button.click();await download;
-  await page.getByRole('link',{name:'返回本项目文件',exact:true}).click();
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));expect(reads).toBe(2);
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);expect(s.original.errors).toEqual([]);
 });

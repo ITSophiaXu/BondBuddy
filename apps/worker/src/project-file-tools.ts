@@ -1,4 +1,3 @@
-import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
@@ -17,9 +16,8 @@ import {verifiedFileLinks} from './project-file-evidence.js';
 export const projectFilesRoot=resolve(fileURLToPath(import.meta.url),'../../../..');
 const run=promisify(execFile);
 export async function projectFilePython(ctx:StageContext,args:string[]){
-  const operation=['inspect','inspect-complete','patch'].includes(args[0]??'')?args[0]!:'other';
-  return withPerformanceSpan(operation.startsWith('inspect')?'document.inspect':'document.transform',{operation},()=>run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
-    {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024}));
+  return run(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',['-B','-m','bondbuddy_file_authoring.project_files',...args],
+    {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:1024*1024});
 }
 export async function inspectProjectFile(ctx:StageContext,path:string,complete=false):Promise<ProjectFileText>{
   const dir=await mkdtemp(join(tmpdir(),'bb-file-text-'));

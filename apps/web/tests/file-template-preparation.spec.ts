@@ -43,13 +43,13 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await page.getByRole('button',{name:'预览模板',exact:true}).click();await page.locator('[data-record="word-1"]').click();await expect(page.getByRole('dialog')).toContainText('项目名称：【本项信息】');
  await page.getByRole('button',{name:'查看版式预览'}).click();await expect(page.locator('#fg-layout-status')).toContainText('结构预览已保留');await page.getByRole('button',{name:'关闭',exact:true}).click();
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('builtin-set|annual');
  await expect(page.locator('#fg-requirements')).toBeHidden();await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  await page.locator('#fg-requirements').fill('合成验收要求，保留原 Word 格式');await page.getByRole('button',{name:'保存准备清单'}).click();
  await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('3 份文件 · 13,500 积分');
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');
- await page.getByRole('button',{name:'确认本批并开始试生成'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
+ await page.getByRole('button',{name:'确认生成 3 份文件'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
  await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'desktop-synthetic.png'),fullPage:true});
 });
@@ -135,7 +135,7 @@ test('directory loading failure and cancellation leave upload and retry availabl
 });
 
 test('lost submission reply is recovered with the same frozen request after reload',async({page})=>{
- const state=await setup(page);await useWord(page);await page.locator('[data-fg-type="workpaper"]').uncheck();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ const state=await setup(page);await useWord(page);await page.locator('[data-fg-type="workpaper"]').uncheck();await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  state.lost=true;await page.getByRole('button',{name:'核对清单与费用'}).click();await page.getByRole('button',{name:'确认生成 1 份文件'}).click();await expect(page.locator('#fg-submit-status')).not.toBeEmpty();
  await page.reload();await page.getByRole('button',{name:'确认上次提交结果'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(2);expect(state.submissions[1]).toEqual(state.submissions[0]);
 });
@@ -143,9 +143,9 @@ test('automatic mixed package uses server tariffs and starts without an amount c
  const state=await setup(page,true);
  await useWord(page);
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await expect(page.locator('.fg-footer')).toContainText('14,881 积分');
- await page.getByRole('button',{name:'开始试生成',exact:true}).click();
+ await page.getByRole('button',{name:'生成本批文件',exact:true}).click();
  await expect(page.locator('.fg-status')).toContainText('已提交');
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.submissions).toHaveLength(1);
  expect(state.submissions[0]).toMatchObject({expected_points:14881,price_version:AUTOMATIC_PRICE_VERSION,document_quotes:[{document_type:'annual',draft_version:5,scope_quote_id:'scope-annual'}]});
@@ -161,8 +161,8 @@ test('mixed package funding return replays the exact original request without a 
  await page.route('**/api/v1/subscriptions',route=>{payments.push(route.request().postData()??'');return route.fulfill({status:500,json:{code:'MUST_NOT_PAY'}});});
  await useWord(page);
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
- await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
- await page.getByRole('button',{name:'开始试生成',exact:true}).click();
+ await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ await page.getByRole('button',{name:'生成本批文件',exact:true}).click();
  const link=page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true});await expect(link).toBeVisible();
  expect(requests).toHaveLength(1);expect(state.submissions).toHaveLength(0);
  const resumeId=new URLSearchParams((await link.getAttribute('href'))!.split('?')[1]).get('resume_request')!;
@@ -201,7 +201,7 @@ test('unresolved templates stay visible and stop quotes until the user chooses a
  await page.locator('[data-fg-mapping="entry-2"]').selectOption('word-2');
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
  await page.getByRole('button',{name:'核对清单与费用',exact:true}).click();
- await page.getByRole('button',{name:'确认本批并开始试生成'}).click();await expect.poll(()=>state.submissions.length).toBe(1);expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
+ await page.getByRole('button',{name:'确认生成 2 份文件'}).click();await expect.poll(()=>state.submissions.length).toBe(1);expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
 });
 
 test('reselecting the same package keeps manual choices and the selected scope',async({page})=>{

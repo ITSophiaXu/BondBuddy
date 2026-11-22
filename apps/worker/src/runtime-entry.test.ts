@@ -32,16 +32,6 @@ const until = async <T>(read: () => Promise<T | undefined | null | false>, ms = 
   for (;;) { const v = await read(); if (v) return v; if (Date.now() > end) throw new Error('timed out'); await new Promise(r => setTimeout(r, 100)); }
 };
 
-test('reserved upload slot is opt-in and requires one pure parser with bounded spool headroom',()=>{
-  const env={BB_WORKER_JOB_KINDS:'parse',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_SPOOL_DIR:'/synthetic/spool',BB_UPLOAD_SPOOL_MAX_BYTES:String(128*1024*1024),BB_PARSE_CACHE_OCR_VERSION:'synthetic-1',BB_PARSE_CACHE_BASIS_VERSION:'synthetic-1'};
-  const options=()=>workerRuntimeOptionsFromEnv({} as Pool,{} as ReturnType<typeof azureBlobs>,{...env,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'});
-  assert.equal(workerRuntimeOptionsFromEnv({} as Pool,{} as ReturnType<typeof azureBlobs>,env).uploadConfirmationSmallSlot,false);
-  assert.equal(options().uploadConfirmationSmallSlot,true);
-  assert.doesNotThrow(()=>new WorkerRuntime(options()));
-  for(const change of [{BB_UPLOAD_SPOOL_MAX_BYTES:String(115*1024*1024)},{BB_WORKER_JOB_KINDS:'run,parse'},{BB_UPLOAD_CONFIRMATION_ENABLED:'0'}])
-    assert.throws(()=>workerRuntimeOptionsFromEnv({} as Pool,{} as ReturnType<typeof azureBlobs>,{...env,...change,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}));
-});
-
 test('production options install the controlled fact producer into the materials stage', () => {
   const options = workerRuntimeOptionsFromEnv({} as Pool, {} as ReturnType<typeof azureBlobs>, { BB_WORKER_JOB_KINDS: 'run' });
   assert.equal(typeof options.factCandidateProducer, 'function');
