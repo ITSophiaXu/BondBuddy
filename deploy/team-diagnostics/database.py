@@ -11,7 +11,9 @@ SPECS = {
     'runs': ('bb_runs', 'id owner_user_id project_id task_kind state stage event_cursor artifact_id artifact_version created_at updated_at'),
     'jobs': ('bb_jobs', 'id owner_user_id project_id run_id job_type subtype state stage lease_until attempts max_attempts error_code created_at updated_at execution_node_id execution_node_epoch execution_session_id'),
     'attempts': ('bb_model_call_attempts', 'id owner_user_id job_id logical_call_id attempt_no status usage_status model_id provider_request_id prompt_snapshot_id user_submission_id created_at updated_at'),
-    'runtime': ('bb_model_call_attempt_runtime', 'id owner_user_id project_id job_id run_id trace_id attempt_id logical_call_id attempt_no adapter adapter_version model_provider model_config_version started_at duration_ms exit_code error_code recorded_at'),
+    'runtime': ('bb_model_call_attempt_runtime', 'id owner_user_id project_id job_id run_id trace_id attempt_id logical_call_id attempt_no adapter adapter_version model_provider model_config_version started_at duration_ms exit_code exit_signal exit_capture_status finish_reason finish_reason_capture_status error_code recorded_at'),
+    'execution-configs': ('bb_model_attempt_execution_configs', 'attempt_id owner_user_id project_id run_id job_id logical_call_id attempt_no effective_timeout_ms timeout_deadline_at timeout_source timeout_branch model_config_version loaded_adapter_sha256 selected_config_sha256 release_sha overlay_sha256 recorded_at'),
+    'result-failures': ('bb_model_result_failure_diagnostics', 'id attempt_id owner_user_id project_id run_id job_id logical_call_id attempt_no substage error_class error_code recorded_at'),
     'usage': ('bb_call_usage_effective', 'attempt_id owner_user_id job_id logical_call_id attempt_no call_status usage_status input_tokens output_tokens cached_input_tokens reasoning_tokens correction_id'),
     'observations': ('bb_provider_call_observations', 'id owner_user_id project_id job_id run_id attempt_id logical_call_id attempt_no outcome usage_status usage error_code provider_status provider_request_id observed_at'),
     'usage-observations': ('bb_usage_observations', 'id owner_user_id attempt_id source usage_status input_tokens output_tokens cached_input_tokens reasoning_tokens provider_request_id observed_at created_at'),
@@ -49,6 +51,12 @@ PERFORMANCE_ATTRIBUTE_KEYS = (
     'reasoning_tokens', 'retry_count', 'poll_count', 'duration_ms',
     'elapsed_ms', 'first_stdout_ms', 'first_event_ms', 'ttft_ms',
     'timing_complete', 'tool_timing_complete', 'cache_hit', 'reused',
+    'tool_observed_start_count', 'tool_measured_count', 'tool_measured_duration_sum_ms',
+    'tool_measured_busy_union_ms', 'tool_tracking_overflow_count', 'tool_active_count',
+    'tool_aggregate_timing_complete', 'tool_dedup_uncertain',
+    'resource_scope', 'resource_availability', 'resource_sample_count', 'resource_sample_error_count',
+    'cgroup_cpu_usage_usec', 'cgroup_cpu_throttled_usec', 'cgroup_memory_bytes', 'cgroup_process_count',
+    'worker_process_active_codex',
 )
 
 

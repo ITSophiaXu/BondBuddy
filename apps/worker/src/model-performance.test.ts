@@ -70,6 +70,38 @@ test('tool tracking is bounded and excludes text items and raw identifiers', () 
   assert.equal(JSON.stringify(f.records).includes('PRIVATE_REASONING'), false);
 });
 
+test('one thousand tools keep bounded detail while measured aggregate continues after 128',()=>{
+  const f=fixture();
+  for(let i=0;i<1000;i++){
+    f.at(i*3);f.event('item.started',`private-${i}`);
+    f.at(i*3+2);f.event('item.completed',`private-${i}`);
+  }
+  f.at(3001);f.observer.finish('succeeded');
+  const summary=f.records[0].attributes;
+  assert.equal(f.records.length,129);
+  assert.equal(summary.tool_observed_start_count,1000);
+  assert.equal(summary.tool_measured_count,1000);
+  assert.equal(summary.tool_measured_duration_sum_ms,2000);
+  assert.equal(summary.tool_measured_busy_union_ms,2000);
+  assert.equal(summary.tool_omitted_count,872);
+  assert.equal(summary.tool_timing_complete,false);
+  assert.equal(summary.tool_dedup_uncertain,true,'bounded recent IDs cannot promise perfect deduplication');
+});
+
+test('active long exec emits a bounded checkpoint before a hard termination can skip finish',async()=>{
+  const snapshots:Record<string,unknown>[]=[];
+  const exec:PerformanceSpanHandle={spanId:'synthetic-exec',annotate:attrs=>snapshots.push({...attrs}),end:()=>{}};
+  const observer=createModelProcessPerformance(exec,{now:()=>10,sampleIntervalMs:5,
+    resourceSampler:async()=>({resource_scope:'shared_worker_container',resource_availability:'cgroup_v2',
+      cgroup_cpu_usage_usec:100,cgroup_cpu_throttled_usec:2,cgroup_memory_bytes:1024,cgroup_process_count:3}),
+    startSpan:()=>({spanId:'synthetic-tool',annotate(){},end(){}})});
+  observer.activity({type:'item.started',item:{id:'private-tool',type:'command_execution'}});
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.ok(snapshots.some(s=>s.tool_active_count===1&&s.resource_sample_count===1&&s.cgroup_cpu_throttled_usec===2));
+  assert.equal(JSON.stringify(snapshots).includes('private-tool'),false);
+  observer.finish('interrupted');
+});
+
 test('no trace context avoids metric bookkeeping and preserves stage values', async () => {
   const observer = createModelProcessPerformance({ spanId: null, end() {}, annotate() {} }, {
     now: () => assert.fail('no-op observer must not read the clock'), startSpan: () => assert.fail('no-op observer must not allocate a span') });

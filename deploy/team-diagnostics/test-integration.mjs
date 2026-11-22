@@ -45,6 +45,14 @@ try {
   pass(`${migrations.length} current application migrations on isolated PG16`);
   const install=run(['run','--rm','--network','none','--mount',mount,'-w','/code','python:3.11-slim','python','-B','database.py']).stdout;
   sql(install);sql(install);pass('diagnostic views install and repeat installation');
+  for(const [kind,view,table] of [
+    ['execution-configs','execution_configs','bb_model_attempt_execution_configs'],
+    ['result-failures','result_failures','bb_model_result_failure_diagnostics']]){
+    assert.equal(sql(`SELECT available FROM bb_diagnostics.availability WHERE kind='${kind}'`,{role:'bb_diagnostics_reader'}).stdout.trim(),'t');
+    assert.equal(sql(`SELECT count(*) FROM bb_diagnostics.${view}`,{role:'bb_diagnostics_reader'}).stdout.trim(),'0');
+    assert.notEqual(sql(`SELECT count(*) FROM public.${table}`,{role:'bb_diagnostics_reader',allowFailure:true}).status,0);
+  }
+  pass('model diagnostic views are readable while raw evidence tables remain denied');
   const performanceAvailable=sql("SELECT available FROM bb_diagnostics.availability WHERE kind='performance-spans'",{role:'bb_diagnostics_reader'}).stdout.trim()==='t';
   if(performanceAvailable){
     assert.equal(sql('SELECT count(*) FROM bb_diagnostics.performance_sessions, bb_diagnostics.performance_spans',{role:'bb_diagnostics_reader'}).stdout.trim(),'0');
