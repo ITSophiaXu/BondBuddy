@@ -39,7 +39,7 @@ for(const width of [1440,390])test(`document QA: upload and delivery at ${width}
   await page.getByRole('button',{name:'收起助手',exact:true}).click();
   await expect(page.locator('#ba-panel')).toBeHidden();
   s.workspace.runs=answers;await page.goto(route(answerId));
-  await expect(page.getByRole('button',{name:'下载回答文档（Word）',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'下载已回答的问题清单（Word）',exact:true})).toBeVisible();
   const missing=page.getByRole('region',{name:'待补材料清单'});
   await expect(missing).toContainText('2 个问题待补充');
   await expect(missing).toContainText('请补充偿债资金与现金流安排。');
@@ -66,7 +66,9 @@ test('document QA: PDF source upload starts only free preparation',async({page})
   expect(s.uploads[0].media_type).toBe('application/pdf');
   expect(s.prepares[0].source.pin.sha256).toBe(s.uploads[0].sha256);
   expect(s.answers).toEqual([]);expect(s.drafts).toEqual([]);
-  await expect(page.locator('.qa-run-head')).toContainText('免费');
+  await expect(page.locator('.qa-preparation-status')).toContainText('尚未开始回答');
+  await expect(page.locator('.qa-page progress')).toHaveCount(0);
+  await expect(page.locator('#qa-download')).toHaveCount(0);
   await expect(page.locator('.qa-missing-list')).toHaveCount(0);
   expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
 });
