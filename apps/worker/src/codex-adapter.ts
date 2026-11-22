@@ -1094,10 +1094,14 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if (executionSignal?.aborted) return cancelAttempt();
         await withPerformanceSpan('model.admission.check', {}, () => input.beforeIntent?.());
         if (executionSignal?.aborted) return cancelAttempt();
-        const callDeadline=input.deadlineAt??input.fileWorkspace?.deadlineAt;
+        let callDeadline=input.deadlineAt??input.fileWorkspace?.deadlineAt;
         if(callDeadline!==undefined&&!isFileAuthoringDeadline(callDeadline))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(callDeadline!==undefined&&Date.parse(callDeadline)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
         await withPerformanceSpan('model.intent.persist', {}, () => journal.recordIntent(intent)); // durable before spawn
+        // Persistence may cross the absolute deadline. Re-read it before the
+        // native call so an expired context is observed as not sent.
+        callDeadline=input.deadlineAt??input.fileWorkspace?.deadlineAt;
+        if(callDeadline!==undefined&&!isFileAuthoringDeadline(callDeadline))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         // Freeze the DB-bound original identity before any native send. Native
         // exit must need only local bytes and its actual call empty proof to seal.
         if(input.callScope)frozenSpoolIdentity=structuredClone(await journal.spoolIdentity!(intent));

@@ -330,6 +330,10 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const parseStream2 = sse((await send('GET', `/api/v1/projects/${p7Project}/materials/${m.material_id}/parse-job/stream`, undefined, { headers: { 'last-event-id': String(lastParseSeq) } })).body);
     assert.deepEqual(parseStream2.filter(f => f.id !== undefined).map(f => f.data.type), ['material_parse.claimed', 'material_parse.stage_completed', 'material_parse.succeeded']);
     assert.equal(parseStream2.at(-1)!.data.reason, 'terminal');
+    // The prior sweep recorded a 15-second retry delay. Advance its due
+    // timestamp in this synthetic fixture to exercise the next scheduled pass.
+    await pool.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,
+      '{paused_sweep_v1,awaiting_materials,next_due_ms}','0'::jsonb,false) WHERE run_id=$1`, [materialsRun]);
     await runtime.sweep();
     assert.equal((await runRow(materialsRun)).state, 'queued');
     // Parsed files cannot fix the former notes-context overflow. It must not requeue forever.
