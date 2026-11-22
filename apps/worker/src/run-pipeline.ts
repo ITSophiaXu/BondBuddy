@@ -1,5 +1,6 @@
 import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
+import {sampleRunMemory} from './run-memory-performance.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
@@ -779,15 +780,16 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     };
     return await withPerformanceTrace(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id,runId:run.id,
       jobId:lease.jobId,traceId:run.id,taskKind:run.task_kind,serviceRole:'worker',workerInstanceId:deps.workerInstanceId},async rootSpan=>{
+      const memory=sampleRunMemory();
       recordPerformanceInterval('worker.claim',{startedAt:claimStartedAt,endedAt:claimEndedAt,clockSource:'wall_clock_observation'});
       if(lease.attempts===1)recordPerformanceInterval('job.queue_wait',
         {startedAt:(run as RunRow & {created_at:string|Date}).created_at,endedAt:claimStartedAt,clockSource:'wall_clock_observation'});
       try {
         const result=await execute();
-        rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'?'interrupted':'succeeded',{outcome:result});
+        rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'?'interrupted':'succeeded',{outcome:result,...await memory.stop()});
         return result;
       } catch(error) {
-        rootSpan.end('interrupted');
+        rootSpan.end('interrupted',await memory.stop());
         throw error;
       }
     });
