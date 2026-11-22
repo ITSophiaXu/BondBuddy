@@ -1,3 +1,5 @@
+import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
+import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
@@ -26,10 +28,13 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
+
+const finish = (...args: Parameters<typeof persistRunFinish>) =>
+  withPerformanceSpan('run.finish',{outcome:args[2]},()=>persistRunFinish(...args));
 import { createAuthoringActivityObserver } from './authoring-action-progress.js';
 import { createReviewActionObserver, reviewActionMode } from './review-action-progress.js';
 import type { MaterialToolData } from './authoring-material-tools.js';
@@ -93,6 +98,7 @@ export type RunPipelineDependencies = {
   loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
   /** #76 target-period candidate producer call point; absent = unchanged. */
   produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
+  workerInstanceId?:string;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -594,9 +600,12 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
 
 /** Claims one run job and executes its remaining stages. Returns what happened to the durable job. */
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
-  const { pool, blobs } = deps;
+  const { pool } = deps;
+  const blobs=performanceBlobs(deps.blobs);
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
+  const claimStartedAt=new Date();
   const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
+  const claimEndedAt=new Date();
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();
@@ -606,10 +615,11 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,
+    const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,r.created_at,
       EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
         WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
       FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2`, [lease.runId, lease.owner])).rows[0] as RunRow;
+    const execute=async():Promise<RunPipelineOutcome>=>{
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
@@ -647,13 +657,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if(gate?.kind==='fail'){await finish(pool,lease,'failed',{errorCode:gate.code,failedStage:stage.name});return 'failed';}
       }
       const saved = checkpoint[stage.name];
-      if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
+      if (saved && !stage.replay) { await withPerformanceSpan('stage.reuse',{stage:stage.name},span=>{span.end('reused');}); ctx.values.set(stage.name, saved); continue; }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
       await beginRunStage(pool,lease,stage.name);
-      const outcome = await stage.run(ctx);
+      const outcome = await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
+        const value=await stage.run(ctx);
+        span.end(value.kind==='fail'?'failed':value.kind==='pause'?'paused':value.kind==='stopped'?'cancelled':'succeeded',
+          {outcome:value.kind,...(value.kind==='fail'?{error_code:value.code}:{})});
+        return value;
+      });
       if (outcome.kind === 'done') {
         if (!saved) {
-          await checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {});
+          await withPerformanceSpan('stage.checkpoint',{stage:stage.name},()=>checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {}));
           checkpoint[stage.name] = outcome.checkpoint ?? {};
         } else if (outcome.upgradeCheckpoint) {
           await upgradeStageCheckpoint(pool, lease, stage.name, outcome.checkpoint ?? {});
@@ -691,7 +706,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         : [];
       const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
       if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
-        const baseline = await promoteWordArtifact(pool, lease, await wordBytes(outcome.baselineBytes), blobs);
+        const baselineBytes=await wordBytes(outcome.baselineBytes);
+        const baseline = await withArtifactPromotionPerformance({artifact_kind:'baseline',input_bytes:baselineBytes.length},()=>promoteWordArtifact(pool, lease, baselineBytes, blobs));
         if (baseline.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: baseline.failureCode, failedStage: stage.name });
           return 'failed';
@@ -700,7 +716,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: baseline.artifactId, version: baseline.artifactVersion, kind: 'baseline' });
       }
       if (outcome.cleanBytes) {
-        const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs, outcome.deliveryPolicy);
+        const cleanBytes=await wordBytes(outcome.cleanBytes);
+        const clean = await withArtifactPromotionPerformance({artifact_kind:'clean',input_bytes:cleanBytes.length},()=>promoteWordArtifact(pool, lease, cleanBytes, blobs, outcome.deliveryPolicy));
         if (clean.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: clean.failureCode, failedStage: stage.name });
           return 'failed';
@@ -709,19 +726,21 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: clean.artifactId, version: clean.artifactVersion, kind: 'clean' });
       }
       for (const attachment of outcome.attachments ?? []) {
-        const extra = attachment.mediaType === 'application/pdf'
+        const extra = await withArtifactPromotionPerformance({artifact_kind:attachment.kind,input_bytes:attachment.bytes.length},async()=>attachment.mediaType === 'application/pdf'
           ? await promoteReviewPdfArtifact(pool, lease, attachment.bytes, blobs)
-          : await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy);
+          : await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy));
         if (extra.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: extra.failureCode, failedStage: stage.name }); return 'failed'; }
         reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
       for (const extra of outcome.namedArtifacts??[]) {
-        const promoted=await promoteWordArtifact(pool,lease,await wordBytes(extra.bytes),blobs,outcome.deliveryPolicy);
+        const extraBytes=await wordBytes(extra.bytes);
+        const promoted=await withArtifactPromotionPerformance({artifact_kind:extra.kind,input_bytes:extraBytes.length},()=>promoteWordArtifact(pool,lease,extraBytes,blobs,outcome.deliveryPolicy));
         if (promoted.status!=='available') {await finish(pool,lease,'failed',{errorCode:promoted.failureCode,failedStage:stage.name});return 'failed';}
         m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:extra.bytes.length,
           ...(extra.previewContent?{preview_content:extra.previewContent}:{})});
       }
-      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
+      const deliveredBytes=await wordBytes(outcome.bytes);
+      const delivered = await withArtifactPromotionPerformance({artifact_kind:'document',input_bytes:deliveredBytes.length},()=>promoteWordArtifact(pool, lease, deliveredBytes, blobs, outcome.deliveryPolicy));
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
       if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document') {
@@ -757,6 +776,21 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     // Every production pipeline ends in delivery; running out of stages is never success.
     await pauseRun(pool, lease, 'capability_not_ready', 'stage_not_implemented');
     return 'paused';
+    };
+    return await withPerformanceTrace(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id,runId:run.id,
+      jobId:lease.jobId,traceId:run.id,taskKind:run.task_kind,serviceRole:'worker',workerInstanceId:deps.workerInstanceId},async rootSpan=>{
+      recordPerformanceInterval('worker.claim',{startedAt:claimStartedAt,endedAt:claimEndedAt,clockSource:'wall_clock_observation'});
+      if(lease.attempts===1)recordPerformanceInterval('job.queue_wait',
+        {startedAt:(run as RunRow & {created_at:string|Date}).created_at,endedAt:claimStartedAt,clockSource:'wall_clock_observation'});
+      try {
+        const result=await execute();
+        rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'?'interrupted':'succeeded',{outcome:result});
+        return result;
+      } catch(error) {
+        rootSpan.end('interrupted');
+        throw error;
+      }
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';

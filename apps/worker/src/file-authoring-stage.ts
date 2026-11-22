@@ -1,4 +1,5 @@
 import { authoringBaselinePin, NoneBaselineConflict } from '@bondbuddy/api/none-baseline';
+import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
 import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promises';
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,7 +84,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       if(!saved)return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
       return {kind:'done',value:saved.value,checkpoint:{logical_call_id:'file-authoring-v1'}};
     }
-    const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
+    const input=await withPerformanceSpan('authoring.input.load',{repair_round:0},()=>(options.load??loadUnifiedInput)(ctx,{originalFiles:true}));
     const source=editingSource(input);
     const controlled=input.manifest.authoring.format_policy?.version==='source-format-v1' && source?.mediaType===DOCX;
     const taskInstructions=await readFile(join(helpers,'task.md'));
@@ -156,7 +157,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
           await writeFile(join(cwd,FILE_AUTHORING_BATCH_POLICY_FILE),FILE_AUTHORING_SMALL_BATCH_POLICY,{mode:0o400,flag:'wx'});
           originals.set(FILE_AUTHORING_BATCH_POLICY_FILE,digest(FILE_AUTHORING_SMALL_BATCH_POLICY));
         }
-        await prepareFormatSource(join(cwd,'input.json'),join(cwd,'template-manifest.json'),ctx.signal);
+        await withPerformanceSpan('document.format.prepare',{repair_round:0},()=>prepareFormatSource(join(cwd,'input.json'),join(cwd,'template-manifest.json'),ctx.signal));
         originals.set('template-manifest.json',digest(await checkedFile(cwd,'template-manifest.json',FORMAT_JSON_MAX)));
       }
       if(options.repair){
@@ -286,7 +287,11 @@ function fileAuthoringDeliveryAttempt(options:DeliveryOptions,round:number):RunS
       if(!b||b.length!==f.byte_size||digest(b)!==f.sha256)throw Error('WORD_OUTPUT_BLOB_MISMATCH');return b;
     };
     const check=async(input:Parameters<typeof verifyWordQuality>[0])=>{
-      const report=await (options.quality??verifyWordQuality)({...input,signal:ctx.signal});
+      const report=await withPerformanceSpan('document.quality.check',{repair_round:0},async span=>{
+        const report=await (options.quality??verifyWordQuality)({...input,signal:ctx.signal});
+        span.end(report.status==='failed'?'failed':'succeeded',{result_status:report.status});
+        return report;
+      });
       const bytes=Buffer.from(JSON.stringify({...report,input_hash:ctx.run.input_hash.trim()}));
       const sha256=digest(bytes),key=`${prefix(ctx)}quality/${sha256}/quality-report.json`;
       await ctx.blobs.put(key,bytes,'application/json');
@@ -299,7 +304,7 @@ function fileAuthoringDeliveryAttempt(options:DeliveryOptions,round:number):RunS
       const data=JSON.parse(lockedInput.toString('utf8'));
       if(data.input_hash!==ctx.run.input_hash.trim() || data.baseline_sha256!==digest(baselineBytes))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
       let finalized:Map<string,Buffer>;
-      try { finalized=await finalizeFormat({lockedInput,baselineBytes,operations,signal:ctx.signal}); }
+      try { finalized=await withPerformanceSpan('document.format.finalize',{repair_round:0},()=>finalizeFormat({lockedInput,baselineBytes,operations,signal:ctx.signal})); }
       catch(error){
         if(ctx.signal.aborted)throw error;
         const e=error as {code?:number|string;stderr?:string};
@@ -361,7 +366,7 @@ function fileAuthoringDeliveryAttempt(options:DeliveryOptions,round:number):RunS
     }else{
       // Old provider records did not retain host input.json. Recover their exact pinned
       // source, rather than accepting a model-authored or missing baseline as authority.
-      const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
+      const input=await withPerformanceSpan('authoring.input.load',{repair_round:0},()=>(options.load??loadUnifiedInput)(ctx,{originalFiles:true}));
       const source=editingSource(input);
       data={input_hash:ctx.run.input_hash.trim(),revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,...qualityContext(input,source),
         baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf'};
