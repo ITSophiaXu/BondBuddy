@@ -41,10 +41,12 @@ const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('audit PDF gate: actual upload, isolated inspection, no-charge rejection, replacement, retries and replay', {skip:!connection||!storage,timeout:180000}, async t=>{
   const pool=new Pool({connectionString:connection}), user=randomUUID(),origin='http://bondbuddy.test';let owner=user;
   const container='bb-quality-'+randomUUID().replaceAll('-',''),blobs=azureBlobs(storage!,container);
-  const app=createServer({pool,blobs,historicalBillingFixture:true,enablePaidAuthoring:true,enableSyntheticQueue:true,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true})});
+  const app=createServer({pool,blobs,enablePaidAuthoring:true,enableSyntheticQueue:true,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true})});
   // Runtime import avoids making the API production package depend on worker code.
   const worker=await import(new URL('../../worker/dist/material-parse-job.js',import.meta.url).href);
-  const deps={pool,leaseSeconds:60,material:{pool,blobs:{getPrivate:(key:string)=>blobs.getIfExists(key)},parser:async()=>{throw Error('must not parse');}},ocr:async()=>{throw Error('must not OCR');}};
+  const qualityWorker=await import(new URL('../../worker/dist/pdf-quality.js',import.meta.url).href);
+  const deps={pool,leaseSeconds:60,material:{pool,blobs:{getPrivate:(key:string)=>blobs.getIfExists(key)},parser:async()=>{throw Error('must not parse');}},ocr:async()=>{throw Error('must not OCR');},
+    pdfQualityInspector:(path:string)=>qualityWorker.inspectPdfQuality(path,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})};
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
   const reject=(r:Awaited<ReturnType<typeof send>>,text:RegExp)=>{assert.equal(r.statusCode,422,r.body);assert.equal(r.json().field_errors[0].code,'AUDIT_PDF_QUALITY_REQUIRED');assert.match(r.body,text);};

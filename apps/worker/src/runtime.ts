@@ -9,7 +9,7 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload, fileAuthoringPayloadRecoveryCandidates, releaseLease, completeManagedRunRelease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload, fileAuthoringPayloadRecoveryCandidates, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';

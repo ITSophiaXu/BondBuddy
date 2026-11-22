@@ -24,8 +24,8 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
   const pool=new Pool({connectionString:connection}),owner=`payload-${uid()}`,objects=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
     getIfExistsBounded:async k=>objects.get(k)??null,exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
-  const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
     observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;termination?:'signal'|'zero';logical?:string;adapter?:string;conflict?:boolean;
@@ -557,8 +557,6 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
     assert.equal(await missingSnapshot.recover(),false);await end(missingSnapshot.lease.runId);
     const active=await fixture({capture:'saved'});await pool.query("UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval '1 minute' WHERE id=$1",[active.lease.jobId,uid()]);
     assert.equal(await active.recover(),false);await end(active.lease.runId);
-    const cancelling=await fixture({paid:true,capture:'saved'});await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=now() WHERE id=$1',[cancelling.lease.jobId]);
-    assert.equal(await cancelling.recover(),false);await end(cancelling.lease.runId);
     // Legacy unknown calls must not consume the dedicated size-limit scan. A full
     // page of ineligible request/output caps must yield to later candidates without changing
     // any evidence or updated_at just to influence queue ordering.

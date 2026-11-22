@@ -1,8 +1,4 @@
 import { AUTHORING_IMAGE_BUDGET_SIGNAL } from './authoring-image-tools.js';
-import type { ModelCallPermit } from './model-call-budget.js';
-import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
-import { createModelProcessPerformance } from './model-performance.js';
-import { modelCancellationDiagnostic, reportModelCancellation } from './model-call-budget.js';
 // Server-side Codex adapter with durable intent, usage, cancellation and result replay.
 // Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
@@ -318,7 +314,7 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring||c.protected_runtime_files?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
     ...codexConfigOverrides(c,o.fileAuthoring,o.fileRecovery), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
-  if(c.protected_runtime_files&&!o.fileAuthoring)args.push(...filePermissionArgs(o.cwd,true));
+  if(c.protected_runtime_files&&!o.fileAuthoring)args.push(...filePermissionArgs(o.cwd));
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
     args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec',
@@ -471,7 +467,6 @@ function withLoopbackNoProxy(env: Record<string, string>) {
 // Measure/enforce use a per-process loopback gateway (#994). Only enforce blocks
 // requests; its startup failure must never fall back to an unguarded provider route.
 export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
-  return withPerformanceSpan('model.exec', { adapter: 'codex_exec', model_id: c.model_id, model_provider: c.model_provider }, async span => {
   if(o.deadlineAt!==undefined&&!isFileAuthoringDeadline(o.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
@@ -521,13 +516,13 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
   // Cancellation can win while the durable intent is being written. In that
   // case do not launch a process, even briefly, with an already-aborted signal.
-  if (o.signal?.aborted) { await closeGateway(); r.stop = 'cancelled'; performance.finish('cancelled', { result_status: 'cancelled_before_spawn' }); return r; }
-  if (gatewayFailed) { r.stop = 'gateway_failed'; performance.finish('failed', { result_status: r.stop }); return r; }
-  if(o.deadlineAt!==undefined&&Date.parse(o.deadlineAt)<=Date.now()){await closeGateway();r.stop='deadline_exceeded';performance.finish('failed',{result_status:r.stop});return r;}
+  if (o.signal?.aborted) { await closeGateway(); r.stop = 'cancelled'; return r; }
+  if (gatewayFailed) { r.stop = 'gateway_failed'; return r; }
+  if(o.deadlineAt!==undefined&&Date.parse(o.deadlineAt)<=Date.now()){await closeGateway();r.stop='deadline_exceeded';return r;}
   return new Promise<CodexProcessResult>(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
-    catch { r.stop = 'spawn_failed'; performance.finish('failed', { result_status: r.stop }); void closeGateway().finally(() => resolveResult(r)); return; }
+    catch { r.stop = 'spawn_failed'; void closeGateway().finally(() => resolveResult(r)); return; }
     let bytes = 0, buffer = '', bufferBytes = 0, stderrPrefix = '', stderrTail = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
     const eligibleOutputLimit = o.fileAuthoring === true && o.contextRotation === true;
     let outputLimitSeq: number | null = null, conflictingOutputLimitSeq: number | null = null;
@@ -873,29 +868,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
     for (; attemptNo <= maxAttempts; attemptNo++) {
       if (input.signal?.aborted) return cancelledResult();
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
-      const attemptResult = await withPerformanceSpan<ContainedCallResult | null>('model.attempt',
-        { logical_call_id: input.logical_call_id, call_id: intent.call_id, attempt_no: attemptNo, schema_reask: attemptNo > initialAttemptNo }, async attemptSpan => {
-      let attemptStatus: Parameters<typeof attemptSpan.end>[0];
-      let attemptAttributes: Record<string, unknown> = {};
-      const cancelAttempt = () => { attemptStatus = 'cancelled'; return cancelledResult(); };
-      const permit = await withPerformanceSpan('model.capacity.wait', {}, async span => {
-        const deadlineAt=input.fileWorkspace?.deadlineAt;
-        if(deadlineAt!==undefined&&!isFileAuthoringDeadline(deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
-        const remaining=deadlineAt===undefined?undefined:Date.parse(deadlineAt)-Date.now();
-        if(remaining!==undefined&&remaining<=0)throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
-        const deadline=new AbortController();
-        const timer=remaining===undefined?undefined:setTimeout(()=>deadline.abort(Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED')),Math.min(remaining,2147483647));
-        const signal=remaining===undefined?input.signal:input.signal?AbortSignal.any([input.signal,deadline.signal]):deadline.signal;
-        try { return await journal.acquireCallSlot?.(signal); }
-        catch (error) {
-          if (input.signal?.aborted) { span.end('cancelled'); attemptSpan.end('cancelled'); }
-          else if (deadline.signal.aborted) throw deadline.signal.reason;
-          throw error;
-        }
-        finally { if(timer)clearTimeout(timer); }
-      });
-      const executionSignal = permit?.signal ?? input.signal;
-      let attemptDir: string | undefined;
+      const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
       try {
         const cwd = join(attemptDir, 'cwd'), home = join(attemptDir, 'home');
         await mkdir(cwd, { mode: 0o700 }); await mkdir(home, { mode: 0o700 });
@@ -923,19 +896,16 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           await verifyFilePermissions(c,cwd,home);
         }
 
-        if (input.signal?.aborted) return cancelAttempt();
-        if (executionSignal?.aborted) return cancelAttempt();
-        await withPerformanceSpan('model.admission.check', {}, () => input.beforeIntent?.());
-        if (executionSignal?.aborted) return cancelAttempt();
+        if (input.signal?.aborted) return cancelledResult();
         if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
-        await withPerformanceSpan('model.intent.persist', {}, () => journal.recordIntent(intent)); // durable before spawn
+        await journal.recordIntent(intent); // durable before spawn
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onSpawn: permit ? pid=>withPerformanceSpan('model.process.bind',{},()=>permit.bindProcess(pid,attemptHome)) : undefined, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         // The execution log is private evidence only. A storage failure must never
@@ -978,7 +948,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
         if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_OUTPUT_LIMIT','MODEL_TIMEOUT','MODEL_CONTEXT_ROTATION_REQUIRED'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
-            !input.signal?.aborted && !executionSignal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
+            !input.signal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* No complete checkpoint can authorize continuation. */ }
         }
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
@@ -996,7 +966,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
-        if (input.signal?.aborted || executionSignal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
+        if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
         const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);

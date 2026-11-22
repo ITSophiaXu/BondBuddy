@@ -17,8 +17,8 @@ import type { StageContext } from './run-pipeline.js';
 import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FILE_AUTHORING_OUTPUT_LIMIT_RETRY } from './file-authoring-instructions.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
-function fixture(controlled = true) {
-  const source = makeWorkerDocxFixture({ externalLink: false, text: '截至2024年净资产100万元。' });
+function fixture(controlled = true, sourceText = '截至2024年净资产100万元。') {
+  const source = makeWorkerDocxFixture({ externalLink: false, text: sourceText });
   const pin = { material_id: 'source', material_version: 1, sha256: digest(source), role: 'historical' };
   const input: UnifiedInput = { requirements: [], materials: [{ pin, filename: 'source.docx', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', objectKey: 'source', records: [], pending: [] }],
     manifest: { issuer_name: '合成发行人', market: 'sse', offering: 'private', update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1' }, materials: [pin],

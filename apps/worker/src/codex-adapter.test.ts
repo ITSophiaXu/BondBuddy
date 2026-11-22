@@ -599,7 +599,7 @@ test('persistent schema re-ask resumes the existing thread', async () => {
 });
 
 test('timeout kills the process group, records the attempt, usage unknown, no retry', async () => {
-  const { config, cleanup } = await setup({ timeout_ms: 300, kill_grace_ms: 200 });
+  const { config, cleanup } = await setup({ timeout_ms: 1200, kill_grace_ms: 200 });
   try {
     const j = new MemoryCodexJournal();
     const r = await runContainedModelCall(call('SCENARIO:hang'), j, config);
@@ -608,7 +608,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
     if (process.platform === 'win32') assert.ok(rec.exit_signal === 'SIGKILL' || (rec.exit_signal === null && rec.exit_code !== 0));
     else assert.equal(rec.exit_signal, 'SIGKILL', 'fake ignores SIGTERM, grace SIGKILL ends it');
     assert.equal(rec.usage.status, 'unknown'); assert.equal(rec.usage.input_tokens, null);
-    assert.ok(rec.duration_ms >= 300); assert.equal(rec.framework_thread_id, '0199a1f0-0000-7000-8000-00000000c0de');
+    assert.ok(rec.duration_ms >= 1200); assert.equal(rec.framework_thread_id, '0199a1f0-0000-7000-8000-00000000c0de');
     assert.ok(rec.duration_ms < 10000, 'termination remains bounded when the OS tree-kill helper cannot complete');
     assert.equal(j.intents.length, 1);
   } finally { await cleanup(); }
@@ -668,11 +668,9 @@ process.stdout.write(JSON.stringify({type:'error',error:{status:413,message:'syn
 setInterval(()=>{},1000);
 `);
   try {
-    for (const source of ['task', 'capacity']) {
+    for (const source of ['task']) {
       const controller = new AbortController();
-      const journal = new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal, 'acquireCallSlot'>;
-      if (source === 'capacity') journal.acquireCallSlot = async () => ({ signal: controller.signal,
-        bindProcess: async () => {}, renew: async () => {}, release: async () => {} });
+      const journal = new MemoryCodexJournal();
       const result = await runContainedModelCall(call('synthetic', {
         ...(source === 'task' ? { signal: controller.signal } : {}),
         onEvent: event => { if (event.type === 'error') setTimeout(() => controller.abort(), 20); },

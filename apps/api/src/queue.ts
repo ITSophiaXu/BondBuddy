@@ -1,7 +1,7 @@
 import { FILE_AUTHORING_RECOVERY_LIMITS, FILE_AUTHORING_CONTEXT_ROTATION_LIMIT, FILE_AUTHORING_CAPTURE_VERSION, FILE_AUTHORING_CAPTURE_FAILURES, isFileAuthoringDeadline,
   type FileAuthoringCapture, type FileAuthoringCaptureOutcome } from '@bondbuddy/contracts';
-import {withPerformanceSpan} from './performance-trace.js';
-import {executionClaimGate,lockExecutionReleaseContext} from './execution-capacity.js';
+import { lockWalletSafetyForControl } from './billing-safety.js';
+import { nextProviderReconcileUnknown, PROVIDER_RECONCILE_UNKNOWN_GRACE_MS } from './provider-reconcile-unknown.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -50,17 +50,6 @@ async function billingContractRecoverable(client:PoolClient,r:any,j:any){
   if(j.checkpoint?.review_assembly_recovery)
     return (await client.query('SELECT bb_review_assembly_recovery_credit_ready(r) ready FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2',[r.id,r.owner_user_id])).rows[0]?.ready===true;
   return false;
-}
-async function parkBilling(client:PoolClient,r:any,j:any,reason='wallet_isolated',cancel=false,restoreAttempt=false){
-  await client.query(`UPDATE bb_jobs SET state='paused',stage='billing_reconcile',lease_token=NULL,lease_until=NULL,
-    billing_resume_stage=CASE WHEN stage='billing_reconcile' THEN billing_resume_stage ELSE stage END,
-    billing_cancel_requested_at=CASE WHEN $2 THEN COALESCE(billing_cancel_requested_at,now()) ELSE billing_cancel_requested_at END,
-    attempts=GREATEST(0,attempts-CASE WHEN $3 THEN 1 ELSE 0 END),updated_at=now() WHERE id=$1`,[j.id,cancel,restoreAttempt]);
-  await event(client,r,'paused','billing_reconcile',reason,'BILLING_NOT_READY');
-}
-async function finalizePendingCancellation(client:PoolClient,r:any,j:any){
-  await client.query("UPDATE bb_jobs SET state='cancelled',stage='cancelled',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
-  await event(client,r,'cancelled','cancelled','user_cancelled_after_billing_reconcile');
 }
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
 export type RunKind = typeof TASK_KINDS[number];
@@ -884,7 +873,7 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
       await lockCreditAccount(client,owner);
       if((await creditBalanceExact(client,owner)).available<1n)return false;
       if(providerPaused){
-        if(j.billing_cancel_requested_at||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return false;
+        if(await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return false;
         await client.query('UPDATE bb_jobs SET credit_pause_requested=false,updated_at=now() WHERE id=$1',[j.id]);
         await event(client,r,'paused','provider_reconcile','credits_recharged');
         return true;
@@ -975,8 +964,7 @@ export async function recordProviderReconcileUnknown(
     if(!r||r.state!=='paused'||r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[jobId,owner,runId])).rows[0];
     if(!j||j.state!=='paused'||j.stage!=='provider_reconcile'||j.lease_token||j.lease_until)return false;
-    if(await walletIsolated(client,r)){await parkBilling(client,r,j);return false;}
-    if(j.billing_cancel_requested_at){await finalizePendingCancellation(client,r,j);return true;}
+    if(await walletIsolated(client,r))return false;
     if(j.user_pause_requested||j.credit_pause_requested){
       const stage=j.user_pause_requested?'user_paused':'credits_exhausted';
       await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[jobId,stage]);
@@ -1020,7 +1008,7 @@ export async function recordProviderReconcileUnknown(
       '{provider_reconcile_unknown}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(transition.state)]);
     if(transition.first)await event(client,r,'paused','provider_reconcile',
       knownOutputLimit?'file_authoring_output_limit_recovery_unavailable':'provider_reconcile_unknown',
-      knownOutputLimit?'MODEL_PROVIDER_OUTPUT_LIMIT':'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:transition.state.queries});
+      knownOutputLimit?'MODEL_PROVIDER_OUTPUT_LIMIT':'MODEL_PRIOR_ATTEMPT_UNRESOLVED','run.progress',{reconciler,queries:String(transition.state.queries)});
     if(fail){
       const reason=inactive?'provider_reconcile_project_inactive':knownOutputLimit?'file_authoring_output_limit_recovery_unavailable':
         unrecoverable?'provider_reconcile_unrecoverable':'provider_reconcile_unknown_exhausted';
@@ -1030,7 +1018,7 @@ export async function recordProviderReconcileUnknown(
         '{provider_reconcile_terminal}',$2::jsonb,true),updated_at=now() WHERE id=$1`,[jobId,JSON.stringify(audit)]);
       await recordRunFailure(client,r,jobId,error,'provider_reconcile');
       await event(client,r,'failed','failed',reason,error,'run.state_changed',
-        {reconciler,queries:transition.state.queries,first_at:transition.state.first_at});
+        {reconciler,queries:String(transition.state.queries),first_at:transition.state.first_at});
     }
     return fail;
   });
@@ -1175,7 +1163,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
     if(!r || r.task_kind!=='update' || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
-    if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until || j.billing_cancel_requested_at ||
+    if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until ||
       !fileAuthoringJobMatchesInput(r,j))return false;
     if(!await providerRecoveryAllowed(client,r,j)||await walletIsolated(client,r) || !await billingContractRecoverable(client,r,j))return false;
     const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version,t.finish_reason

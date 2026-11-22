@@ -254,7 +254,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         }}}).run(ctx);
     } catch (error) {
       if (!ctx.signal.aborted && error instanceof Error && error.message==='AUTHORING_CONTEXT_DEADLINE_EXCEEDED')return {kind:'fail',code:'MODEL_TIMEOUT'};
-      if (!ctx.signal.aborted && error instanceof AuthoringSourceUnreadable) return {kind:'fail',code:error.code};
+      if (!ctx.signal.aborted && error instanceof AuthoringSourceUnreadable) return {kind:'fail',code:'MATERIAL_UNREADABLE'};
       if (!ctx.signal.aborted && savedRecovery && error instanceof Error && ['AUTHORING_RECOVERY_UNSAFE','INPUT_REVISION_CONFLICT','WORD_OUTPUT_BLOB_MISMATCH'].includes(error.message)) return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
       throw error;
     }

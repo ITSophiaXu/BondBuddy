@@ -88,7 +88,7 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
-export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+export function readinessMessage(reason: string, lastProcessingStage?: string, runState?: string): string {
   if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
@@ -529,7 +529,7 @@ export class ProjectExecution {
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
-      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage)
+      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage, run.state)
         : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
