@@ -20,7 +20,7 @@ from openpyxl import load_workbook
 from pypdf import PdfReader
 
 from bondbuddy_file_authoring.check import package, resolve_revisions
-from bondbuddy_file_authoring.source_outline import heading_role, outline, outline_resolved
+from bondbuddy_file_authoring.source_outline import heading_role, outline, style_map
 from bondbuddy_file_authoring.word_patch import paragraph_text, q, xml
 
 LOCATOR = re.compile(
@@ -362,15 +362,6 @@ class FinancialSources:
                 raise ValueError('source_changed_during_read')
 
 
-class ReadPackage(dict):
-    """One fully validated package; no module-level or cross-file cache."""
-    def __init__(self, path):
-        self.parsed_xml = {}
-        super().__init__(package(Path(path), parsed_xml=self.parsed_xml))
-        styles = self.parsed_xml.get('word/styles.xml')
-        self.styles = {} if styles is None else {n.get(q('styleId')): n for n in styles.findall(q('style'))}
-
-
 class Reader:
     def __init__(self, *, source=None, issuer=''):
         self.packages = {}
@@ -391,41 +382,13 @@ class Reader:
                 # its exact text; never make 行人 a generic issuer/scope alias.
                 expected = '表5-10最近两年及一期行人合并报表口径主要财务指标'
                 original = self.node(str(source), 'word/document.xml#table=54,row=1,cell=1')
-                if compact(self.text(self.caption(original['table']))) == expected:
+                if compact(paragraph_text(self.caption(original['table']))) == expected:
                     self.compatible_caption = (54, expected)
 
     def parts(self, path):
         if path not in self.packages:
-            self.packages[path] = ReadPackage(path)
+            self.packages[path] = package(Path(path))
         return self.packages[path]
-
-    def styles(self, path):
-        return self.parts(path).styles
-
-    def tree_cache(self, node):
-        # Only Reader-owned trees are immutable. Test fixture/editor nodes may
-        # still change and must never enter a shared text or heading cache.
-        root = node.getroottree().getroot()
-        for key, owned in self.roots.items():
-            if root is owned:
-                return self.story_nodes[key][2]
-        return None
-
-    def text(self, node):
-        cache = self.tree_cache(node)
-        if cache is None:
-            return paragraph_text(node)
-        if node not in cache['texts']:
-            cache['texts'][node] = paragraph_text(node)
-        return cache['texts'][node]
-
-    def heading(self, node, styles):
-        cache = self.tree_cache(node)
-        if cache is None:
-            return heading_role(node, styles)
-        if node not in cache['headings']:
-            cache['headings'][node] = heading_role(node, styles)
-        return cache['headings'][node]
 
     def node(self, path, locator):
         match = LOCATOR.fullmatch(locator)
@@ -434,21 +397,21 @@ class Reader:
         story = match[1]
         key = (path, story)
         if key not in self.roots:
-            self.roots[key] = resolve_revisions(self.parts(path).parsed_xml[story], True)
+            self.roots[key] = resolve_revisions(xml(self.parts(path)[story]), True)
             # The parsed story is immutable during inspection. Retain its exact
             # physical order instead of rescanning every paragraph per anchor.
-            self.story_nodes[key] = (list(self.roots[key].iter(q('p'))), list(self.roots[key].iter(q('tbl'))), {'texts': {}, 'headings': {}})
+            self.story_nodes[key] = (list(self.roots[key].iter(q('p'))), list(self.roots[key].iter(q('tbl'))))
         root = self.roots[key]
-        paragraphs, tables, _ = self.story_nodes[key]
+        paragraphs, tables = self.story_nodes[key]
         if match[2]:
             node = paragraphs[int(match[2]) - 1]
             return {'story': story, 'root': root, 'node': node, 'table': None,
-                    'text': self.text(node)}
+                    'text': paragraph_text(node)}
         table = tables[int(match[3]) - 1]
         row, cell = int(match[4]) - 1, int(match[5]) - 1
         node = table.findall(q('tr'))[row].findall(q('tc'))[cell]
         return {'story': story, 'root': root, 'node': node, 'table': table, 'table_index': int(match[3]), 'row': row, 'cell': cell,
-                'text': ' '.join(self.text(p) for p in node.iter(q('p')))}
+                'text': ' '.join(paragraph_text(p) for p in node.iter(q('p')))}
 
     def anchor(self, path, spec, *, whole=False):
         result = self.node(path, spec['locator'])
@@ -518,7 +481,7 @@ class Reader:
                 if output['contexts'].get(table) != context:
                     continue
                 try:
-                    if compact(self.text(self.caption(table))) == value:
+                    if compact(paragraph_text(self.caption(table))) == value:
                         matches.append(table)
                 except ValueError:
                     continue
@@ -542,14 +505,15 @@ class Reader:
             return
         raise ValueError('explicit_issuer_scope_required')
 
-    def transparent(self, node):
+    @staticmethod
+    def transparent(node):
         if node.tag in (q('bookmarkStart'), q('bookmarkEnd'), q('proofErr')):
             return True
         if node.tag != q('p'):
             return False
         if any(n.tag in (q('drawing'), q('object'), q('pict')) for n in node.iter()):
             return False
-        value = compact(self.text(node))
+        value = compact(paragraph_text(node))
         return not value or UNITS.fullmatch(value) is not None
 
     def caption(self, table):
@@ -559,7 +523,7 @@ class Reader:
             if node is None:
                 break
             if not self.transparent(node):
-                if node.tag == q('p') and CAPTION.fullmatch(compact(self.text(node))):
+                if node.tag == q('p') and CAPTION.fullmatch(compact(paragraph_text(node))):
                     return node
                 break
             node = node.getprevious()
@@ -575,13 +539,13 @@ class Reader:
             if not re.fullmatch(r'(?:合并|母公司)(?:(?:财务)?报表(?:口径)?|口径|资产负债表|利润表|现金流量表)?', title):
                 raise ValueError('explicit_table_scope_required')
             for _, _, node in self.grid(amount['table'])[scope['row']]:
-                text = compact(' '.join(self.text(p) for p in node.iter(q('p'))))
+                text = compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
                 if text and node is not scope['node']:
                     raise ValueError('ambiguous_table_scope_row')
             other = '母公司' if row['scope'] == 'consolidated' else '合并'
             for cells in self.grid(amount['table'])[scope['row'] + 1:amount['row']]:
                 for _, _, node in cells:
-                    text = compact(' '.join(self.text(p) for p in node.iter(q('p'))))
+                    text = compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
                     if re.match(r'(?:合并|母公司)(?:(?:财务)?报表(?:口径)?|口径|资产负债表|利润表|现金流量表)?$', text) and other in text:
                         raise ValueError('overridden_table_scope')
                     if HYPOTHETICAL.search(text):
@@ -607,8 +571,8 @@ class Reader:
         parent = amount['table'].getparent()
         if section['story'] != amount['story'] or section['node'].getparent() is not parent or scope['node'].getparent() is not parent:
             raise ValueError('scope_section_parent')
-        styles = self.styles(path)
-        role = self.heading(section['node'], styles)
+        styles = style_map(self.parts(path))
+        role = heading_role(section['node'], styles)
         if not role or role['kind'] != 'heading' or role['recognition'] not in ('outline', 'style'):
             raise ValueError('structured_scope_section_required')
         siblings = list(parent)
@@ -624,8 +588,8 @@ class Reader:
         for node in siblings[intro + 1:end]:
             if node.tag != q('p'):
                 continue
-            value = compact(self.text(node))
-            boundary = self.heading(node, styles)
+            value = compact(paragraph_text(node))
+            boundary = heading_role(node, styles)
             if boundary and boundary['kind'] == 'heading':
                 if boundary['recognition'] in ('outline', 'style') and boundary['level'] <= role['level']:
                     raise ValueError('scope_section_boundary')
@@ -655,7 +619,7 @@ class Reader:
         for cells in self.grid(amount['table'])[period['row'] + 1:amount['row']]:
             for start, finish, node in cells:
                 if start <= a < b <= finish:
-                    value = compact(' '.join(self.text(p) for p in node.iter(q('p'))))
+                    value = compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
                     if re.search(r'比例|占比|比重|百分比|[%％]', value) or re.search(PERIOD, value):
                         raise ValueError('overridden_or_percentage_header')
         self.table_scope(path, spec, amount, row)
@@ -664,8 +628,8 @@ class Reader:
         parent = target['node'].getparent()
         if target['story'] != 'word/document.xml' or any(n['story'] != target['story'] or n['node'].getparent() is not parent for n in (section, intro)):
             raise ValueError('period_context_parent')
-        styles = self.styles(path)
-        role = self.heading(section['node'], styles)
+        styles = style_map(self.parts(path))
+        role = heading_role(section['node'], styles)
         if not role or role['kind'] != 'heading' or role['recognition'] not in ('outline', 'style'):
             raise ValueError('structured_period_section_required')
         siblings = list(parent)
@@ -678,8 +642,8 @@ class Reader:
         for node in siblings[middle + 1:end]:
             if node.tag != q('p'):
                 continue
-            text = compact(self.text(node))
-            boundary = self.heading(node, styles)
+            text = compact(paragraph_text(node))
+            boundary = heading_role(node, styles)
             if boundary and boundary['kind'] == 'heading':
                 if boundary['recognition'] in ('outline', 'style') and boundary['level'] <= role['level']:
                     raise ValueError('period_section_boundary')
@@ -705,8 +669,8 @@ class Reader:
         parent = term['table'].getparent()
         if section['node'].getparent() is not parent or location['node'].getparent() is not parent:
             raise ValueError('glossary_section_parent')
-        styles = self.styles(path)
-        role = self.heading(section['node'], styles)
+        styles = style_map(self.parts(path))
+        role = heading_role(section['node'], styles)
         if not role or role['kind'] != 'heading' or role['level'] != 0 or role['recognition'] not in ('outline', 'style'):
             raise ValueError('actual_glossary_heading_required')
         siblings = list(parent)
@@ -715,14 +679,14 @@ class Reader:
             raise ValueError('glossary_section_order')
         body = [node for node in siblings[begin + 1:end] if not self.transparent(node)]
         declaration = '在本募集说明书中，除非文中另有所指，下列词语具有如下含义：'
-        if not body or body[0].tag != q('p') or compact(self.text(body[0])) != declaration:
+        if not body or body[0].tag != q('p') or compact(paragraph_text(body[0])) != declaration:
             raise ValueError('actual_glossary_declaration_required')
         for node in body:
-            boundary = self.heading(node, styles) if node.tag == q('p') else None
+            boundary = heading_role(node, styles) if node.tag == q('p') else None
             if boundary and boundary['kind'] == 'heading' and boundary['recognition'] in ('outline', 'style') and boundary['level'] == 0:
                 raise ValueError('glossary_section_boundary')
         for index, (start, finish, node) in enumerate(self.grid(term['table'])[term['row']]):
-            text = compact(' '.join(self.text(p) for p in node.iter(q('p'))))
+            text = compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
             if finish - start != 1 or node.find(q('tcPr') + '/' + q('vMerge')) is not None:
                 raise ValueError('simple_glossary_row_required')
             if index not in (term['cell'], values['cell']) and text not in ('', '指'):
@@ -853,7 +817,7 @@ class Reader:
             while node is not caption:
                 if node is None:
                     raise ValueError('historical_table_unit_missing')
-                value = compact(self.text(node))
+                value = compact(paragraph_text(node))
                 if UNITS.fullmatch(value):
                     units.append(MONEY_UNIT[re.search(r'亿元|万元|元', value)[0]])
                 node = node.getprevious()
@@ -870,7 +834,7 @@ class Reader:
             current_header = [node for x, y, node in self.grid(amount['table'])[header['row']] if (x, y) == (a, b)]
             if len(current) != 1 or len(current_header) != 1:
                 raise ValueError('historical_table_geometry')
-            text = lambda node: compact(' '.join(self.text(p) for p in node.iter(q('p'))))
+            text = lambda node: compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
             if text(current_header[0]) != text(old_header):
                 raise ValueError('historical_table_period_changed')
             old_value, new_value = text(old), text(current[0])
@@ -915,7 +879,7 @@ class Reader:
                     and scope['story'] == 'word/document.xml' and scope['node'].getparent().tag == q('body')
                     and scope['node'].getparent() is location['node'].getparent()
                     and row['scope'] == 'consolidated'):
-                if sum(self.text(p).count(default_scope) for p in scope['root'].iter(q('p')) if p.getparent().tag == q('body')) != 1:
+                if sum(paragraph_text(p).count(default_scope) for p in scope['root'].iter(q('p')) if p.getparent().tag == q('body')) != 1:
                     raise ValueError('unique_global_scope_clause_required')
                 self.scope_text(default_scope, row)
             else:
@@ -968,7 +932,7 @@ class Reader:
         paragraphs, tables = list(root.iter(q('p'))), list(root.iter(q('tbl')))
         p_indices = {node: index for index, node in enumerate(paragraphs)}
         t_indices = {node: index + 1 for index, node in enumerate(tables)}
-        roles = {h['paragraph']: h for h in outline_resolved(root, self.styles(path), text_of=self.text)['headings']
+        roles = {h['paragraph']: h for h in outline(self.parts(path))['headings']
                  if h['recognition'] in ('outline', 'style')}
         contexts, stack = {}, []
         for node in body:
@@ -1093,10 +1057,10 @@ class Reader:
         candidates = []
         grid = self.grid(table)
         for ri, cells in enumerate(grid):
-            if not cells or not metric_ok(' '.join(self.text(p) for p in cells[0][2].iter(q('p'))), metric, cell=True):
+            if not cells or not metric_ok(' '.join(paragraph_text(p) for p in cells[0][2].iter(q('p'))), metric, cell=True):
                 continue
             for ci, (a, b, node) in enumerate(cells):
-                amount = ' '.join(self.text(p) for p in node.iter(q('p'))).strip()
+                amount = ' '.join(paragraph_text(p) for p in node.iter(q('p'))).strip()
                 if (a, b) != source_interval or b - a != 1 or not re.fullmatch(NUMBER, amount):
                     continue
                 if node.find(q('tcPr') + '/' + q('vMerge')) is not None:
@@ -1104,7 +1068,7 @@ class Reader:
                 valid_header = False
                 for pr, headers in enumerate(grid[:ri]):
                     for pa, pb, header in headers:
-                        value = ' '.join(self.text(p) for p in header.iter(q('p')))
+                        value = ' '.join(paragraph_text(p) for p in header.iter(q('p')))
                         if not pa <= a < b <= pb or not period_ok(value, metric, cell=True):
                             continue
                         if header.find(q('tcPr') + '/' + q('vMerge')) is not None:
@@ -1112,7 +1076,7 @@ class Reader:
                         overridden = any(
                             re.search(r'比例|占比|比重|百分比|[%％]', text) or re.search(PERIOD, text)
                             for lower in grid[pr + 1:ri] for la, lb, cell in lower if la <= a < b <= lb
-                            for text in [compact(' '.join(self.text(p) for p in cell.iter(q('p'))))])
+                            for text in [compact(' '.join(paragraph_text(p) for p in cell.iter(q('p'))))])
                         if not overridden:
                             valid_header = True
                 if valid_header:
@@ -1125,8 +1089,6 @@ class Reader:
             raise ValueError('authorized_occurrence_source_required')
         source = self.occurrence_document(self.authorized_source)
         output = self.occurrence_document(clean)
-        if 'required_targets' in output:
-            return output['required_targets']
         required = []
         for table_number, row_number, scope, metric in RQ_TABLE_ROLES:
             role = f'table:{table_number}:{scope}:{metric}'
@@ -1134,16 +1096,16 @@ class Reader:
             source_location = self.node(self.authorized_source,
                 f'word/document.xml#table={table_number},row={row_number},cell=2')
             if table not in source['contexts'] or not metric_ok(
-                    self.text(table.findall(q('tr'))[row_number - 1].findall(q('tc'))[0].find(q('p'))), metric, cell=True):
+                    paragraph_text(table.findall(q('tr'))[row_number - 1].findall(q('tc'))[0].find(q('p'))), metric, cell=True):
                 raise ValueError('authorized_occurrence_table_shape_changed')
-            caption = compact(self.text(self.caption(table)))
+            caption = compact(paragraph_text(self.caption(table)))
             context = source['contexts'][table]
             tables = []
             for candidate in output['tables']:
                 if output['contexts'].get(candidate) != context:
                     continue
                 try:
-                    if compact(self.text(self.caption(candidate))) == caption:
+                    if compact(paragraph_text(self.caption(candidate))) == caption:
                         tables.append(candidate)
                 except ValueError:
                     continue
@@ -1156,7 +1118,7 @@ class Reader:
             ratio = metric == RATIO_METRIC
             clause_metric = 'bonds_payable' if ratio else metric
             paragraph = source['paragraphs'][paragraph_number - 1]
-            if paragraph not in source['contexts'] or len(self.metric_list_clauses(self.text(paragraph), clause_metric)) != 1:
+            if paragraph not in source['contexts'] or len(self.metric_list_clauses(paragraph_text(paragraph), clause_metric)) != 1:
                 raise ValueError('authorized_occurrence_narrative_shape_changed')
             context = source['contexts'][paragraph]
             candidates = []
@@ -1166,13 +1128,13 @@ class Reader:
                 for original in source['body']:
                     if original.tag != q('p') or source['contexts'].get(original) != context:
                         continue
-                    for clause in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', self.text(original)):
+                    for clause in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', paragraph_text(original)):
                         if self.historical_or_other_entity_single_clause(clause[0], clause_metric):
                             exempt_source_clauses.add(compact(clause[0]))
             for candidate in output['body']:
                 if candidate.tag != q('p') or output['contexts'].get(candidate) != context:
                     continue
-                text = self.text(candidate)
+                text = paragraph_text(candidate)
                 unsupported.extend((start, end) for start, end in self.unsupported_metric_lists(text, clause_metric)
                                    if compact(text[start:end]) not in exempt_source_clauses)
                 for start, end in self.metric_list_clauses(text, clause_metric):
@@ -1183,7 +1145,6 @@ class Reader:
                              'scope': scope, 'metric': metric, 'kind': 'narrative_ratio' if ratio else 'narrative_list',
                              'candidates': candidates, 'ambiguous': len(candidates) > 1,
                              'unsupported': bool(unsupported)})
-        output['required_targets'] = required
         return required
 
     def occurrence_coverage(self, clean, verified):

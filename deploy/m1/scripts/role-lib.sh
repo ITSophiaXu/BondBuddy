@@ -24,12 +24,8 @@ role_metadata() {
   BB_ROLE_PROJECT="${BB_ROLE_METADATA[3]}"
   BB_DEPLOY_SCRIPT_SHA="${BB_ROLE_METADATA[4]:-}"
   BB_INTEGRITY_MODE="${BB_ROLE_METADATA[5]:-}"
-  BB_UPLOAD_CONFIRMATION_ROLE="${BB_ROLE_METADATA[6]:-disabled}"
 }
 role_metadata
-role_confirmation_active() {
-  [ "$BB_DEPLOY_ROLE" = execution ] && [ "$BB_UPLOAD_CONFIRMATION_ROLE" != disabled ]
-}
 source "$BB_DIR/scripts/role-source-lib.sh"
 # compose.yaml is extended for its shared policies. Its unused legacy DB interpolation must not
 # require the main-site password on execution hosts; the actual URL is BB_EXECUTION_DATABASE_URL.
@@ -43,7 +39,7 @@ role_image_ref() {
 role_compose_raw() (
   # Compose's process env normally overrides --env-file. Remove that alternate configuration
   # channel while retaining Docker authentication/connection settings and the exact image tag.
-  local tag="$BB_IMAGE_TAG" key role="$BB_DEPLOY_ROLE" parse="$BB_PARSE_ROLE" directory="$BB_DIR" environment="$BB_ENV" override="$BB_ROLE_OVERRIDE_FILE" integrity="${BB_INTEGRITY_MODE:-}" project="$BB_ROLE_PROJECT" confirmation="$BB_UPLOAD_CONFIRMATION_ROLE"
+  local tag="$BB_IMAGE_TAG" key role="$BB_DEPLOY_ROLE" parse="$BB_PARSE_ROLE" directory="$BB_DIR" environment="$BB_ENV" override="$BB_ROLE_OVERRIDE_FILE" integrity="${BB_INTEGRITY_MODE:-}" project="$BB_ROLE_PROJECT"
   while read -r key; do
     case "$key" in BB_*|COMPOSE_*|POSTGRES_PASSWORD) unset "$key";; esac
   done < <(compgen -e)
@@ -54,12 +50,6 @@ role_compose_raw() (
   else
     export BB_ROLE_PARSE_PROFILE=bb-parse-inactive BB_ROLE_PARSE_REPLICAS=0
   fi
-  if [ "$role" = execution ] && [ "$confirmation" != disabled ]; then
-    export BB_ROLE_CONFIRMATION_PROFILE=bb-confirmation-active BB_ROLE_CONFIRMATION_REPLICAS=1
-  else
-    export BB_ROLE_CONFIRMATION_PROFILE=bb-confirmation-inactive BB_ROLE_CONFIRMATION_REPLICAS=0
-  fi
-  if [ "$confirmation" = size-split ]; then export BB_ROLE_CONFIRMATION_LANE=large; else export BB_ROLE_CONFIRMATION_LANE=general; fi
   [ "$role" != execution ] || export POSTGRES_PASSWORD=unused-no-local-database
   local files=(-f "$directory/compose.$role.yaml")
   if [ "$role" = execution ]; then
@@ -70,24 +60,13 @@ role_compose_raw() (
   fi
   [ -z "$override" ] || files+=(-f "$override")
   local profiles=()
-  [ "$parse" != "$role" ] || profiles+=(--profile bb-parse-active)
-  if [ "$role" = execution ] && [ "$confirmation" != disabled ]; then profiles+=(--profile bb-confirmation-active); fi
+  [ "$parse" != "$role" ] || profiles=(--profile bb-parse-active)
   docker compose --project-directory "$directory" --project-name "$project" "${files[@]}" "${profiles[@]}" --env-file "$environment" "$@"
 )
 compose() {
   role_metadata
   # Validate resolved policies without printing credentials, before every lifecycle command.
-  role_compose_raw --profile '*' config --format json 2>/dev/null | node "$BB_DIR/scripts/role-config.mjs" validate "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE" 3< <(
-    if role_confirmation_active; then
-      local rendered
-      if rendered="$(role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-check.yaml" config --format json 2>/dev/null)"; then printf '%s\n' "$rendered"; fi
-    fi
-  ) 4< <(
-    if role_confirmation_active; then
-      local rendered
-      if rendered="$(role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-true-check.yaml" config --format json 2>/dev/null)"; then printf '%s\n' "$rendered"; fi
-    fi
-  ) || return 2
+  role_compose_raw --profile '*' config --format json 2>/dev/null | node "$BB_DIR/scripts/role-config.mjs" validate "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE" || return 2
   [ "${BB_ROLE_READONLY:-0}" != 1 ] || flock -u 8
   role_compose_raw "$@"
 }
@@ -120,7 +99,7 @@ role_existing_release() {
   while read -r container; do
     [ -n "$container" ] || continue
     service="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$container")"
-    case "$service" in api|web|egress|pg-tunnel|integrity-egress|upload-confirmation) target="$service";;
+    case "$service" in api|web|egress|pg-tunnel|integrity-egress) target="$service";;
       ops|worker|worker-review|worker-parse) target=worker;; integrity-beijing-tunnel) target=integrity-tunnel;; postgres) continue;;
       *) echo 'unexpected running service in the retained role project' >&2; exit 3;;
     esac
@@ -140,9 +119,6 @@ role_compose_arguments() {
     case "$arg" in -f|-f?*|--file|--file=*|--env-file|--env-file=*|--project-directory|--project-directory=*|-p|-p?*|--project-name|--project-name=*|--profile|--profile=*|--scale|--scale=*|--include-deps)
       echo 'role entry owns Compose files, env, project, profiles and parser scale; extra configuration flags are disabled' >&2; exit 2;;
     esac
-    if ! role_confirmation_active && [ "$arg" = upload-confirmation ]; then
-      echo 'upload confirmation is inactive in this role' >&2; exit 2
-    fi
     if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ] && [ "$arg" = worker-parse ]; then
       echo 'parser is inactive in this role' >&2; exit 2
     fi

@@ -21,7 +21,7 @@ export const inputOf = (draft: ReviewWorkspace['draft']): ReviewDraftInput => { 
 FormatRegistry.Set('date-time', value => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value));
 export function check(schema: TSchema, value: unknown) { expect(Value.Check(schema, value), JSON.stringify([...Value.Errors(schema, value)])).toBe(true); }
 export type Call = { method: string; path: string; search: string; body?: unknown };
-type Upload = { declaration: Dto<'UploadCreateRequest'>; received: boolean; material?: Dto<'MaterialResponse'>; confirmationFailures?: number };
+type Upload = { declaration: Dto<'UploadCreateRequest'>; received: boolean; material?: Dto<'MaterialResponse'> };
 export function fixture() {
   const source: Dto<'MaterialResponse'> = { material_id: 'review-twelfth-source', material_version: 1, upload_id: 'original-source-upload', filename: '合成原募集书.docx', media_type: mime, byte_size: 37, sha256: hash('Synthetic original source'), role: 'historical', state: 'persisted', persisted_at: now, error: null };
   const oldEvidence: Dto<'MaterialResponse'> = { ...source, material_id: 'review-twelfth-old-evidence', upload_id: 'original-evidence-upload', filename: '原已保存证据.pdf', media_type: 'application/pdf', byte_size: 29, sha256: hash('Synthetic old evidence'), role: 'audit' };
@@ -30,7 +30,7 @@ export function fixture() {
   const reports = new Map([[ids.report, report(ids.report, 1)], [ids.otherReport, report(ids.otherReport, 2)]]); reports.forEach(value => expect(isReviewReport(value)).toBe(true));
   const draft: ReviewWorkspace['draft'] = { version: 3, source_material_ref: pin(source), material_versions: [pin(source), pin(oldEvidence)], requirements: ['保留原已保存要求。', '保持金额单位与统计口径。'], as_of: '2026-09-30', evidence_links: [{ report_id: ids.otherReport, finding_id: ids.finding, material_ref: pin(oldEvidence) }] };
   return { owner: ids.owner as string, project: { project_id: ids.project, name: '合成复核上传恢复项目', kind: 'review', issuer_name: '合成发行人', market: 'sse', offering: 'private', draft_revision: 1, input_revision: 2, input_hash: hash('original review input'), updated_at: now } as ReviewWorkspace['project'], draft, reports,
-    materials: new Map([[source.material_id, source], [oldEvidence.material_id, oldEvidence]]), uploads: new Map<string, Upload>(), missingUploads: new Set<string>(), calls: [] as Call[], errors: [] as string[], unexpected: [] as string[],
+    materials: new Map([[source.material_id, source], [oldEvidence.material_id, oldEvidence]]), uploads: new Map<string, Upload>(), calls: [] as Call[], errors: [] as string[], unexpected: [] as string[],
     unavailableReports: new Set<string>(), dropPut: undefined as 'before' | 'after' | undefined, dropComplete: false, dropCompleteAt: 0,
     dropDraft: undefined as 'before' | 'after' | undefined, failDraftReads: false, afterDraft: undefined as ((request: Extract<ReviewDraftRequest, { kind: 'input' }>) => void) | undefined,
     completeGate: undefined as (() => Promise<void>) | undefined, draftGate: undefined as (() => Promise<void>) | undefined,
@@ -68,24 +68,16 @@ export async function install(page: Page, state = fixture()) {
     }
     const transfer = path.match(new RegExp(`^/projects/${ids.project}/materials/uploads/([^/]+)/(bytes|complete)$`));
     if (transfer) {
-      const saved = state.uploads.get(transfer[1]); if (!saved || state.missingUploads.has(transfer[1])) return problem(route, 404, 'NOT_FOUND');
+      const saved = state.uploads.get(transfer[1]); if (!saved) return problem(route, 404, 'NOT_FOUND');
       if (method === 'PUT' && transfer[2] === 'bytes') {
         const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(saved.declaration.byte_size); expect(hash(bytes)).toBe(saved.declaration.sha256);
-        const drop = state.dropPut; state.dropPut = undefined; if (drop === 'before') return route.abort('connectionreset'); saved.received = true;
-        // One lost PUT acknowledgement is automatically reconciled. Keep its
-        // confirmation unavailable through all four attempts to exercise manual recovery.
-        if (drop === 'after') { saved.confirmationFailures = 4; return route.abort('connectionreset'); }
-        return route.fulfill({ status: 204 });
+        const drop = state.dropPut; state.dropPut = undefined; if (drop === 'before') return route.abort('connectionreset'); saved.received = true; if (drop === 'after') return route.abort('connectionreset'); return route.fulfill({ status: 204 });
       }
       if (method === 'POST' && transfer[2] === 'complete') {
         check(schemas.UploadCompleteRequest, body); expect(body).toEqual({ byte_size: saved.declaration.byte_size, sha256: saved.declaration.sha256 }); if (!saved.received) return problem(route, 422, 'MATERIAL_UNREADABLE');
-        if (saved.confirmationFailures) { saved.confirmationFailures--; return problem(route, 503, 'DATA_UNAVAILABLE'); }
         if (!saved.material) { saved.material = state.dedupMaterial ?? { ...saved.declaration, material_id: 'material-' + transfer[1], material_version: 1, upload_id: transfer[1], state: 'persisted', persisted_at: now, error: null }; state.materials.set(saved.material.material_id, saved.material); }
         if (state.completeGate) await state.completeGate();
-        const failedFile = [file, secondFile][state.dropCompleteAt - 1];
-        if (state.dropComplete || failedFile && saved.declaration.filename === failedFile.name && saved.declaration.sha256 === hash(failedFile.buffer)) {
-          state.dropComplete = false; state.dropCompleteAt = 0; saved.confirmationFailures = 3; return route.abort('connectionreset');
-        }
+        if (state.dropComplete || state.dropCompleteAt === Number(transfer[1].split('-').at(-1))) { state.dropComplete = false; state.dropCompleteAt = 0; return route.abort('connectionreset'); }
         check(schemas.MaterialResponse, saved.material); return json(route, saved.material);
       }
     }

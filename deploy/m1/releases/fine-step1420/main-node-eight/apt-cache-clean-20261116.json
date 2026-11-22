@@ -1,9 +1,0 @@
-{
-  "action": "apt-get clean",
-  "scope": "downloaded-package-cache",
-  "disk_free_before": 2014343168,
-  "disk_free_after": 2239000576,
-  "service_restart": false,
-  "package_change": false,
-  "remaining_files": []
-}

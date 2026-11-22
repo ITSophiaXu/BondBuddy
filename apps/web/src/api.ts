@@ -1,5 +1,4 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
-import {uploadTransfers} from './upload-scheduler.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {boundedDownload} from './download-timeout.js';
@@ -11,13 +10,13 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
-import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, isAuditReportRequiredFieldError, AUDIT_REPORT_REQUIRED_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; auditReportRequired?: boolean; prospectusDocxOnly?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -52,7 +51,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
       ? { prospectusDocxOnly: true } : {}),
     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
       ? { prospectusSelectionRequired: true } : {}),
-    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), auditReportRequired: fields.some(isAuditReportRequiredFieldError), materialInputIssues: fields.flatMap(field => {
+    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), materialInputIssues: fields.flatMap(field => {
       if (!isRecord(field)) return [];
       const issue = m4InputIssue(field.code, field.field);
       return issue ? [issue] : [];
@@ -96,21 +95,19 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'BILLING_PROTOCOL_REPLAY_ONLY': return `页面版本已更新，请刷新页面后重新开始。已保存的材料和要求保留；本次任务未开始。${reference}`;
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
-    case 'INPUT_REQUIRED': return error.details.auditReportRequired ? AUDIT_REPORT_REQUIRED_MESSAGE : error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
+    case 'INPUT_REQUIRED': return error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
       ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
-    case 'MATERIAL_ENCRYPTED': return `文件已加密，无法读取。请移除密码或加密后另存为未加密的文件并重新上传。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请通过原任务入口补足积分后继续。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
-    case 'BILLING_REQUEST_REJECTED': return '上次请求未受理，已结束该申请。请刷新当前资格或任务范围后重新开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
     case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
     case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
     case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
-    case 'PAYMENT_UNAVAILABLE': return '支付渠道暂不可用，请稍后重试。如已付款，请刷新原订单核对结果。';
+    case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
     case 'SUBSCRIPTION_CHANGE_QUOTE_STALE': return '可抵扣积分已变化或付款摘要已过期，请刷新付款摘要。';
     case 'SUBSCRIPTION_CHANGE_MANDATE_PENDING': return '原自动续费仍在解除核对中，请稍后继续同一付款请求；尚未生成新订单。';
@@ -500,7 +497,6 @@ export class ApiClient {
     });
   }
   uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal, transport?: UploadTransport) {
-    signal = AbortSignal.any([signal, this.controller.signal]);
     const direct=(transport??this.uploadTransports.get(uploadUrl))===DIRECT_UPLOAD_TRANSPORT;
     const target = new URL(uploadUrl, window.location.href);
     if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
@@ -534,7 +530,7 @@ export class ApiClient {
       if (signal.aborted) { signal.removeEventListener('abort', abort); reject(new DOMException('Upload aborted', 'AbortError')); return; }
       xhr.send(file);
     });
-    return uploadTransfers.run(async () => {
+    return (async () => {
       let refreshed = false;
       for (;;) {
         const xhr = await send();
@@ -552,7 +548,7 @@ export class ApiClient {
       try { problem = JSON.parse(xhr.responseText); } catch { /* response may be empty */ }
       throw parseApiError(xhr.status, problem);
       }
-    }, signal);
+    })();
   }
   create(input: Dto<'ProjectCreateRequest'>) { return this.request<Dto<'ProjectResponse'>>('POST', '/projects', input); }
   patch(id: string, revision: number, input: Dto<'ProjectPatchRequest'>) {

@@ -1,9 +1,0 @@
-# Read-only validation render: compare the effective spool policy with explicit false.
-# Lifecycle commands continue to use the original protected Compose inputs.
-services:
-  upload-confirmation:
-    volumes:
-      - type: bind
-        source: ${BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:-/var/lib/bondbuddy/confirmation-disabled}
-        target: /var/lib/bondbuddy/upload-confirmation
-        bind: {create_host_path: false}

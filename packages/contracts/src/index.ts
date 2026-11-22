@@ -29,7 +29,6 @@ import { qaSchemas,qaOpenApiPaths } from './project-qa.js';
 export * from './project-qa.js';
 import { integritySchemas,integrityOpenApiPaths } from './integrity.js';
 export * from './integrity.js';
-export * from './integrity-billing.js';
 import { reviewEditorOpenApiPaths } from './review-editor.js';
 export * from './artifact-filename.js';
 import { recoverySchemas, RECOVERY_OPERATIONS } from './account-recovery.js';
@@ -74,8 +73,6 @@ import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
 import { adminDashboardSchemas } from './admin-dashboard.js';
 export * from './admin-dashboard.js';
-import {performanceSchemas} from './performance.js';
-export * from './performance.js';
 import {adminInspectionSchemas} from './admin-inspection.js';
 export * from './admin-inspection.js';
 import { browserErrorSchemas } from './browser-errors.js';
@@ -120,7 +117,7 @@ export const PROJECT_STATES = ['draft', ...RUN_STATES] as const;
 export const PROJECT_ARCHIVE_VIEWS = ['active', 'archived', 'all'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['BILLING_REQUEST_REJECTED', 'SUBSCRIPTION_CHECKOUT_REJECTED', 'SUBSCRIPTION_CHANGE_QUOTE_STALE', 'SUBSCRIPTION_CHANGE_MANDATE_PENDING', 'BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'HISTORICAL_BASELINE_REQUIRED', 'FIRST_DRAFT_CONFIRMATION_REQUIRED', 'FIRST_DRAFT_EXCLUSION_STALE', 'PROJECT_FILE_BATCH_INPUT_EXPIRED', 'PROJECT_RUN_ACTIVE', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'QUOTE_REQUIRED', 'QUOTE_CHANGED', 'BILLING_NOT_READY', 'PAYMENT_UNAVAILABLE', 'PAYMENT_INVALID', 'METERING_PENDING', 'DELIVERY_FAILED', 'WORD_FORMAT_OPERATIONS_MISSING', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
+export const ERROR_CODES = ['SUBSCRIPTION_CHECKOUT_REJECTED', 'SUBSCRIPTION_CHANGE_QUOTE_STALE', 'SUBSCRIPTION_CHANGE_MANDATE_PENDING', 'BROWSER_ERROR_REPORTED', 'TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'HISTORICAL_BASELINE_REQUIRED', 'FIRST_DRAFT_CONFIRMATION_REQUIRED', 'FIRST_DRAFT_EXCLUSION_STALE', 'PROJECT_FILE_BATCH_INPUT_EXPIRED', 'PROJECT_RUN_ACTIVE', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'QUOTE_REQUIRED', 'QUOTE_CHANGED', 'BILLING_NOT_READY', 'PAYMENT_UNAVAILABLE', 'PAYMENT_INVALID', 'METERING_PENDING', 'DELIVERY_FAILED', 'WORD_FORMAT_OPERATIONS_MISSING', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -263,7 +260,6 @@ export const schemas = {
   ...recoverySchemas,
   ...adminSchemas,
   ...adminInspectionSchemas,
-  ...performanceSchemas,
   ...adminDashboardSchemas, // #448 operator-only per-user/per-task dashboard
   ...runtimeSchemas, // #17 worker runtime
   ...trialSchemas, // #35 trial guard
@@ -716,4 +712,3 @@ export * from './review-update.js';
 export * from './project-assistant.js';
 export * from './automatic-pricing.js';
 export * from './generation-progress.js';
-export * from './execution-capacity.js';

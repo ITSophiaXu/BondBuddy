@@ -1,2 +1,0 @@
-# Preserve the exact bytes verified and installed in the scoped manifest.
-*.py -text

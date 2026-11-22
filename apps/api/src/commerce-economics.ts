@@ -120,17 +120,17 @@ async function load(c:PoolClient,runId:string){
     UNION ALL SELECT 1 FROM bb_automatic_scope_runs WHERE owner_user_id=$2 AND run_id=$1
     UNION ALL SELECT 1 FROM bb_credit_quotes WHERE owner_user_id=$2 AND scope_quote_id IS NOT NULL AND id IN(SELECT quote_id FROM bb_credit_reservations WHERE run_id=$1)
     UNION ALL SELECT 1 FROM bb_m4_quotes WHERE owner_user_id=$2 AND scope_quote_id IS NOT NULL AND id IN(SELECT quote_id FROM bb_credit_reservations WHERE run_id=$1)
-    UNION ALL SELECT 1 FROM bb_project_qa_quotes WHERE owner_user_id=$2 AND run_id=$1 AND price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2','bb-task-price-170-20261029-v2','bb-task-price-170-20261029-v3','bb-task-price-scope-20261111-v4')
+    UNION ALL SELECT 1 FROM bb_project_qa_quotes WHERE owner_user_id=$2 AND run_id=$1 AND price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2','bb-task-price-170-20261029-v2','bb-task-price-170-20261029-v3')
     UNION ALL SELECT 1 FROM bb_project_file_check_quotes WHERE owner_user_id=$2 AND run_id=$1
     UNION ALL SELECT 1 FROM bb_project_file_update_quotes WHERE owner_user_id=$2 AND run_id=$1 AND scope_quote_id IS NOT NULL
     UNION ALL SELECT 1 FROM bb_integrity_quotes WHERE owner_user_id=$2 AND run_id=$1 AND scope_quote_id IS NOT NULL) ok`,[runId,run.owner_user_id])).rows[0].ok;
   if(!tagged)throw invalid('Only explicitly tagged CNY service runs can be interpreted as fen; legacy credits are not money');
   const correction=(await c.query("SELECT COALESCE(sum(points),0)::text amount FROM bb_credit_events WHERE run_id=$1 AND owner_user_id=$2 AND kind='correction'",[runId,run.owner_user_id])).rows[0];
-  const slices=(await c.query(`SELECT a.reservation_id,l.id lot_id,bb_credit_allocation_charge(a.reservation_id,a.lot_id)::text points,l.cash_basis_fen::text numerator_fen,l.cash_basis_points::text denominator_points,
+  const slices=(await c.query(`SELECT a.reservation_id,l.id lot_id,a.charged_points::text points,l.cash_basis_fen::text numerator_fen,l.cash_basis_points::text denominator_points,
     l.cash_order_id,l.cash_origin_lot_id,(l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
     FROM bb_credit_reservations r JOIN bb_credit_allocations a ON a.reservation_id=r.id
     JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=r.owner_user_id
-    WHERE r.run_id=$1 AND r.owner_user_id=$2 AND r.billing_policy='on_delivery' AND r.state='settled' AND bb_credit_allocation_charge(a.reservation_id,a.lot_id)>0 ORDER BY l.id`,[runId,run.owner_user_id])).rows;
+    WHERE r.run_id=$1 AND r.owner_user_id=$2 AND r.billing_policy='on_delivery' AND r.state='settled' AND a.charged_points>0 ORDER BY l.id`,[runId,run.owner_user_id])).rows;
   // A correction lot carries the immutable original payment basis. Retrieve each
   // event rather than rounding PostgreSQL division before summing repeating ratios.
   const reversals=(await c.query(`SELECT e.id event_id,e.reservation_id,e.lot_id,e.points::text points,

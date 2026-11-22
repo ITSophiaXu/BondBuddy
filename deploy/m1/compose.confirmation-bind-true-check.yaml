@@ -1,8 +1,0 @@
-# Negative control for read-only bind-policy validation; never a lifecycle input.
-services:
-  upload-confirmation:
-    volumes:
-      - type: bind
-        source: ${BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:-/var/lib/bondbuddy/confirmation-disabled}
-        target: /var/lib/bondbuddy/upload-confirmation
-        bind: {create_host_path: true}

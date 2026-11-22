@@ -2,78 +2,13 @@
 // execution, a human signature, or a passing release acceptance record.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHash } from 'node:crypto';
-import { mkdtempSync,readFileSync,writeFileSync,rmSync } from 'node:fs';
+import { mkdtempSync,writeFileSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join,resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ACCEPTANCE_POLICY,METRICS,SCOPES,REQUIRED_FINANCIAL_KEYS,REQUIRED_ROLE_IDS,STOCK_METRICS,FINANCIAL_POLICY,verifyProspectusAcceptance,validateBinding,validateChapterCoverage,
   equalRoundedAmount,equalRoundedRatio,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts,validateFixedOccurrenceCoverage } from './verify-prospectus-acceptance.mjs';
-
-const fileCatalogBytes=readFileSync(new URL('../deploy/m1/codex-file-authoring-model-catalog.json',import.meta.url));
-const fileModels=JSON.parse(fileCatalogBytes).models;
-test('file-authoring accepts only the deployed DeepSeek catalog and preserves official 0.169 capabilities',()=>{
-  // openai/codex@a41fe5b443652cbdbee57717fbb9fd78d8d8b32a (0.169.0):
-  // models-manager/src/model_info.rs::model_info_from_slug, models-manager/prompt.md,
-  // and protocol/src/openai_models.rs::default_input_modalities. Only the existing
-  // business 1M ceiling, compaction threshold and effective window override fallback.
-  // The new optional web_search_provider field defaults to None when omitted;
-  // the official prompt and all existing fallback capabilities are unchanged.
-  assert.deepEqual(fileModels.map(m=>m.slug),['deepseek-flash']);
-  assert.deepEqual(fileCatalogBytes,readFileSync(new URL('../deploy/m1/codex-deepseek-model-catalog.json',import.meta.url)),
-    'acceptance and the selected runtime catalog must describe the same model');
-  const { model_messages, ...metadata }=fileModels[0];
-  assert.deepEqual(metadata,{
-    slug:'deepseek-flash',display_name:'deepseek-flash',description:null,
-    default_reasoning_level:null,supported_reasoning_levels:[],shell_type:'unified_exec',
-    visibility:'none',supported_in_api:true,priority:99,additional_speed_tiers:[],service_tiers:[],
-    default_service_tier:null,available_access_programs:null,availability_nux:null,upgrade:null,
-    include_skills_usage_instructions:false,include_plugin_usage_instructions:false,include_apps_usage_instructions:false,
-    supports_reasoning_summary_parameter:true,default_reasoning_summary:'auto',support_verbosity:false,
-    default_verbosity:null,apply_patch_tool_type:null,web_search_tool_type:'text',
-    truncation_policy:{mode:'bytes',limit:10000},supports_image_detail_original:false,
-    context_window:1000000,max_context_window:1000000,auto_compact_token_limit:900000,
-    comp_hash:null,effective_context_window_percent:100,experimental_supported_tools:[],input_modalities:['text','image'],
-    supports_search_tool:false,supports_experimental_context:false,use_responses_lite:false,
-    supports_reasoning_effort_updates:false,guardian:null,node_repl_auto_review_required:false,node_repl_disabled:false,
-    auto_review_model_override:null,model_specialty:null,tool_mode:null,multi_agent_version:null,multi_agent_reasoning_effort:null,
-  });
-  const { instructions_template,...messages }=model_messages;
-  assert.deepEqual(messages,{approvals:null,collaboration_modes:null,auto_review:null,permissions:null,multi_agent:null});
-  assert.equal(Buffer.byteLength(instructions_template,'utf8'),20903);
-  assert.equal(createHash('sha256').update(instructions_template).digest('hex'),
-    'ac8ae107a0d72fe3476b430afb161ea4e67da2e446d778aefc44828160559807');
-});
-test('business Codex build pins official 0.169 platform integrity and retains catalog installation',()=>{
-  const dockerfile=readFileSync(new URL('../deploy/m1/Dockerfile',import.meta.url),'utf8');
-  // npm registry @openai/codex dist-tags.latest and both 0.169.0 platform packages.
-  assert.match(dockerfile,/^ARG CODEX_VERSION=0\.169\.0$/m);
-  for(const [arch,integrity] of [
-    ['X64','sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww=='],
-    ['ARM64','sha512-NZ/DaQUpcQmxmqee7Z9uC1rzw3GhSbooawcaTe1LN5Yk+WlinUKGdTXJgClRT/9ogQEEM9TWxYzvxPfj5G/xFg=='],
-  ])assert.equal(dockerfile.match(new RegExp(`^ARG CODEX_INTEGRITY_LINUX_${arch}=(.*)$`,'m'))?.[1],integrity);
-  assert.ok(dockerfile.includes('[ "$got" = "$want" ] ||'));
-  assert.match(dockerfile,/COPY .*codex-file-authoring-model-catalog.json \/opt\/bondbuddy\/codex-file-authoring-model-catalog.json/);
-  assert.match(dockerfile,/COPY .*codex-deepseek-model-catalog.json \/opt\/bondbuddy\/codex-deepseek-model-catalog.json/);
-});
-test('current catalog model passes identity checks while retired, unrelated and missing models are rejected',()=>{
-  // In-memory validator branch exercises only; these flags are deliberately
-  // artificial input, never written as provider evidence or a release receipt.
-  const expected={commit:'a'.repeat(40),tree:'b'.repeat(40),prompt_tools_sha256:'c'.repeat(64),
-    run_id:'unit-run',input_hash:'d'.repeat(64),tracked_sha256:'e'.repeat(64),clean_sha256:'f'.repeat(64),
-    reviewer_id:'reviewer@private.invalid',reviewed:Date.parse('2026-11-01T04:00:00Z'),models:fileModels.map(m=>m.slug)};
-  const provider={...expected,synthetic:false,real_call:true,provider:'codex',request_id:'request-123',
-    actor_id:'operator@private.invalid',model:'deepseek-flash',started_at:'2026-11-01T03:00:00Z',
-    finished_at:'2026-11-01T03:01:00Z',usage:{status:'measured',input_tokens:2,output_tokens:1,total_tokens:3}};
-  delete provider.models;
-  validateRealModelRecord(provider,expected);
-  for(const model of ['gpt-6-sol','gpt-6.1-sol','deepseek-chat','deepseek-flash-unregistered','',undefined])
-    assert.throws(()=>validateRealModelRecord({...provider,model},expected),/PROVIDER_MODEL_MISMATCH/);
-  assert.throws(()=>validateRealModelRecord({...provider,synthetic:true},expected),/PROVIDER_RUN_INVALID/);
-  assert.throws(()=>validateRealModelRecord({...provider,commit:'0'.repeat(40)},expected),/SOURCE_BINDING_MISMATCH/);
-  assert.throws(()=>validateRealModelRecord({...provider,usage:{status:'unknown'}},expected),/MEASURED_USAGE_REQUIRED/);
-});
 
 test('release acceptance fails when its private evidence file is missing',async()=>{
   await assert.rejects(verifyProspectusAcceptance({file:''}),/FILE_REQUIRED/);
@@ -270,7 +205,7 @@ with open(r/'synthetic.pdf','wb') as stream:w.write(stream)
   }finally{rmSync(temp,{recursive:true,force:true});}
 });
 
-for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout','FinancialSourceBindings']){
+for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout','FinancialSourceBindings','ExpandedAmountRegression']){
   test(`independent financial reader validates ${name} without changing a template`,()=>{
     const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';

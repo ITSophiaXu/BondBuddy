@@ -18,15 +18,6 @@ const draft=():IntegrityDraft=>({subjects:[{id:'company-1',kind:'company',name:'
   {id:'person-1',kind:'person',name:'张三',identifier:'',role:'董事',province:'',city:''}],site_ids:['credit-china','local-csrc'],notes:'核对主体身份与日期'});
 const value=():IntegrityRecoveryValue=>({revision:4,draft:draft(),sourceRun:'viewed-historical-export'});
 const check=(id='check-request'):IntegrityRecoveryValue=>({...value(),pending:{kind:'check',request:{request_id:id,expected_revision:4,expected_points:"5000",price_version:INTEGRITY_PRICE.version}}});
-
-test('round intent survives preparation, pending recovery and journal replay without generating a new ID',()=>{
- const storage=new MemoryStorage(),cache=new IntegrityRecoveryCache('owner','project',storage),journal=new IntegrityRecoveryJournal('owner','project',storage);
- const prepared={...value(),roundId:'stable-round'};assert.equal(cache.save(prepared).status,'valid');assert.equal(cache.read().value?.roundId,'stable-round');
- const pending=check();pending.roundId='stable-round';if(pending.pending?.kind!=='check')throw Error('fixture');pending.pending.request.round_id='stable-round';
- assert.equal(cache.save(pending,prepared).status,'valid');assert.equal(journal.retain(pending).status,'valid');
- assert.deepEqual(journal.readAll().values?.[0],pending);
- const mismatched=structuredClone(pending);mismatched.roundId='other-round';assert.equal(cache.save(mismatched).status,'invalid');
-});
 test('ordinary upgrade retains numeric integrity requests in both recovery cache and journal',()=>{
   const storage=new MemoryStorage(),cache=new IntegrityRecoveryCache('owner','project',storage),journal=new IntegrityRecoveryJournal('owner','project',storage);
   const legacy=JSON.parse(JSON.stringify(check()));legacy.pending.request.expected_points=INTEGRITY_PRICE.points;

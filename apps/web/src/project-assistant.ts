@@ -1,4 +1,3 @@
-import {uploadFileDigest} from './upload-file-digest.js';
 import './upload-ux.css';
 import './upload-progress.css';
 import { materialPeriodHintSlot, syncReportingPeriodHints } from './reporting-period-hints';
@@ -109,10 +108,6 @@ export class ProjectAssistant {
   private text='';
   private error='';
   private status='';
-  private replyStop?:{runId:string;state:'pending'|'unknown'|'cancelled'|'finished'};
-  private replyBlocked=false;
-  private connectionInterrupted=false;
-  private pollGeneration=0;
   private qaQuote?:{content:string;value:M4QuoteResponse;key:string};
   private timer?:ReturnType<typeof setTimeout>;
   private saveTimer?:ReturnType<typeof setTimeout>;
@@ -128,7 +123,7 @@ export class ProjectAssistant {
   private event=(event:Event)=>{const d=(event as CustomEvent<{projectId:string;artifactId?:string}>).detail;void this.work(async()=>{await this.newConversation(d.projectId);if(d.artifactId){const result=this.data?.results.find(r=>r.pin.artifact_id===d.artifactId);if(result)this.workspace!.view.unsent_context.reading_artifact=result.pin;}
     this.open=true;this.formOpen=false;this.changed();},'submit');};
   constructor(private api:ApiClient,private owner:string){
-    this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{signal:this.controller.signal,coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
+    this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
     this.dock.type='button';this.dock.className='ba-dock';this.dock.dataset.assistantDock='';
     this.dock.setAttribute('aria-controls','ba-panel');
     this.dock.innerHTML=icon('buddy')+'<i data-active-dot aria-hidden="true"></i>';
@@ -275,7 +270,7 @@ export class ProjectAssistant {
     if(!/\.docx$/i.test(file.name)||!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes||file.name.length>200)throw new AssistantInputError('券商模板请选择一份非空 DOCX 文件，并符合文件大小限制。');
     await this.flush();await this.saving;await Promise.all(this.currentUploads().filter(u=>u.kind==='material').map(u=>u.preparation));await this.cacheQueue;if(this.currentUploads().some(u=>u.kind==='material'&&!uploadReady(u)))throw new AssistantInputError('请先完成或停止原附件保存，再上传券商模板。');if(this.templateBlocked())throw new AssistantInputError(this.error);
     const topic=this.workspace.topic.topic_id,project=this.workspace.topic.project_id;this.templatePreparing=true;this.templateGeneration++;this.runtimeGeneration++;clearTimeout(this.saveTimer);this.paint();
-    try{const digest=await uploadFileDigest(file,this.controller.signal);if(!this.scopeCurrent(topic,project))return;this.cache();await this.cacheQueue;if(this.cacheProblem)throw new AssistantInputError(this.cacheProblem);const e=await this.assistantTemplateUploads!.prepare({filename:file.name,media_type:M1_UPLOAD_MIME_TYPES[0],byte_size:file.size,sha256:Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join(''),role:'other'});this.templateFiles.set(e.items[0].id,file);this.scanTemplates();await this.resumeTemplate(e.id,false);}finally{if(this.scopeCurrent(topic,project)){this.templatePreparing=false;this.scanTemplates();this.paint();}}
+    try{const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());if(!this.scopeCurrent(topic,project))return;this.cache();await this.cacheQueue;if(this.cacheProblem)throw new AssistantInputError(this.cacheProblem);const e=await this.assistantTemplateUploads!.prepare({filename:file.name,media_type:M1_UPLOAD_MIME_TYPES[0],byte_size:file.size,sha256:Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join(''),role:'other'});this.templateFiles.set(e.items[0].id,file);this.scanTemplates();await this.resumeTemplate(e.id,false);}finally{if(this.scopeCurrent(topic,project)){this.templatePreparing=false;this.scanTemplates();this.paint();}}
   }
   private async resumeTemplate(id:string,explicit=true){
     const helper=this.assistantTemplateUploads;if(!helper||!this.workspace)return;this.scanTemplates();const e=this.templateEnvelopes.find(e=>e.id===id);if(!e)throw new AssistantInputError('原模板保存待办已变化，请重新读取。');const item=e.items[0],topic=e.topicId,project=e.projectId,wasPreparing=this.templatePreparing;this.templatePreparing=true;this.templateGeneration++;this.templateErrors.delete(item.id);await this.cacheQueue;
@@ -324,7 +319,7 @@ export class ProjectAssistant {
   }
   private async select(id:string){
     await this.flush();await this.cacheQueue;if(this.cacheProblem)throw new AssistantInputError(this.cacheProblem);const token=++this.epoch;const w=await this.m4.workspace(id);if(!this.live||token!==this.epoch)return;
-    this.workspace=w;this.replyStop=undefined;this.replyBlocked=false;this.connectionInterrupted=false;this.templatePreparing=false;this.templateReading=false;this.copyPreparing=false;this.copyReading=false;this.readingGeneration++;this.copyReadingGeneration++;this.viewConflict=false;this.viewDirty=false;this.conflictServer=undefined;this.text=w.view.unsent_content;this.qaQuote=undefined;this.data=undefined;this.formOpen=false;this.status='';this.cacheProblem='';this.editGeneration=0;this.runtimeGeneration=0;this.actionUncertain=false;
+    this.workspace=w;this.templatePreparing=false;this.templateReading=false;this.copyPreparing=false;this.copyReading=false;this.readingGeneration++;this.copyReadingGeneration++;this.viewConflict=false;this.viewDirty=false;this.conflictServer=undefined;this.text=w.view.unsent_content;this.qaQuote=undefined;this.data=undefined;this.formOpen=false;this.status='';this.cacheProblem='';this.editGeneration=0;this.runtimeGeneration=0;this.actionUncertain=false;
     this.view.assistant??={project_id:w.topic.source_project_id,action:null};
     sessionStorage.setItem(`bb-assistant:${this.owner}`,id);
     if(this.view.assistant.project_id){this.data=await this.projectData(this.view.assistant.project_id);if(this.view.assistant.source_prospectuses)(this.data.project.update_details??=emptyUpdateDetails()).source_prospectuses=structuredClone(this.view.assistant.source_prospectuses);}
@@ -350,76 +345,31 @@ export class ProjectAssistant {
       catch(e){if(this.scopeCurrent(w.topic.topic_id,w.topic.project_id)){this.viewDirty=true;if(e instanceof ApiError&&e.code==='INPUT_REVISION_CONFLICT')this.viewConflict=true;this.cache();}throw e;}
     });return this.saving;
   }
-  private invalidatePoll(){clearTimeout(this.timer);this.pollGeneration++;}
-  private replyTask(message:M4Message){return this.workspace?.tasks.find(t=>t.run.run_id===message.run_id&&t.manifest.kind==='qa');}
-  private pendingReply(){return this.workspace?.messages.find(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)&&!finished(this.replyTask(m)?.run.state??''));}
-  private replyStatus(){
-    if(this.connectionInterrupted)return '连接暂时中断，暂无法确认回复状态。请刷新状态后继续。';
-    if(this.replyStop?.state==='pending')return '正在停止本次回答，等待确认任务结束。消息与材料保留。';
-    if(this.replyStop?.state==='unknown')return '停止结果尚未确认，请刷新状态核对；消息与材料保留。';
-    if(this.replyStop?.state==='cancelled')return '已停止本次回答，消息与材料保留。';
-    if(this.replyStop?.state==='finished')return '本次回答已结束，消息与材料保留。';
-    const pending=this.replyBlocked?this.pendingReply():undefined;
-    if(pending)return this.replyTask(pending)?.run.stage==='provider_reconcile'?'上一轮回复仍在核对调用状态，请刷新状态或停止本次回答后继续；新问题已保留。':'上一轮回复尚未结束，请等待或停止本次回答后继续；新问题已保留。';
-    return '';
-  }
-  private async poll():Promise<boolean>{
-    clearTimeout(this.timer);if(!this.live||!this.workspace)return false;const id=this.workspace.topic.topic_id,token=this.epoch,read=++this.pollGeneration,templateGeneration=this.templateGeneration;
-    const current=()=>this.live&&token===this.epoch&&read===this.pollGeneration;
+  private async poll(){
+    clearTimeout(this.timer);if(!this.live||!this.workspace)return;const id=this.workspace.topic.topic_id,token=this.epoch,templateGeneration=this.templateGeneration;
     try{const [w,c]=await Promise.all([this.m4.workspace(id),this.api.request<{cards:AssistantCard[]}>('GET',`/assistant/topics/${id}/cards`,undefined,{},this.controller.signal)]);
-      if(!current())return false;
+      if(!this.live||token!==this.epoch)return;
       // Keep local typing and explicit draft choices. Server replies are immutable.
       const protectedLists=this.templatePreparing||this.templateReading||this.templateEnvelopes.length>0||this.copyPreparing||this.copyReading||this.copyEnvelopes.length>0||templateGeneration!==this.templateGeneration;this.workspace={...w,...(protectedLists?{templates:this.workspace.templates,materials:this.workspace.materials,material_details:this.workspace.material_details}:{}),view:this.workspace.view};if(templateGeneration===this.templateGeneration)this.cards=c.cards;if(this.viewConflict)this.conflictServer=structuredClone(w.view);
-      this.connectionInterrupted=false;
-      if(this.replyStop){
-        const index=w.messages.findIndex(m=>m.role==='user'&&m.run_id===this.replyStop!.runId),run=w.tasks.find(t=>t.run.run_id===this.replyStop!.runId)?.run;
-        if(index>=0&&w.messages.slice(index+1).some(m=>m.role==='user'))this.replyStop=undefined;
-        else if(run&&finished(run.state))this.replyStop.state=run.state==='cancelled'?'cancelled':'finished';
-      }
-      if(!this.pendingReply())this.replyBlocked=false;
-      if(this.open&&!this.busy)this.paintTimeline();this.paintStatus();
-      const active=!!this.pendingReply()||c.cards.some(c=>c.run&&!finished(c.run.state));
+      if(this.open&&!this.busy)this.paintTimeline();
+      const active=w.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status))||c.cards.some(c=>c.run&&!finished(c.run.state));
       this.active=active;this.paintDock();
-      return true;
-    }catch{if(current()){this.connectionInterrupted=true;this.paintStatus();}return false;}
-    finally{if(current())this.timer=setTimeout(()=>void this.poll(),this.open?4000:12000);}
-  }
-  private async cancelReply(message:M4Message){
-    const task=this.replyTask(message);if(!task||finished(task.run.state)||this.replyStop?.runId===task.run.run_id&&this.replyStop.state==='pending')return;
-    const topic=this.workspace!.topic.topic_id,token=this.epoch,runId=task.run.run_id;
-    this.invalidatePoll();this.replyStop={runId,state:'pending'};this.paintStatus();
-    try{
-      const run=await this.api.runAction(runId,'cancel',this.controller.signal);
-      if(!this.live||token!==this.epoch||this.workspace?.topic.topic_id!==topic)return;
-      this.invalidatePoll();
-      if(run.run_id!==runId)throw new ApiError(0,'DATA_UNAVAILABLE');
-      task.run={...task.run,...run};
-      if(['cancelled','failed','rejected'].includes(run.state))message.reply_status='failed';
-      this.replyStop={runId,state:run.state==='cancelled'?'cancelled':finished(run.state)?'finished':'pending'};
-    }catch{if(!this.live||token!==this.epoch)return;this.replyStop={runId,state:'unknown'};}
-    await this.poll();
+    }catch(e){if(this.live&&this.open){this.status='连接暂时中断，已提交任务继续运行。';this.paintStatus();}}
+    if(this.live&&token===this.epoch)this.timer=setTimeout(()=>void this.poll(),this.open?4000:12000);
   }
   private context():M4MessageContext{return {...this.view.unsent_context,document_type:null,draft_version:0};}
   private async send(){
     if(!this.text.trim()||!this.workspace)return;
     if(this.templateBlocked())throw new AssistantInputError(this.error);
     if(this.uploadRecoveryBlocked)throw new AssistantInputError('本机附件记录未能可靠读取，请保留文件并重新打开原对话后再继续。');
-    if(this.pendingReply()||this.connectionInterrupted){
-      if(!await this.poll()||this.pendingReply()){this.replyBlocked=true;return;}
-    }
+    if(this.workspace.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)))throw new AssistantInputError('请等待本轮回复后继续。');
     if(this.currentUploads().some(u=>!uploadReady(u)))throw new AssistantInputError('请先确认附件已保存并加入原对话，或停止本机追踪。');
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
     if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(int64(value.quote.points)>0n||scopePending(value.quote)))return;}
     const q=this.qaQuote;if(int64(q.value.shortage)>0n&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价，并到账号页查看余额与支付渠道状态；余额充足后返回重新发送。':'积分不足，原问题已保留。请到账号页查看积分与支付渠道状态；积分充足后返回重新发送。');
     if(isCnyPrice(q.value.quote)&&!await confirmCnyTask('确认本次回答费用',q.value.quote,'按当前问题和已选材料回答；新增问题或范围须另行确认。'))return;
-    const receipt=await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
-    // Discard reads started before this accepted submission, including a late previous reply.
-    this.invalidatePoll();
-    if(!this.workspace.messages.some(m=>m.message_id===receipt.message.message_id))this.workspace.messages.push(receipt.message);
-    this.replyStop=undefined;this.replyBlocked=false;this.connectionInterrupted=false;this.status='';
-    this.text='';this.qaQuote=undefined;this.changed();
-    // Saving the cleared composer may fail after the message was accepted. Keep reading that run.
-    try{await this.flush();}finally{await this.poll();}
+    await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
+    this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
   }
   private async useAction(action:AssistantAction){
     if(!this.workspace)return;
@@ -440,7 +390,7 @@ export class ProjectAssistant {
     await this.flush();await this.saving;await Promise.all(this.currentUploads().filter(u=>u.kind==='material').map(u=>u.preparation));await this.cacheQueue;
     if(!this.scopeCurrent(topic,project))return {kind:'blocked',reason:'原会话已变化，当前输入已保留。'};if(this.templateBlocked())return {kind:'blocked',reason:this.error};
     if(this.currentUploads().some(u=>!uploadReady(u)))return {kind:'blocked',reason:'请先完成或停止原附件保存，再核对本次任务。'};
-    const guard=this.preparationGuard(),input=structuredClone(this.projectInput());if(!input.issuer_name||!input.market||!input.offering||!input.update_details?.reporting_cutoff)throw new AssistantInputError('请先填写发行人、市场、品种和目标报告期。');
+    const guard=this.preparationGuard(),input=structuredClone(this.projectInput());if(!input.issuer_name||!input.market||!input.offering||!input.update_details?.reporting_cutoff)throw new AssistantInputError('请先填写发行人、市场、品种和最新报告期。');
     const sourceProjectId=this.data?.project.project_id??project,source=await this.preparationRead(guard,()=>this.projectData(sourceProjectId));
     if(source.project.kind===input.kind){
       if(this.data&&source.project.draft_revision!==this.data.project.draft_revision)throw new AssistantInputError('原项目已在其他页面改变，请核对项目信息后继续。');const {kind,...patch}=input;
@@ -567,7 +517,11 @@ export class ProjectAssistant {
       if(a==='refresh-reply')await this.poll();
       if(a==='cancel-reply'){
         const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id&&m.role==='user');
-        if(message)await this.cancelReply(message);
+        const task=this.workspace?.tasks.find(t=>t.run.run_id===message?.run_id&&t.manifest.kind==='qa');
+        if(message&&task&&!finished(task.run.state)){
+          await this.api.runAction(task.run.run_id,'cancel',this.controller.signal);
+          await this.poll();this.status='已停止本次回答，消息与材料保留。';
+        }
       }
       if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
       if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
@@ -629,7 +583,7 @@ export class ProjectAssistant {
       <label>发行市场<select data-field="market"><option value="">请选择</option>${(a.business==='generation'?(f.document_type?M4_DOCUMENT_MARKETS[f.document_type]:MARKETS):MARKETS).map(m=>option(m,MARKET_LABELS[m],f.market)).join('')}</select></label>
       ${a.business==='generation'&&f.document_type==='recommendation'?`<label>品种<select data-field="offering"><option value="">请选择</option>${(['ppn','mtn'] as const).map(o=>option(o,OFFERING_LABELS[o],f.offering)).join('')}</select></label>`:''}
       ${a.business!=='generation'?`<label>品种<select data-field="offering"><option value="">请选择</option>${(f.market?MARKET_OFFERINGS[f.market]:[]).map(o=>option(o,OFFERING_LABELS[o],f.offering)).join('')}</select></label>
-      <label>目标报告期<select data-year>${s.years.map(y=>option(y,`${y}年`,s.year)).join('')}</select></label><label>期末<select data-quarter><option value="">请选择</option>${QUARTER_ENDS.map(([q,l])=>option(q,l,s.quarter)).join('')}</select></label>`:''}</div>
+      <label>最新报告期<select data-year>${s.years.map(y=>option(y,`${y}年`,s.year)).join('')}</select></label><label>期末<select data-quarter><option value="">请选择</option>${QUARTER_ENDS.map(([q,l])=>option(q,l,s.quarter)).join('')}</select></label>`:''}</div>
       ${a.business==='generation'&&f.document_type==='init'?`<label>券商立项模板<select data-template><option value="">请选择</option>${(this.workspace?.templates??[]).filter(t=>t.status==='active'&&t.document_type==='init'&&t.market===f.market).map(t=>option(`${t.template_id}/${t.template_version}`,`${t.broker} · ${t.name}`,this.view.assistant?.template_key)).join('')}</select></label><label>模板所属券商<input data-field="broker" value="${esc(f.broker??'')}"></label><label class="bb-upload-picker bb-upload-picker--compact ba-attach ba-template-picker">＋ 上传券商模板<input type="file" data-template-upload accept=".docx" aria-label="上传券商模板"></label><div data-template-recovery>${this.templateRecovery()}</div>`:''}
       <div class="ba-upload-actions"><label class="bb-upload-picker bb-upload-picker--compact">＋ ${a.business==='review'?'待复核募集书':'历史／参考募集书'}<input type="file" data-file="historical" accept=".docx,.pdf" multiple></label><label class="bb-upload-picker bb-upload-picker--compact">＋ 财务／审计材料<input type="file" data-file="audit" multiple></label><label class="bb-upload-picker bb-upload-picker--compact">＋ 其他材料<input type="file" data-file="other" multiple></label></div>
       ${a.business!=='update'&&sources.length>1?`<label>本次采用的募集说明书<select data-primary-source><option value="">请选择</option>${sources.map(m=>option(m.material_id,m.filename,this.view.unsent_context.source_material?.material_id)).join('')}</select></label>`:''}
@@ -646,7 +600,7 @@ export class ProjectAssistant {
     return `<a data-assistant-task-run="${esc(r.run_id)}" href="${esc(taskHref(task))}">${esc(taskView(task).action)}</a>`;
   }
   private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=!isAutomaticCharge(c.quote)&&int64(c.balance.available)<int64(price);
-    return `<section class="ba-task ${r?'ba-committed':''}" data-card="${esc(c.card_id)}"><div class="ba-card-head"><strong>${businessName(c.operation)}</strong><span>${r?runLabel(r.state):stale?'已保留旧方案':'待确认'}</span></div><p>${esc(c.project_name)}</p><p>${esc([c.target?.issuer_name,MARKET_LABELS[c.target?.market as Market],OFFERING_LABELS[c.target?.offering as Offering],c.document_type?M4_DOCUMENT_LABELS[c.document_type as M4DocumentType]:null,c.target?.reporting_cutoff?`目标报告期 ${c.target.reporting_cutoff}`:null].filter(Boolean).join(' · '))}</p>
+    return `<section class="ba-task ${r?'ba-committed':''}" data-card="${esc(c.card_id)}"><div class="ba-card-head"><strong>${businessName(c.operation)}</strong><span>${r?runLabel(r.state):stale?'已保留旧方案':'待确认'}</span></div><p>${esc(c.project_name)}</p><p>${esc([c.target?.issuer_name,MARKET_LABELS[c.target?.market as Market],OFFERING_LABELS[c.target?.offering as Offering],c.document_type?M4_DOCUMENT_LABELS[c.document_type as M4DocumentType]:null,c.target?.reporting_cutoff?`最新报告期 ${c.target.reporting_cutoff}`:null].filter(Boolean).join(' · '))}</p>
       <details${!r?' open':''}><summary>${c.baseline?'基于已选成果继续修改':'任务材料与要求'}</summary><p>${c.baseline?'保留旧成果，生成新的文件版本。':''}</p><ul>${c.material_names.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><p class="ba-text">${esc(c.requirements||'按所选材料和对应编制要求处理。')}</p></details>
       ${c.operation==='update'&&!r&&!isCnyPrice(c.quote)?'':`<div class="ba-credits">${r?'本次任务费用':'本次总价'} <strong>${displayPrice(c.quote,price)}</strong>${!r?`<small>可用 ${displayCharge(c.quote,c.balance.available)}</small>`:''}</div>`}
       ${!r?scopeLinesHtml(c.quote):''}${scopePending(c.quote)&&!r?scopeLifecycleHtml(c.quote):''}
@@ -656,16 +610,15 @@ export class ProjectAssistant {
   }
   private replyProgress(message:M4Message){
     if(message.role!=='user'||message.reply_status==='completed')return '';
-    const task=this.replyTask(message);
+    const task=this.workspace?.tasks.find(t=>t.run.run_id===message.run_id&&t.manifest.kind==='qa');
     if(task&&finished(task.run.state))return task.run.state==='cancelled'?'<p class="ba-thinking">本次回答已停止，消息与材料保留。</p>':'';
     if(!task&&message.reply_status==='failed')return '';
     const state=task?.run.state,stage=task?.run.stage;
     const delayed=state==='queued'&&Date.now()-Date.parse(task!.created_at)>120000;
-    const stop=this.replyStop?.runId===message.run_id?this.replyStop:undefined;
-    const text=stop?.state==='pending'?'正在停止本次回答，等待确认任务结束。':stop?.state==='unknown'?'停止结果尚未确认，请刷新状态核对或重试停止。':state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
+    const text=state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
       :state==='queued'?(delayed?'排队时间较长，尚未开始回答。无需重复发送，可继续等待或停止本次回答。':'已收到，排队等待处理。')
       :state==='awaiting_input'?'回复任务等待补充信息。':state==='settlement_pending'?'正在核对本次回复与费用。':message.reply_status==='running'?'正在阅读并整理回复…':'已收到，正在读取任务状态…';
-    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)&&stop?.state!=='pending'?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
+    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
   }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
@@ -683,7 +636,7 @@ export class ProjectAssistant {
       else host.innerHTML=`<button data-a="download" data-id="${esc(a.artifact_id)}">下载成果</button>`;
     }catch{/* project result remains available for a fresh authorized read */}
   }
-  private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.replyStatus()||this.status;
+  private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
     this.host.querySelectorAll<HTMLElement>('[data-template-recovery]').forEach(el=>el.innerHTML=this.templateRecovery());
     this.host.querySelectorAll<HTMLElement>('[data-copy-recovery]').forEach(el=>el.innerHTML=this.copyRecovery());
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>{const reused=uploadReady(u)&&uploadReused(u),recoverable=u.kind==='material'&&!!u.recovery&&!uploadReady(u);return `<div role="status" data-assistant-upload="${esc(u.id)}" data-upload-kind="${u.kind}" data-associated="${u.associated===true}" class="bb-upload-file ${reused?'duplicate-upload-notice':''}">${reused?'':esc(u.filename)}${uploadProgressHtml(u.progress??uploadActivity(u.status),u.filename,{announce:false,error:u.error,complete:uploadReady(u),paused:!this.busy&&!uploadReady(u)})}${uploadReady(u)?esc(u.status):''}${recoverable?`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>确认保存并加入对话</button>${u.needsFile?`<label class="bb-upload-picker bb-upload-picker--compact ba-attach">重新选择原文件<input type="file" data-assistant-reselect="${esc(u.id)}"></label>`:''}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>移除此待办</button><small>将加入“${esc(this.workspace?.topic.name??'原对话')}”。确认不会发送消息或开始任务；移除待办会保留服务器已收到的文件。</small>`:u.error?`${u.kind==='template'?'<small>模板创建与采用尚不支持跨刷新恢复，请核对原模板；此处不能只重试上传后显示模板成功。</small>':`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button>`}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}">移除本机项</button>`:''}</div>`;}).join('');

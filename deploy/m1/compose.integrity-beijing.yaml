@@ -48,4 +48,4 @@ services:
       BB_INTEGRITY_EGRESS_PROXY_URL: http://integrity-beijing-tunnel:3129
     depends_on:
       integrity-beijing-tunnel: {condition: service_healthy}
-    deploy: {resources: {limits: {cpus: '${BB_AUTHORING_CPU_LIMIT:-1.0}', memory: '${BB_AUTHORING_MEMORY_LIMIT:-1536M}'}}}
+    deploy: {resources: {limits: {cpus: '1.0', memory: 1536M}}}

@@ -11,10 +11,6 @@ export * from './workpaper-naming.js';
 export * from './workpaper-library.js';
 export * from './workpaper-assessment.js';
 export * from './workpaper-shared-plan.js';
-export * from './workpaper-progressive.js';
-export * from './workpaper-item-progress.js';
-import type {WorkpaperItemProgress} from './workpaper-item-progress.js';
-import {WorkpaperProgressiveRequestSchema,type WorkpaperProgressive} from './workpaper-progressive.js';
 import {WorkpaperAssessSchema,type WorkpaperAssessment} from './workpaper-assessment.js';
 import type {WorkpaperDecision} from './workpaper-entry.js';
 import {WorkpaperMappingsSchema,WorkpaperPreviewSchema} from './workpaper-import.js';
@@ -28,7 +24,7 @@ export const WorkpaperZipPreparationSchema=obj({status:Type.Literal('preparing')
  completed_files:Type.Integer({minimum:0}),total_files:Type.Integer({minimum:1})
 }))});
 export type WorkpaperZipPreparation=Static<typeof WorkpaperZipPreparationSchema>;
-const workpaperStartFields={request_id:id,catalogue_id:id,catalogue_sha256:Type.String({pattern:'^[a-f0-9]{64}$'}),progressive:Type.Optional(WorkpaperProgressiveRequestSchema),
+const workpaperStartFields={request_id:id,catalogue_id:id,catalogue_sha256:Type.String({pattern:'^[a-f0-9]{64}$'}),
  item_ids:Type.Array(id,{minItems:1,maxItems:WORKPAPER_LIMITS.items,uniqueItems:true}),source_version_id:id,
  source_selection_revision:Type.Integer({minimum:0}),requirements:Type.String({maxLength:12000}),price_version:id,expected_points:Type.Integer({minimum:0})};
 export const WorkpaperStartSchema=Type.Union([
@@ -37,19 +33,15 @@ export const WorkpaperStartSchema=Type.Union([
 ]);
 export type WorkpaperStart=Static<typeof WorkpaperStartSchema>;
 export const WorkpaperActionSchema=Type.Union([
- obj({action:Type.Literal('continue_remaining'),expected_revision:Type.Integer({minimum:1}),request_id:id}),
  obj({action:Type.Union([Type.Literal('pause'),Type.Literal('resume'),Type.Literal('retry_failed'),Type.Literal('cancel')]),expected_revision:Type.Integer({minimum:1})}),
  obj({action:Type.Literal('resume'),expected_revision:Type.Integer({minimum:1}),billing_resume:Type.Literal(true),request_id:id,price_version:id,expected_points:Type.Integer({minimum:1})})
 ]);
 export const WORKPAPER_PRICE=M4_DOCUMENT_FIXED_PRICE;
 export type WorkpaperCatalogue={catalogue_id:string;sha256:string;filename:string;entries:WorkpaperEntry[];warnings:string[];created_at:string};
 export type WorkpaperItem={entry:WorkpaperEntry;decision?:WorkpaperDecision;explanation?:{filename:string;sha256:string};run_id:string|null;state:string;stage:string|null;attempt:number;error:string|null;
-  progress?:WorkpaperItemProgress;
   artifacts:{kind:'document'|'preparation_note';filename:string;pin:M4ArtifactPin}[];
   file?:{original:ProjectFileVersionSummary;current:ProjectFileVersionSummary}};
 export type WorkpaperBatch={batch_id:string;topic_id:string;catalogue_id:string;state:'queued'|'running'|'paused'|'complete'|'partial'|'cancelled';revision:number;
-  progressive?:WorkpaperProgressive;
-  pause_reason?:'credits_insufficient'|'shared_blocked'|null;
   template_mode?:'automatic'|'selected'|'mixed';
   source:ProjectFileSource;items:WorkpaperItem[];total_points:number;charged_points:number;created_at:string;error:string|null;start_mode?:'direct'|'assessed';
   billing_resume?:{price_version:string;required_points:number;available_points:number;shortage:number}};

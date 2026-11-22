@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync, openSync, closeSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 const root = resolve(import.meta.dirname, '../../..');
@@ -56,46 +56,6 @@ test('execution lease defaults and overrides reach all three groups without loca
   assert.equal(services.worker.environment.BB_INTEGRITY_EGRESS_PROXY_URL,'http://integrity-beijing-tunnel:3129');
   assert.ok(services.worker.depends_on['integrity-beijing-tunnel']);
  }
-});
-test('execution review capacity overrides are private-env controlled and leave other services unchanged', () => {
- const baseline=config('execution');
- const expanded=config('execution',{
-  BB_REVIEW_WORKER_CONCURRENCY:'4', BB_REVIEW_NODE_HEAP_MIB:'2048',
-  BB_REVIEW_CPU_LIMIT:'1.0', BB_REVIEW_MEMORY_LIMIT:'6G',
- });
- const review=expanded.services['worker-review'];
- assert.equal(review.environment.BB_WORKER_CONCURRENCY,'4');
- assert.equal(review.environment.NODE_OPTIONS,'--max-old-space-size=2048');
- assert.equal(review.deploy.resources.limits.cpus,1);
- assert.equal(Number(review.deploy.resources.limits.memory),6*1024**3);
- assert.equal(review.environment.BB_WORKER_INTERACTIVE_SLOTS,'0');
- assert.equal(review.environment.BB_WORKER_PARSE_SLOTS,'0');
- assert.equal(review.environment.BB_WORKER_RUN_KINDS,'review');
- for(const name of Object.keys(baseline.services)) {
-  if(name!=='worker-review')assert.deepEqual(expanded.services[name],baseline.services[name],name);
- }
- const empty=config('execution',{
-  BB_REVIEW_WORKER_CONCURRENCY:'', BB_REVIEW_NODE_HEAP_MIB:'',
-  BB_REVIEW_CPU_LIMIT:'', BB_REVIEW_MEMORY_LIMIT:'',
- });
- assert.deepEqual(empty.services,baseline.services);
- assert.equal(baseline.services['worker-review'].environment.BB_WORKER_CONCURRENCY,'1');
- assert.equal(baseline.services['worker-review'].environment.NODE_OPTIONS,'--max-old-space-size=768');
- assert.equal(baseline.services['worker-review'].deploy.resources.limits.cpus,0.75);
- assert.equal(Number(baseline.services['worker-review'].deploy.resources.limits.memory),2*1024**3);
-});
-test('review capacity rejects zero, negative, fractional and injected private settings before adoption', () => {
- const marker=join(dir,'review-capacity-injection');
- for(const [key,invalid] of [
-  ['BB_REVIEW_WORKER_CONCURRENCY',['0','-1','17','1.5','1e0','bogus',`1; touch ${marker}`]],
-  ['BB_REVIEW_NODE_HEAP_MIB',['0','-1','0.5','1e3','bogus','2048 --require=/tmp/synthetic',`$(touch ${marker})`,`\`touch ${marker}\``]],
-  ['BB_REVIEW_CPU_LIMIT',['0','-0.5','bogus',`1; touch ${marker}`]],
-  ['BB_REVIEW_MEMORY_LIMIT',['0','-1','bogus',`6G; touch ${marker}`]],
- ]) {
-  for(const value of invalid)assert.throws(()=>config('execution',{[key]:value}),`${key}: ${value}`);
- }
- assert.throws(()=>readFileSync(marker),'injected text must never execute');
- assert.equal(config('execution',{BB_REVIEW_WORKER_CONCURRENCY:'16'}).services['worker-review'].environment.BB_WORKER_CONCURRENCY,'16');
 });
 test('execution lease setting does not change the legacy same-host environment', () => {
  const legacy=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.yaml'),
@@ -163,7 +123,7 @@ case "$*" in
  *'config --format json'*) node -e 'const fs=require("fs");process.stdout.write(fs.readFileSync(process.env.TEST_CONFIG,"utf8").replaceAll(":synthetic",":"+process.env.BB_IMAGE_TAG))';;
  *'inspect --format'*com.docker.compose.project*) node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.TEST_CONFIG)).name)';;
  *'inspect --format'*com.docker.compose.config-hash*) node -e 'console.log("a".repeat(64))';;
- *'ps --status running -q worker-parse'*|*'ps --status running -q upload-confirmation'*) ;;
+ *'ps --status running -q worker-parse'*) ;;
  *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else case "$*" in *:bbbbbbbbbbbb*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; esac; fi;;
  *'image inspect --format'*) echo sha256:synthetic;;
  *'inspect --format'*) if [ "$TEST_BAD_RUNTIME" = 1 ]; then echo sha256:wrong-runtime; else echo sha256:synthetic; fi;;
@@ -192,31 +152,6 @@ esac
   assert.equal(r.status,status,r.stderr);assert.equal(readFileSync(join(state,'current'),'utf8'),'aaaaaaaaaaaa\n');
   if(kind==='revision')assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
  }
-});
-test('effective invalid review quotas fail before old-container stops, probes or rebuilds',()=>{
- const fixture=join(dir,'execution-fixture'),area=join(dir,'review-capacity-lifecycle');mkdirSync(area);
- const state=join(area,'state'),calls=join(area,'calls'),rendered=join(area,'config.json');mkdirSync(state);
- const current=join(state,'current'),original='aaaaaaaaaaaa\n';writeFileSync(current,original);
- const baseline=JSON.parse(readFileSync(join(fixture,'config.json'),'utf8'));
- const marker=join(area,'injected');
- for(const mutate of [
-  s=>{s.deploy.resources.limits.cpus=0;},s=>{s.deploy.resources.limits.cpus=-1;},s=>{delete s.deploy.resources.limits.cpus;},
-  s=>{s.deploy.resources.limits.memory='0';},s=>{s.deploy.resources.limits.memory='-1';},s=>{delete s.deploy.resources.limits.memory;},
-  s=>{s.environment.BB_WORKER_CONCURRENCY='0';},s=>{s.environment.BB_WORKER_CONCURRENCY='17';},s=>{s.environment.BB_WORKER_CONCURRENCY='4.0';},
-  s=>{s.environment.NODE_OPTIONS='--max-old-space-size=-1';},s=>{s.environment.NODE_OPTIONS='--max-old-space-size=1.5';},
-  s=>{s.environment.NODE_OPTIONS=`--max-old-space-size=2048; touch ${marker}`;},
- ]) {
-  const c=structuredClone(baseline);mutate(c.services['worker-review']);writeFileSync(rendered,JSON.stringify(c));writeFileSync(calls,'');
-  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'execution','a'.repeat(40)],{
-   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('execution'),BB_STATE_DIR:state,
-    TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0'},encoding:'utf8'});
-  assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/review concurrency\/resource limits/);
-  const commands=readFileSync(calls,'utf8');assert.match(commands,/config --format json/);
-  assert.doesNotMatch(commands,/\bstop\b|\bup\b|\brun\b/,'no old-container mutation or probe');
-  assert.equal(readFileSync(current,'utf8'),original);assert.throws(()=>readFileSync(join(state,'pending-release.json')));
-  assert.throws(()=>readFileSync(join(state,'environment-binding.json')));
- }
- assert.throws(()=>readFileSync(marker));
 });
 
 test('export mode chooses the same domestic tunnel image as role startup',()=>{
@@ -371,177 +306,4 @@ test('current-only retained releases require real source and ID checks before th
   if(status)assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);
   if(status===3)assert.doesNotMatch(commands,/ idle/);
  }
-});
-
-// Confirmation placement reuses the role binding and configuration lock.
-test('standalone confirmation defaults inactive; protected enablement keeps parse/model settings separate',()=>{
- const off=covered('execution');
- assert.equal(config('execution',off.values,join(off.area,'state')).services['upload-confirmation'],undefined);
- const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}),state=join(a.area,'state');
- const c=config('execution',a.values,state),service=c.services['upload-confirmation'];
- assert.equal(c.services['worker-parse'],undefined);assert.equal(service.deploy.replicas,1);
- assert.equal(service.environment.BB_UPLOAD_SPOOL_MAX_BYTES,'134217728');assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'1');
- assert.equal(service.image,'bondbuddy-m1-upload-confirmation:synthetic');assert.deepEqual(service.command,['node','apps/worker/dist/upload-confirmation-runtime.js']);
- assert.deepEqual(Object.keys(service.networks),['backend']);assert.equal(service.volumes.length,1);assert.equal(service.volumes[0].source,dir);
- assert.ok(Object.keys(service.environment).every(k=>!/CODEX|MODEL|COPILOT|OPENAI|DEEPSEEK|BB_WORKER_/.test(k)));
- const binding=JSON.parse(readFileSync(join(state,'environment-binding.json')));assert.equal(binding.upload_confirmation_role,'execution');assert.equal(binding.upload_confirmation_spool,dir);
- assert.throws(()=>config('execution',{...a.values,BB_UPLOAD_CONFIRMATION_ROLE:'disabled'},state),'cannot silently drop adopted placement');
- for(const change of [{BB_UPLOAD_CONFIRMATION_ROLE:'main'},{BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:'relative'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'yes'},{BB_ROLE_CONFIRMATION_REPLICAS:'1'}]){
-  const b=covered('execution','services: {}\n',{...a.values,...change});
-  assert.throws(()=>config('execution',b.values,join(b.area,'state')));
- }
- for(const text of ['services:\n  upload-confirmation:\n    environment:\n      OPENAI_API_KEY: synthetic\n','services:\n  upload-confirmation:\n    command: [node, apps/worker/dist/runtime.js]\n']){
-  const b=covered('execution',text,{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});assert.throws(()=>config('execution',b.values,join(b.area,'state')));
- }
- const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','up','-d','upload-confirmation'],{cwd:root,env:{...process.env,BB_ENV_FILE:envFile('execution',off.values),BB_STATE_DIR:join(off.area,'state'),BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});
- assert.equal(r.status,2);assert.match(r.stderr,/confirmation is inactive/);
-});
-test('moving confirmation requires disabling both legacy main parser confirmation lanes',()=>{
- const a=covered('main',bridgeOverlay,{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_ENABLED:'0',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'}),state=join(a.area,'state');
- assert.equal(config('main',a.values,state).services['worker-parse'].environment.BB_UPLOAD_CONFIRMATION_ENABLED,'0');
- for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'1'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}])
-  assert.throws(()=>config('main',{...a.values,...change},state));
-});
-
-test('size-split permits only main small and execution large single loops with protected binding',()=>{
- const small={BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'};
- const main=covered('main',bridgeOverlay,small),state=join(main.area,'state'),c=config('main',main.values,state);
- assert.equal(c.services['worker-parse'].environment.BB_UPLOAD_CONFIRMATION_LANE,'small');
- assert.equal(c.services['worker-parse'].environment.BB_WORKER_JOB_KINDS,'parse');
- assert.equal(c.services['worker-parse'].environment.BB_UPLOAD_SPOOL_MAX_BYTES,'134217728');
- assert.equal(c.services['worker-parse'].stop_grace_period,'10m0s');
- assert.equal(JSON.parse(readFileSync(join(state,'environment-binding.json'))).upload_confirmation_lane,'small');
- for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'0'},{BB_UPLOAD_CONFIRMATION_LANE:'general'},{BB_UPLOAD_CONFIRMATION_LANE:'large'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},{BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'268435456'},{BB_PARSE_ROLE:'execution'},{BB_UPLOAD_CONFIRMATION_ROLE:'disabled'}])
-  assert.throws(()=>config('main',{...main.values,...change},join(main.area,'reject-'+Object.keys(change)[0])));
- assert.throws(()=>config('main',{...main.values,BB_UPLOAD_CONFIRMATION_ROLE:'disabled',BB_UPLOAD_CONFIRMATION_LANE:'general'},state),'cannot silently migrate binding');
- const large=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'}),ls=join(large.area,'state'),x=config('execution',large.values,ls);
- assert.equal(x.services['upload-confirmation'].environment.BB_UPLOAD_CONFIRMATION_LANE,'large');
- assert.equal(x.services['upload-confirmation'].environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'0');
- assert.equal(x.services['worker-parse'],undefined);
- for(const name of ['worker','worker-review'])assert.equal(x.services[name].environment.BB_UPLOAD_CONFIRMATION_ENABLED,'0');
- assert.equal(JSON.parse(readFileSync(join(ls,'environment-binding.json'))).upload_confirmation_lane,'large');
- for(const change of [{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},{BB_PARSE_ROLE:'execution'},{BB_ROLE_CONFIRMATION_LANE:'general'}])
-  assert.throws(()=>config('execution',{...large.values,...change},join(large.area,'reject-'+Object.keys(change)[0])));
- for(const overlay of ['services:\n  upload-confirmation:\n    environment:\n      BB_UPLOAD_CONFIRMATION_LANE: general\n','services:\n  worker-parse:\n    stop_grace_period: 30s\n']) {
-  const role=overlay.includes('upload-confirmation:')?'execution':'main';
-  const a=covered(role,role==='main'?bridgeOverlay.replace('  postgres:',overlay.slice('services:\n'.length)+'  postgres:'):overlay,role==='main'?small:{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});
-  assert.throws(()=>config(role,a.values,join(a.area,'state')));
- }
- const off=covered('execution');const os=join(off.area,'state');config('execution',off.values,os);
- assert.equal(Object.hasOwn(JSON.parse(readFileSync(join(os,'environment-binding.json'))),'upload_confirmation_role'),false);
-});
-
-test('confirmation bind policy rejects true/default/short syntax and probes omitted-false semantics fail closed',()=>{
- assert.match(readFileSync(join(root,'deploy/m1/compose.execution.yaml'),'utf8'),/bind: \{create_host_path: false\}/);
- const prefix='services:\n  upload-confirmation:\n    volumes: !override\n';
- const long=(bind)=>prefix+`      - type: bind\n        source: ${dir}\n        target: /var/lib/bondbuddy/upload-confirmation\n${bind}`;
- const cases=[['false',long('        bind: {create_host_path: false}\n'),true],['true',long('        bind: {create_host_path: true}\n'),false],
-  ['default',long(''),false],['empty-bind',long('        bind: {}\n'),false],['short',prefix+`      - ${dir}:/var/lib/bondbuddy/upload-confirmation\n`,false]];
- for(const [name,text,accept] of cases){
-  const a=covered('execution',text,{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});
-  if(accept){const c=config('execution',a.values,join(a.area,'state'));assert.equal(c.services['upload-confirmation'].volumes[0].bind.create_host_path,false,'actual render remains untouched');}
-  else assert.throws(()=>config('execution',a.values,join(a.area,'state')),name);
- }
- // Synthetic old bool+omitempty representation, bound to real Compose-rendered
- // services; actual target-version matrix is retained separately during acceptance.
- const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir}),state=join(a.area,'state');
- config('execution',a.values,state);const envPath=envFile('execution',a.values);
- const rendered=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.execution.yaml'),'-f',join(root,'deploy/m1/compose.integrity-beijing.yaml'),'-f',a.file,'--profile','*','--env-file',envPath,'config','--format','json'],{
-  env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_CONFIRMATION_REPLICAS:'1',BB_ROLE_CONFIRMATION_PROFILE:'bb-confirmation-active',BB_ROLE_CONFIRMATION_LANE:'large',BB_ROLE_PARSE_REPLICAS:'0',BB_ROLE_PARSE_PROFILE:'bb-parse-inactive'},stdio:['ignore','pipe','pipe']}));
- const falseModel=structuredClone(rendered),trueModel=structuredClone(rendered);
- delete falseModel.services['upload-confirmation'].volumes[0].bind.create_host_path;
- trueModel.services['upload-confirmation'].volumes[0].bind.create_host_path=true;
- const validate=(candidate,safe=falseModel,unsafe=trueModel)=>{
-  const safePath=join(a.area,'false.json'),unsafePath=join(a.area,'true.json');writeFileSync(safePath,JSON.stringify(safe));writeFileSync(unsafePath,JSON.stringify(unsafe));
-  const fds=[openSync(safePath,'r'),openSync(unsafePath,'r')];
-  try{return spawnSync(process.execPath,['deploy/m1/scripts/role-config.mjs','validate',envPath,state,'execution'],{cwd:root,env:configProcessEnv,input:JSON.stringify(candidate),encoding:'utf8',stdio:['pipe','pipe','pipe',...fds]}).status;}
-  finally{fds.forEach(closeSync);}
- };
- assert.equal(validate(falseModel),0,'omitted false accepted only against distinct trusted false/true renders');
- assert.equal(validate(trueModel),2);
- const missing=structuredClone(falseModel);delete missing.services['upload-confirmation'].volumes[0].bind;assert.equal(validate(missing),2,'missing bind is not evidence of false');
- assert.equal(validate(falseModel,falseModel,falseModel),2,'collapsed true/false serialization fails closed');
- assert.equal(validate(falseModel,{},trueModel),2,'missing probe fails closed');
- const wrong=structuredClone(falseModel);wrong.services['upload-confirmation'].volumes[0].source='/synthetic/wrong-spool';assert.equal(validate(wrong),2,'source still exact');
- const bad=structuredClone(falseModel);bad.services['upload-confirmation'].volumes[0].bind.create_host_path=null;assert.equal(validate(bad),2,'unknown value fails closed');
-});
-
-test('confirmation probe discards valid JSON from a failed render before adopting binding',()=>{
- const shim=join(dir,'probe-failure-bin');mkdirSync(shim);
- const docker=execFileSync('bash',['-lc','command -v docker'],{encoding:'utf8'}).trim();
- writeFileSync(join(shim,'docker'),`#!/usr/bin/env node
-import {spawnSync} from 'node:child_process';
-const args=process.argv.slice(2),r=spawnSync(${JSON.stringify(docker)},args,{encoding:'utf8'});
-process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');
-const which=args.some(x=>x.endsWith('/compose.confirmation-bind-true-check.yaml'))?'true':args.some(x=>x.endsWith('/compose.confirmation-bind-check.yaml'))?'false':'';
-// Deliberately emit the real, valid JSON and then fail: the parent must not use it.
-process.exit(which&&which===process.env.TEST_PROBE_FAILURE?51:r.status??1);
-`,{mode:0o755});
- for(const failure of ['none','false','true']){
-  const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir}),state=join(a.area,'state');
-  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','config','--format','json'],{cwd:root,env:{...configProcessEnv,PATH:shim+':'+process.env.PATH,BB_ENV_FILE:envFile('execution',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic',TEST_PROBE_FAILURE:failure},encoding:'utf8'});
-  assert.equal(r.status,failure==='none'?0:2,r.stderr);
-  if(failure!=='none')assert.throws(()=>readFileSync(join(state,'environment-binding.json')),'failed probe must not adopt a binding');
- }
-});
-
-test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{
- const fixture=join(dir,'export-ref-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
- for(const name of ['export-images-role.sh','role-source-lib.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
- const git=(...args)=>execFileSync('git',['-C',fixture,...args],{encoding:'utf8'}).trim();
- git('init','-q');git('config','user.name','muhualing');git('config','user.email','12086605+muhualing@users.noreply.github.com');git('remote','add','origin','https://github.com/ITSophiaXu/BondBuddy.git');
- const dockerfile=join(fixture,'deploy/m1/Dockerfile');writeFileSync(dockerfile,'FROM scratch AS worker\n');git('add','.');git('commit','-qm','synthetic old image targets');const old=git('rev-parse','HEAD');
- writeFileSync(dockerfile,'FROM scratch AS worker\nFROM scratch AS upload-confirmation\n');git('add','.');git('commit','-qm','synthetic new confirmation target');const current=git('rev-parse','HEAD');git('update-ref','refs/remotes/origin/synthetic',current);
- const calls=join(fixture,'calls');writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
-printf '%s\\n' "$*" >> "$TEST_CALLS"
-case "$*" in
- 'image inspect --format'*) echo wrong-source;;
- 'image inspect'*) [ "\${TEST_CACHED_WRONG:-0}" = 1 ];;
- 'build'*)
-   while [ "$#" -gt 0 ]; do if [ "$1" = --target ]; then shift; target="$1"; fi; if [ "$1" = -f ]; then shift; file="$1"; fi; shift; done
-   [ "\${target:-}" != upload-confirmation ] || rg -q 'AS upload-confirmation' "$file";;
- 'save'*) printf synthetic-image-archive;;
-esac
-`,{mode:0o755});
- for(const [ref,wantsConfirmation]of [[old,false],[current,true]]){
-  writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',ref,join(fixture,'images.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls},encoding:'utf8'});
-  assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.equal(commands.includes('--target upload-confirmation'),wantsConfirmation);assert.equal(commands.includes('bondbuddy-m1-upload-confirmation:'),wantsConfirmation);assert.ok(commands.includes('--target worker'));assert.ok(readFileSync(join(fixture,'images.tar.gz')).length>0);
- }
- writeFileSync(calls,'');const bad=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',old,join(fixture,'bad.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_CACHED_WRONG:'1'},encoding:'utf8'});
- assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
-});
-
-test('four confirmation profile keeps reserved small capacity and refuses mismatched disk/memory/CPU',()=>{
- const four={BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1',BB_UPLOAD_CONFIRMATION_CONCURRENCY:'4',BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'469762048',BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'1536M',BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'1',BB_UPLOAD_CONFIRMATION_HEAP_MB:'384'};
- const a=covered('execution','services: {}\n',four),c=config('execution',a.values,join(a.area,'state')),service=c.services['upload-confirmation'];
- assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_CONCURRENCY,'4');assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'1');
- assert.equal(service.environment.BB_UPLOAD_SPOOL_MAX_BYTES,'469762048');assert.equal(service.deploy.resources.limits.memory,'1610612736');assert.equal(Number(service.deploy.resources.limits.cpus),1);
- for(const change of [{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'5'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'2'},{BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'134217728'},{BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'512M'},{BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'0.5'},{BB_UPLOAD_CONFIRMATION_HEAP_MB:'1024'},{BB_UPLOAD_CONFIRMATION_ROLE:'size-split'}]){
-  const b=covered('execution','services: {}\n',{...four,...change});assert.throws(()=>config('execution',b.values,join(b.area,'state')));
- }
-});
-
-test('authoring four total slots and assistant channels share bounded model capacity without changing defaults',()=>{
- const baseline=config('execution',{BB_MODEL_EXECUTION_HOST_ID:'a'.repeat(64)});
- const expanded=config('execution',{
-  BB_AUTHORING_WORKER_CONCURRENCY:'4',BB_AUTHORING_INTERACTIVE_SLOTS:'0',
-  BB_AUTHORING_NODE_HEAP_MIB:'1536',BB_AUTHORING_CPU_LIMIT:'1',BB_AUTHORING_MEMORY_LIMIT:'4G',
-  BB_REVIEW_ASSISTANT_SLOTS:'4',BB_MODEL_CALL_CONCURRENCY:'4',BB_MODEL_EXECUTION_HOST_ID:'a'.repeat(64),
- });
- assert.equal(expanded.services.worker.environment.BB_WORKER_CONCURRENCY,'4');
- assert.equal(expanded.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'0');
- assert.equal(expanded.services.worker.environment.NODE_OPTIONS,'--max-old-space-size=1536');
- assert.equal(expanded.services.worker.deploy.resources.limits.cpus,1);
- assert.equal(expanded.services.worker.deploy.resources.limits.memory,'4294967296');
- assert.equal(expanded.services['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS,'4');
- assert.equal(baseline.services.worker.environment.BB_WORKER_CONCURRENCY,'1');
- assert.equal(baseline.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'1');
- for (const name of Object.keys(baseline.services)) if (!['worker','worker-review'].includes(name)) assert.deepEqual(expanded.services[name],baseline.services[name]);
- for(const values of [
-  {BB_AUTHORING_WORKER_CONCURRENCY:'4'}, // hidden fifth interactive channel
-  {BB_AUTHORING_CPU_LIMIT:'0'}, {BB_AUTHORING_MEMORY_LIMIT:'0'},
-  {BB_AUTHORING_NODE_HEAP_MIB:'2048 --require=synthetic'},
-  {BB_AUTHORING_INTERACTIVE_SLOTS:'-1'}, {BB_REVIEW_ASSISTANT_SLOTS:'0'},
-  {BB_MODEL_CALL_CONCURRENCY:'5'},
- ]) assert.throws(()=>config('execution',values));
 });

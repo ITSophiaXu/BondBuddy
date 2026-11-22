@@ -445,7 +445,8 @@ test('authoring materials stay read-only after starting until an explicit next v
   await expect(page.locator('#reference-upload-hint')).toBeHidden();
   await expect(page.locator('.reference-readonly-note')).toBeVisible();
   await expect(page.locator('[data-download-version]').first()).toBeEnabled();
-  await expect(page.locator('.reference-file').first()).toBeVisible();
+  await page.locator('[data-prospectus-ref] summary').first().click();
+  await expect(page.locator('[data-prospectus-ref]').first()).toHaveJSProperty('open', true);
   await expect(page.locator('#materials-state-label')).toHaveText('材料已锁定，仅可查看');
   await expect(page.locator('#materials-title')).toHaveText('查看项目材料');
   await expect(picker).toBeDisabled();
@@ -1069,33 +1070,6 @@ test('manual task refresh invalidates a late paused poll without replaying task 
   await expect(page.locator('#recheck-paused')).toHaveCount(0);
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
   expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
-});
-
-test('exhausted size repairs show a retained paused task and reload never submits again', async ({page})=>{
-  const state=fixture();state.checkStatus='ready';state.runReason='word_size_repair_exhausted';
-  await setup(page,state);await page.locator('#execute-input').click();
-  for(const reload of [false,true]){
-    if(reload)await page.reload();
-    await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-    await expect(page.locator('#execution-progress')).toContainText('自动修复两轮后仍未通过检查');
-    await expect(page.locator('#execution-progress')).toContainText('无需重新上传材料');
-    await expect(page.locator('#prepare-next-version')).toHaveCount(0);
-    expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
-  }
-  const output=process.env.BB_SIZE_REPAIR_UX_DIR;
-  if(output){
-    await mkdir(output,{recursive:true});
-    await page.setViewportSize({width:1440,height:960});
-    await page.locator('#execution-progress').scrollIntoViewIfNeeded();
-    await page.screenshot({path:join(output,'implementation-paused-1440.png')});
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    const prototype=await page.context().newPage();
-    await prototype.setViewportSize({width:1440,height:960});
-    await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
-    await prototype.evaluate(()=>{(window as any).render('paused');});
-    await prototype.screenshot({path:join(output,'prototype-paused-1440.png')});
-    await prototype.close();
-  }
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {
@@ -1957,53 +1931,6 @@ for(const width of [1440,390])test('model progress summaries survive tool bursts
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-for(const width of [1440,390])test('model capacity wait keeps exact credits, survives reload and yields to control '+width,async({page})=>{
-  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.points=48900;state.runState='running';state.runStage='file_authoring';state.runReason='';
-  state.liveProgress={policy:'authoring_balance_v2',accrued_points:1830,charged_points:1830,released_points:0,available_points:98170,active_ms:90000,pause_requested:false,credit_exhausted:false,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:false,model_waiting:true};
-  state.liveActivity={activity_id:'d'.repeat(64),code:'write_document',state:'started',summary:'已完成目录核对，正在更新财务章节。'};
-  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  const viewport={width,height:width===1440?960:844};
-  await page.setViewportSize(viewport);await setup(page,state);await page.locator('#execute-input').click();
-  await expect(page.locator('.task-progress-heading')).toContainText('正在等待模型处理名额');
-  await expect(page.locator('.task-progress-heading')).toContainText('等待期间积分不增加，无需重复提交');
-  await expect(page.locator('.task-progress-heading')).not.toContainText(/执行连接正在恢复|前方有/);
-  await expect(page.locator('.authoring-credit-meter')).toContainText('等待模型处理名额，积分不会增加');
-  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
-  const run=[...state.runs.values()][0];expect(run.state).toBe('running');expect(run.stage).toBe('file_authoring');
-  await page.reload();
-  await expect(page.locator('.task-progress-heading')).toContainText('正在等待模型处理名额');
-  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  const evidence=process.env.BB_UX_EVIDENCE_DIR;
-  if(evidence){
-    await mkdir(evidence,{recursive:true});
-    await page.locator('.task-progress-heading').scrollIntoViewIfNeeded();
-    await page.screenshot({path:join(evidence,`model-wait-implementation-viewport-${width}.png`)});
-    await page.locator('#execution-progress').screenshot({path:join(evidence,`model-wait-implementation-panel-${width}.png`)});
-    const prototype=await page.context().newPage();await prototype.setViewportSize(viewport);
-    await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
-    await prototype.getByRole('button',{name:'等待模型名额',exact:true}).click();
-    await expect(prototype.locator('.status')).toContainText('当前没有可用的模型处理名额，可用后会自动继续');
-    await expect(prototype.locator('.meter')).toContainText('等待模型处理名额，积分不会增加');
-    await prototype.locator('.status').scrollIntoViewIfNeeded();
-    await prototype.screenshot({path:join(evidence,`model-wait-prototype-viewport-${width}.png`)});
-    await prototype.locator('#prototype-progress').screenshot({path:join(evidence,`model-wait-prototype-panel-${width}.png`)});
-    expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await prototype.close();
-  }
-  state.liveProgress.model_waiting=false;state.liveProgress.clock_running=true;state.eventSeq++;
-  await expect(page.locator('.task-progress-heading')).toContainText('最近一次模型进度：已完成目录核对');
-  await expect(page.locator('.authoring-credit-meter')).not.toContainText('等待模型处理名额');
-  state.liveProgress.model_waiting=true;state.liveProgress.clock_running=false;state.liveProgress.pause_requested=true;state.eventSeq++;
-  await expect(page.locator('.task-progress-heading')).toContainText('正在保存进度后暂停');
-  await expect(page.locator('.task-progress-heading')).not.toContainText('正在等待模型处理名额');
-  await expect(page.locator('.authoring-credit-meter')).toContainText('积分已冻结');
-  run.state='cancelled';run.stage='cancelled';state.chargeState='settled';state.eventSeq++;
-  await expect(page.locator('.task-progress-heading')).toContainText('本轮已停止');
-  await expect(page.locator('.authoring-credit-meter')).toContainText('本次已扣费');
-  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
-  expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);expect(errors).toEqual([]);
-});
-
 for(const width of [1440,390])test('live authoring: queue, model activity, growing credits, pause and partial settlement '+width,async({page})=>{
  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.points=48900;state.runState='queued';state.runStage='queued';
  state.liveProgress={policy:'authoring_progress_v1',accrued_points:0,charged_points:0,released_points:0,active_ms:0,pause_requested:false,queued_at:'2026-10-11T07:31:00Z',sampled_at:'2026-10-11T07:32:30Z',last_activity_at:null,queue_ahead:2,clock_running:false};
@@ -2138,40 +2065,4 @@ test('upload automatically adopts the original and submits it without a selectio
   expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
   expect(state.selectionRequests).toEqual([]);
-});
-
-
-for (const width of [1440,390]) test(`encrypted source failure explains replacement without retrying ${width}`,async({page})=>{
-  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='model_generation';state.runReason='stage_started';
-  await page.setViewportSize({width,height:960});await setup(page,state);await page.locator('#execute-input').click();
-  await expect.poll(()=>state.runs.size).toBe(1);
-  const run=[...state.runs.values()][0], inputHash=run.input_hash;
-  state.publicEvents=[{event_id:'encrypted-source-failure',schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq:5,occurred_at:now,
-    stage:'failed',type:'run.state_changed',state:'failed',payload:{reason:'processor_failed',error_code:'MATERIAL_ENCRYPTED'}}];
-  run.state='failed';run.stage='failed';run.event_cursor=5;state.eventSeq=5;state.chargeState='released';
-  for(let refresh=0;refresh<2;refresh++){
-    await page.reload();
-    await expect(page.locator('.execution-summary')).toContainText('历史／参考募集说明书已加密');
-    await expect(page.locator('.execution-summary')).toContainText('未加密的 DOCX');
-    await expect(page.locator('.execution-summary')).toContainText('继续修改');
-    await expect(page.locator('#prepare-next-version')).toBeVisible();
-    expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(inputHash);
-  }
-  if(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE){
-    await mkdir(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,{recursive:true});
-    await page.locator('.execution-summary').scrollIntoViewIfNeeded();
-    await page.screenshot({path:join(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,`encrypted-source-${width}.png`)});
-  }
-});
-
-for(const width of [1440,390]) test(`encrypted source feedback matches prototype ${width}`,async({page})=>{
-  await page.setViewportSize({width,height:960});
-  await page.setContent(await readFile(resolve(process.cwd(),'../../product-prototype/public/authoring-live-progress.html'),'utf8'));
-  await page.locator('[data-state=encrypted_source]').click();
-  await expect(page.locator('.log')).toContainText('未加密的 DOCX');
-  await expect(page.locator('.actions')).toContainText('继续修改');
-  if(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE){
-    await mkdir(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,{recursive:true});
-    await page.screenshot({path:join(process.env.BB_ENCRYPTED_SOURCE_EVIDENCE,`prototype-encrypted-source-${width}.png`)});
-  }
 });

@@ -7,6 +7,8 @@ import {session} from '../../apps/api/dist/auth.js';
 import {Problem} from '../../apps/api/dist/data.js';
 import {clearSpoolDirectory} from '../../apps/api/dist/upload-spool.js';
 import {subscriptionAccount} from '../../apps/api/dist/subscriptions.js';
+import {publishPrices} from '../../apps/api/dist/billing.js';
+import {INITIAL_FIXED_PRICES} from '../../packages/contracts/dist/index.js';
 import {installLocalProviderState,syntheticPaymentProvider} from '../billing-functional/provider.mjs';
 import {installPaymentControls,paymentState} from '../billing-functional/payment-controls.mjs';
 
@@ -28,6 +30,11 @@ try {
   const markers=(await pool.query('SELECT instance_id FROM bb_local_billing_instance')).rows;
   if(markers.length!==1||markers[0].instance_id!==id)throw Error('Local database marker mismatch');
   await installLocalProviderState(pool,saved);
+  // The optional old-policy API needs a labelled, immutable legacy tariff.
+  // Use the production publisher; commercial prices, wallets and tasks stay separate.
+  await publishPrices(pool,{id:'local-prelaunch-legacy-policy-v1',prices:INITIAL_FIXED_PRICES,
+    effectiveAt:'2026-01-01T00:00:00Z',actor:'local-prelaunch-fixture',
+    reason:'Synthetic legacy-policy compatibility tariff for this isolated instance'});
 }catch(error){await pool.end();throw error;}
 
 const provider=syntheticPaymentProvider(pool,saved);

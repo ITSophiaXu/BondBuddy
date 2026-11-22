@@ -1,4 +1,3 @@
-import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
@@ -45,7 +44,7 @@ async function prepareFileMaterial(api:ApiClient,id:string,file:File|undefined,s
   state.projectId=id;
   if(!state.operationId){
     if(!file)throw new UserFacingError('请重新选择原文件后继续。');
-    const mime=fileMaterialMime(file),sha256=[...new Uint8Array(await uploadFileDigest(file,signal))].map(x=>x.toString(16).padStart(2,'0')).join('');
+    const mime=fileMaterialMime(file),sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
     signal.throwIfAborted();if(!current())throw new UserFacingError('页面已切换，请返回原项目继续。');
     state.operationId=recovery.begin({filename:file.name,media_type:mime,role:'other',sha256,byte_size:file.size},context).id;
   }
@@ -187,7 +186,7 @@ export class FileWorkspace {
     return true;
   }
   dispose(){this.workpapers?.dispose();this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
-  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={},signal=this.controller.signal){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,signal);}
+  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,this.controller.signal);}
   async render(){
     this.shell('<p role="status">正在读取文件生成…</p>','generate');
     if(!this.id){await this.chooseProject();return;}
@@ -216,19 +215,11 @@ export class FileWorkspace {
   }
   private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
   private async continueFromSource(){
-    this.status('正在核对募集说明书…');
-    const deadline=AbortSignal.timeout(15_000);
-    try{this.state=await this.request<Workspace>('GET','/workspace',undefined,{},AbortSignal.any([this.controller.signal,deadline]));}
-    catch(error){if(deadline.aborted&&!this.controller.signal.aborted)throw new UserFacingError('募集说明书状态读取超时，请重试。已保存的文件不受影响。');throw error;}
-    const source=this.state.source;if(!source)throw new UserFacingError('项目当前募集说明书已变化，请刷新页面后重新选择。');
+    this.state=await this.request<Workspace>('GET','/workspace');
+    const source=this.state.source;if(!source)return;
     if(source.version_id!==this.panel?.selectedVersionId)throw new UserFacingError('项目募集说明书已变化，请刷新页面，核对本次生成依据后继续。');
     const destination=this.sourceDestination();
-    // Unified preparation pins the source when quoting/submitting selected files.
-    // The legacy endpoint imports the whole document and saves every M4 draft.
-    if(destination==='documents'){
-      this.status('正在准备文件清单…');
-      this.state=await this.request<Workspace>('POST','/source',{source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
-    }
+    this.state=await this.request<Workspace>('POST','/source',{source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
     if(this.live())location.hash=this.href({step:destination});
   }
   private lockPreparation(){this.syncSourceAction();this.paintSupportUpload();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}

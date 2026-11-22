@@ -8,7 +8,6 @@ import {readCommerce,cny} from './commerce';
 import {CommerceQuotations} from './commerce-quotations';
 import {CommerceRefunds} from './commerce-refunds';
 import {SubscriptionBillingPage,readSubscriptionCatalog} from './subscription-billing-page';
-import {checkoutPending,readCheckoutIntent} from './checkout-intent';
 import type {CommerceCatalog,CommerceAccount} from './billing-types.js';
 import {int64,formatPoints,formatFen,parseYuanToFen} from '@bondbuddy/contracts';
 import '../../../product-prototype/public/credits.css';
@@ -38,16 +37,7 @@ export class BillingPage {
     try{
       const subscriptions=await readSubscriptionCatalog(this.api,this.controller.signal);
       if(!this.active())return;
-      // Disabling subscription billing must not strand its unresolved checkout,
-      // but accounts on the older billing model must retain their own units/UI.
-      let recoverCheckout=false;
-      if(subscriptions&&!subscriptions.enabled&&this.owner){
-        try{
-          const intent=readCheckoutIntent(this.owner,localStorage);
-          recoverCheckout=checkoutPending(intent)||!!intent?.rejection||!!this.orderId&&intent?.order?.order_id===this.orderId;
-        }catch{recoverCheckout=true; /* Let the recovery page block unreadable intents. */}
-      }
-      if(subscriptions&&(subscriptions.enabled||recoverCheckout)){this.subscriptionPage=new SubscriptionBillingPage(this.api,this.shell,this.active,subscriptions,this.projectId,this.orderId,this.owner);await this.subscriptionPage.render();return;}
+      if(subscriptions?.enabled){this.subscriptionPage=new SubscriptionBillingPage(this.api,this.shell,this.active,subscriptions,this.projectId,this.orderId,this.owner);await this.subscriptionPage.render();return;}
       this.commerce=await readCommerce(this.api,this.controller.signal);
       if(this.commerce?.enabled)this.commerceBalance=await this.api.commerceAccount(this.controller.signal);
       else [this.balance,this.config]=await Promise.all([this.api.creditBalance(this.controller.signal),this.api.rechargeConfig(this.controller.signal)]);

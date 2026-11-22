@@ -44,7 +44,7 @@ export function fixture() {
     messages: [], tasks: [], pending_requirements: [], artifacts: [artifact], view: { selected_document_type: 'private_summary', open_tabs: [], active_tab: null, unsent_content: '', unsent_context: { document_type: 'private_summary', draft_version: 3, source_material: oldSource, citations: [], reading_artifact: null }, workspace_tab: 'input', tab_scroll: {}, version: 0 }, active_run: null };
   const materials = new Map([[pinKey(oldSource), source], [pinKey(support), supporting]]);
   return { owner: ids.owner as string, workspace, materials, materialBytes: new Map<string, Buffer>([[pinKey(oldSource), Buffer.from('Synthetic old prospectus')], [pinKey(support), Buffer.from('Synthetic old supporting note')]]), uploads: new Map<string, Upload>(), calls: [] as Call[], errors: [] as string[], unexpected: [] as string[], workspaceReads: 0,
-    dropPut: undefined as 'before' | 'after' | undefined, failInspectionFor: undefined as string | undefined, missingUploads: new Set<string>(), dropLibrary: undefined as 'before' | 'after' | undefined, dropDraft: undefined as 'before' | 'after' | undefined,
+    dropPut: undefined as 'before' | 'after' | undefined, dropCompleteAt: 0, dropLibrary: undefined as 'before' | 'after' | undefined, dropDraft: undefined as 'before' | 'after' | undefined,
     failWorkspaceReads: false, failMaterialReads: false, unavailableTopic: false,
     beforeDraft: undefined as ((request: M4DraftRequest) => void) | undefined, afterDraft: undefined as ((request: M4DraftRequest) => void) | undefined,
     workspaceObservation: undefined as ((workspace: M4Workspace, read: number) => M4Workspace) | undefined,
@@ -69,7 +69,7 @@ function requirementMessages(state: State) {
   for (const row of rows) { const key = `${row.message_id}:${row.message_version}`, previous = grouped.get(key) ?? []; if (!previous.some(value => value.requirement_id === row.requirement_id)) previous.push(row); grouped.set(key, previous); }
   for (const values of grouped.values()) { const first = values[0]; if (state.workspace.messages.some(message => message.message_id === first.message_id && message.version === first.message_version)) continue; const content = values.map(value => value.text).join('\n'); state.workspace.messages.push({ message_id: first.message_id, role: 'assistant', content, version: first.message_version, context: { document_type: null, draft_version: 0, source_material: null, citations: [], reading_artifact: null }, created_at: now, reply_status: 'completed', reply_to: null, run_id: null, reply: { content, citations: [], requirements: values.map(value => value.text), fields: {}, intent: 'draft', document_type: null, target_business: null, retrieval: 'not_performed' }, error: null }); }
 }
-function problem(route: Route, status: number, code: Dto<'Error'>['code'], fields: Dto<'Error'>['field_errors'] = []) { const body: Dto<'Error'> = { code, message: `Synthetic ${code}`, retryable: status >= 500, correlation_id: 'm4-thirteenth-trace', field_errors: fields }; check(schemas.Error, body); return json(route, body, status); }
+function problem(route: Route, status: number, code: Dto<'Error'>['code']) { const body: Dto<'Error'> = { code, message: `Synthetic ${code}`, retryable: status >= 500, correlation_id: 'm4-thirteenth-trace', field_errors: [] }; check(schemas.Error, body); return json(route, body, status); }
 export async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
   await page.route('**/api/v1/**', async route => {
@@ -103,15 +103,12 @@ export async function install(page: Page, state = fixture()) {
     }
     const transfer = path.match(new RegExp(`^/projects/${ids.project}/materials/uploads/([^/]+)/(bytes|complete)$`));
     if (transfer) {
-      const saved = state.uploads.get(transfer[1]); if (!saved || state.missingUploads.has(transfer[1])) return problem(route, 404, 'NOT_FOUND');
+      const saved = state.uploads.get(transfer[1]); if (!saved) return problem(route, 404, 'NOT_FOUND');
       if (method === 'PUT' && transfer[2] === 'bytes') { const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(saved.declaration.byte_size); expect(hash(bytes)).toBe(saved.declaration.sha256); const drop = state.dropPut; state.dropPut = undefined; if (drop === 'before') return route.abort('connectionreset'); saved.received = true; saved.bytes = bytes; if (drop === 'after') return route.abort('connectionreset'); return route.fulfill({ status: 204 }); }
       if (method === 'POST' && transfer[2] === 'complete') {
         check(schemas.UploadCompleteRequest, body); expect(body).toEqual({ byte_size: saved.declaration.byte_size, sha256: saved.declaration.sha256 }); if (!saved.received) return problem(route, 422, 'MATERIAL_UNREADABLE');
-        // A lost PUT response alone is automatically reconciled. An inspection
-        // timeout leaves the original bytes recoverable for an explicit retry.
-        if (state.failInspectionFor === saved.declaration.filename) { state.failInspectionFor = undefined; return problem(route, 422, 'MATERIAL_UNREADABLE', [{ field: 'material_upload', code: 'inspection_timeout', message: 'Synthetic file inspection timed out' }]); }
         if (!saved.material) { saved.material = state.dedupMaterial ?? { ...saved.declaration, material_id: 'material-' + transfer[1], material_version: 1, upload_id: transfer[1], state: 'persisted', persisted_at: now, error: null }; const selected = addMaterial(state, saved.material); if (saved.bytes) state.materialBytes.set(pinKey(selected), saved.bytes); }
-        if (state.completeGate) await state.completeGate(); check(schemas.MaterialResponse, saved.material); return json(route, saved.material);
+        if (state.completeGate) await state.completeGate(); if (state.dropCompleteAt === Number(transfer[1].split('-').at(-1))) { state.dropCompleteAt = 0; return route.abort('connectionreset'); } check(schemas.MaterialResponse, saved.material); return json(route, saved.material);
       }
     }
     if (method === 'POST' && path === `/m4/topics/${ids.topic}/materials`) {

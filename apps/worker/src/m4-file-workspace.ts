@@ -1,4 +1,3 @@
-import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, writeFile, readFile, copyFile, lstat, realpath, chmod,mkdtemp,rm } from 'node:fs/promises';
@@ -47,11 +46,10 @@ export async function checkedM4File(directory: string, name: string, max = M4_FI
 }
 
 export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, skill: Skill, cwd: string, replySchema?: unknown) {
-  return withPerformanceSpan('workspace.material_prepare',{file_count:input.materials.length+input.artifacts.length},async()=>{
   for (const name of ['materials', 'knowledge', 'scratch', 'output']) await mkdir(join(cwd, name), {mode: 0o700});
   const originals = new Map<string, string>();
   const material = [], artifacts = [];
-  const copy = async (key: string, sha256: string, path: string) => withPerformanceSpan('material.download',{object_ref:digest(key),source_sha256:sha256},async()=>{
+  const copy = async (key: string, sha256: string, path: string) => {
     if (ctx.blobs.readToFile) {
       const received = await ctx.blobs.readToFile(key, join(cwd, path), M4_FILE_MAX);
       if (!received || received.sha256 !== sha256) throw Error('INPUT_REVISION_CONFLICT');
@@ -61,13 +59,13 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
       await writeFile(join(cwd, path), bytes, {mode: 0o400});
     }
     originals.set(path, sha256);
-  });
+  };
   const effective = async (path: string, index: string) => {
     if (!path.endsWith('.docx')) return path;
     const accepted = `materials/${index}-effective.docx`;
-    try{await withPerformanceSpan('material.effective_source',{},()=>runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+    try{await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
       ['-m', 'bondbuddy_file_authoring.effective_source', join(cwd, path), join(cwd, accepted)],
-      {cwd: root, env: {...process.env, PYTHONPATH: join(root, 'python'), PYTHONDONTWRITEBYTECODE: '1'}, timeout: 120000, signal: ctx.signal, maxBuffer: 8192}));}
+      {cwd: root, env: {...process.env, PYTHONPATH: join(root, 'python'), PYTHONDONTWRITEBYTECODE: '1'}, timeout: 120000, signal: ctx.signal, maxBuffer: 8192});}
     catch{throw Error('M4_MATERIAL_UNREADABLE');}
     originals.set(accepted, digest(await checkedM4File(cwd, accepted)));
     return accepted;
@@ -128,7 +126,6 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     originals.set(name, digest(await checkedM4File(cwd, name)));
   }
   return originals;
-  });
 }
 
 /** Recompute the model's operands with immutable host authorization; never accept its claimed answer. */
@@ -150,7 +147,6 @@ export async function verifyM4Originals(cwd: string, originals: Map<string, stri
 
 /** Optional faithful preview of the stored bytes. A preview failure never masquerades as content. */
 export async function m4ArtifactPreview(ctx:StageContext,bytes:Buffer):Promise<string|undefined> {
-  return withPerformanceSpan('document.preview_render',{input_bytes:bytes.length},async span=>{
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-m4-preview-'));
   if(!directory.startsWith(base+(process.platform==='win32'?'\\':'/')))throw Error('M4_OUTPUT_UNSAFE');
   const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
@@ -160,7 +156,6 @@ export async function m4ArtifactPreview(ctx:StageContext,bytes:Buffer):Promise<s
     await runFile(python,['-B','-m','bondbuddy_file_authoring.effective_source',join(directory,'actual.docx'),join(directory,'effective.docx')],opts);
     const result=await runFile(python,['-B','-m','bondbuddy_m4_preview',join(directory,'effective.docx')],opts);
     return result.stdout.trim()||undefined;
-  } catch {span.end(ctx.signal.aborted?'cancelled':'failed',{error_code:'M4_PREVIEW_UNAVAILABLE'});if(ctx.signal.aborted)throw Error('M4_PREVIEW_CANCELLED');return undefined;}
+  } catch {if(ctx.signal.aborted)throw Error('M4_PREVIEW_CANCELLED');return undefined;}
   finally {await rm(directory,{recursive:true,force:true});}
-  });
 }

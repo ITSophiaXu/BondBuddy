@@ -1,4 +1,3 @@
-import {uploadFileDigest} from './upload-file-digest.js';
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewContextSchema, ReviewDraftInputSchema, ReviewDraftRequestSchema,
   ReviewReportSchema, isReviewReport, schemas, type ReviewContext, type ReviewDraft, type ReviewDraftInput,
   type ReviewDraftRequest, type ReviewMaterialPin, type ReviewReport, type ReviewWorkspace } from './billing-types.js';
@@ -210,7 +209,7 @@ export class ReviewUploadRecovery {
       for (const [index, file] of files.entries()) {
         const media_type = media[file.name.split('.').at(-1)?.toLowerCase() ?? ''];
         check(media_type && file.size > 0 && file.size <= M1_UPLOAD_LIMITS.fileBytes && (!['historical', 'reference'].includes(role) || M1_UPLOAD_MIME_TYPES.slice(0, 2).includes(media_type as typeof M1_UPLOAD_MIME_TYPES[0])), '历史或参考募集书仅支持 DOCX/PDF；其他材料须为支持格式且不超过 100 MB。');
-        const sha256 = this.options.digest ? await this.options.digest(file) : [...new Uint8Array(await uploadFileDigest(file,this.options.signal))].map(v => v.toString(16).padStart(2, '0')).join(''); this.live();
+        const sha256 = this.options.digest ? await this.options.digest(file) : [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(v => v.toString(16).padStart(2, '0')).join(''); this.live();
         items.push({ id: this.nonce(), index, declaration: { filename: file.name, role, media_type, byte_size: file.size, sha256 }, stage: 'prepared', localCacheResult: 'pending', coreCleaned: false });
       }
       this.requireBase({ ...base, cacheRaw: raw });
@@ -257,18 +256,6 @@ export class ReviewUploadRecovery {
   async reconcile(id: string, index: number): Promise<ReviewUploadResult> {
     return this.locked(async () => { const e = this.read(id), item = e.items[index]; check(item); if (stages.indexOf(item.stage) >= 4) return this.result(e, index, 'adopted');
       if (!item.adoptionRequest) return this.result(e, index, 'pending'); return this.observe(e, index); });
-  }
-  /** Transport may run ahead; the ordered envelope and draft are changed only by resume. */
-  async transfer(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'previousRecord'> = {}) {
-    this.live(); const e = this.read(id), item = e.items[index]; check(item);
-    const record = this.core.list().find(record => record.id === item.id);
-    check(record && reviewUploadRecordMatches(e, index, record), '原上传记录已丢失或关联不一致，未新建上传或采用当前准备。');
-    const signal = AbortSignal.any([this.options.signal ?? new AbortController().signal, options.signal ?? new AbortController().signal]);
-    const material = await this.core.resume(item.id, { ...options, signal, requireDurableRecord: true });
-    this.live(); signal.throwIfAborted();
-    const fresh = this.read(id), saved = this.core.list().find(record => record.id === item.id);
-    check(saved && reviewUploadRecordMatches(fresh, index, saved));
-    return validateUploadMaterial(fresh.items[index].declaration, material);
   }
   async resume(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'signal' | 'previousRecord'> & { retryAdoption?: boolean } = {}): Promise<ReviewUploadResult> {
     return this.locked(async () => {

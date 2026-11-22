@@ -36,7 +36,7 @@ test('task quality returns preserve frozen item/lot evidence, original cash righ
   // A synthetic settled-task ledger fixture. No provider/model quality is claimed.
   // All scope guards, account locks, actual lot allocation triggers and immutable
   // records run normally; independent QA results are persisted with their hashes.
-  async function fixture(owner:string,options:{mixed?:boolean;incomplete?:boolean;unmapped?:boolean;held?:boolean;historicalAllocations?:boolean}={}){
+  async function fixture(owner:string,options:{mixed?:boolean;incomplete?:boolean;unmapped?:boolean;held?:boolean}={}){
     await funding(owner,options.mixed);
     const f=await transaction(pool,async c=>{
       await lockCreditAccount(c,owner);const project=uid(),run=uid(),quote=uid(),reservation=uid(),scope=uid(),total=options.unmapped?120:25000;
@@ -72,15 +72,7 @@ test('task quality returns preserve frozen item/lot evidence, original cash righ
     const result={...f.result,document:{sha256:artifact.sha256.trim(),key:artifact.object_key,byte_size:(await blobs.get(artifact.object_key)).length}};
     await pool.query('UPDATE bb_project_qa_runs SET result=$2,result_hash=$3 WHERE run_id=$1',[f.run,result,inputManifestHash(result)]);
     if(options.incomplete)await assert.rejects(finish(pool,lease,'succeeded',{artifactId:doc.artifactId,artifactVersion:1,blobs}),{code:'DELIVERY_FAILED'});
-    else {
-      const definition=options.historicalAllocations?(await pool.query("SELECT pg_get_functiondef('bb_credit_finalize_run()'::regprocedure) definition")).rows[0].definition as string:null;
-      if(definition){
-        const old=definition.replace('UPDATE bb_credit_allocations SET charged_points=take WHERE reservation_id=r.id AND lot_id=l.id;','');
-        assert.notEqual(old,definition);await pool.query(old);
-      }
-      try{await finish(pool,lease,'succeeded',{artifactId:doc.artifactId,artifactVersion:1,blobs});}
-      finally{if(definition)await pool.query(definition);}
-    }
+    else await finish(pool,lease,'succeeded',{artifactId:doc.artifactId,artifactVersion:1,blobs});
     return f;
   }
   try{
@@ -175,18 +167,6 @@ test('task quality returns preserve frozen item/lot evidence, original cash righ
       await decideTaskRefund(pool,reviewer,r.refund_request_id,{request_id:uid(),item_ids:[e.units[0].item_id],reason:'Synthetic whole original task correction'});
       const flags=(await pool.query('SELECT bb_task_item_was_refunded($1,$2,$3) a,bb_task_item_was_refunded($1,$2,$4) b',[owner,f.run,'q0','q1'])).rows[0];
       assert.deepEqual(flags,{a:true,b:true});
-    });
-    await t.test('historical full-charge NULL projections retain exact mixed-lot consideration in read-only reports',async()=>{
-      const owner=await person(),f=await fixture(owner,{mixed:true,historicalAllocations:true});
-      const allocations=(await pool.query('SELECT lot_id,points,charged_points FROM bb_credit_allocations WHERE reservation_id=$1',[f.reservation])).rows;
-      assert.equal(allocations.length,3);assert.ok(allocations.every(a=>a.charged_points===null));
-      const before=await creditBalanceExact(pool,owner),events=(await pool.query('SELECT * FROM bb_credit_events WHERE reservation_id=$1 ORDER BY id',[f.reservation])).rows;
-      const economics=await readRunEconomics(pool,f.run);assert.equal(economics.delivered_service_charge_fen,'25000');assert.equal(economics.consideration_complete,true);
-      assert.deepEqual(economics.net_consideration_fen,{numerator:'23400',denominator:'1'});
-      const month=new Date(Date.now()+8*3600000).toISOString().slice(0,7),facts=await readSubscriptionFacts(pool,month,month);
-      for(const allocation of allocations){const item=facts.original_batches.find(b=>b.origin_lot_id===allocation.lot_id);assert.ok(item);assert.equal(item.redeemed_points,allocation.points);assert.equal(item.consideration_complete,true);}
-      assert.deepEqual(await creditBalanceExact(pool,owner),before);assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE reservation_id=$1 ORDER BY id',[f.reservation])).rows,events);
-      assert.equal((await auditCredits(pool,owner)).consistent,true);
     });
     await t.test('HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently',async()=>{
       const owner=await person(),f=await fixture(owner),app=Fastify({ajv:{customOptions:{removeAdditional:false,coerceTypes:false}}});

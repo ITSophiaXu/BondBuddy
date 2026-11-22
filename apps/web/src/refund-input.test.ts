@@ -6,12 +6,10 @@ import {parseRefundInput,pointRefundPreview,refundRequestCash} from './refund-in
 const original=(overrides:Partial<PaymentRefundEligibility>={}):PaymentRefundEligibility=>({order_id:'original',currency:'CNY',order_amount_fen:"50000",paid_amount_fen:"50000",
   original_points:"52500",refundable_fen:"40000",refundable_points:"42000",refunded_points:"0",refunded_fen:"0",held_refund_fen:"0",request_unit:'points',enabled:true,reason:'',refunds:[],...overrides});
 
-test('refund entry parses exact cash cents while keeping the separate points limit',()=>{
+test('refund entry parses cash and points as distinct bounded integers',()=>{
   assert.equal(parseRefundInput('123.45','amount_fen'),'12345');assert.equal(parseRefundInput('0.29','amount_fen'),'29');
   assert.equal(parseRefundInput('10000.00','amount_fen'),'1000000');assert.equal(parseRefundInput('42000','points'),'42000');
-  assert.equal(parseRefundInput('10789.20','amount_fen'),'1078920','whole annual refunds exceed the old topup cap');
-  assert.equal(parseRefundInput('92233720368547758.07','amount_fen'),'9223372036854775807');
-  for(const input of ['1e3','-1','0','NaN','92233720368547758.08','0.001'])assert.equal(parseRefundInput(input,'amount_fen'),null);
+  for(const input of ['1e3','-1','0','NaN','10000.01','0.001'])assert.equal(parseRefundInput(input,'amount_fen'),null);
   for(const input of ['1.1','1e3','-1','0','1150001'])assert.equal(parseRefundInput(input,'points'),null);
 });
 test('legacy paid proportion excludes the consumed part and never refunds its rounding remainder',()=>{

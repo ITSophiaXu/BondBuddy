@@ -52,13 +52,13 @@ RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
  && find /app -type f ! -perm -004 -exec chmod a+r {} + \
  && find /app -perm /022 -exec chmod go-w {} +
 
-# Official stable codex-cli for the contained business adapter.
+# Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
 # against the npm registry sha512 integrity. Credentials come from env only (never auth.json).
 FROM ${NODE_IMAGE} AS codex
-ARG CODEX_VERSION=0.169.0
-ARG CODEX_INTEGRITY_LINUX_X64=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
-ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-NZ/DaQUpcQmxmqee7Z9uC1rzw3GhSbooawcaTe1LN5Yk+WlinUKGdTXJgClRT/9ogQEEM9TWxYzvxPfj5G/xFg==
+ARG CODEX_VERSION=0.167.0
+ARG CODEX_INTEGRITY_LINUX_X64=sha512-FNc7danfUng9Sp6w+Fh7kofNHHZpA6VMyNKWsWrS3OwHly69gywTWeiuwrUPXpJSho8Df4xqRsHfHRPzj7zYQg==
+ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-5cv+sybRWqpRJL6KCv3YSnIx1GHRmjek997C38n1Zfno4HomKDLkNSjWLDOOc2+ISlVNSRRnySWq4zKmzlY12g==
 ARG TARGETARCH
 WORKDIR /tmp/codex
 RUN set -eu; \
@@ -121,22 +121,7 @@ EXPOSE 3129
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=require('net').connect(3129,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
-# Confirmation needs only Node, trusted CA roots and the kernel spool lock.
-# No model CLI, Python/OCR, browser or authentication helper is installed here.
-FROM node-runtime AS upload-confirmation
-ARG BB_RELEASE_SHA=unknown
-LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
-ENV BB_RELEASE_SHA=${BB_RELEASE_SHA}
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux \
- && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /var/lib/bondbuddy/upload-confirmation \
- && chown node:node /var/lib/bondbuddy/upload-confirmation \
- && chmod 0700 /var/lib/bondbuddy/upload-confirmation
-USER node
-CMD ["node","apps/worker/dist/upload-confirmation-runtime.js"]
-
 FROM node-runtime AS worker
-COPY --chown=root:root deploy/tencent-elasticity/policy.mjs deploy/tencent-elasticity/costcap.mjs deploy/tencent-elasticity/cloud-quote-refresh.mjs deploy/tencent-elasticity/tencent-cvm.mjs deploy/tencent-elasticity/controller.mjs deploy/tencent-elasticity/bootstrap.mjs deploy/tencent-elasticity/private-files.mjs deploy/tencent-elasticity/ops-handler.mjs deploy/tencent-elasticity/reconcile-entry.mjs deploy/tencent-elasticity/bootstrap-entry.mjs deploy/tencent-elasticity/enrollment.mjs deploy/tencent-elasticity/node-adapter.mjs deploy/tencent-elasticity/private-transport.mjs deploy/tencent-elasticity/private-egress.mjs deploy/tencent-elasticity/transport-issuer.mjs deploy/tencent-elasticity/transport-renewal.mjs deploy/tencent-elasticity/transport-refresher.mjs deploy/tencent-elasticity/transport-service.mjs deploy/tencent-elasticity/stunnel-reload.mjs deploy/tencent-elasticity/control-socket.mjs deploy/tencent-elasticity/control-authority.mjs deploy/tencent-elasticity/control-credentials.mjs deploy/tencent-elasticity/control-tick-bound.mjs deploy/tencent-elasticity/
 ARG BB_RELEASE_SHA=unknown
 LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ARG PIP_INDEX_URL=https://pypi.org/simple

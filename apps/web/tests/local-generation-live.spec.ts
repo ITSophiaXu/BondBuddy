@@ -17,7 +17,7 @@ test('real model: browser upload, queued authoring, durable success and both Wor
  await page.getByLabel('发行人全称',{exact:true}).fill('本地真实生成验证有限公司');
  await page.getByLabel('发行市场',{exact:true}).selectOption('szse');
  await page.getByLabel('发行方式',{exact:true}).selectOption('private');
- await page.getByLabel('目标报告期年份',{exact:true}).selectOption('2026');
+ await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2026');
  await page.getByRole('radio',{name:'6月末',exact:true}).check();
  await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
  await expect(page.getByLabel('募集书新版本文件',{exact:true})).toBeEnabled();

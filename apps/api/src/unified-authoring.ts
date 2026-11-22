@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering, FormatTemplatePin, SourceFormatPolicy, UnifiedAuthoringInput, ProspectusVersions } from '@bondbuddy/contracts';
-import { isMarketOffering, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, sourceProspectusInputGaps, recommendFormatTemplate, sameFormatTemplate, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, type SourceMaterialPin } from '@bondbuddy/contracts';
+import { isMarketOffering, sourceProspectusInputGaps, recommendFormatTemplate, sameFormatTemplate, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, type SourceMaterialPin } from '@bondbuddy/contracts';
 import type { PoolClient } from 'pg';
 import { nafmiiMtnDraftRulePack, nafmiiMtnChapterTemplate, nafmiiCpDraftRulePack, nafmiiCpChapterTemplate, nafmiiScpDraftRulePack, nafmiiScpChapterTemplate } from '@bondbuddy/domain';
 import { conflict, digest, missing, Problem } from './data.js';
@@ -13,10 +13,6 @@ export { isUnifiedInput } from '@bondbuddy/contracts';
 export function assertAuthoringSourceRequired(materials: readonly SourceMaterialPin[], previousOutput?: UnifiedAuthoringInput['previous_output']) {
   if (!hasAuthoringSource(materials, Boolean(previousOutput)))
     throw Object.assign(new Problem(422, 'INPUT_REQUIRED', SOURCE_PROSPECTUS_REQUIRED_MESSAGE), { sourceProspectusRequired: true });
-}
-export function assertAuthoringAuditRequired(materials: readonly SourceMaterialPin[]) {
-  if (!hasAuthoringAudit(materials))
-    throw Object.assign(new Problem(422, 'INPUT_REQUIRED', AUDIT_REPORT_REQUIRED_MESSAGE), { auditReportRequired: true });
 }
 export function assertAuthoringSourceInformation(materials: readonly SourceMaterialPin[], sources: readonly SourceProspectus[] = []) {
   const gaps = sourceProspectusInputGaps(materials, sources);

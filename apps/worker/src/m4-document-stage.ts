@@ -1,4 +1,3 @@
-import {withPerformanceSpan} from '@bondbuddy/api/performance-trace';
 import {validateWorkpaperCoverage} from './workpaper-content.js';
 import {collectDirectWorkpaper} from './workpaper-direct-output.js';
 import {writeFile} from 'node:fs/promises';
@@ -43,7 +42,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    if(['shared_batch_v1','progressive_item_v1','grouped_batch_v1'].includes(input.manifest.input.workpaper?.execution??'')&&!input.manifest.input.template)
+    if(input.manifest.input.workpaper?.execution==='shared_batch_v1'&&!input.manifest.input.template)
       return sharedWorkpaperDocument(ctx,input,options.model,options.config);
     const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file',workpaper:'m4-workpaper'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
@@ -104,12 +103,12 @@ export function m4DocumentDeliveryStage(): RunStage {
     const result = ctx.values.get('model_generation');
     if (!validM4DocumentResult(result, ctx) || result.error) return {kind: 'fail', code: 'WORD_DELIVERY_UNAVAILABLE'};
     const gate = await ctx.validateBeforeModelCall?.(); if (gate) return gate;
-    const read = async (name: string) => withPerformanceSpan('artifact.readback_verify',{artifact_kind:name==='document.docx'?'document':'preparation_note'},async()=>{
+    const read = async (name: string) => {
       const file = result.files[name]!;
       const bytes = await ctx.blobs.getIfExistsBounded(file.key, M4_FILE_MAX);
       if (!bytes || bytes.length !== file.byte_size || digest(bytes) !== file.sha256) throw Error('M4_OUTPUT_BLOB_MISMATCH');
       return bytes;
-    });
+    };
     await recordM4Progress(ctx, 'm4_registering_artifacts');
     const document=await read('document.docx'),note=await read('preparation-note.docx');
     if(result.workpaper_decision)await publishWorkpaperItemResult(ctx.pool,ctx.run.owner_user_id,ctx.run.id,result.workpaper_decision,

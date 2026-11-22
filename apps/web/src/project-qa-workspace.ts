@@ -1,6 +1,4 @@
-import {uploadFileDigest} from './upload-file-digest.js';
 import './upload-ux.css';
-import {orderedUploadPipeline,UploadPreparationError} from './upload-scheduler';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
@@ -723,22 +721,19 @@ export class ProjectQaWorkspace {
    this.preparingUpload=files[0];this.paint();
    const base=this.snapshot(),declarations:Dto<'UploadCreateRequest'>[]=[];
    for(const file of files){const media=qaUploadMedia(file.name,kind);if(!media||!file.size||file.size>100*1024*1024)throw new UserFacingError('请上传不超过 100 MB 的'+(kind==='source'?' DOC/DOCX 或 PDF 问题清单。':' DOC/DOCX、PDF 或 Excel 材料。'));
-    const sha256=[...new Uint8Array(await uploadFileDigest(file,this.controller.signal))].map(v=>v.toString(16).padStart(2,'0')).join('');
+    const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');
     if(!this.live())return;declarations.push({filename:file.name,media_type:media,role:'other',sha256,byte_size:file.size});
    }
    if(!this.cacheMatches()||!qaUploadSame(base,this.snapshot()))throw new UserFacingError('准备内容已在文件核对期间改变，未开始上传。');
    envelope=qaUploadEnvelope(this.owner,this.id!,kind,base,declarations);envelope=this.retainUpload(envelope,null);
    for(const [index,item] of envelope.items.entries()){this.uploadFiles.set(item.id,files[index]);this.uploadCore.get(kind)!.begin(item.declaration,qaUploadContext(envelope,index),item.id);}
    this.preparingUpload=undefined;this.scanUploads();this.paint();
-   const original=envelope;
-   await orderedUploadPipeline(original.items,
-    (item,index,signal)=>this.transferUpload(original.id,index,files[index],signal),
-    async(_material,_item,index)=>{await this.resumeUpload(original.id,index);return this.live();},this.controller.signal);
+   for(let index=0;index<envelope.items.length;index++)await this.resumeUpload(envelope.id,index,files[index]);
    // Initial file selection retains the existing upload-and-free-identification
    // intent. Reload/retry only confirms the upload; its next task is explicit.
    if(kind==='source'){await this.continueSource(envelope.id);return;}
    if(this.live())this.message='已补充材料并保留原准备选择。可直接开始回答。';
-   }catch(error){if(error instanceof UploadPreparationError)error=error.original;if(this.live()){
+  }catch(error){if(this.live()){
    this.message=this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save');
    this.preparingUpload=undefined;
     if(!envelope)this.uploadSelections.push(...files.map(file=>({kind,name:file.name,message:this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save')})));
@@ -748,15 +743,7 @@ export class ProjectQaWorkspace {
   }}
   if(this.live()){this.scanUploads();this.paint();}
  }
-  private async transferUpload(envelopeId:string,index:number,file?:File,signal=this.controller.signal){
-   const e=this.originalEnvelope(envelopeId),item=e.items[index];if(!item)throw new UserFacingError('无法核实原上传文件。');
-   const core=this.uploadCore.get(e.kind)!,record=core.list().find(r=>r.id===item.id);
-   if(!record||!qaUploadRecordMatches(e,index,record))throw new UserFacingError('原上传记录已丢失或关联不一致，已停止；不会重新建立上传或套用当前准备。');
-   const report=(p:FileUploadProgress)=>{if(!this.live()||signal.aborted)return;this.fileProgress.set(item.id,p);this.scanUploads();this.paint();};
-   try{return await core.resume(item.id,{file:file??this.uploadFiles.get(item.id),signal,requireDurableRecord:true,status:message=>report(uploadActivity(message)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});}
-   catch(error){if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(item.id);throw error;}
-  }
-  private async resumeUpload(envelopeId:string,index:number,file?:File){
+ private async resumeUpload(envelopeId:string,index:number,file?:File){
   if(this.pending)throw new UserFacingError('原问答请求尚未核实，请先通过原请求恢复入口继续。');
   let e=this.originalEnvelope(envelopeId),item=e.items[index];if(!item)throw new UserFacingError('无法核实原上传文件。');
   if(item.applied||e.handedOff){await this.cleanUploads(e);return;}

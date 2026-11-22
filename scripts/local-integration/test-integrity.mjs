@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
 import {environment,templateURL,blobConnection,repo,runtime,instance} from './config.mjs';
 if(instance!=='integrity-20261021')throw Error('Use BB_LOCAL_INSTANCE=integrity-20261021 for the isolated integrity test environment');
-const files=['apps/worker/dist/integrity-evidence.test.js','apps/worker/dist/integrity-e2e.pg.test.js','apps/worker/dist/integrity-pricing.pg.test.js',
+const files=['apps/worker/dist/integrity-evidence.test.js','apps/worker/dist/integrity-e2e.pg.test.js',
  'apps/api/dist/credit-history.test.js','apps/api/dist/billing.pg.test.js',
  'apps/web/dist-test/project-collection-model.test.js'];
 const result=spawnSync(process.execPath,['--test','--test-concurrency=1',...files],{cwd:repo,

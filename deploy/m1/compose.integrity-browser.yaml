@@ -21,4 +21,4 @@ services:
     depends_on:
       integrity-egress: {condition: service_healthy}
     # Chromium + a live model process need more than the old authoring-only 768M limit.
-    deploy: {resources: {limits: {cpus: '${BB_AUTHORING_CPU_LIMIT:-1.0}', memory: '${BB_AUTHORING_MEMORY_LIMIT:-1536M}'}}}
+    deploy: {resources: {limits: {cpus: '1.0', memory: 1536M}}}

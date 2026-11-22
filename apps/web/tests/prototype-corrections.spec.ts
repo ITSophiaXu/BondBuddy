@@ -82,7 +82,7 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
   await expect(page.locator('#create-form input[type=date]')).toHaveCount(0);
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await expect(page.getByRole('radio',{name:'有',exact:true})).toHaveCount(0);await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('目标报告期年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await page.getByLabel('最新报告期年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await capture(page,'create-desktop');
   await page.setViewportSize({width:390,height:844});await capture(page,'create-mobile');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
@@ -108,7 +108,7 @@ test('quarter selection -> create -> upload -> original footer action -> refresh
   await page.reload();await expect(page.locator('#execution-progress')).toContainText('等待开始');
   await expect(page.locator('#start-disabled-reason')).toContainText('已有任务');
   await page.getByRole('button',{name:'编辑项目信息'}).click();
-  await expect(page.getByLabel('目标报告期年份')).toHaveValue('2026');await expect(page.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
+  await expect(page.getByLabel('最新报告期年份')).toHaveValue('2026');await expect(page.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
   expect(state.calls.filter(c=>c.path==='/runs/execute')).toHaveLength(1);
 });
 
@@ -125,7 +125,7 @@ test('unrelated edits preserve old dates and periods; quarter and year changes d
     ['2023-12-31','2024-12-31','2025-03-31'],['2023-12-31','2024-12-31','2025-06-30'],
     ['2023-12-31','2024-12-31','2025-09-30'],['2024-12-31','2025-12-31']
   ];
-  await page.getByLabel('目标报告期年份').selectOption('2025');
+  await page.getByLabel('最新报告期年份').selectOption('2025');
   let index=0;
   for(const [label,date] of [['3月末','03-31'],['6月末','06-30'],['9月末','09-30'],['年末','12-31']]) {
     await page.getByRole('radio',{name:label,exact:true}).check();await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe(`2025-${date}`);
@@ -133,7 +133,7 @@ test('unrelated edits preserve old dates and periods; quarter and year changes d
       start:`${end.slice(0,4)}-01-01`,end,period_kind:end.endsWith('12-31')?'annual':'interim',scope:null,status:'needs_confirmation',evidence_refs:[]
     })));
   }
-  await page.getByLabel('目标报告期年份').selectOption('2026');await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
+  await page.getByLabel('最新报告期年份').selectOption('2026');await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
   await page.reload();await expect(page.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
   await expect(page.locator('#target-reporting-period-rows, [data-remove-target-period]')).toHaveCount(0);
   expect(state.project.update_details!.target_reporting_periods).toEqual(['2025-12-31','2026-12-31'].map(end=>({start:`${end.slice(0,4)}-01-01`,end,period_kind:'annual',scope:null,status:'needs_confirmation',evidence_refs:[]})));
@@ -169,7 +169,7 @@ for(const width of [1440,390])test(`financial material guidance follows project 
   const box=await guide.boundingBox(),picker=await page.locator('[data-material-role=audit] .material-role-heading').boundingBox();expect(box!.y).toBeGreaterThanOrEqual(picker!.y+picker!.height);
   if(process.env.BB_GUIDANCE_EVIDENCE){const dir='test-evidence/financial-guidance-20261010';await mkdir(dir,{recursive:true});await page.locator('[data-material-role=audit]').screenshot({path:`${dir}/implementation-${width}.png`});}
   await page.getByRole('button',{name:'编辑项目信息'}).click();await page.getByLabel('发行方式',{exact:true}).selectOption('public');
-  await page.getByLabel('目标报告期年份').selectOption('2027');await page.getByRole('radio',{name:'年末',exact:true}).check();
+  await page.getByLabel('最新报告期年份').selectOption('2027');await page.getByRole('radio',{name:'年末',exact:true}).check();
   await expect.poll(()=>s.project.update_details!.reporting_cutoff).toBe('2027-12-31');
   await expect(guide.locator('li')).toHaveText(['2025年度审计报告（含财务报表及附注）','2026年度审计报告（含财务报表及附注）','2027年度审计报告（含财务报表及附注）']);
   await page.goto(`/#/projects/${id}?step=materials`);await page.reload();await expect(guide).toBeVisible();await expect(guide.locator('li')).toHaveCount(3);await expect(guide).not.toContainText('1—');

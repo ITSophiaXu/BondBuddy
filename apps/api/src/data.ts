@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import { Transform, Writable, type Readable } from 'node:stream';
-import { finished, pipeline } from 'node:stream/promises';
+import type { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
-import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, AUDIT_REPORT_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -40,7 +40,6 @@ export class Problem extends Error {
   trialLimit?: TrialLimitKind;
   prospectusSelectionRequired?: boolean;
   sourceProspectusRequired?: boolean;
-  auditReportRequired?: boolean;
   prospectusDocxOnly?: boolean;
   uploadBytesPending?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
@@ -63,7 +62,7 @@ export function publicProblem(error: Problem, correlationId: string) {
           ? [PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]
           : error.code === 'MATERIAL_FORMAT_UNSUPPORTED' && error.prospectusDocxOnly
             ? [PROSPECTUS_DOCX_ONLY_FIELD_ERROR]
-            : error.code === 'INPUT_REQUIRED' ? error.sourceProspectusRequired ? [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR] : error.auditReportRequired ? [AUDIT_REPORT_REQUIRED_FIELD_ERROR] : error.inputIssues ?? [] : [],
+            : error.code === 'INPUT_REQUIRED' ? error.sourceProspectusRequired ? [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR] : error.inputIssues ?? [] : [],
     correlation_id: correlationId,
   };
 }
@@ -109,10 +108,7 @@ export const inputDto = (i: any) => {
 };
 export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), channel: r.channel ?? 'production', test_grant_id: r.test_grant_id ?? null, uncovered_items: r.uncovered_items ?? [], state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: r.channel==='non_production_test'?'non_billable_test':r.billing_mode ?? 'platform_trial', reservation_id: r.reservation_id ?? null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
 export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
-  // Project identity keys are immutable. Serialize state/input writers without
-  // blocking sibling metadata foreign-key KEY SHARE locks (or upgrading two
-  // already-held KEY SHARE locks into a delivery/admission deadlock).
-  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR NO KEY UPDATE OF p' : ''}`, [owner,id]);
+  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
@@ -120,7 +116,7 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
 export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:string,p:{id:string;kind:string;execution_scope_project_id?:string|null}){
   const scope=p.execution_scope_project_id||p.id;
   if(!p.execution_scope_project_id&&p.kind!=='review'&&!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1',[owner,scope])).rowCount)return;
-  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
+  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
   if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'
@@ -173,20 +169,19 @@ const notFound = (error: unknown) => Boolean(error && typeof error === 'object' 
 async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {
   const hash = createHash('sha256');
   const out = path ? createWriteStream(path, { flags: 'wx', mode: 0o600 }) : null;
-  let ownsFile=false;
-  out?.once('open',()=>{ownsFile=true;});
   let byteSize = 0;
-  const hashing=new Transform({transform(chunk,encoding,callback){
-    const value=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk,encoding);
-    if(byteSize+value.length>maxBytes){callback(new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'));return;}
-    byteSize+=value.length;hash.update(value);callback(null,value);
-  }});
   try {
-    // pipeline settles the source, transform and file before the caller can
-    // release a spool reservation or let this confirmation slot claim again.
-    await pipeline(body,hashing,out??new Writable({write(_chunk,_encoding,callback){callback();}}));
+    for await (const chunk of body) {
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      byteSize += value.length;
+      if (byteSize > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+      hash.update(value);
+      if (out && !out.write(value)) await new Promise<void>(resolve => out.once('drain', () => resolve()));
+    }
+    if (out) await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => error ? reject(error) : resolve()));
   } catch (error) {
-    if (ownsFile) await rm(path!, { force: true }).catch(() => undefined);
+    body.destroy();
+    if (out) { out.destroy(); await rm(path!, { force: true }).catch(() => undefined); }
     throw error;
   }
   if (expected !== undefined && byteSize !== expected) {
@@ -308,14 +303,10 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       await ensure();
       try {
         const response = await container.getBlockBlobClient(key).download();
-        if (response.contentLength !== undefined && response.contentLength > maxBytes) {
-          const body=response.readableStreamBody as Readable|undefined;
-          if(body){body.destroy();await finished(body).catch(()=>undefined);}
-          throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
-        }
+        if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
         if (options?.useRanges && (!response.etag || !Number.isSafeInteger(response.contentLength))) {
-          const body=response.readableStreamBody as Readable;body.destroy();await finished(body).catch(()=>undefined);
+          (response.readableStreamBody as Readable).destroy();
           throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
         }
         if (path && response.etag && Number.isSafeInteger(response.contentLength) && (options?.useRanges || response.contentLength! > BLOB_RANGE_MIN_BYTES)) {

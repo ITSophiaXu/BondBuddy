@@ -31,12 +31,7 @@ export function pendingImageUpgrade(receipt,items) {
   const changes=[];
   for(const item of items) {
     const service=item.Config.Labels['com.docker.compose.service'];
-    if(service==='api-legacy'){
-      if(item.State.Running)changes.push({service,containerId:item.Id,state:item.State.Status,actualImage:item.Image,
-        actualReleaseSha:item.Config.Labels['org.opencontainers.image.revision']??null,expectedImage:null,targetReleaseSha:receipt.releaseSha,action:'stop-retired-service'});
-      continue;
-    }
-    const target=['api','migrate','local-state-init'].includes(service)?'api':service.startsWith('worker')||service==='ops'?'worker':service;
+    const target=['api','api-legacy','migrate','local-state-init'].includes(service)?'api':service.startsWith('worker')||service==='ops'?'worker':service;
     const expected=receipt.images.find(image=>image.target===target);
     if(expected&&item.Image!==expected.id)changes.push({service,containerId:item.Id,state:item.State.Status,actualImage:item.Image,
       actualReleaseSha:item.Config.Labels['org.opencontainers.image.revision']??null,expectedImage:expected.id,targetReleaseSha:receipt.releaseSha});
@@ -63,13 +58,6 @@ export function assertIdleWorkload(probe) {
     throw Error('Existing local work is active or unverifiable; refusing to recreate containers.');
   return workload;
 }
-// Compose no longer knows the retired API. Stop owned orphan writers before
-// stopping the main API/database, which are needed to prove an idle restart.
-export async function stopOwnedStack(items,{stopContainer,stopCompose}) {
-  for(const item of items)if(item.State.Running&&item.Config.Labels['com.docker.compose.service']==='api-legacy')
-    await stopContainer(item.Id);
-  await stopCompose();
-}
 export async function validateCompose(config) {
   seccompSources();
   // Inspect expanded secrets in process memory only; report no rendered configuration.
@@ -84,12 +72,16 @@ export async function validateCompose(config) {
   const api=parsed.services.api;
   if(parsed.name!==config.projectName||parsed.services.postgres.environment.POSTGRES_DB!==config.database||api.environment.BB_LOCAL_PRELAUNCH_INSTANCE!==config.instanceId||
     api.environment.BB_LOCAL_PRELAUNCH_DATABASE!==config.database||api.environment.BB_ALLOWED_ORIGIN!==config.origin||api.environment.BB_DEPLOYMENT_TIER!=='local')throw Error('Compose local boundary drift');
-  if(parsed.services['api-legacy']||api.environment.BB_SUBSCRIPTION_BILLING_ENABLED!=='1')throw Error('Compose retired billing policy drift');
+  const legacy=parsed.services['api-legacy'];
+  if(legacy.environment.BB_SUBSCRIPTION_BILLING_ENABLED!=='0'||legacy.environment.BB_OUTCOME_PRICING_ENABLED!=='0'||legacy.environment.BB_PAID_AUTHORING_ENABLED!=='1'||
+    legacy.environment.BB_PAID_REVIEW_ENABLED!=='1'||legacy.environment.BB_RUN_RUNTIME_ENABLED!=='1'||legacy.environment.BB_ALLOWED_ORIGIN!==config.origin||
+    legacy.environment.BB_LOCAL_PRELAUNCH_INSTANCE!==config.instanceId||legacy.environment.BB_LOCAL_PRELAUNCH_DATABASE!==config.database)throw Error('Compose current legacy billing policy drift');
   const ports=parsed.services.web.ports??[];
   if(ports.length!==1||ports[0].host_ip!=='127.0.0.1'||String(ports[0].published)!==String(config.port)||
     parsed.services.postgres.ports?.length||parsed.services.azurite.ports?.length)throw Error('Compose host port boundary drift');
   if(parsed.networks.backend.internal!==true||parsed.networks.backend.ipam.config[0].subnet!==config.subnet)throw Error('Compose private network drift');
-  if(parsed.services.web.networks.backend.ipv4_address!==config.webIp||api.environment.BB_TRUSTED_PROXY_CIDR!==`${config.webIp}/32`)throw Error('Compose web proxy address drift');
+  if(parsed.services.web.networks.backend.ipv4_address!==config.webIp||api.environment.BB_TRUSTED_PROXY_CIDR!==`${config.webIp}/32`||
+    legacy.environment.BB_TRUSTED_PROXY_CIDR!==`${config.webIp}/32`)throw Error('Compose web proxy address drift');
   const security=parsed.services.worker.security_opt??[];
   if(!security.includes('no-new-privileges:true')||security.some(value=>value.startsWith('apparmor='))||
     !security.some(value=>value.startsWith('seccomp=')&&path.resolve(root,'deploy/m1',value.slice(8))===localSeccompFile))throw Error('Compose local authoring seccomp boundary drift');

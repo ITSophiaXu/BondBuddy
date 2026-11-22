@@ -1,3 +1,0 @@
-# Preserve byte-pinned deployment artifacts on every host.
-* -text
-*.md text eol=lf

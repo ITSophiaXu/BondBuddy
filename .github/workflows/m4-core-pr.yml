@@ -208,7 +208,6 @@ jobs:
             apps/worker/dist/workpaper-paid-checks.pg.test.js \
             apps/worker/dist/project-qa-e2e.pg.test.js \
             apps/worker/dist/integrity-e2e.pg.test.js \
-            apps/worker/dist/integrity-pricing.pg.test.js \
             apps/worker/dist/m4-case-templates.pg.test.js \
             apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js \
             | tee "$RUNNER_TEMP/m4-cross-entry-worker.tap"

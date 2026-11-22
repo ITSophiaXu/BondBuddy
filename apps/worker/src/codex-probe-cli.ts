@@ -9,13 +9,6 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import { composeContainedPrompt, loadCodexAdapterConfig, runContainedModelCall } from './codex-adapter.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 
-// This synthetic-only CLI has no durable lease or PG permit. Managed and
-// production execution must use the existing leased probe entry instead.
-if (process.env.BB_EXECUTION_ENROLLMENT_FILE || process.env.NODE_ENV === 'production') {
-  process.stderr.write('CODEX_PROBE_REQUIRES_DURABLE_LEASE\n');
-  process.exit(2);
-}
-
 const { values } = parseArgs({ options: { 'prompt-file': { type: 'string' }, 'schema-file': { type: 'string' }, 'material-file': { type: 'string' }, 'timeout-ms': { type: 'string' } } });
 if (!values['prompt-file']) { process.stderr.write('usage: probe:codex -- --prompt-file <file> [--schema-file <json>] [--material-file <txt>] [--timeout-ms N]\n'); process.exit(2); }
 const config = loadCodexAdapterConfig({ ...process.env, ...(values['timeout-ms'] ? { BB_CODEX_TIMEOUT_MS: values['timeout-ms'] } : {}) });

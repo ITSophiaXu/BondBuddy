@@ -8,7 +8,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 export const RUN_PIPELINE_SUBTYPE = 'update_pipeline_v1' as const;
 export const RUN_PIPELINE_STAGES = ['input_lock', 'materials_ready', 'model_generation', 'word_delivery'] as const;
 // Paused-run stages the runtime understands. `provider_reconcile` is shared with #16.
-export const RUN_PAUSE_STAGES = ['capability_not_ready', 'awaiting_materials', 'provider_reconcile', 'billing_reconcile', 'trial_limit', 'user_paused', 'credits_exhausted'] as const;
+export const RUN_PAUSE_STAGES = ['capability_not_ready', 'awaiting_materials', 'provider_reconcile', 'trial_limit', 'user_paused', 'credits_exhausted'] as const;
 // Reasons written to bb_run_events.payload.reason by the runtime (in addition to the existing queue reasons).
 export const RUN_RUNTIME_REASONS = ['stage_completed', 'stage_not_implemented', 'material_parse_pending', 'material_parse_failed', 'materials_ready', 'provider_reconciled', 'lease_released', 'run_input_changed', 'model_tokens_per_user_per_day', 'kill_switch', 'trial_limit_cleared'] as const;
 

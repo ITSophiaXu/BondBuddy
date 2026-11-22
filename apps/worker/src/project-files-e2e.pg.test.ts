@@ -31,7 +31,7 @@ test('project files: template batch, provenance, real checks with synthetic mode
  {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
   const pool=new Pool({connectionString:database}),owner=randomUUID(),container='bb-files-'+randomUUID().replaceAll('-',''),dir=await mkdtemp(join(tmpdir(),'bb-files-e2e-'));let actor=owner;
   const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
-  const app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
   const oldText='Synthetic. 发行规模100万元。2025年总资产200万元。';

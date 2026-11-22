@@ -102,39 +102,11 @@ def load_input(input_path):
     return data, source, raw
 
 
-def encrypted_office_source(source):
-    """Recognize Office encryption stream directory records in a bounded CFB.
-
-    This classifies an already rejected non-ZIP source; it does not parse,
-    decrypt or accept the package. Ordinary legacy DOC files remain unreadable.
-    """
-    raw = regular_bytes(source, 100 * 1024 * 1024)
-    if len(raw) < 512 or raw[:8] != bytes.fromhex('d0cf11e0a1b11ae1'):
-        return False
-    if raw[28:30] != b'\xfe\xff' or int.from_bytes(raw[30:32], 'little') not in (9, 12):
-        return False
-    # EncryptedPackage also covers rights-managed Office files whose key
-    # metadata lives in DataSpaces instead of an EncryptionInfo stream.
-    marker = ('EncryptedPackage' + '\0').encode('utf-16le')
-    offset = raw.find(marker, 512)
-    while offset != -1:
-        if (offset % 128 == 0 and offset + 128 <= len(raw)
-                and int.from_bytes(raw[offset + 64:offset + 66], 'little') == len(marker)
-                and raw[offset + 66] == 2):
-            return True
-        offset = raw.find(marker, offset + 1)
-    return False
-
-
 def prepare_source_manifest(source):
     """Classify confirmed source data faults without hiding host/IO failures."""
     try:
         return build_manifest(source)
-    except BadZipFile:
-        if encrypted_office_source(source):
-            error('WORD_EDIT_SOURCE_ENCRYPTED')
-        error('WORD_EDIT_SOURCE_UNREADABLE')
-    except (ET.XMLSyntaxError, zlib.error):
+    except (BadZipFile, ET.XMLSyntaxError, zlib.error):
         error('WORD_EDIT_SOURCE_UNREADABLE')
     except ValueError as exc:
         # These are the bounded package reader's fixed source-data errors. A

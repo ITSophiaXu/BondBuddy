@@ -7,7 +7,7 @@ import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
-import { reportingWindow, hasAuthoringAudit, AUDIT_REPORT_REQUIRED_MESSAGE, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
+import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -84,13 +84,11 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
-  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE','MATERIAL_ENCRYPTED'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
+  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
-  if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
-  if (reason === 'MATERIAL_ENCRYPTED') return '历史／参考募集说明书已加密，无法读取。请用 Word 打开文件，移除打开密码或加密后另存为未加密的 DOCX，再点击“继续修改”替换原稿并重新开始。原任务和已保存材料会保留。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
@@ -330,7 +328,7 @@ export class ProjectExecution {
     if (this.preflight?.status === 'blocked' && this.selected) return { reason: '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。' };
     const materialBlock = this.materialBlock();
     if (materialBlock) return { reason: materialBlock };
-    if (!hasAuthoringAudit(this.eligibleMaterials())) return { reason: AUDIT_REPORT_REQUIRED_MESSAGE };
+    if (!this.eligibleMaterials().length) return { reason: '请先添加本次需要的项目材料。' };
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return { reason: '项目信息尚未保存，请返回上一步处理。' };
     if (!this.draft.fields.market || !this.draft.fields.offering) return { reason: '请在上一步选择发行市场和发行方式。' };
     if (this.run && !this.nextRequested) return { reason: '需要再次修改时，请点击上方“继续修改”。' };
@@ -530,7 +528,6 @@ export class ProjectExecution {
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
-          : run.stage === 'billing_reconcile' ? '正在核对积分账务，已保存进度和已有成果；核对完成后继续，已请求停止的任务会优先结束。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     const needsRecharge = !!this.charge?.progress?.credit_exhausted && !!activeRun;
     if (!needsRecharge) { this.creditPromptShown = false; this.creditDialog?.close(); }

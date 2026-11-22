@@ -1,8 +1,0 @@
-
-/* Keep all three integrity steps readable when the viewport itself is narrow. */
-@media(max-width:600px){
-  .prototype-app .stepper[aria-label="诚信核查流程"]{gap:8px}
-  .prototype-app .stepper[aria-label="诚信核查流程"] .step{flex:1;min-width:0;flex-direction:column;gap:6px;text-align:center;white-space:normal}
-  .prototype-app .stepper[aria-label="诚信核查流程"] .step-line{flex:0 0 16px;align-self:flex-start;margin-top:12px}
-  .prototype-app .stepper[aria-label="诚信核查流程"] b{flex-shrink:0}
-}

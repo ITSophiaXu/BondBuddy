@@ -1,5 +1,3 @@
-import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
-import {assertBatchAdmission,SHARED_BATCH_CAPACITY} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -128,32 +126,26 @@ async function prepareUpdateItems(c:PoolClient,owner:string,id:string,checkId:st
   return items;
 }
 export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
-  const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
-  const result=await transaction(pool,async c=>{
+  return transaction(pool,async c=>{
     const b=(await c.query(`SELECT b.* FROM bb_project_file_update_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
       WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!b)return false;
     const items=b.items as UpdateItem[],next=items.find(i=>!i.run_id);
     const running=items.filter(i=>i.run_id).map(i=>i.run_id);
     const states=(await c.query('SELECT id,state FROM bb_runs WHERE owner_user_id=$1 AND id=ANY($2::text[])',[b.owner_user_id,running])).rows;
-    if(states.length!==running.length)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
-    if(states.filter(r=>!terminal.includes(r.state)).length>=SHARED_BATCH_CAPACITY){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
-    if(states.some(r=>terminal.includes(r.state)&&r.state!=='succeeded')){await c.query("UPDATE bb_project_file_update_batches SET state='paused',updated_at=now() WHERE id=$1",[b.id]);return true;}
-    if(!next&&states.some(r=>!terminal.includes(r.state)))return false;
+    if(states.some(r=>!terminal.includes(r.state))){await c.query('UPDATE bb_project_file_update_batches SET updated_at=now() WHERE id=$1',[b.id]);return false;}
+    if(states.some(r=>r.state!=='succeeded')){await c.query("UPDATE bb_project_file_update_batches SET state='paused',updated_at=now() WHERE id=$1",[b.id]);return true;}
     if(!next){await c.query("UPDATE bb_project_file_update_batches SET state='complete',updated_at=now() WHERE id=$1",[b.id]);return true;}
     await c.query('SAVEPOINT begin_file_patch');
     try{
-      const p=await project(c,b.owner_user_id,b.project_id,true);
-      await assertBatchAdmission(c,b.owner_user_id,p.execution_scope_project_id??p.id,'patch:'+b.id,next.manifest.file_id);
-      await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
+      const p=await project(c,b.owner_user_id,b.project_id,true);await currentSource(c,b.owner_user_id,b.project_id,next.manifest.source);
       const f=(await c.query('SELECT * FROM bb_project_files WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[b.owner_user_id,next.manifest.file_id])).rows[0];
       if(!f||f.latest_version_id!==next.manifest.expected_current_version_id)throw conflict('INPUT_REVISION_CONFLICT','文件已有新版本，请重新检查。');
-      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id,next.scope_acceptance_id,uid());
+      const r=await createOperation(c,b.owner_user_id,p.id,'file-patch:'+b.id+':'+items.indexOf(next)+':'+(next.attempt??1),inputManifestHash(next.manifest),next.manifest,next.pricing_mode===OUTCOME_MODE,next.points,next.scope_quote_id,next.scope_acceptance_id);
       next.run_id=r.id;next.error=null;
       await c.query('INSERT INTO bb_project_file_acceptances(owner_user_id,check_run_id,file_version_id,issue_ids,run_id) VALUES($1,$2,$3,$4,$5)',
         [b.owner_user_id,b.check_run_id,next.manifest.file_version_id,JSON.stringify(next.issue_ids),r.id]);
       await c.query("UPDATE bb_project_file_update_batches SET state='running',items=$2,updated_at=now() WHERE id=$1",[b.id,JSON.stringify(items)]);
-      dispatch.value={scope:{ownerUserId:b.owner_user_id,projectId:p.id,runId:r.id,batchId:b.id,workItemId:next.manifest.file_id,itemAttempt:next.attempt??1},batchCreatedAt:b.created_at,operation:'project_file_update'};
     }catch(e){
       await c.query('ROLLBACK TO SAVEPOINT begin_file_patch');
       if(e instanceof Problem&&e.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((e as {code?:string}).code??'')){
@@ -164,8 +156,6 @@ export async function advanceProjectFileUpdates(pool:Pool):Promise<boolean>{
     }
     return true;
   });
-  recordCommittedPerformanceDispatch(pool,dispatch.value,startedAt,new Date());
-  return result;
 }
 export function registerProjectFileConsistency(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
   const base='/api/v1/projects/:project_id/project-files',params=(r:FastifyRequest)=>r.params as {project_id:string;run_id:string};

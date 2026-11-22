@@ -1,4 +1,3 @@
-import {boundedItems} from './bounded-items.js';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -9,7 +8,7 @@ import {QaAnswerSchema,QaResultSchema,qaSearchTerms,qaSameAsset,type QaAnswer,ty
 import {digest,transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
-import {codexModelStage,type RunStage,type StageContext,type StageOutcome} from './run-pipeline.js';
+import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js';
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
 import {loadProjectQaInput} from './project-qa-input.js';
 import {projectFilesRoot} from './project-file-tools.js';
@@ -77,7 +76,7 @@ export function qaMissingMaterials(question:string):string[]{
 }
 export function projectQaModelStage(options:{model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig}={}):RunStage{
  return {name:'model_generation',replay:true,run:async ctx=>{
-  const input=await loadProjectQaInput(ctx),old=(await ctx.pool.query('SELECT result,result_hash,max_parallel FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
+  const input=await loadProjectQaInput(ctx),old=(await ctx.pool.query('SELECT result,result_hash FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
   if(old?.result){if(!Value.Check(QaResultSchema,old.result)||inputManifestHash(old.result)!==old.result_hash.trim())throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:old.result};}
   const dir=await mkdtemp(join(tmpdir(),'bb-project-qa-'));
   try{
@@ -100,11 +99,10 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     const prospectusIndex=input.prospectus?input.materials.findIndex(m=>qaSameAsset(m.asset,input.prospectus!.asset)):-1;
     if(input.prospectus&&(prospectusIndex<0||!evidence[prospectusIndex]?.snapshot.spans.some(s=>s.text.trim())))return {kind:'fail',code:'MATERIAL_UNREADABLE'};
     const projectContext={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length})),introduction:prospectusIndex<0?[]:evidence[prospectusIndex].snapshot.spans.filter(s=>s.text.trim()).slice(0,12).map(s=>({span_id:s.id,text:s.text.slice(0,1200)}))};
-    let outcomes:(StageOutcome|undefined)[];
-    try{outcomes=await boundedItems(input.questions,8,ctx.signal,async(question):Promise<StageOutcome>=>{
-     const questionCtx={...ctx,checkpoint:{...ctx.checkpoint},values:new Map(ctx.values)};
+    const answers:QaAnswer[]=[];
+    for(const question of input.questions){
      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
-     if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:saved.answer};}
+     if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
      const recovered=await reusableQaAnswer(ctx.pool,ctx.run,input,question.id,answer=>
       (answer.citations.length>0&&answer.citations.every(c=>c.quote.trim()&&evidence[c.asset_index]?.snapshot.spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))||qaUnanswered(answer))
       &&answer.case_ids.every(id=>input.cases.some(c=>c.id===id)));
@@ -114,35 +112,22 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
       const {answer,...receipt}=recovered;
       await checkpointStage(ctx.pool,ctx.lease,'qa_'+digest(question.id).slice(0,48)+'_reuse',{question_id:question.id,...receipt});
       await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,recovered.answer_sha256]);});
-      return {kind:'done',value:answer};
+      answers.push(answer);continue;
      }
      const terms=new Set(qaSearchTerms(question.question));
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({deferRunOutcome:true,name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
+     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
       // An explicit unanswered question can finish without a citation. Its model
       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
       config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
-      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(questionCtx);
+      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
      if(outcome.kind!=='done')return outcome;
      const answer=groundedQaAnswer(outcome.value as QaAnswer,question,{...input,cases:questionCases},evidence);
-     await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});return {kind:'done',value:answer};
-    },outcome=>outcome.kind==='done');
-    }catch(error){
-      // boundedItems has drained every accepted operation. A persistence or
-      // process exception must never turn an uncertain sibling into a settled
-      // run failure, or release its reservation without reconciliation.
-      const live=(await ctx.pool.query("SELECT 1 FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[ctx.lease.jobId,ctx.lease.owner,ctx.lease.runId,ctx.lease.token])).rowCount;
-      if(!live)return {kind:'stopped'};
-      const unknown=(await ctx.pool.query("SELECT 1 FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND status='pending_reconcile' LIMIT 1",[ctx.lease.owner,ctx.lease.jobId])).rowCount;
-      if(unknown)return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};
-      throw error;
+     await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});answers.push(answer);
     }
-    const stopped=outcomes.find(outcome=>outcome?.kind==='pause'&&outcome.stage==='provider_reconcile')??outcomes.find(outcome=>outcome&&outcome.kind!=='done');if(stopped)return stopped;
-    if(outcomes.some(outcome=>!outcome))return {kind:'stopped'};
-    const answers=outcomes.map(outcome=>outcome!.kind==='done'?outcome!.value as QaAnswer:undefined!);
     await writeFile(join(dir,'fill.json'),JSON.stringify({source_sha256:prepared.document.sha256,questions:input.questions,answers,evidence,cases:input.cases,warnings}),{mode:0o600});
     await python(ctx,['fill',join(dir,'source.docx'),join(dir,'fill.json'),join(dir,'filled.docx')]);
     result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'filled.docx')),snapshot:prepared.snapshot,questions:input.questions,answers,evidence,warnings};

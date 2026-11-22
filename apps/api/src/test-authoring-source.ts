@@ -29,16 +29,3 @@ export async function uploadSyntheticReference(app: FastifyInstance, project: st
   return {draft_revision:saved.json().draft_revision,prospectus_selection_revision:versions.json().selection_revision,
     material_versions:[ref],requirement_message_ids:[]};
 }
-
-/** Actual synthetic audit upload for authoring fixtures subject to the required-report gate. */
-export async function uploadSyntheticAudit(app: FastifyInstance, project: string) {
-  const origin='http://bondbuddy.test',path='/api/v1/projects/'+project;
-  const bytes=Buffer.from('Synthetic issuer audit report'),metadata={byte_size:bytes.length,sha256:digest(bytes)};
-  const send=(method:string,url:string,payload:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...headers}});
-  const upload=await send('POST',path+'/materials/uploads',{...metadata,filename:'synthetic-audit.txt',media_type:'text/plain',role:'audit'});
-  assert.equal(upload.statusCode,201,upload.body);
-  assert.equal((await send('PUT',upload.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
-  const completed=await send('POST',path+'/materials/uploads/'+upload.json().upload_id+'/complete',metadata);
-  assert.equal(completed.statusCode,200,completed.body);
-  return {material_id:completed.json().material_id,material_version:completed.json().material_version as number};
-}

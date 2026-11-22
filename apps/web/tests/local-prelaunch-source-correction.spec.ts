@@ -61,7 +61,7 @@ test('user corrects valid but mistaken source declarations; reload, immutable in
   await page.getByLabel('发行人全称', { exact: true }).fill(issuer);
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
-  await page.getByLabel('目标报告期年份', { exact: true }).selectOption(targetCutoff.slice(0, 4));
+  await page.getByLabel('最新报告期年份', { exact: true }).selectOption(targetCutoff.slice(0, 4));
   await page.locator(`[name="reporting_quarter"][value="${targetCutoff.slice(5)}"]`).check();
   await page.getByRole('heading', { name: '更新募集说明书', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(audit.directory, 'creation-reference-guidance-1440.png') });

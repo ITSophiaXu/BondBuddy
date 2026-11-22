@@ -1,5 +1,4 @@
 import {safeBillingNumber} from '@bondbuddy/contracts';
-import {BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION} from '@bondbuddy/contracts';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import test from 'node:test';
@@ -77,52 +76,6 @@ async function setup(isolationKey?:string){
   return {pool,f,owner,provider,app,send,topup,paymentCallback,refundCallback,request,requestPoints,eligibility,readLot,channel,orders,
     setActor:(value:string)=>{actor=value;},setMode:(value:typeof mode)=>{mode=value;},counts:()=>({creates,queries,refundIds:[...refundIds]}),close:async()=>{await app.close();await pool.end();}};
 }
-
-test('a refund eligibility race commits an immutable rejection and a later release cannot revive its key',{skip:!database,timeout:60000},async()=>{
-  const h=await setup('refund-intent-race');
-  try{
-    const order=await h.topup(10000),lot=await h.readLot(order.order_id),key=randomUUID();
-    assert.equal((await h.eligibility(order.order_id)).json().refundable_fen,'10000');
-    const task=await syntheticTask(h.pool,h.owner,lot.id,6000);
-    const rejected=await h.request(order.order_id,10000,key);assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_REQUEST_REJECTED');
-    assert.equal((await h.pool.query('SELECT count(*)::int n FROM bb_payment_refunds WHERE owner_user_id=$1',[h.owner])).rows[0].n,0);
-    assert.equal((await h.readLot(order.order_id)).frozen,'6000','the rejected refund adds no freeze');assert.equal(h.counts().creates,0);
-    const rejection=(await h.pool.query("SELECT * FROM bb_billing_request_rejections WHERE owner_user_id=$1 AND kind='refund' AND request_id=$2",[h.owner,key])).rows[0];
-    assert.equal(rejection.reason_code,'QUOTE_CHANGED');assert.equal(rejection.resource_id,order.order_id);
-    const fullHold=await syntheticTask(h.pool,h.owner,lot.id,4000),emptyKey=randomUUID(),empty=await h.request(order.order_id,10000,emptyKey);
-    assert.equal(empty.json().code,'BILLING_REQUEST_REJECTED','zero available money is also a durable eligibility rejection');
-    assert.equal((await h.readLot(order.order_id)).frozen,'10000');
-    await h.pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[fullHold]);
-    await h.pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[task]);
-    assert.equal((await h.eligibility(order.order_id)).json().refundable_fen,'10000');
-    assert.equal((await h.request(order.order_id,10000,key)).json().code,'BILLING_REQUEST_REJECTED');
-    assert.equal((await h.request(order.order_id,4000,key)).json().code,'IDEMPOTENCY_CONFLICT');
-    const inserted=()=>h.pool.query(`INSERT INTO bb_payment_refunds(id,owner_user_id,order_id,lot_id,request_id,request_hash,provider,merchant_id,provider_txn_id,currency,order_amount_fen,amount_fen,credit_points)
-      SELECT $1,o.owner_user_id,o.id,p.lot_id,$2,$3,o.provider,o.merchant_id,o.provider_txn_id,'CNY',o.amount_fen,10000,10000 FROM bb_recharge_orders o JOIN bb_payment_cash_proofs p ON p.order_id=o.id WHERE o.id=$4`,[randomUUID().replaceAll('-',''),key,rejection.request_hash,order.order_id]);
-    await assert.rejects(inserted,e=>(e as any).code==='23514','the DB also rejects a delayed old handler');
-    await assert.rejects(h.pool.query('DELETE FROM bb_billing_request_rejections WHERE owner_user_id=$1',[h.owner]),e=>(e as any).code==='23514');
-    const accepted=await h.request(order.order_id,4000);assert.equal(accepted.statusCode,202,accepted.body);
-    assert.equal(h.counts().creates,1);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:6000,frozen:4000});
-  }finally{await h.close();}
-});
-
-test('full HTTP legacy refunds distinguish durable non-acceptance from exact accepted receipt replay',{skip:!database,timeout:60000},async()=>{
-  const h=await setup('legacy-refund-rejection'),headers={[BILLING_WIRE_HEADER]:LEGACY_BILLING_WIRE_VERSION};
-  try{
-    const order=await h.topup(1000),key=randomUUID(),path=`/api/v1/commerce/topups/${order.order_id}/refunds`;
-    const rejected=await h.send('POST',path,{request_id:key,amount_fen:300},headers);
-    assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_REQUEST_REJECTED');
-    assert.equal(h.counts().creates,0);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:1000,frozen:0});
-    assert.equal((await h.request(order.order_id,300,key)).json().code,'BILLING_REQUEST_REJECTED','current wire cannot revive the rejected legacy key');
-    assert.equal((await h.send('POST',path,{request_id:key,amount_fen:301},headers)).json().code,'IDEMPOTENCY_CONFLICT');
-    const acceptedKey=randomUUID(),accepted=await h.request(order.order_id,300,acceptedKey);assert.equal(accepted.statusCode,202,accepted.body);
-    const replay=await h.send('POST',path,{request_id:acceptedKey,amount_fen:300},headers);
-    assert.equal(replay.statusCode,202,replay.body);assert.equal(replay.json().refund_id,accepted.json().refund_id);assert.equal(replay.json().amount_fen,300);assert.equal(h.counts().creates,1);
-    assert.equal((await h.send('POST',path,{request_id:acceptedKey,amount_fen:301},headers)).json().code,'IDEMPOTENCY_CONFLICT');
-    assert.equal((await h.pool.query("SELECT count(*)::int n FROM bb_billing_request_rejections WHERE owner_user_id=$1 AND kind='refund' AND request_id=$2",[h.owner,acceptedKey])).rows[0].n,0,'accepted requests never receive a rejection tombstone');
-    h.setActor(randomUUID());assert.equal((await h.send('POST',path,{request_id:key,amount_fen:300},headers)).statusCode,404);
-  }finally{await h.close();}
-});
 
 function memoryBlobs():PrivateBlobs{
   const values=new Map<string,Buffer>();return {put:async(k,b)=>{values.set(k,Buffer.from(b));},get:async k=>{const b=values.get(k);assert.ok(b);return b;},getIfExists:async k=>values.get(k)??null,
@@ -257,7 +210,7 @@ test('historical bonus package refunds consumed remainder at original A/Q and qu
     assert.equal(eligibility.refundable_points,"42000");assert.equal(eligibility.refundable_fen,"40000");
     assert.equal((await h.request(order.order_id,40000)).statusCode,409,'Bonus package requests must name credits, not pretend cash equals credits');
     const changedKey=randomUUID(),changedQuote=await h.requestPoints(order.order_id,42000,changedKey,50000);
-    assert.equal(changedQuote.statusCode,409,'Server checks the cash preview against original consideration');assert.equal(changedQuote.json().code,'BILLING_REQUEST_REJECTED');
+    assert.equal(changedQuote.statusCode,409,'Server checks the cash preview against original consideration');assert.equal(changedQuote.json().code,'QUOTE_CHANGED');
     assert.equal((await h.pool.query('SELECT count(*)::int n FROM bb_payment_refunds WHERE owner_user_id=$1 AND request_id=$2',[h.owner,changedKey])).rows[0].n,0);
     assert.equal(h.counts().creates,0,'A stale cash preview cannot create or dispatch a refund');
     assert.equal((await h.readLot(order.order_id)).frozen,'0');

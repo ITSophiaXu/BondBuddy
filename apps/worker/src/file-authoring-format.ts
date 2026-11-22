@@ -40,9 +40,7 @@ export async function runFormatPython(args: string[], signal?: AbortSignal) {
 }
 
 export class AuthoringSourceUnreadable extends Error {
-  constructor(public readonly code: 'MATERIAL_UNREADABLE' | 'MATERIAL_ENCRYPTED' = 'MATERIAL_UNREADABLE') {
-    super(code); this.name = 'AuthoringSourceUnreadable';
-  }
+  constructor() { super('MATERIAL_UNREADABLE'); this.name = 'AuthoringSourceUnreadable'; }
 }
 
 /** Only the trusted prepare command can establish an unreadable editing source. */
@@ -56,11 +54,8 @@ export async function prepareFormatSource(input: string, manifest: string, signa
       let report: unknown;
       try { report = JSON.parse(failure.stderr.trim()); } catch { /* Non-protocol failures keep the infrastructure retry path. */ }
       if (report && typeof report === 'object' && !Array.isArray(report) &&
-          Object.keys(report).length === 1) {
-        const code = (report as { error?: unknown }).error;
-        if (code === 'WORD_EDIT_SOURCE_UNREADABLE' || code === 'WORD_EDIT_SOURCE_ENCRYPTED')
-          throw new AuthoringSourceUnreadable(code === 'WORD_EDIT_SOURCE_ENCRYPTED' ? 'MATERIAL_ENCRYPTED' : 'MATERIAL_UNREADABLE');
-      }
+          Object.keys(report).length === 1 && (report as { error?: unknown }).error === 'WORD_EDIT_SOURCE_UNREADABLE')
+        throw new AuthoringSourceUnreadable();
     }
     throw error;
   }

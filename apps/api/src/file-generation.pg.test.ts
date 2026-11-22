@@ -22,7 +22,7 @@ const connection=await isolatedTestDatabase(undefined,'file-generation-'+(automa
 test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, builtin adoption, redacted previews, immutable mixed batch and rollback`,{skip:!connection},async()=>{
  const pool=new Pool({connectionString:connection}),originalOwner='fg-'+randomUUID();let owner=originalOwner;
  const memory=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{memory.set(k,Buffer.from(b));},get:async k=>memory.get(k)!,getIfExists:async k=>memory.get(k)??null,getIfExistsBounded:async(k,max)=>{const b=memory.get(k);return b&&b.length<=max?b:null;},exists:async k=>memory.has(k),delete:async k=>{memory.delete(k);}};
- const app=createServer({pool,blobs,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
+ const app=createServer({pool,blobs,enableSubscriptionBilling:automatic,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
  const errors:string[]=[];app.addHook('onError',async(_req,_reply,error)=>{errors.push(error.message);});
  const send=(method:string,path:string,body?:unknown)=>{const family=billingWireRoute(method,path);return app.inject({method:method as any,url:path,payload:(family?.request&&body!==undefined?encodeBillingDto(family.request,body):body) as any,headers:{origin:'http://bondbuddy.test',...(Buffer.isBuffer(body)?{'content-type':'application/octet-stream'}:{})}});};
  const ok=async(method:string,path:string,body?:unknown)=>{const r=await send(method,path,body);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}; ${errors.join(' | ')}`);return r.json();};
@@ -56,7 +56,7 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
   if(automatic){
    assert.equal(workspace.pricing.mode,'automatic');assert.equal(workspace.pricing.workpaper_points,'3458');assert.equal(workspace.pricing.document_points,'7965');
    assert.equal(quoted.points,'11423');assert.equal(quoted.auto_charge,true);
-   request={...request,quote_id:quoted.quote_id,expected_points:safeBillingNumber(quoted.points),price_version:quoted.price_version,document_quotes:quoted.documents.map((d:any)=>({document_type:d.document_type,draft_version:d.draft_version,scope_quote_id:d.scope_quote_id}))};
+   request={...request,expected_points:safeBillingNumber(quoted.points),price_version:quoted.price_version,document_quotes:quoted.documents.map((d:any)=>({document_type:d.document_type,draft_version:d.draft_version,scope_quote_id:d.scope_quote_id}))};
    const repeated=await ok('POST',base+'/quote',request);assert.deepEqual(repeated.documents.map((d:any)=>[d.draft_version,d.scope_quote_id]),quoted.documents.map((d:any)=>[d.draft_version,d.scope_quote_id]),'quote retry pins the same drafts and scopes');
    await grant(7965); // enough for either child, insufficient for their combined scope
    assert.equal((await send('POST',base+'/batches',request)).statusCode,402);
@@ -119,9 +119,8 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
    const revision=(await ok('GET',base)).revision;
    const automaticPrep={...prep,document_types:['workpaper'],template_set_id:null,mappings:{},workpaper_template_mode:'automatic',materials:withMaterials?[source]:[],requirements:'Use every supplied material'};
    await ok('PUT',base+'/preparation',{expected_revision:revision,preparation:automaticPrep});
-   const autoRequest={...request,quote_id:undefined as string|undefined,request_id:randomUUID(),expected_revision:revision+1,expected_points:automatic?3458:4500,document_quotes:[]};
+   const autoRequest={...request,request_id:randomUUID(),expected_revision:revision+1,expected_points:automatic?3458:4500,document_quotes:[]};
    const quote=await ok('POST',base+'/quote',autoRequest);assert.equal(quote.count,1);
-   autoRequest.quote_id=quote.quote_id;
    const autoBatch=await ok('POST',base+'/batches',autoRequest);assert.equal(autoBatch.workpapers.template_mode,'automatic');
    const manifest=(await pool.query('SELECT manifest FROM bb_workpaper_items WHERE batch_id=$1',[autoBatch.workpapers.batch_id])).rows[0].manifest;
    assert.equal(manifest.input.template,null);assert.equal(manifest.template_material,null);assert.ok(manifest.knowledge.template.sha256);

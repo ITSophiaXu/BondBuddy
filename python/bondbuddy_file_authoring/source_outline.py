@@ -167,32 +167,26 @@ def _outline(parts):
         return {'headings': [], 'toc': [], 'formulas': []}
     root = resolve_revisions(xml(parts['word/document.xml']), True)
     styles = style_map(parts)
-    return outline_resolved(root, styles)
-
-
-def outline_resolved(root, styles, *, text_of=paragraph_text):
-    """Inspect an already resolved, immutable story with the same outline rules."""
     result = {'headings': [], 'toc': [], 'formulas': []}
     field_stack = []
-    field_char, instruction, simple_field = (q(name) for name in ('fldChar', 'instrText', 'fldSimple'))
     for index, p in enumerate(root.iter(q('p'))):
         # TOC fields often span multiple paragraphs without a TOC style.
         in_toc = any(field_stack)
-        for n in p.iter(field_char, instruction, simple_field):
-            if n.tag == field_char:
+        for n in p.iter():
+            if n.tag == q('fldChar'):
                 kind = n.get(q('fldCharType'))
                 if kind == 'begin':
                     field_stack.append(False)
                 elif kind == 'end' and field_stack:
                     field_stack.pop()
-            elif n.tag == instruction and re.match(r'^\s*TOC\b', n.text or '', re.I) and field_stack:
+            elif n.tag == q('instrText') and re.match(r'^\s*TOC\b', n.text or '', re.I) and field_stack:
                 field_stack[-1] = True
-            elif n.tag == simple_field and re.match(r'^\s*TOC\b', n.get(q('instr'), ''), re.I):
+            elif n.tag == q('fldSimple') and re.match(r'^\s*TOC\b', n.get(q('instr'), ''), re.I):
                 in_toc = True
             in_toc = in_toc or any(field_stack)
         if any(a.tag in {q('tc'), q('txbxContent')} for a in p.iterancestors()):
             continue
-        text = text_of(p).strip()
+        text = paragraph_text(p).strip()
         if not text:
             continue
         role = heading_role(p, styles)
@@ -240,54 +234,17 @@ def compare_financial_formulas(before, after):
             'factual_accuracy': 'not_verified'}
 
 
-def visible_number(text):
-    """Keep chapter/list numbers, independently of editable title wording."""
-    text = text.strip()
-    match = (CHAPTER.match(text) or re.match(r'^\d+(?:[.．]\d+)*(?=\s|[、．.)）])(?:[、．.)）])?\s*', text)
-             or SECTION.match(text))
-    return re.sub(r'\s+', '', match[0]) if match else None
-
-
-def compare_outlines(before, after, *, flexible_text=False):
+def compare_outlines(before, after):
     details = {}
     for kind in ('headings', 'toc'):
         old, new = before[kind], after[kind]
         def key(item):
-            text = visible_number(item['text']) if flexible_text else item['text']
-            return (text, item.get('level'), tuple(sorted((item.get('numbering') or {}).items())))
-        if flexible_text:
-            # Compare fixed template slots directly. Matching long runs of equal
-            # level/number tuples with SequenceMatcher would be quadratic.
-            changes = []
-            for index in range(max(len(old), len(new))):
-                a = old[index] if index < len(old) else None
-                b = new[index] if index < len(new) else None
-                if a is None or b is None or key(a) != key(b):
-                    changes.append({'change': 'insert' if a is None else 'delete' if b is None else 'replace',
-                                    'before_start': index, 'after_start': index,
-                                    'before': copy.deepcopy([a]) if a is not None else [],
-                                    'after': copy.deepcopy([b]) if b is not None else []})
-        else:
-            matcher = SequenceMatcher(a=[key(n) for n in old], b=[key(n) for n in new], autojunk=False)
-            changes = [{'change': op, 'before_start': a, 'after_start': c,
-                        'before': copy.deepcopy(old[a:b]), 'after': copy.deepcopy(new[c:d])}
-                       for op, a, b, c, d in matcher.get_opcodes() if op != 'equal']
-        if flexible_text and not changes:
-            # Unnumbered titles can be rewritten, but moving recognizable source
-            # titles to another slot still changes the template's chapter order.
-            old_positions, new_positions = {}, {}
-            for items, positions in ((old, old_positions), (new, new_positions)):
-                for index, item in enumerate(items):
-                    positions.setdefault(item['text'], []).append(index)
-            for text in old_positions.keys() & new_positions.keys():
-                # Retitling one of several repeated headings is not a move.
-                if len(old_positions[text]) == len(new_positions[text]) and old_positions[text] != new_positions[text]:
-                    a, c = old_positions[text][0], new_positions[text][0]
-                    changes.append({'change': 'move', 'before_start': a, 'after_start': c,
-                                    'before': copy.deepcopy([old[a]]), 'after': copy.deepcopy([new[c]])})
-            changes.sort(key=lambda change: (change['before_start'], change['after_start']))
+            return (item['text'], item.get('level'), tuple(sorted((item.get('numbering') or {}).items())))
+        matcher = SequenceMatcher(a=[key(n) for n in old], b=[key(n) for n in new], autojunk=False)
+        changes = [{'change': op, 'before_start': a, 'after_start': c,
+                    'before': copy.deepcopy(old[a:b]), 'after': copy.deepcopy(new[c:d])}
+                   for op, a, b, c, d in matcher.get_opcodes() if op != 'equal']
         details[kind] = {'before_count': len(old), 'after_count': len(new), 'changes': changes}
     return {'status': 'changed' if any(v['changes'] for v in details.values()) else 'unchanged',
-            'scope': ('effective_heading_order_level_numbering_and_toc' if flexible_text
-                      else 'effective_heading_text_order_level_and_toc'), **details,
+            'scope': 'effective_heading_text_order_level_and_toc', **details,
             'authorization_review': 'not_performed', 'visual_review': 'not_run'}

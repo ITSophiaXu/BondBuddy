@@ -16,18 +16,8 @@ async function refreshReadOnly(page: Page, state: State) {
 }
 async function saved(page: Page, state: State) { await expect.poll(() => uploads(state, 'create').length).toBeGreaterThan(0); await expect.poll(async () => (await records(page)).length).toBe(0); noBusiness(state); }
 function expectedInput(original: M4DraftInput, state: State, purpose: 'source' | 'material', item = 0) {
-  const selectedFile = [file, secondFile][item], material = [...state.uploads.values()].find(value => value.declaration.filename === selectedFile.name && value.declaration.sha256 === hash(selectedFile.buffer))!.material!, selected = pin(material);
+  const material = [...state.uploads.values()][item].material!, selected = pin(material);
   return purpose === 'source' ? { ...original, source_material: selected } : { ...original, materials: original.materials.some(value => value.material_id === selected.material_id && value.material_version === selected.material_version) ? original.materials : [...original.materials, selected] };
-}
-async function secondPreuploadedUnadopted(page: Page, state: State) {
-  const [record] = await records(page), item = record.value.items[1];
-  expect(item.declaration.filename).toBe(secondFile.name); expect(item.stage).toBe('prepared'); expect(item.material).toBeUndefined(); expect(item.adoptionBase).toBeUndefined(); expect(item.draftRequest).toBeUndefined();
-  const core = await page.evaluate(id => Object.keys(localStorage).filter(key => key.startsWith('bondbuddy:upload-recovery:v1:')).map(key => JSON.parse(localStorage.getItem(key)!)).find(value => value.id === id), item.id);
-  const original = state.uploads.get(core.uploadId)!;
-  expect(core.declaration).toEqual(item.declaration); expect(core.stage).toBe('saved'); expect(core.material).toEqual(original.material); expect(original.received).toBe(true);
-  const selected = pin(original.material!); expect(state.workspace.materials).not.toContainEqual(selected);
-  for (const draft of Object.values(state.workspace.drafts)) { expect(draft.materials).not.toContainEqual(selected); expect(draft.source_material).not.toEqual(selected); }
-  expect(libraryWrites(state)).toHaveLength(1); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2);
 }
 async function gatedUpload(page: Page, state: State) { let release!: () => void; state.completeGate = () => new Promise<void>(resolve => { release = resolve; }); await select(page); await expect.poll(() => uploads(state, 'complete').length).toBe(1); return () => { state.completeGate = undefined; release(); }; }
 async function cacheMutation(page: Page, mutate: (cache: any) => void) {
@@ -61,7 +51,7 @@ for (const version of [0, 3]) test(`M4 exact duplicate at base v${version} respe
 });
 
 for (const purpose of ['source', 'material'] as const) for (const width of [1440, 390]) test(`M4 ${purpose} refresh is read-only and explicit recovery retains the original target at ${width}`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 960 }); const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.dropPut = 'after'; state.failInspectionFor = file.name; await mount(page); await pending(page, state, purpose);
+  await page.setViewportSize({ width, height: 960 }); const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.dropPut = 'after'; await mount(page); await pending(page, state, purpose);
   const uploadId = [...state.uploads.keys()][0]; expect(libraryWrites(state)).toHaveLength(0); expect(draftWrites(state)).toHaveLength(0); await refreshReadOnly(page, state);
   await choose(page, 'legal'); const before = writes(state).length; await page.clock.runFor(1_000); expect(writes(state)).toHaveLength(before); await expect(recovery(page)).toContainText('募集说明书摘要');
   const target = recovery(page).locator('[data-m4-recovery-target]'); await target.click(); await expect(page.locator('[data-m4-type]:checked')).toHaveValue('private_summary'); await expect(resume(page)).toBeFocused(); await expect(recovery(page)).toBeInViewport(); expect(writes(state)).toHaveLength(before);
@@ -129,15 +119,15 @@ test('M4 pending consumption confirmed later applies the original proof and lets
   const state = await install(page), captured = requirement('pending-eventually-confirmed'); state.workspace.pending_requirements = [captured];
   state.afterDraft = () => { state.workspaceObservation = value => ({ ...value, pending_requirements: [captured] }); }; await mount(page); await select(page, 'material', [file, secondFile]);
   await expect(resume(page)).toBeEnabled(); await expect(resume(page, secondFile.name)).toBeDisabled(); const first = structuredClone(draftWrites(state)[0]), proof = structuredClone(state.workspace.drafts.private_summary);
-  expect(proof.version).toBe(4); expect(proof.requirements).toContainEqual(captured); await secondPreuploadedUnadopted(page, state); expect((await records(page))[0].value.items[0].observedDraft).toEqual(proof);
+  expect(proof.version).toBe(4); expect(proof.requirements).toContainEqual(captured); expect(uploads(state, 'create')).toHaveLength(1); expect((await records(page))[0].value.items[0].observedDraft).toEqual(proof);
   const refreshWrites = await refreshReadOnly(page, state);
   // Return-to-page refresh launches a GET-only recovery read without awaiting it. Keep P visible until that read and its local queue settle.
   await expect.poll(() => page.evaluate(async () => { const component = (window as unknown as { m4Component: { refreshing?: unknown; uploadReading: boolean; uploading: boolean; cacheQueue: Promise<void> } }).m4Component; if (component.refreshing || component.uploadReading || component.uploading) return false; const queue = component.cacheQueue; await queue; return !component.refreshing && !component.uploadReading && !component.uploading && component.cacheQueue === queue; })).toBe(true);
   await expect(resume(page)).toBeEnabled(); expect(writes(state)).toHaveLength(refreshWrites); expect(draftWrites(state)).toEqual([first]); state.workspaceObservation = undefined; state.afterDraft = undefined;
   const before = writes(state).length; await resume(page).click(); await expect(resume(page, secondFile.name)).toBeEnabled(); expect(writes(state)).toHaveLength(before); expect(draftWrites(state)).toEqual([first]);
   const [record] = await records(page); expect(record.value.items[0].localCacheResult).toBe('patched'); expect(record.value.items[0].observedDraft).toEqual(proof); expect((await legacyCache(page)).drafts.private_summary).toEqual({ version: proof.version, input: inputOf(proof), dirty: false, conflict: false });
-  await secondPreuploadedUnadopted(page, state); await resume(page, secondFile.name).click(); await saved(page, state);
-  expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(draftWrites(state)).toEqual([first, { expected_version: 4, input: expectedInput(inputOf(proof), state, 'material', 1) }]); expect(state.workspace.drafts.private_summary.requirements).toContainEqual(captured); noBusiness(state);
+  await resume(page, secondFile.name).click(); const secondReselect = recovery(page, secondFile.name).locator('[data-m4-recovery-reselect]'); await expect(secondReselect).toBeAttached(); await expect(resume(page, secondFile.name)).toBeEnabled();
+  expect(writes(state)).toHaveLength(before); await secondReselect.setInputFiles(secondFile); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(draftWrites(state)).toEqual([first, { expected_version: 4, input: expectedInput(inputOf(proof), state, 'material', 1) }]); expect(state.workspace.drafts.private_summary.requirements).toContainEqual(captured); noBusiness(state);
 });
 
 test('M4 captured pending consumed elsewhere prevents replay of an unknown original draft request', async ({ page }) => {
@@ -147,7 +137,7 @@ test('M4 captured pending consumed elsewhere prevents replay of an unknown origi
 });
 
 test('M4 ordered batch resumes its interrupted second item only along the first verified complete draft', async ({ page }) => {
-  const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.failInspectionFor = secondFile.name; await mount(page); await select(page, 'material', [file, secondFile]); await expect(resume(page, secondFile.name)).toBeEnabled();
+  const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.dropCompleteAt = 2; await mount(page); await select(page, 'material', [file, secondFile]); await expect(resume(page, secondFile.name)).toBeEnabled();
   expect(draftWrites(state)).toHaveLength(1); const first = structuredClone(draftWrites(state)[0]); expect(state.workspace.drafts.private_summary.version).toBe(4); await refreshReadOnly(page, state); await resume(page, secondFile.name).click(); await saved(page, state);
   expect(draftWrites(state)).toHaveLength(2); expect(draftWrites(state)[0]).toEqual(first); expect(draftWrites(state)[1]).toEqual({ expected_version: 4, input: expectedInput(first.input, state, 'material', 1) }); expect(state.workspace.drafts.private_summary.requirements).toEqual(original.requirements); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2);
 });
@@ -177,14 +167,14 @@ test('M4 a new pending execution before draft transmission stops adoption and pr
   await refreshReadOnly(page, state); expect(draftWrites(state)).toHaveLength(0); expect((await legacyCache(page)).pendingExecution).toEqual(request); expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(await records(page)).toHaveLength(1); noBusiness(state);
 });
 
-test('M4 a pending execution arriving during draft transmission preserves proof and local input without adopting the next file', async ({ page }) => {
+test('M4 a pending execution arriving during draft transmission preserves proof and local input without starting the next file', async ({ page }) => {
   const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); let release!: () => void; state.draftGate = () => new Promise<void>(resolve => { release = resolve; });
   await mount(page); await select(page, 'material', [file, secondFile]); await expect.poll(() => draftWrites(state).length).toBe(1); const sent = structuredClone(draftWrites(state)[0]), request = pendingExecution();
   await cacheMutation(page, cache => { cache.pendingExecution = request; }); state.draftGate = undefined; release();
   await expect.poll(async () => (await records(page))[0]?.value.items[0].localCacheResult).toBe('preserved');
   const [record] = await records(page), proof = structuredClone(record.value.items[0].observedDraft); expect(proof).toEqual(state.workspace.drafts.private_summary); expect(inputOf(proof)).toEqual(sent.input); expect(proof.version).toBe(4);
-  expect(record.value.items[1].stage).toBe('prepared'); expect((await legacyCache(page)).drafts.private_summary.input).toEqual(original); expect((await legacyCache(page)).pendingExecution).toEqual(request); await secondPreuploadedUnadopted(page, state);
-  await refreshReadOnly(page, state); expect(draftWrites(state)).toEqual([sent]); await secondPreuploadedUnadopted(page, state); expect((await records(page))[0].value.items[0].observedDraft).toEqual(proof); expect((await records(page))[0].value.items[1].stage).toBe('prepared'); expect((await legacyCache(page)).pendingExecution).toEqual(request); await expect(resume(page, secondFile.name)).toBeDisabled(); noBusiness(state);
+  expect(record.value.items[1].stage).toBe('prepared'); expect((await legacyCache(page)).drafts.private_summary.input).toEqual(original); expect((await legacyCache(page)).pendingExecution).toEqual(request); expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1);
+  await refreshReadOnly(page, state); expect(draftWrites(state)).toEqual([sent]); expect(uploads(state, 'create')).toHaveLength(1); expect((await records(page))[0].value.items[0].observedDraft).toEqual(proof); expect((await records(page))[0].value.items[1].stage).toBe('prepared'); expect((await legacyCache(page)).pendingExecution).toEqual(request); await expect(resume(page, secondFile.name)).toBeDisabled(); noBusiness(state);
 });
 
 test('M4 a concurrent server baseline never becomes a new base for the original upload', async ({ page }) => {
@@ -224,7 +214,7 @@ test('M4 local-event and cache-queue fault injection between the real helper res
   expect(await page.evaluate(() => (window as unknown as { m4ApplyFault: { queuedOldTarget?: unknown } }).m4ApplyFault.queuedOldTarget)).toEqual({ version: 3, input: originalInput, dirty: false, conflict: false });
   expect(await page.evaluate(() => (window as unknown as { m4ApplyFault: { applied?: boolean } }).m4ApplyFault.applied)).toBe(false); await expect(page.locator('#m4-requirements')).toHaveValue('最后采用前新输入的本地要求必须保留');
   expect((await legacyCache(page)).drafts.private_summary.input.supplemental_requirements).toBe('最后采用前新输入的本地要求必须保留'); expect(state.workspace.drafts.private_summary.version).toBe(4); expect(state.workspace.drafts.private_summary.supplemental_requirements).not.toBe('最后采用前新输入的本地要求必须保留');
-  await secondPreuploadedUnadopted(page, state); expect(draftWrites(state)).toHaveLength(1); expect((await records(page))[0].value.items[1].stage).toBe('prepared'); noBusiness(state);
+  expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(draftWrites(state)).toHaveLength(1); expect((await records(page))[0].value.items[1].stage).toBe('prepared'); noBusiness(state);
 });
 
 test('M4 late upload response after account disposal cannot reveal the original filename or continue library and draft writes', async ({ page }) => {
@@ -238,7 +228,7 @@ test('M4 a removed business record during upload is never recreated from old mem
 });
 
 test('M4 a missing core record fails closed instead of replacing the original upload identity', async ({ page }) => {
-  const state = await install(page); state.dropPut = 'after'; state.failInspectionFor = file.name; await mount(page); await pending(page, state); await page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':m4-upload:')) localStorage.removeItem(key); });
+  const state = await install(page); state.dropPut = 'after'; await mount(page); await pending(page, state); await page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':m4-upload:')) localStorage.removeItem(key); });
   await refreshReadOnly(page, state); const before = writes(state).length; await resume(page).click(); await expect(resume(page)).toBeEnabled(); expect(writes(state)).toHaveLength(before); expect(await records(page)).toHaveLength(1); expect(uploads(state, 'create')).toHaveLength(1); noBusiness(state);
 });
 
@@ -254,10 +244,7 @@ test('M4 cleanup failure retries local cleanup only after the three server stage
 });
 
 test('M4 original-file reselect rejects different bytes and explicitly replaces only the original declaration', async ({ page }) => {
-  const state = await install(page); state.failInspectionFor = file.name; await mount(page); await pending(page, state);
-  // An acknowledged PUT can be replaced only after its original session is
-  // unavailable and the same project is still authorized, not from a generic 422.
-  state.missingUploads.add([...state.uploads.keys()][0]); await refreshReadOnly(page, state); await resume(page).click(); const reselect = recovery(page).locator('[data-m4-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
+  const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state); await refreshReadOnly(page, state); await resume(page).click(); const reselect = recovery(page).locator('[data-m4-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
   const before = writes(state).length, declaration = structuredClone((await records(page))[0].value.items[0].declaration), originalUploadId = [...state.uploads.keys()][0];
   await reselect.setInputFiles({ ...file, buffer: Buffer.from('x'.repeat(file.buffer.length)) }); await expect(resume(page)).toBeEnabled();
   expect(writes(state).slice(before)).toEqual([{ method: 'POST', path: `/projects/${ids.project}/materials/uploads/${originalUploadId}/complete`, search: '', body: { byte_size: declaration.byte_size, sha256: declaration.sha256 } }]);
@@ -265,18 +252,10 @@ test('M4 original-file reselect rejects different bytes and explicitly replaces 
   await reselect.setInputFiles(file); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(uploads(state, 'create')[1].body).toEqual(uploads(state, 'create')[0].body); expect(libraryWrites(state)).toHaveLength(1); expect(draftWrites(state)).toHaveLength(1);
 });
 
-test('M4 a generic 422 after an unknown PUT cannot authorize a replacement upload', async ({ page }) => {
-  const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state);
-  const [original] = await records(page), before = writes(state).length; await refreshReadOnly(page, state); await resume(page).click(); await expect(resume(page)).toBeEnabled();
-  await expect(recovery(page).locator('[data-m4-recovery-reselect]')).toHaveCount(0); expect(writes(state)).toHaveLength(before);
-  expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(libraryWrites(state)).toHaveLength(0); expect(draftWrites(state)).toHaveLength(0);
-  expect((await records(page))[0].value.items[0].declaration).toEqual(original.value.items[0].declaration); noBusiness(state);
-});
-
 test('M4 recovery blocks autosave, direct save, execution and beforeLeave while reading and local edits remain available', async ({ page }) => {
   const state = await install(page), historical = state.workspace.drafts.private_summary.source_material!, old = [...state.materials.values()].find(value => value.material_id === historical.material_id)!;
   const latestBytes = Buffer.from('Synthetic newer prospectus must not replace the pinned download'); addMaterial(state, { ...old, material_version: 2, byte_size: latestBytes.length, sha256: hash(latestBytes), upload_id: 'newer-source-upload' }, ids.sourceProject);
-  state.failInspectionFor = file.name; await mount(page); await pending(page, state); const before = writes(state).length; await page.locator('#m4-requirements').fill('保留本页新增要求；原上传未解决时不能保存任何文种。');
+  state.dropCompleteAt = 1; await mount(page); await pending(page, state); const before = writes(state).length; await page.locator('#m4-requirements').fill('保留本页新增要求；原上传未解决时不能保存任何文种。');
   await choose(page, 'legal'); await page.locator('#m4-requirements').fill('其他文种允许本地编辑但不能消费同话题要求。');
   await page.evaluate(async () => { const component = (window as unknown as { m4Component: { flush(): Promise<boolean>; execute(entry: string): Promise<void>; beforeLeave(): Promise<boolean> } }).m4Component; await component.flush(); await component.execute('workspace'); await component.beforeLeave(); });
   const downloaded = page.waitForEvent('download'); await page.locator('.m4-source-file [data-m4-action=download-material]').click(); expect((await downloaded).suggestedFilename()).toBe(old.filename);
@@ -302,7 +281,7 @@ async function capture(page: Page, directory: string, name: string) {
 }
 for (const purpose of ['source', 'material'] as const) for (const width of [1440, 390]) test(`m4 upload component comparison ${purpose} at ${width}`, async ({ page }) => {
   const directory = process.env.BB_M4_UPLOAD_THIRTEENTH_EVIDENCE_DIR ?? process.env.BB_THIRTEENTH_EVIDENCE_DIR; test.skip(!directory, 'Explicit thirteenth evidence directory is required'); await mkdir(directory!, { recursive: true });
-  const reference = process.env.BB_THIRTEENTH_REFERENCE === '1', finish = reference ? await installThirteenthReference(page) : undefined; await page.setViewportSize({ width, height: 960 }); const state = await install(page); state.dropPut = 'after'; state.failInspectionFor = file.name; await mount(page);
+  const reference = process.env.BB_THIRTEENTH_REFERENCE === '1', finish = reference ? await installThirteenthReference(page) : undefined; await page.setViewportSize({ width, height: 960 }); const state = await install(page); state.dropPut = 'after'; await mount(page);
   const flavor = reference ? 'reference' : 'implementation', captured = []; await page.locator(`[data-m4-upload=${purpose}]`).last().scrollIntoViewIfNeeded(); captured.push(await capture(page, directory!, `${flavor}-${purpose}-ready-${width}`));
   await select(page, purpose); if (reference) await expect(page.locator('[data-m4-action=retry-upload]')).toBeEnabled(); else await expect(resume(page)).toBeEnabled(); captured.push(await capture(page, directory!, `${flavor}-${purpose}-pending-${width}`));
   const before = await refreshReadOnly(page, state); if (reference) { await expect(page.locator('[data-m4-action=retry-upload]')).toHaveCount(0); await expect(page.locator('[data-m4-recovery-id]')).toHaveCount(0); await page.locator(`[data-m4-upload=${purpose}]`).last().scrollIntoViewIfNeeded(); } else { await expect(resume(page)).toBeEnabled(); await recovery(page).scrollIntoViewIfNeeded(); }

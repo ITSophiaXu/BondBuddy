@@ -53,24 +53,6 @@ function harness(input = base(), version = 7) {
   return { helper, make, state, store, calls, materials, wrapper, envelopeKey, coreKeys, prepare, apply };
 }
 const writes = (h: ReturnType<typeof harness>, method = 'draft') => h.calls.filter(c => c.method === method);
-
-test('parallel M4 transport preserves ordered topic membership and draft adoption',async()=>{
- const h=harness(),files=[file('first.pdf','first'),file('second.pdf','second')],e=await h.prepare(files);
- await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
- assert.deepEqual(h.helper.list(),[e]);assert.equal(writes(h).length,0);assert.equal(writes(h,'membership').length,0);
- assert.ok(h.helper.transportRecords().every(r=>r.stage==='saved'));await assert.rejects(h.helper.resume(e.id,1));
- const first=await h.helper.resume(e.id,0);h.apply(first.draft!);const second=await h.helper.resume(e.id,1);h.apply(second.draft!);
- assert.equal(second.state,'complete');assert.equal(writes(h,'bytes').length,2);assert.equal(writes(h,'membership').length,2);
- assert.deepEqual(h.state.server.materials.slice(-2).map(m=>m.material_id),h.state.membership.map(m=>m.material_id));
-});
-
-test('M4 adoption failure does not associate a preuploaded later file',async()=>{
- const h=harness(),files=[file(),file('second.pdf','second')],e=await h.prepare(files);
- await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
- h.state.failDraftBefore=true;const first=await h.helper.resume(e.id,0);assert.equal(first.state,'retryable');
- await assert.rejects(h.helper.resume(e.id,1));assert.equal(writes(h,'membership').length,1);
- assert.equal(h.helper.list()[0].items[1].stage,'prepared');assert.equal(h.helper.transportRecords().find(r=>r.id===e.items[1].id)!.stage,'saved');
-});
 async function unknownDraft(h = harness()) { const e = await h.prepare(); h.state.failDraftBefore = true; const r = await h.helper.resume(e.id, 0, { file: file() }); assert.equal(r.state, 'retryable'); return { h, e }; }
 
 test('prepare fixes actual topic project, full original document, order and small core references without network writes', async () => {
