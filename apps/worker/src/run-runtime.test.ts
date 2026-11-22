@@ -334,6 +334,8 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     // timestamp in this synthetic fixture to exercise the next scheduled pass.
     await pool.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,
       '{paused_sweep_v1,awaiting_materials,next_due_ms}','0'::jsonb,false) WHERE run_id=$1`, [materialsRun]);
+    // The first pass reaches the end of the keyset page and resets its cursor.
+    await runtime.sweep();
     await runtime.sweep();
     assert.equal((await runRow(materialsRun)).state, 'queued');
     // Parsed files cannot fix the former notes-context overflow. It must not requeue forever.
