@@ -24,7 +24,11 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
       ('model_activity_insert', (SELECT bool_and(has_column_privilege(current_user,'public.bb_run_model_activity',col,'INSERT'))
         FROM unnest(ARRAY['request_id','owner_user_id','run_id','job_id','lease_token','state']) AS columns(col))),
       ('model_activity_update', (SELECT bool_and(has_column_privilege(current_user,'public.bb_run_model_activity',col,'UPDATE'))
-        FROM unnest(ARRAY['state','updated_at']) AS columns(col)))
+        FROM unnest(ARRAY['state','updated_at']) AS columns(col))),
+      ('model_execution_config_write', has_table_privilege(current_user,'public.bb_model_attempt_execution_configs','INSERT')),
+      ('model_result_failure_write', has_table_privilege(current_user,'public.bb_model_result_failure_diagnostics','INSERT')),
+      ('runtime_exit_capture_write', (SELECT bool_and(has_column_privilege(current_user,'public.bb_model_call_attempt_runtime',col,'INSERT'))
+        FROM unnest(ARRAY['exit_capture_status','finish_reason_capture_status']) AS columns(col)))
     ) AS required(name,allowed) WHERE NOT COALESCE(allowed,false) ORDER BY name
   `);
   if (result.rows.length) throw Error('MANAGED_DATABASE_PRIVILEGES_MISSING:'+result.rows.map(row=>row.name).join(','));

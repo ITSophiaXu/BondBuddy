@@ -11,7 +11,9 @@ SPECS = {
     'runs': ('bb_runs', 'id owner_user_id project_id task_kind state stage event_cursor artifact_id artifact_version created_at updated_at'),
     'jobs': ('bb_jobs', 'id owner_user_id project_id run_id job_type subtype state stage lease_until attempts max_attempts error_code created_at updated_at execution_node_id execution_node_epoch execution_session_id'),
     'attempts': ('bb_model_call_attempts', 'id owner_user_id job_id logical_call_id attempt_no status usage_status model_id provider_request_id prompt_snapshot_id user_submission_id created_at updated_at'),
-    'runtime': ('bb_model_call_attempt_runtime', 'id owner_user_id project_id job_id run_id trace_id attempt_id logical_call_id attempt_no adapter adapter_version model_provider model_config_version started_at duration_ms exit_code error_code recorded_at'),
+    'runtime': ('bb_model_call_attempt_runtime', 'id owner_user_id project_id job_id run_id trace_id attempt_id logical_call_id attempt_no adapter adapter_version model_provider model_config_version started_at duration_ms exit_code exit_signal exit_capture_status finish_reason finish_reason_capture_status error_code recorded_at'),
+    'execution-configs': ('bb_model_attempt_execution_configs', 'attempt_id owner_user_id project_id run_id job_id logical_call_id attempt_no execution_session_id execution_node_epoch effective_timeout_ms timeout_deadline_at timeout_source timeout_branch model_config_version loaded_adapter_sha256 selected_config_sha256 release_sha overlay_sha256 recorded_at'),
+    'result-failures': ('bb_model_result_failure_diagnostics', 'id attempt_id owner_user_id project_id run_id job_id logical_call_id attempt_no substage error_class error_code recorded_at'),
     'usage': ('bb_call_usage_effective', 'attempt_id owner_user_id job_id logical_call_id attempt_no call_status usage_status input_tokens output_tokens cached_input_tokens reasoning_tokens correction_id'),
     'observations': ('bb_provider_call_observations', 'id owner_user_id project_id job_id run_id attempt_id logical_call_id attempt_no outcome usage_status usage error_code provider_status provider_request_id observed_at'),
     'usage-observations': ('bb_usage_observations', 'id owner_user_id attempt_id source usage_status input_tokens output_tokens cached_input_tokens reasoning_tokens provider_request_id observed_at created_at'),
@@ -29,10 +31,36 @@ SPECS = {
     'reservations': ('bb_credit_reservations', 'id owner_user_id run_id quote_id points state created_at finalized_at'),
     'billing-rejections': ('bb_billing_request_rejections', 'id owner_user_id project_id run_id operation reason_code error_code created_at'),
     'nodes': ('bb_execution_nodes', 'id account_id region instance_id epoch state pool_tag expected_services source_sha256 image_sha256 created_at updated_at'),
-    'sessions': ('bb_execution_node_sessions', 'session_id service_id node_id epoch state native_processes unpersisted_results ready heartbeat_at finished_at'),
+    'sessions': ('bb_execution_node_sessions', 'session_id service_id node_id epoch state native_processes unpersisted_results ready created_at heartbeat_at finished_at'),
     'heartbeats': ('bb_worker_heartbeats', 'worker_id worker_kind worker_version started_at last_seen_at stopped_at active_jobs'),
     'browser-errors': ('bb_browser_error_reports', 'id owner_user_id project_id job_id fingerprint error_type message route_id frontend_version client_time received_at purged_at'),
+    'performance-sessions': ('bb_performance_sessions', 'session_id owner_user_id project_id run_id job_id trace_id run_execution_id task_kind service_role worker_instance_id release_sha started_at ended_at last_flush_at closed generated acknowledged dropped invalid_attributes flush_errors last_sequence complete purged_at purged_span_count purge_reason purge_policy_version'),
+    'performance-spans': ('bb_performance_spans', 'span_id owner_user_id run_id session_id run_execution_id trace_id job_id parent_span_id stage step_key step_version status started_at ended_at duration_ms last_activity_at clock_source sequence'),
 }
+
+
+# Only diagnostic timing and bounded enum/count attributes cross the reader view.
+# Raw attributes can contain future fields that have not been reviewed for export.
+PERFORMANCE_ATTRIBUTE_KEYS = (
+    'stage', 'wait_reason', 'error_code', 'logical_call_id', 'call_id',
+    'model_id', 'model_provider', 'adapter', 'adapter_version',
+    'model_config_version', 'cache_status', 'cache_kind', 'cache_reason',
+    'tool_type', 'tool_name', 'event_kind', 'result_status', 'operation',
+    'outcome', 'measurement_source', 'attempt_no', 'bytes', 'byte_size',
+    'bytes_expected', 'bytes_read', 'bytes_written', 'input_bytes',
+    'output_bytes', 'input_tokens', 'output_tokens', 'cached_input_tokens',
+    'reasoning_tokens', 'retry_count', 'poll_count', 'duration_ms',
+    'elapsed_ms', 'first_stdout_ms', 'first_event_ms', 'ttft_ms',
+    'timing_complete', 'tool_timing_complete', 'cache_hit', 'reused',
+    'tool_observed_start_count', 'tool_measured_count', 'tool_measured_duration_sum_ms',
+    'tool_measured_busy_union_ms', 'tool_tracking_overflow_count', 'tool_active_count',
+    'tool_aggregate_timing_complete', 'tool_dedup_uncertain',
+    'gateway_request_count', 'gateway_request_duration_sum_ms', 'gateway_response_headers_ms',
+    'gateway_first_byte_ms', 'gateway_measurement_source',
+    'resource_scope', 'resource_availability', 'resource_sample_count', 'resource_sample_error_count',
+    'cgroup_cpu_usage_usec', 'cgroup_cpu_throttled_usec', 'cgroup_memory_bytes', 'cgroup_process_count',
+    'worker_process_active_codex',
+)
 
 
 def view_name(kind):
@@ -84,7 +112,7 @@ def install_sql():
     for kind, (table, fields) in SPECS.items():
         view = view_name(kind)
         field_sql = ','.join("'" + f + "'" for f in fields.split())
-        key = "COALESCE(d->>'id',d->>'attempt_id',d->>'session_id',d->>'worker_id',d->>'run_id',d->>'job_id') || COALESCE(':'||(d->>'seq'),'')"
+        key = "COALESCE(d->>'id',d->>'attempt_id',d->>'session_id',d->>'span_id',d->>'worker_id',d->>'run_id',d->>'job_id') || COALESCE(':'||(d->>'seq'),'')"
         owner = "COALESCE(d->>'owner_user_id',j.owner_user_id,r.owner_user_id)"
         if kind == 'users': owner = "d->>'id'"
         attempt = "d->>'id'" if kind == 'attempts' else "d->>'attempt_id'"
@@ -96,12 +124,19 @@ def install_sql():
             job = "COALESCE(d->>'job_id',a.job_id,e.job_id,CASE WHEN d->>'aggregate_type'='job' THEN d->>'aggregate_id' END)"
             run = "COALESCE(d->>'run_id',j.run_id,e.run_id,CASE WHEN d->>'aggregate_type'='run' THEN d->>'aggregate_id' END)"
         # Fixed whitelist leaves raw snapshot keys and secret-bearing provider payloads out.
+        body = f'(SELECT jsonb_object_agg(k,v) FROM jsonb_each(d) item(k,v) WHERE k IN ({field_sql}))'
+        if kind == 'performance-spans':
+            allowed = ','.join("'" + name + "'" for name in PERFORMANCE_ATTRIBUTE_KEYS)
+            body = f"jsonb_set({body}, '{{attributes}}', COALESCE((SELECT jsonb_object_agg(k,v) FROM jsonb_each(COALESCE(d->'attributes','{{}}'::jsonb)) item(k,v) WHERE k IN ({allowed})), '{{}}'::jsonb))"
+        if kind == 'sessions':
+            body = f"jsonb_set({body}, '{{time_source}}', to_jsonb(CASE WHEN d->>'created_at' IS NULL THEN 'legacy_unknown' ELSE 'session_created_at' END::text))"
+        at = "(d->>'created_at')::timestamptz" if kind == 'sessions' else "COALESCE(d->>'created_at',d->>'occurred_at',d->>'observed_at',d->>'recorded_at',d->>'received_at',d->>'started_at','1970-01-01T00:00:00Z')::timestamptz"
         sql = f'''CREATE OR REPLACE VIEW bb_diagnostics.{view} WITH(security_barrier=true) AS
           SELECT {key} AS key,
-          COALESCE(d->>'created_at',d->>'occurred_at',d->>'observed_at',d->>'recorded_at',d->>'received_at',d->>'started_at','1970-01-01T00:00:00Z')::timestamptz AS at,
+          {at} AS at,
           {owner} AS owner_id, COALESCE(d->>'project_id',j.project_id,r.project_id) AS project_id,
           {run} AS run_id,{job} AS job_id,{attempt} AS attempt_id,
-          (SELECT jsonb_object_agg(k,v) FROM jsonb_each(d) item(k,v) WHERE k IN ({field_sql})) AS body
+          {body} AS body
           FROM (SELECT to_jsonb(t) AS d FROM public.{table} t) src
           {extra_join}
           LEFT JOIN public.bb_model_call_attempts a ON a.id={attempt}
@@ -159,6 +194,8 @@ class Database:
             if key in mapping:
                 # key includes run:seq for events, but normal user-supplied IDs never include SQL syntax.
                 identifier(value); clauses.append(mapping[key] + "='" + value + "'")
+            elif key == 'time' and kind == 'sessions' and value in ('known', 'unknown'):
+                clauses.append('at IS ' + ('NOT NULL' if value == 'known' else 'NULL'))
             elif key in ('from', 'to'):
                 clauses.append("at" + ('>=' if key == 'from' else '<=') + "'" + timestamp(value) + "'::timestamptz")
             elif key == 'state':
@@ -170,16 +207,23 @@ class Database:
             ceiling = "'" + timestamp(data['ceiling']) + "'::timestamptz"
             last = data['key']
             if not isinstance(last, str) or not re_key(last): raise ValueError('Invalid database cursor key')
-            clauses.append("(at,key)>('" + timestamp(data['at']) + "'::timestamptz,'" + last + "')")
+            if kind == 'sessions' and data['at'] is None:
+                clauses.append("at IS NULL AND key>'" + last + "'")
+            elif kind == 'sessions':
+                clauses.append("((at,key)>('" + timestamp(data['at']) + "'::timestamptz,'" + last + "') OR at IS NULL)")
+            else:
+                clauses.append("(at,key)>('" + timestamp(data['at']) + "'::timestamptz,'" + last + "')")
         where = ' AND '.join(clauses)
         result = self.query(f'''WITH bound AS (SELECT {ceiling} ceiling), page AS (
           SELECT key,to_char(at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at,owner_id,project_id,run_id,job_id,attempt_id,body
-          FROM bb_diagnostics.{view},bound WHERE {where} AND at<=bound.ceiling ORDER BY at,key LIMIT {limit+1})
+          FROM bb_diagnostics.{view},bound WHERE {where} AND (at<=bound.ceiling {'OR at IS NULL' if kind == 'sessions' else ''}) ORDER BY at NULLS LAST,key LIMIT {limit+1})
           SELECT json_build_object('ceiling',to_char(ceiling AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
           'items',(SELECT COALESCE(json_agg(page),'[]') FROM page)) FROM bound''')
         rows = result['items']; items = rows[:limit]
         next_cursor = cursor_encode({'scope': digest(scope), 'ceiling': result['ceiling'], 'at': items[-1]['at'], 'key': items[-1]['key']}) if len(rows) > limit else None
-        return {'items': scrub(items), 'next_cursor': next_cursor, 'consistency': 'fixed creation-time ceiling; mutable status is live'}
+        return {'items': scrub(items), 'next_cursor': next_cursor, 'consistency': 'fixed creation-time ceiling; mutable status is live',
+                'time_field': 'created_at' if kind == 'sessions' else 'at',
+                'unknown_time_query': 'db sessions --time unknown' if kind == 'sessions' else None}
 
     def content_ref(self, kind, key):
         if kind not in ('prompt', 'result', 'exec'): raise ValueError('Unknown content kind')

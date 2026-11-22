@@ -19,6 +19,7 @@ HELP = '''BondBuddy read-only diagnostics v3
   logs [SERVICE] [--source NODE] [--from UTC] [--to UTC] [--limit 200] [--cursor CURSOR]
   db COLLECTION [--user ID] [--project ID] [--run ID] [--job ID] [--attempt ID]
                 [--from UTC] [--to UTC] [--state STATE] [--limit 100] [--cursor CURSOR]
+  db sessions [--time known|unknown] [--limit 100] [--cursor CURSOR]
   runs [STATE] [--cursor CURSOR] / run RUN_ID / attempt ATTEMPT_ID
   content prompt|result|exec ID --reason CODE [--offset 0] [--length 262144]
   exec-log ATTEMPT_ID --reason CODE [--offset 0] [--length 262144]
@@ -79,12 +80,16 @@ def parse(args):
     if action != 'logs':
         for field in ('user', 'project', 'run', 'job', 'attempt', 'id'):
             parser.add_argument('--' + field, type=identifier)
-        if action == 'db': parser.add_argument('--state', type=identifier)
+        if action == 'db':
+            parser.add_argument('--state', type=identifier)
+            parser.add_argument('--time', choices=('known', 'unknown'))
     for field in ('from', 'to'):
         parser.add_argument('--' + field, type=archive.timestamp)
     parser.add_argument('--limit', type=int, default=200 if action == 'logs' else 100)
     parser.add_argument('--cursor')
     result = vars(parser.parse_args(args[1:]))
+    if action == 'db' and result.get('time') and result['collection'] != 'sessions':
+        raise ValueError('--time applies only to db sessions')
     if not 1 <= result['limit'] <= (1000 if action == 'logs' else 500): raise ValueError('Invalid page size')
     if result.get('tail') is not None and not 1 <= result['tail'] <= 5000: raise ValueError('Invalid tail size')
     if result.get('since') and result.get('from'): raise ValueError('Choose --since or --from')

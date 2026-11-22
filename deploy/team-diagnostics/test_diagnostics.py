@@ -198,6 +198,9 @@ class SecurityTests(unittest.TestCase):
         for args in [['content','prompt','x'],['content','prompt','../secret','--reason','debug'],['content','exec','x','--reason','debug','--offset','-1'],['exec-log','x','--all'],['content','exec','x','--reason','debug','--length','99999999']]:
             with self.subTest(args=args), self.assertRaises(ValueError): broker.parse(args)
         self.assertEqual(broker.parse(['content','prompt','x','--reason','debug'])['kind'],'prompt')
+    def test_session_unknown_time_filter_is_exposed_only_for_sessions(self):
+        self.assertEqual(broker.parse(['db','sessions','--time','unknown'])['time'],'unknown')
+        with self.assertRaises(ValueError): broker.parse(['db','runs','--time','unknown'])
     def test_console_never_dispatches_arbitrary_shell(self):
         with mock.patch.object(console.subprocess,'call') as call:
             for text in ['bash -c id','cat /etc/shadow','scp -t /tmp/x','internal-sftp','logs api\nsh']:
@@ -226,6 +229,10 @@ class SecurityTests(unittest.TestCase):
         self.assertNotIn('password_hash',sql)
         self.assertIn('NOBYPASSRLS',sql)
         self.assertIn('security_barrier=true',sql)
+        self.assertIn('bb_diagnostics.performance_sessions',sql)
+        self.assertIn('bb_diagnostics.performance_spans',sql)
+        self.assertIn("d->>'span_id'",sql)
+        self.assertNotIn("'object_ref'",sql)
         self.assertIn('bb_log_content_tombstones',sql)
 
 
