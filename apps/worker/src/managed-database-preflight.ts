@@ -27,5 +27,8 @@ export async function assertManagedDatabasePrivileges(pool: Pool): Promise<void>
         FROM unnest(ARRAY['state','updated_at']) AS columns(col)))
     ) AS required(name,allowed) WHERE NOT COALESCE(allowed,false) ORDER BY name
   `);
-  if (result.rows.length) throw Error('MANAGED_DATABASE_PRIVILEGES_MISSING:'+result.rows.map(row=>row.name).join(','));
+  if (result.rows.length)
+    throw Error(
+      'MANAGED_DATABASE_PRIVILEGES_MISSING:' + result.rows.map((row) => row.name).join(','),
+    );
 }

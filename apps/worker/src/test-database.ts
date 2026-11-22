@@ -17,12 +17,18 @@ process.once('beforeExit', () => {
     const failures: unknown[] = [];
     for (const { template, name } of created) {
       try {
-        await withMaintenance(template, (client) => client.query(`DROP DATABASE IF EXISTS ${quoteIdent(name)} WITH (FORCE)`));
+        await withMaintenance(template, (client) =>
+          client.query(`DROP DATABASE IF EXISTS ${quoteIdent(name)} WITH (FORCE)`),
+        );
       } catch (error) {
         failures.push(error);
       }
     }
-    if (failures.length) throw new AggregateError(failures, `Failed to drop ${failures.length} test database clone(s)`);
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        `Failed to drop ${failures.length} test database clone(s)`,
+      );
   })().catch((error: unknown) => {
     process.stderr.write(`Test database cleanup failed: ${String(error)}\n`);
     process.exitCode = 1;
@@ -38,7 +44,11 @@ async function withMaintenance<T>(template: URL, work: (client: Client) => Promi
   maintenance.pathname = '/postgres';
   const client = new Client({ connectionString: maintenance.toString() });
   await client.connect();
-  try { return await work(client); } finally { await client.end(); }
+  try {
+    return await work(client);
+  } finally {
+    await client.end();
+  }
 }
 
 async function cloneDatabase(templateUrl: string): Promise<string> {
@@ -49,7 +59,9 @@ async function cloneDatabase(templateUrl: string): Promise<string> {
   await withMaintenance(template, async (client) => {
     for (let attempt = 0; ; attempt++) {
       try {
-        await client.query(`CREATE DATABASE ${quoteIdent(cloneName)} TEMPLATE ${quoteIdent(templateName)}`);
+        await client.query(
+          `CREATE DATABASE ${quoteIdent(cloneName)} TEMPLATE ${quoteIdent(templateName)}`,
+        );
         return;
       } catch (error) {
         // 55006: another file is cloning the same template at this moment; retry briefly.
@@ -68,11 +80,19 @@ async function cloneDatabase(templateUrl: string): Promise<string> {
  * Resolves the database for one test file or isolation key: the suite-specific variable if set, otherwise BB_TEST_DATABASE_URL.
  * Returns undefined (so the suite skips) when neither is set; otherwise a private clone of that database.
  */
-export async function isolatedTestDatabase(specificVariable?: string, isolationKey = ''): Promise<string | undefined> {
-  const template = (specificVariable ? process.env[specificVariable] : undefined) || process.env.BB_TEST_DATABASE_URL;
+export async function isolatedTestDatabase(
+  specificVariable?: string,
+  isolationKey = '',
+): Promise<string | undefined> {
+  const template =
+    (specificVariable ? process.env[specificVariable] : undefined) ||
+    process.env.BB_TEST_DATABASE_URL;
   if (!template) return undefined;
   const key = `${template}\0${isolationKey}`;
   let clone = cloned.get(key);
-  if (!clone) { clone = cloneDatabase(template); cloned.set(key, clone); }
+  if (!clone) {
+    clone = cloneDatabase(template);
+    cloned.set(key, clone);
+  }
   return clone;
 }

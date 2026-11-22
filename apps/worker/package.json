@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
     "start": "node dist/runtime.js",
     "backfill:parse-jobs": "node dist/backfill-parse-jobs.js",
     "probe:codex": "node dist/codex-probe-cli.js",
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^22.18.6",
     "@types/pg": "^8.23.1",
+    "prettier": "3.10.1",
     "typescript": "^5.9.3"
   }
 }

@@ -90,7 +90,9 @@ const LATEST_CONTEXT_PIN_SQL = `SELECT DISTINCT ON (candidate_id)
   ORDER BY candidate_id, created_at DESC, id DESC`;
 
 /** Builds one exact seam pin from an immutable context-set row, or null when the row is unusable. */
-export function factEvidenceReviewPinFromContextSetRow(row: Record<string, unknown>): FactEvidenceReviewPin | null {
+export function factEvidenceReviewPinFromContextSetRow(
+  row: Record<string, unknown>,
+): FactEvidenceReviewPin | null {
   const manifest = row.manifest;
   if (!isRecord(manifest)) return null;
   const candidateId = trimmed(row.candidate_id);
@@ -106,17 +108,38 @@ export function factEvidenceReviewPinFromContextSetRow(row: Record<string, unkno
   const parseResponseSha256 = trimmed(row.parse_response_sha256);
   const inputRevision = Number(row.input_revision);
   const materialVersion = Number(row.material_version);
-  if (!IDENTIFIER.test(candidateId) || !IDENTIFIER.test(evidenceContextSetId) ||
+  if (
+    !IDENTIFIER.test(candidateId) ||
+    !IDENTIFIER.test(evidenceContextSetId) ||
     (sourceKind !== 'audited' && sourceKind !== 'external') ||
-    !SHA256.test(evidenceSetSha256) || !SHA256.test(candidateIdentitySha256) || !SHA256.test(inputHash) ||
-    !IDENTIFIER.test(materialId) || !SHA256.test(materialSha256) || !IDENTIFIER.test(snapshotId) ||
-    !parserVersion || !SHA256.test(parseResponseSha256) ||
-    !Number.isSafeInteger(inputRevision) || inputRevision < 1 ||
-    !Number.isSafeInteger(materialVersion) || materialVersion < 1) return null;
+    !SHA256.test(evidenceSetSha256) ||
+    !SHA256.test(candidateIdentitySha256) ||
+    !SHA256.test(inputHash) ||
+    !IDENTIFIER.test(materialId) ||
+    !SHA256.test(materialSha256) ||
+    !IDENTIFIER.test(snapshotId) ||
+    !parserVersion ||
+    !SHA256.test(parseResponseSha256) ||
+    !Number.isSafeInteger(inputRevision) ||
+    inputRevision < 1 ||
+    !Number.isSafeInteger(materialVersion) ||
+    materialVersion < 1
+  )
+    return null;
   return {
-    candidateId, evidenceContextSetId, evidenceSetSha256, candidateIdentitySha256, sourceKind,
-    inputRevision, inputHash, materialId, materialVersion, materialSha256, snapshotId,
-    parserVersion, parseResponseSha256,
+    candidateId,
+    evidenceContextSetId,
+    evidenceSetSha256,
+    candidateIdentitySha256,
+    sourceKind,
+    inputRevision,
+    inputHash,
+    materialId,
+    materialVersion,
+    materialSha256,
+    snapshotId,
+    parserVersion,
+    parseResponseSha256,
   };
 }
 
@@ -127,7 +150,11 @@ async function latestContextPins(
 ): Promise<ReadonlyMap<string, FactEvidenceReviewPin>> {
   const pins = new Map<string, FactEvidenceReviewPin>();
   if (!candidateIds.length) return pins;
-  const result = await dependencies.pool.query(LATEST_CONTEXT_PIN_SQL, [scope.ownerUserId, scope.projectId, [...candidateIds]]);
+  const result = await dependencies.pool.query(LATEST_CONTEXT_PIN_SQL, [
+    scope.ownerUserId,
+    scope.projectId,
+    [...candidateIds],
+  ]);
   for (const row of result.rows) {
     const pin = factEvidenceReviewPinFromContextSetRow(row);
     if (pin && !pins.has(pin.candidateId)) pins.set(pin.candidateId, pin);
@@ -136,8 +163,10 @@ async function latestContextPins(
 }
 
 function isIssuerCandidate(scope: FactEvidenceReviewGateScope, fact: StoredFactCandidate): boolean {
-  return fact.candidate.identity.accountId === scope.ownerUserId &&
-    fact.candidate.identity.entityId === scope.issuerEntityId;
+  return (
+    fact.candidate.identity.accountId === scope.ownerUserId &&
+    fact.candidate.identity.entityId === scope.issuerEntityId
+  );
 }
 
 /**
@@ -150,26 +179,38 @@ export async function gateReviewedOfferableFacts(
   scope: FactEvidenceReviewGateScope,
   facts: readonly StoredFactCandidate[],
 ): Promise<FactEvidenceReviewGateOutcome> {
-  const candidates = facts.filter(fact => isIssuerCandidate(scope, fact));
-  const candidateIds = [...new Set(candidates.map(fact => fact.candidate.candidateId))];
+  const candidates = facts.filter((fact) => isIssuerCandidate(scope, fact));
+  const candidateIds = [...new Set(candidates.map((fact) => fact.candidate.candidateId))];
   const exclusionByCandidateId: Record<string, FactEvidenceReviewGateExclusion> = {};
   const offeredCandidateIds: string[] = [];
   if (!candidateIds.length) {
-    return { schemaVersion: FACT_EVIDENCE_REVIEW_GATE_VERSION, facts, offeredCandidateIds,
-      excludedCandidateIds: [], exclusionByCandidateId, originalFieldsPreserved: true };
+    return {
+      schemaVersion: FACT_EVIDENCE_REVIEW_GATE_VERSION,
+      facts,
+      offeredCandidateIds,
+      excludedCandidateIds: [],
+      exclusionByCandidateId,
+      originalFieldsPreserved: true,
+    };
   }
   const verdict = new Map<string, FactEvidenceReviewGateExclusion | 'offerable'>();
   try {
-    const pins = await (dependencies.loadPins ?? ((s, ids) => latestContextPins(dependencies, s, ids)))(scope, candidateIds);
+    const pins = await (
+      dependencies.loadPins ?? ((s, ids) => latestContextPins(dependencies, s, ids))
+    )(scope, candidateIds);
     const orderedPins: FactEvidenceReviewPin[] = [];
     for (const id of candidateIds) {
       const pin = pins.get(id);
-      if (pin) orderedPins.push(pin); else verdict.set(id, 'no_evidence_context_set');
+      if (pin) orderedPins.push(pin);
+      else verdict.set(id, 'no_evidence_context_set');
     }
     if (orderedPins.length) {
-      const determinations = await (dependencies.determine ??
-        ((pool, s, p) => readFactEvidenceReviewDeterminations({ pool }, s, p)))(dependencies.pool, scope, orderedPins);
-      if (determinations.length !== orderedPins.length) throw new Error('FACT_EVIDENCE_REVIEW_GATE_DETERMINATION_MISMATCH');
+      const determinations = await (
+        dependencies.determine ??
+        ((pool, s, p) => readFactEvidenceReviewDeterminations({ pool }, s, p))
+      )(dependencies.pool, scope, orderedPins);
+      if (determinations.length !== orderedPins.length)
+        throw new Error('FACT_EVIDENCE_REVIEW_GATE_DETERMINATION_MISMATCH');
       for (let index = 0; index < orderedPins.length; index++) {
         const pin = orderedPins[index]!;
         const determination = determinations[index]!;
@@ -187,14 +228,16 @@ export async function gateReviewedOfferableFacts(
     groups.set(key, group);
   }
   const blocked = new Set<string>();
-  for (const [key, ids] of groups) if (ids.some(id => verdict.get(id) !== 'offerable')) blocked.add(key);
+  for (const [key, ids] of groups)
+    if (ids.some((id) => verdict.get(id) !== 'offerable')) blocked.add(key);
   const excluded = new Set<string>();
   for (const fact of candidates) {
     const id = fact.candidate.candidateId;
     const own = verdict.get(id);
     if (blocked.has(factIdentityKey(fact.candidate.identity))) {
       excluded.add(id);
-      exclusionByCandidateId[id] = own !== undefined && own !== 'offerable' ? own : 'identity_group_not_fully_offerable';
+      exclusionByCandidateId[id] =
+        own !== undefined && own !== 'offerable' ? own : 'identity_group_not_fully_offerable';
     } else if (own === 'offerable') {
       offeredCandidateIds.push(id);
     } else {
@@ -202,8 +245,14 @@ export async function gateReviewedOfferableFacts(
       exclusionByCandidateId[id] = own ?? 'review_gate_unavailable';
     }
   }
-  return { schemaVersion: FACT_EVIDENCE_REVIEW_GATE_VERSION, facts: facts.filter(fact => !excluded.has(fact.candidate.candidateId)),
-    offeredCandidateIds, excludedCandidateIds: [...excluded], exclusionByCandidateId, originalFieldsPreserved: true };
+  return {
+    schemaVersion: FACT_EVIDENCE_REVIEW_GATE_VERSION,
+    facts: facts.filter((fact) => !excluded.has(fact.candidate.candidateId)),
+    offeredCandidateIds,
+    excludedCandidateIds: [...excluded],
+    exclusionByCandidateId,
+    originalFieldsPreserved: true,
+  };
 }
 
 /** The historical generation loader signature the guard wraps; kept structural to avoid a #31 import cycle. */
@@ -228,16 +277,27 @@ export function createFactEvidenceReviewGuardedLoader(
   return async (ctx: StageContext): Promise<HistoricalGenerationInput> => {
     const input = await load(ctx);
     let enabled = true;
-    try { enabled = (await options.enabled?.(ctx)) ?? false; } catch { enabled = true; }
+    try {
+      enabled = (await options.enabled?.(ctx)) ?? false;
+    } catch {
+      enabled = true;
+    }
     if (!enabled) return input;
     const context = input.locked.context;
-    const scope: FactEvidenceReviewGateScope = { ownerUserId: context.ownerUserId, projectId: context.projectId,
-      issuerEntityId: context.issuerEntityId };
+    const scope: FactEvidenceReviewGateScope = {
+      ownerUserId: context.ownerUserId,
+      projectId: context.projectId,
+      issuerEntityId: context.issuerEntityId,
+    };
     try {
-      const outcome = await gateReviewedOfferableFacts({ pool: ctx.pool, ...options.dependencies }, scope, input.facts);
+      const outcome = await gateReviewedOfferableFacts(
+        { pool: ctx.pool, ...options.dependencies },
+        scope,
+        input.facts,
+      );
       return { ...input, facts: outcome.facts };
     } catch {
-      return { ...input, facts: input.facts.filter(fact => !isIssuerCandidate(scope, fact)) };
+      return { ...input, facts: input.facts.filter((fact) => !isIssuerCandidate(scope, fact)) };
     }
   };
 }

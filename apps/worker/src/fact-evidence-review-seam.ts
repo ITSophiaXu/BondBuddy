@@ -113,7 +113,9 @@ export class FactEvidenceReviewSeamError extends Error {
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const OUTCOMES: readonly FactEvidenceReviewResponse['outcome'][] = [
-  'evidence_impact_reviewed', 'external_evidence_impact_reviewed', 'needs_more_evidence',
+  'evidence_impact_reviewed',
+  'external_evidence_impact_reviewed',
+  'needs_more_evidence',
 ];
 
 function fail(code: string): never {
@@ -125,17 +127,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validateScope(scope: FactEvidenceReviewScope): void {
-  if (!IDENTIFIER.test(scope.ownerUserId) || !IDENTIFIER.test(scope.projectId)) fail('FACT_EVIDENCE_REVIEW_SEAM_INVALID_SCOPE');
+  if (!IDENTIFIER.test(scope.ownerUserId) || !IDENTIFIER.test(scope.projectId))
+    fail('FACT_EVIDENCE_REVIEW_SEAM_INVALID_SCOPE');
 }
 
 function validatePin(pin: FactEvidenceReviewPin): void {
-  if (!IDENTIFIER.test(pin.candidateId) || !IDENTIFIER.test(pin.evidenceContextSetId) ||
-    !SHA256.test(pin.evidenceSetSha256) || !SHA256.test(pin.candidateIdentitySha256) ||
+  if (
+    !IDENTIFIER.test(pin.candidateId) ||
+    !IDENTIFIER.test(pin.evidenceContextSetId) ||
+    !SHA256.test(pin.evidenceSetSha256) ||
+    !SHA256.test(pin.candidateIdentitySha256) ||
     (pin.sourceKind !== 'audited' && pin.sourceKind !== 'external') ||
-    !Number.isSafeInteger(pin.inputRevision) || pin.inputRevision < 1 || !SHA256.test(pin.inputHash) ||
-    !IDENTIFIER.test(pin.materialId) || !Number.isSafeInteger(pin.materialVersion) || pin.materialVersion < 1 ||
-    !SHA256.test(pin.materialSha256) || !IDENTIFIER.test(pin.snapshotId) ||
-    !pin.parserVersion.trim() || !SHA256.test(pin.parseResponseSha256)) {
+    !Number.isSafeInteger(pin.inputRevision) ||
+    pin.inputRevision < 1 ||
+    !SHA256.test(pin.inputHash) ||
+    !IDENTIFIER.test(pin.materialId) ||
+    !Number.isSafeInteger(pin.materialVersion) ||
+    pin.materialVersion < 1 ||
+    !SHA256.test(pin.materialSha256) ||
+    !IDENTIFIER.test(pin.snapshotId) ||
+    !pin.parserVersion.trim() ||
+    !SHA256.test(pin.parseResponseSha256)
+  ) {
     fail('FACT_EVIDENCE_REVIEW_SEAM_INVALID_PIN');
   }
 }
@@ -148,14 +161,26 @@ function iso(value: unknown): string {
 
 function mapRow(row: Record<string, unknown>): FactEvidenceReviewSeamRow {
   const sourceKind = row.source_kind;
-  if ((sourceKind !== 'audited' && sourceKind !== 'external') || !OUTCOMES.includes(row.outcome as FactEvidenceReviewResponse['outcome']) ||
-    typeof row.review_id !== 'string' || typeof row.candidate_id !== 'string' || typeof row.evidence_context_set_id !== 'string' ||
-    typeof row.evidence_set_sha256 !== 'string' || typeof row.candidate_identity_sha256 !== 'string' ||
-    typeof row.input_hash !== 'string' || typeof row.material_id !== 'string' || typeof row.material_sha256 !== 'string' ||
-    typeof row.snapshot_id !== 'string' || typeof row.parser_version !== 'string' || typeof row.parse_response_sha256 !== 'string' ||
-    typeof row.reviewer_user_id !== 'string' || typeof row.reviewer_grant_id !== 'string' ||
-    !Number.isSafeInteger(Number(row.input_revision)) || !Number.isSafeInteger(Number(row.material_version)) ||
-    !Number.isFinite(new Date(String(row.reviewed_at)).getTime())) {
+  if (
+    (sourceKind !== 'audited' && sourceKind !== 'external') ||
+    !OUTCOMES.includes(row.outcome as FactEvidenceReviewResponse['outcome']) ||
+    typeof row.review_id !== 'string' ||
+    typeof row.candidate_id !== 'string' ||
+    typeof row.evidence_context_set_id !== 'string' ||
+    typeof row.evidence_set_sha256 !== 'string' ||
+    typeof row.candidate_identity_sha256 !== 'string' ||
+    typeof row.input_hash !== 'string' ||
+    typeof row.material_id !== 'string' ||
+    typeof row.material_sha256 !== 'string' ||
+    typeof row.snapshot_id !== 'string' ||
+    typeof row.parser_version !== 'string' ||
+    typeof row.parse_response_sha256 !== 'string' ||
+    typeof row.reviewer_user_id !== 'string' ||
+    typeof row.reviewer_grant_id !== 'string' ||
+    !Number.isSafeInteger(Number(row.input_revision)) ||
+    !Number.isSafeInteger(Number(row.material_version)) ||
+    !Number.isFinite(new Date(String(row.reviewed_at)).getTime())
+  ) {
     fail('FACT_EVIDENCE_REVIEW_SEAM_ROW_INVALID');
   }
   return {
@@ -181,7 +206,8 @@ function mapRow(row: Record<string, unknown>): FactEvidenceReviewSeamRow {
 }
 
 function pinsMatch(row: FactEvidenceReviewSeamRow, pin: FactEvidenceReviewPin): boolean {
-  return row.candidateId === pin.candidateId &&
+  return (
+    row.candidateId === pin.candidateId &&
     row.evidenceContextSetId === pin.evidenceContextSetId &&
     row.evidenceSetSha256 === pin.evidenceSetSha256 &&
     row.candidateIdentitySha256 === pin.candidateIdentitySha256 &&
@@ -193,7 +219,8 @@ function pinsMatch(row: FactEvidenceReviewSeamRow, pin: FactEvidenceReviewPin): 
     row.materialSha256 === pin.materialSha256 &&
     row.snapshotId === pin.snapshotId &&
     row.parserVersion === pin.parserVersion &&
-    row.parseResponseSha256 === pin.parseResponseSha256;
+    row.parseResponseSha256 === pin.parseResponseSha256
+  );
 }
 
 /**
@@ -212,27 +239,76 @@ export function deriveFactEvidenceReviewDetermination(
     originalFieldsPreserved: true as const,
   };
   if (!row) {
-    return { ...base, reviewedAndCurrent: false, offerable: false, externalImpactReviewed: false,
-      outcome: null, sourceKind: null, reason: 'no_current_exact_review',
-      reviewId: null, reviewerUserId: null, reviewerGrantId: null, reviewedAt: null };
+    return {
+      ...base,
+      reviewedAndCurrent: false,
+      offerable: false,
+      externalImpactReviewed: false,
+      outcome: null,
+      sourceKind: null,
+      reason: 'no_current_exact_review',
+      reviewId: null,
+      reviewerUserId: null,
+      reviewerGrantId: null,
+      reviewedAt: null,
+    };
   }
-  const provenance = { reviewId: row.reviewId, reviewerUserId: row.reviewerUserId,
-    reviewerGrantId: row.reviewerGrantId, reviewedAt: row.reviewedAt };
-  if (!pinsMatch(row, pin) || (row.outcome === 'evidence_impact_reviewed' && row.sourceKind !== 'audited') ||
-    (row.outcome === 'external_evidence_impact_reviewed' && row.sourceKind !== 'external')) {
-    return { ...base, ...provenance, reviewedAndCurrent: false, offerable: false, externalImpactReviewed: false,
-      outcome: row.outcome, sourceKind: row.sourceKind, reason: 'review_pin_mismatch' };
+  const provenance = {
+    reviewId: row.reviewId,
+    reviewerUserId: row.reviewerUserId,
+    reviewerGrantId: row.reviewerGrantId,
+    reviewedAt: row.reviewedAt,
+  };
+  if (
+    !pinsMatch(row, pin) ||
+    (row.outcome === 'evidence_impact_reviewed' && row.sourceKind !== 'audited') ||
+    (row.outcome === 'external_evidence_impact_reviewed' && row.sourceKind !== 'external')
+  ) {
+    return {
+      ...base,
+      ...provenance,
+      reviewedAndCurrent: false,
+      offerable: false,
+      externalImpactReviewed: false,
+      outcome: row.outcome,
+      sourceKind: row.sourceKind,
+      reason: 'review_pin_mismatch',
+    };
   }
   if (row.outcome === 'needs_more_evidence') {
-    return { ...base, ...provenance, reviewedAndCurrent: false, offerable: false, externalImpactReviewed: false,
-      outcome: row.outcome, sourceKind: row.sourceKind, reason: 'review_needs_more_evidence' };
+    return {
+      ...base,
+      ...provenance,
+      reviewedAndCurrent: false,
+      offerable: false,
+      externalImpactReviewed: false,
+      outcome: row.outcome,
+      sourceKind: row.sourceKind,
+      reason: 'review_needs_more_evidence',
+    };
   }
   if (row.sourceKind === 'external') {
-    return { ...base, ...provenance, reviewedAndCurrent: true, offerable: false, externalImpactReviewed: true,
-      outcome: row.outcome, sourceKind: 'external', reason: 'external_impact_reviewed' };
+    return {
+      ...base,
+      ...provenance,
+      reviewedAndCurrent: true,
+      offerable: false,
+      externalImpactReviewed: true,
+      outcome: row.outcome,
+      sourceKind: 'external',
+      reason: 'external_impact_reviewed',
+    };
   }
-  return { ...base, ...provenance, reviewedAndCurrent: true, offerable: true, externalImpactReviewed: false,
-    outcome: row.outcome, sourceKind: 'audited', reason: 'review_current' };
+  return {
+    ...base,
+    ...provenance,
+    reviewedAndCurrent: true,
+    offerable: true,
+    externalImpactReviewed: false,
+    outcome: row.outcome,
+    sourceKind: 'audited',
+    reason: 'review_current',
+  };
 }
 
 const SEAM_COLUMNS = `r.id AS review_id, r.outcome, r.candidate_id, r.evidence_context_set_id, r.evidence_set_sha256,
@@ -259,8 +335,13 @@ async function readOne(
   scope: FactEvidenceReviewScope,
   pin: FactEvidenceReviewPin,
 ): Promise<FactEvidenceReviewSeamRow | null> {
-  const result = await dependencies.pool.query(CURRENT_REVIEW_SQL,
-    [scope.ownerUserId, scope.projectId, pin.candidateId, pin.evidenceContextSetId, pin.evidenceSetSha256]);
+  const result = await dependencies.pool.query(CURRENT_REVIEW_SQL, [
+    scope.ownerUserId,
+    scope.projectId,
+    pin.candidateId,
+    pin.evidenceContextSetId,
+    pin.evidenceSetSha256,
+  ]);
   if (result.rows.length > 1) fail('FACT_EVIDENCE_REVIEW_SEAM_AMBIGUOUS');
   return result.rows.length === 1 ? mapRow(result.rows[0] as Record<string, unknown>) : null;
 }
@@ -292,7 +373,9 @@ export async function readFactEvidenceReviewDeterminations(
   const results: FactEvidenceReviewDetermination[] = [];
   for (const pin of pins) {
     validatePin(pin);
-    results.push(deriveFactEvidenceReviewDetermination(await readOne(dependencies, scope, pin), pin));
+    results.push(
+      deriveFactEvidenceReviewDetermination(await readOne(dependencies, scope, pin), pin),
+    );
   }
   return results;
 }

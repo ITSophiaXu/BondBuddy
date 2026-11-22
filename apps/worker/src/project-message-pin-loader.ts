@@ -34,13 +34,24 @@ function fail(): Error {
 }
 
 function positiveInteger(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && /^\d+$/.test(value)
+        ? Number(value)
+        : NaN;
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw fail();
   return parsed;
 }
 
 function text(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 128 || !IDENTIFIER.test(value)) throw fail();
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 128 ||
+    !IDENTIFIER.test(value)
+  )
+    throw fail();
   return value;
 }
 
@@ -54,8 +65,13 @@ export function selectLatestProjectMessagePins(
   rows: readonly Record<string, unknown>[],
   expected: { readonly ownerUserId: string; readonly projectId: string },
 ): ProjectMessagePin[] {
-  if (!IDENTIFIER.test(expected.ownerUserId) || !IDENTIFIER.test(expected.projectId) ||
-      !Array.isArray(rows) || rows.length > MAX_PROJECT_MESSAGE_VERSIONS) throw fail();
+  if (
+    !IDENTIFIER.test(expected.ownerUserId) ||
+    !IDENTIFIER.test(expected.projectId) ||
+    !Array.isArray(rows) ||
+    rows.length > MAX_PROJECT_MESSAGE_VERSIONS
+  )
+    throw fail();
 
   type Version = ProjectMessagePin & { readonly version: number };
   const byMessage = new Map<string, Version[]>();
@@ -63,19 +79,33 @@ export function selectLatestProjectMessagePins(
   const projectVersions = new Set<number>();
 
   for (const row of rows) {
-    if (row.owner_user_id !== expected.ownerUserId || row.project_id !== expected.projectId || row.submission_kind !== 'project_message') throw fail();
+    if (
+      row.owner_user_id !== expected.ownerUserId ||
+      row.project_id !== expected.projectId ||
+      row.submission_kind !== 'project_message'
+    )
+      throw fail();
     const submissionId = text(row.id);
     const messageId = text(row.message_id);
     const version = positiveInteger(row.version);
     const messageVersion = positiveInteger(row.message_version);
     const contentSha256 = typeof row.content_sha256 === 'string' ? row.content_sha256.trim() : '';
-    if (!SHA256.test(contentSha256) || ids.has(submissionId) || projectVersions.has(version)) throw fail();
+    if (!SHA256.test(contentSha256) || ids.has(submissionId) || projectVersions.has(version))
+      throw fail();
     ids.add(submissionId);
     projectVersions.add(version);
     const versions = byMessage.get(messageId) ?? [];
-    if (versions.some(item => item.message_version === messageVersion)) throw fail();
-    versions.push({ message_id: messageId, submission_id: submissionId, message_version: messageVersion,
-      content_sha256: contentSha256, first_submission_version: 0, latest_submission_version: version, first_submission_id: '', version });
+    if (versions.some((item) => item.message_version === messageVersion)) throw fail();
+    versions.push({
+      message_id: messageId,
+      submission_id: submissionId,
+      message_version: messageVersion,
+      content_sha256: contentSha256,
+      first_submission_version: 0,
+      latest_submission_version: version,
+      first_submission_id: '',
+      version,
+    });
     byMessage.set(messageId, versions);
   }
 
@@ -87,12 +117,19 @@ export function selectLatestProjectMessagePins(
     for (let index = 1; index < versions.length; index += 1) {
       const current = versions[index]!;
       const prior = versions[index - 1]!;
-      if (current.message_version !== prior.message_version + 1 || current.version <= prior.version) throw fail();
+      if (current.message_version !== prior.message_version + 1 || current.version <= prior.version)
+        throw fail();
     }
     const latest = versions[versions.length - 1]!;
-    selected.push({ message_id: latest.message_id, submission_id: latest.submission_id,
-      message_version: latest.message_version, content_sha256: latest.content_sha256,
-      first_submission_version: first.version, latest_submission_version: latest.version, first_submission_id: first.submission_id });
+    selected.push({
+      message_id: latest.message_id,
+      submission_id: latest.submission_id,
+      message_version: latest.message_version,
+      content_sha256: latest.content_sha256,
+      first_submission_version: first.version,
+      latest_submission_version: latest.version,
+      first_submission_id: first.submission_id,
+    });
   }
 
   selected.sort((left, right) => left.first_submission_version - right.first_submission_version);

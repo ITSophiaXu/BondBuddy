@@ -7,7 +7,8 @@ import { reviewCompletionFeedback } from './review-file-completion.js';
 import { buildCodexArgs, loadCodexAdapterConfig } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 
-const report = '# 合成复核报告\n已核对合成报表收入与原稿披露，金额一致。未提供审计原件，相关结论待确认。';
+const report =
+  '# 合成复核报告\n已核对合成报表收入与原稿披露，金额一致。未提供审计原件，相关结论待确认。';
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'bb-review-stop-'));
   await mkdir(join(root, 'output'));
@@ -16,16 +17,37 @@ async function fixture() {
 }
 
 test('review Stop is explicitly trusted and isolated from authoring recovery capabilities', () => {
-  const config = loadCodexAdapterConfig({}), base = { cwd: '/tmp/job', schemaFile: null, ephemeral: true, resumeThreadId: null };
-  const args = buildCodexArgs(config, { ...base, fileAuthoring: true, reviewCompletion: true }).join(' ');
-  assert.match(args, /--enable hooks/); assert.match(args, /trusted_hash=/);
+  const config = loadCodexAdapterConfig({}),
+    base = { cwd: '/tmp/job', schemaFile: null, ephemeral: true, resumeThreadId: null };
+  const args = buildCodexArgs(config, {
+    ...base,
+    fileAuthoring: true,
+    reviewCompletion: true,
+  }).join(' ');
+  assert.match(args, /--enable hooks/);
+  assert.match(args, /trusted_hash=/);
   assert.match(args, /review-file-completion.js/);
-  assert.doesNotMatch(args, /SessionStart|bb_continuation|file-authoring-completion.js|--disable hooks|bypass|dangerously/);
+  assert.doesNotMatch(
+    args,
+    /SessionStart|bb_continuation|file-authoring-completion.js|--disable hooks|bypass|dangerously/,
+  );
   assert.match(args, /network=\{enabled=false\}/);
   assert.match(args, /scratch\/task-handoff.md/);
-  for (const other of [{}, { fileAuthoring: true }]) assert.doesNotMatch(buildCodexArgs(config, { ...base, ...other }).join(' '), /review-file-completion/);
-  for (const other of [{}, { fileAuthoring: true, fileCompletion: true }, { fileAuthoring: true, fileRecovery: true }, { fileAuthoring: true, contextRotation: true }]) {
-    assert.throws(() => buildCodexArgs(config, { ...base, ...other, reviewCompletion: true }), /MODEL_ADAPTER_CONFIG_INVALID/);
+  for (const other of [{}, { fileAuthoring: true }])
+    assert.doesNotMatch(
+      buildCodexArgs(config, { ...base, ...other }).join(' '),
+      /review-file-completion/,
+    );
+  for (const other of [
+    {},
+    { fileAuthoring: true, fileCompletion: true },
+    { fileAuthoring: true, fileRecovery: true },
+    { fileAuthoring: true, contextRotation: true },
+  ]) {
+    assert.throws(
+      () => buildCodexArgs(config, { ...base, ...other, reviewCompletion: true }),
+      /MODEL_ADAPTER_CONFIG_INVALID/,
+    );
   }
 });
 
@@ -38,9 +60,17 @@ test('missing, empty, progress-only and invalid Word reports request one correct
       assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
       assert.deepEqual(await reviewCompletionFeedback(root, true), {});
     }
-    await writeFile(join(root, 'output/report.docx'), makeWorkerDocxFixture({ externalLink: false, text: 'BB_REVIEW_PROGRESS:prepare_report:completed' }));
+    await writeFile(
+      join(root, 'output/report.docx'),
+      makeWorkerDocxFixture({
+        externalLink: false,
+        text: 'BB_REVIEW_PROGRESS:prepare_report:completed',
+      }),
+    );
     assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('either saved Markdown or readable Word is sufficient; no extra companion is required', async () => {
@@ -49,40 +79,78 @@ test('either saved Markdown or readable Word is sufficient; no extra companion i
     await writeFile(join(root, 'output/report.md'), report);
     assert.deepEqual(await reviewCompletionFeedback(root, false), {});
     await rm(join(root, 'output/report.md'));
-    await writeFile(join(root, 'output/report.docx'), makeWorkerDocxFixture({ externalLink: false, text: report }));
+    await writeFile(
+      join(root, 'output/report.docx'),
+      makeWorkerDocxFixture({ externalLink: false, text: report }),
+    );
     assert.deepEqual(await reviewCompletionFeedback(root, false), {});
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
-test('differential Stop requests one scope correction for missing, extra or duplicated original IDs',async()=>{
- const root=await fixture();
- try{
-  await writeFile(join(root,'input.json'),JSON.stringify({version:'review-file-input-v1',scope:{operation:'differential_review',selected_targets:[{source_finding_id:'R005'},{source_finding_id:'R009'}]}}));
-  for(const ids of [[],['R005'],['R005','R009','R010'],['R005','R005'],['R001','R002']]){
-   await writeFile(join(root,'output/report.md'),report+'\n'+ids.map(id=>'原问题编号：'+id).join('\n'));
-   const feedback=await reviewCompletionFeedback(root,false);assert.equal(feedback.decision,'block');assert.match(String(feedback.reason),/DIFFERENTIAL_SCOPE/);
-   assert.deepEqual(await reviewCompletionFeedback(root,true),{});
+test('differential Stop requests one scope correction for missing, extra or duplicated original IDs', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(
+      join(root, 'input.json'),
+      JSON.stringify({
+        version: 'review-file-input-v1',
+        scope: {
+          operation: 'differential_review',
+          selected_targets: [{ source_finding_id: 'R005' }, { source_finding_id: 'R009' }],
+        },
+      }),
+    );
+    for (const ids of [
+      [],
+      ['R005'],
+      ['R005', 'R009', 'R010'],
+      ['R005', 'R005'],
+      ['R001', 'R002'],
+    ]) {
+      await writeFile(
+        join(root, 'output/report.md'),
+        report + '\n' + ids.map((id) => '原问题编号：' + id).join('\n'),
+      );
+      const feedback = await reviewCompletionFeedback(root, false);
+      assert.equal(feedback.decision, 'block');
+      assert.match(String(feedback.reason), /DIFFERENTIAL_SCOPE/);
+      assert.deepEqual(await reviewCompletionFeedback(root, true), {});
+    }
+    await writeFile(
+      join(root, 'output/report.md'),
+      report + '\n- **原问题编号：** R009\n- 原问题编号：R005\n',
+    );
+    assert.deepEqual(await reviewCompletionFeedback(root, false), {});
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
-  await writeFile(join(root,'output/report.md'),report+'\n- **原问题编号：** R009\n- 原问题编号：R005\n');
-  assert.deepEqual(await reviewCompletionFeedback(root,false),{});
- }finally{await rm(root,{recursive:true,force:true});}
 });
 
 test('unsafe, linked and oversized files cannot satisfy completion', async () => {
-  const root = await fixture(), path = join(root, 'output/report.md');
+  const root = await fixture(),
+    path = join(root, 'output/report.md');
   try {
     await writeFile(join(root, 'actual.md'), report);
     await symlink(join(root, 'actual.md'), path);
     assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
-    await rm(path); await link(join(root, 'actual.md'), path);
+    await rm(path);
+    await link(join(root, 'actual.md'), path);
     assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
-    await rm(path); await writeFile(path, report); await truncate(path, 4 * 1024 * 1024 + 1);
+    await rm(path);
+    await writeFile(path, report);
+    await truncate(path, 4 * 1024 * 1024 + 1);
     assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
-    await rm(path); await rmdir(join(root, 'output'));
-    await mkdir(join(root, 'elsewhere')); await writeFile(join(root, 'elsewhere/report.md'), report);
+    await rm(path);
+    await rmdir(join(root, 'output'));
+    await mkdir(join(root, 'elsewhere'));
+    await writeFile(join(root, 'elsewhere/report.md'), report);
     await symlink(join(root, 'elsewhere'), join(root, 'output'), 'junction');
     assert.equal((await reviewCompletionFeedback(root, false)).decision, 'block');
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('malformed and non-review input contracts do not acquire a review completion protocol', async () => {
@@ -92,5 +160,7 @@ test('malformed and non-review input contracts do not acquire a review completio
       await writeFile(join(root, 'input.json'), input);
       assert.deepEqual(await reviewCompletionFeedback(root, false), {});
     }
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

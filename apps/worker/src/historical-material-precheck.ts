@@ -27,7 +27,10 @@ import {
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 
 /** Trusted worker context for an immutable historical-material precheck. */
-export interface HistoricalMaterialPrecheckInput extends Omit<AuthorizedMaterialParseInput, 'requiredRole'> {
+export interface HistoricalMaterialPrecheckInput extends Omit<
+  AuthorizedMaterialParseInput,
+  'requiredRole'
+> {
   profileVersion: number;
 }
 
@@ -73,8 +76,10 @@ export async function parsePersistAndRecognizeHistoricalMaterial(
   dependencies: HistoricalMaterialRecognitionDependencies,
   input: HistoricalMaterialPrecheckInput,
 ): Promise<StoredHistoricalMaterialRecognition> {
-  if (!Number.isSafeInteger(input.profileVersion) || input.profileVersion < 1) throw new Error('INVALID_PROFILE_VERSION');
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(dependencies.parserVersion)) throw new Error('INVALID_PARSER_VERSION');
+  if (!Number.isSafeInteger(input.profileVersion) || input.profileVersion < 1)
+    throw new Error('INVALID_PROFILE_VERSION');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(dependencies.parserVersion))
+    throw new Error('INVALID_PARSER_VERSION');
   const profileContext = {
     ownerUserId: input.ownerUserId,
     projectId: input.projectId,
@@ -83,37 +88,66 @@ export async function parsePersistAndRecognizeHistoricalMaterial(
   };
   const existingProfile = await getLatestHistoricalProfile(dependencies.profiles, profileContext);
   const storedIdentity = parseHistoricalNativeExtractorVersion(
-    existingProfile?.recognition.source_market.provenance.extractor_version);
+    existingProfile?.recognition.source_market.provenance.extractor_version,
+  );
   if (existingProfile?.writeKind === 'correction') {
     if (storedIdentity === null) throw new Error('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
-    const parseSnapshot = await getParseSnapshotByParserVersion(dependencies.evidence, profileContext, storedIdentity.parserVersion);
+    const parseSnapshot = await getParseSnapshotByParserVersion(
+      dependencies.evidence,
+      profileContext,
+      storedIdentity.parserVersion,
+    );
     if (parseSnapshot === null) throw new Error('HISTORICAL_PROFILE_PARSE_SNAPSHOT_NOT_FOUND');
     // A corrected profile is authoritative for this material version. Recover
     // its original parse evidence and never append a new recognition over it.
     return { parseSnapshot, profile: existingProfile };
   }
   if (existingProfile !== null && storedIdentity?.parserVersion === dependencies.parserVersion) {
-    const parseSnapshot = await getParseSnapshotByParserVersion(dependencies.evidence, profileContext, storedIdentity.parserVersion);
-    const optionsMatch = parseSnapshot !== null && (parseSnapshot.requestOptions.max_pages ?? null) === (input.options?.max_pages ?? null);
+    const parseSnapshot = await getParseSnapshotByParserVersion(
+      dependencies.evidence,
+      profileContext,
+      storedIdentity.parserVersion,
+    );
+    const optionsMatch =
+      parseSnapshot !== null &&
+      (parseSnapshot.requestOptions.max_pages ?? null) === (input.options?.max_pages ?? null);
     if (parseSnapshot !== null && optionsMatch) {
-      if (storedIdentity.algorithmVersion === HISTORICAL_NATIVE_RECOGNITION_VERSION) return { parseSnapshot, profile: existingProfile };
-      const recognition = recognizeHistoricalNativeText(parseSnapshot.response, { profileVersion: input.profileVersion });
-      const profile = await appendHistoricalRecognition(dependencies.profiles, { ...profileContext, requestId: input.requestId }, recognition);
+      if (storedIdentity.algorithmVersion === HISTORICAL_NATIVE_RECOGNITION_VERSION)
+        return { parseSnapshot, profile: existingProfile };
+      const recognition = recognizeHistoricalNativeText(parseSnapshot.response, {
+        profileVersion: input.profileVersion,
+      });
+      const profile = await appendHistoricalRecognition(
+        dependencies.profiles,
+        { ...profileContext, requestId: input.requestId },
+        recognition,
+      );
       return { parseSnapshot, profile };
     }
   }
-  const parseSnapshot = await parseAndPersistAuthorizedMaterial(dependencies.material, dependencies.evidence, {
-    ownerUserId: input.ownerUserId,
-    projectId: input.projectId,
-    materialId: input.materialId,
-    version: input.version,
-    requestId: input.requestId,
-    ...(input.options === undefined ? {} : { options: input.options }),
-    requiredRole: 'historical',
+  const parseSnapshot = await parseAndPersistAuthorizedMaterial(
+    dependencies.material,
+    dependencies.evidence,
+    {
+      ownerUserId: input.ownerUserId,
+      projectId: input.projectId,
+      materialId: input.materialId,
+      version: input.version,
+      requestId: input.requestId,
+      ...(input.options === undefined ? {} : { options: input.options }),
+      requiredRole: 'historical',
+    },
+  );
+  if (parseSnapshot.parserVersion !== dependencies.parserVersion)
+    throw new Error('HISTORICAL_PARSER_VERSION_MISMATCH');
+  const recognition = recognizeHistoricalNativeText(parseSnapshot.response, {
+    profileVersion: input.profileVersion,
   });
-  if (parseSnapshot.parserVersion !== dependencies.parserVersion) throw new Error('HISTORICAL_PARSER_VERSION_MISMATCH');
-  const recognition = recognizeHistoricalNativeText(parseSnapshot.response, { profileVersion: input.profileVersion });
-  const profile = await appendHistoricalRecognition(dependencies.profiles, { ...profileContext, requestId: input.requestId }, recognition);
+  const profile = await appendHistoricalRecognition(
+    dependencies.profiles,
+    { ...profileContext, requestId: input.requestId },
+    recognition,
+  );
   return { parseSnapshot, profile };
 }
 
@@ -126,15 +160,29 @@ export async function recognizePersistedHistoricalOcr(
   dependencies: HistoricalOcrRecognitionDependencies,
   input: HistoricalMaterialPrecheckInput,
 ): Promise<StoredHistoricalProfile> {
-  if (!Number.isSafeInteger(input.profileVersion) || input.profileVersion < 1) throw new Error('INVALID_PROFILE_VERSION');
-  const profileContext = { ownerUserId: input.ownerUserId, projectId: input.projectId,
-    materialId: input.materialId, materialVersion: input.version };
+  if (!Number.isSafeInteger(input.profileVersion) || input.profileVersion < 1)
+    throw new Error('INVALID_PROFILE_VERSION');
+  const profileContext = {
+    ownerUserId: input.ownerUserId,
+    projectId: input.projectId,
+    materialId: input.materialId,
+    materialVersion: input.version,
+  };
   const existing = await getLatestHistoricalProfile(dependencies.profiles, profileContext);
   if (existing?.writeKind === 'correction') return existing;
-  const review = await readOcr(dependencies.profiles.pool as import('pg').Pool, dependencies.profiles.blobs,
-    input.ownerUserId, input.projectId, input.materialId);
-  if (review.material_version !== input.version) throw new Error('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
+  const review = await readOcr(
+    dependencies.profiles.pool as import('pg').Pool,
+    dependencies.profiles.blobs,
+    input.ownerUserId,
+    input.projectId,
+    input.materialId,
+  );
+  if (review.material_version !== input.version)
+    throw new Error('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
   const recognition = recognizeHistoricalOcr(review, { profileVersion: input.profileVersion });
-  return appendHistoricalOcrRecognition(dependencies.profiles,
-    { ...profileContext, requestId: input.requestId }, recognition);
+  return appendHistoricalOcrRecognition(
+    dependencies.profiles,
+    { ...profileContext, requestId: input.requestId },
+    recognition,
+  );
 }

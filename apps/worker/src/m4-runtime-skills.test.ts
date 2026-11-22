@@ -3,9 +3,18 @@ import assert from 'node:assert/strict';
 import { loadM4RuntimeSkill, type M4SkillId } from './m4-runtime-skills.js';
 
 test('M4 explicitly loads distinct trusted document and QA skills and rejects arbitrary IDs', () => {
-  const ids: M4SkillId[] = ['m4-init-report', 'm4-private-summary', 'm4-underwriter', 'm4-legal', 'm4-project-qa', 'm4-workpaper-batch','m4-workpaper-progressive','m4-workpaper-progressive-group'];
+  const ids: M4SkillId[] = [
+    'm4-init-report',
+    'm4-private-summary',
+    'm4-underwriter',
+    'm4-legal',
+    'm4-project-qa',
+    'm4-workpaper-batch',
+    'm4-workpaper-progressive',
+    'm4-workpaper-progressive-group',
+  ];
   const skills = ids.map(loadM4RuntimeSkill);
-  assert.equal(new Set(skills.map(s => s.sha256)).size, 8);
+  assert.equal(new Set(skills.map((s) => s.sha256)).size, 8);
   for (const skill of skills) {
     assert.equal(skill.version, 'm4-runtime-skills-v1');
     assert.match(skill.sha256, /^[a-f0-9]{64}$/);

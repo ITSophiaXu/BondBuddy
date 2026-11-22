@@ -4,8 +4,13 @@ import type { DocumentParseRecord, DocumentParseResponse } from './document-pars
 import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 
-const FINANCIAL_ROLE_CODES: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS.find(partition => partition.label === '财务与审计')?.roles.map(role => role.code) ?? []);
-const FINANCIAL_CONTEXT = /财务会计信息|财务报表|审计报告|资产负债表|利润表|现金流量表|主要财务数据|报告期|合并口径|母公司口径/;
+const FINANCIAL_ROLE_CODES: ReadonlySet<string> = new Set(
+  M1_MATERIAL_PARTITIONS.find((partition) => partition.label === '财务与审计')?.roles.map(
+    (role) => role.code,
+  ) ?? [],
+);
+const FINANCIAL_CONTEXT =
+  /财务会计信息|财务报表|审计报告|资产负债表|利润表|现金流量表|主要财务数据|报告期|合并口径|母公司口径/;
 const ENTITY_LABEL = /发行人(?:全称|名称)?|企业名称|公司名称|单位名称/;
 const VALID_SHA = /^[a-f0-9]{64}$/;
 const PDF_HEADER_NEARBY_LIMIT = 60;
@@ -62,8 +67,15 @@ export type TargetPeriodEvidenceRef = {
 };
 
 export type TargetPeriodAnchor =
-  | { readonly kind: 'table_header' | 'entity' | 'scope'; readonly evidence: TargetPeriodEvidenceRef }
-  | { readonly kind: 'period_end'; readonly evidence: TargetPeriodEvidenceRef; readonly raw_period_token: string };
+  | {
+      readonly kind: 'table_header' | 'entity' | 'scope';
+      readonly evidence: TargetPeriodEvidenceRef;
+    }
+  | {
+      readonly kind: 'period_end';
+      readonly evidence: TargetPeriodEvidenceRef;
+      readonly raw_period_token: string;
+    };
 
 export type ProposedTargetPeriod = {
   readonly start: string | null;
@@ -88,7 +100,10 @@ export type TargetPeriodCandidateSnapshotPin = {
   readonly response_sha256: string;
   readonly parser_version: string;
   readonly status: string;
-  readonly evidence_records: readonly { readonly record_id: string; readonly record_sha256: string }[];
+  readonly evidence_records: readonly {
+    readonly record_id: string;
+    readonly record_sha256: string;
+  }[];
   readonly page_image_sha256s?: readonly { readonly page: number; readonly sha256: string }[];
 };
 
@@ -114,31 +129,55 @@ type CandidateOptions = {
 type PeriodSource = {
   readonly period: ReportingPeriod;
   /** Preserve which original recognized period token linked each immutable evidence record. */
-  readonly evidence: readonly { readonly ref: TargetPeriodEvidenceRef; readonly raw_value: string | null }[];
+  readonly evidence: readonly {
+    readonly ref: TargetPeriodEvidenceRef;
+    readonly raw_value: string | null;
+  }[];
 };
 
-function fail(code: string): Error { return new Error(code); }
-function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function fail(code: string): Error {
+  return new Error(code);
+}
+function record(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (record(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  if (record(value))
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
   const json = JSON.stringify(value);
   if (json === undefined) throw fail('TARGET_PERIOD_CANDIDATE_INVALID');
   return json;
 }
 
-function sha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+function sha256(value: unknown): string {
+  return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
+}
 function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
-function validId(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value); }
-function periodKey(period: ReportingPeriod): string {
-  return canonical({ start: period.start, end: period.end, period_kind: period.period_kind, scope: period.scope });
+function validId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 }
-function recordIsFinancialHeader(source: { quote: string; context: string; locator: Record<string, unknown> | null }): boolean {
+function periodKey(period: ReportingPeriod): string {
+  return canonical({
+    start: period.start,
+    end: period.end,
+    period_kind: period.period_kind,
+    scope: period.scope,
+  });
+}
+function recordIsFinancialHeader(source: {
+  quote: string;
+  context: string;
+  locator: Record<string, unknown> | null;
+}): boolean {
   const text = `${source.quote}\n${source.context}`;
   const locatorJson = source.locator === null ? '' : canonical(source.locator);
   return FINANCIAL_CONTEXT.test(text) || /table|worksheet|sheet/i.test(locatorJson);
@@ -146,8 +185,9 @@ function recordIsFinancialHeader(source: { quote: string; context: string; locat
 function recordMentionsEntity(source: { quote: string; context: string }): boolean {
   const text = `${source.quote}\n${source.context}`;
   if (ENTITY_LABEL.test(text) && /[:：]\s*[^\s:：]{2,}/.test(text)) return true;
-  return /^[\s\u3000\p{Script=Han}A-Za-z0-9（）()·&＆\-]{4,100}(?:有限责任公司|股份有限公司|有限公司|企业集团)$/u
-    .test(source.quote.trim());
+  return /^[\s\u3000\p{Script=Han}A-Za-z0-9（）()·&＆\-]{4,100}(?:有限责任公司|股份有限公司|有限公司|企业集团)$/u.test(
+    source.quote.trim(),
+  );
 }
 function pdfPeriodToken(record: DocumentParseRecord): boolean {
   const text = record.literal_quote;
@@ -155,8 +195,11 @@ function pdfPeriodToken(record: DocumentParseRecord): boolean {
   return /20\d{2}\s*年\s*(?:度|半年度|上半年|\d{1,2}\s*[-—–至到]\s*\d{1,2}\s*月)/.test(text);
 }
 function pdfFinancialTableHeader(record: DocumentParseRecord): boolean {
-  return /财务报表附注|财务报表|资产负债表|利润表|现金流量表|所有者权益变动表/.test(record.literal_quote)
-    && !/审计报告|审计意见/.test(record.literal_quote);
+  return (
+    /财务报表附注|财务报表|资产负债表|利润表|现金流量表|所有者权益变动表/.test(
+      record.literal_quote,
+    ) && !/审计报告|审计意见/.test(record.literal_quote)
+  );
 }
 function pdfEntityAnchor(record: DocumentParseRecord): boolean {
   return recordMentionsEntity({ quote: record.literal_quote, context: record.context });
@@ -165,25 +208,51 @@ function pdfTop(record: DocumentParseRecord): number | null {
   if (record.locator_type !== 'pdf_bbox') return null;
   const locator = record.locator;
   const bbox = locator.bbox;
-  if (typeof bbox !== 'object' || bbox === null || !('x0' in bbox) || !('top' in bbox) ||
-      !('x1' in bbox) || !('bottom' in bbox)) return null;
+  if (
+    typeof bbox !== 'object' ||
+    bbox === null ||
+    !('x0' in bbox) ||
+    !('top' in bbox) ||
+    !('x1' in bbox) ||
+    !('bottom' in bbox)
+  )
+    return null;
   const { x0, top, x1, bottom } = bbox;
-  if (typeof x0 !== 'number' || typeof top !== 'number' || typeof x1 !== 'number' || typeof bottom !== 'number' ||
-      ![x0, top, x1, bottom].every(Number.isFinite) || x1 <= x0 || bottom <= top) return null;
+  if (
+    typeof x0 !== 'number' ||
+    typeof top !== 'number' ||
+    typeof x1 !== 'number' ||
+    typeof bottom !== 'number' ||
+    ![x0, top, x1, bottom].every(Number.isFinite) ||
+    x1 <= x0 ||
+    bottom <= top
+  )
+    return null;
   return top;
 }
 function hasFormulaOrOcrUncertainty(items: readonly string[]): boolean {
-  return items.some(item => /formula|cache|external|外链|公式|缓存|OCR|ocr|识别存疑|数字存疑/i.test(item));
+  return items.some((item) =>
+    /formula|cache|external|外链|公式|缓存|OCR|ocr|识别存疑|数字存疑/i.test(item),
+  );
 }
 
-function assertLockedMaterials(materials: readonly LockedFinancialMaterialRef[]): Map<string, LockedFinancialMaterialRef> {
+function assertLockedMaterials(
+  materials: readonly LockedFinancialMaterialRef[],
+): Map<string, LockedFinancialMaterialRef> {
   const map = new Map<string, LockedFinancialMaterialRef>();
   const materialIds = new Set<string>();
   for (const material of materials) {
-    if (!validId(material.material_id) || !Number.isSafeInteger(material.material_version) || material.material_version < 1 ||
-        !VALID_SHA.test(material.material_sha256) || !FINANCIAL_ROLE_CODES.has(material.role)) throw fail('TARGET_PERIOD_CANDIDATE_LOCK_INVALID');
+    if (
+      !validId(material.material_id) ||
+      !Number.isSafeInteger(material.material_version) ||
+      material.material_version < 1 ||
+      !VALID_SHA.test(material.material_sha256) ||
+      !FINANCIAL_ROLE_CODES.has(material.role)
+    )
+      throw fail('TARGET_PERIOD_CANDIDATE_LOCK_INVALID');
     const key = `${material.material_id}\0${material.material_version}`;
-    if (map.has(key) || materialIds.has(material.material_id)) throw fail('TARGET_PERIOD_CANDIDATE_LOCK_DUPLICATE');
+    if (map.has(key) || materialIds.has(material.material_id))
+      throw fail('TARGET_PERIOD_CANDIDATE_LOCK_DUPLICATE');
     map.set(key, material);
     materialIds.add(material.material_id);
   }
@@ -191,20 +260,31 @@ function assertLockedMaterials(materials: readonly LockedFinancialMaterialRef[])
   return map;
 }
 
-function nativeSnapshotPin(snapshot: NativePeriodEvidenceSnapshot): TargetPeriodCandidateSnapshotPin {
+function nativeSnapshotPin(
+  snapshot: NativePeriodEvidenceSnapshot,
+): TargetPeriodCandidateSnapshotPin {
   const byId = new Map<string, string>();
   for (const item of snapshot.records) {
     const prior = byId.get(item.record_id);
     const contentHash = sha256(item);
-    if (prior !== undefined && prior !== contentHash) throw fail('TARGET_PERIOD_CANDIDATE_RECORD_ID_CONFLICT');
+    if (prior !== undefined && prior !== contentHash)
+      throw fail('TARGET_PERIOD_CANDIDATE_RECORD_ID_CONFLICT');
     byId.set(item.record_id, contentHash);
   }
   return {
-    method: 'native_text', snapshot_id: snapshot.snapshot_id, material_id: snapshot.material_id,
-    material_version: snapshot.material_version, material_sha256: snapshot.material_sha256,
-    response_sha256: snapshot.response_sha256, parser_version: snapshot.parser_version, status: snapshot.status,
-    evidence_records: [...new Map(snapshot.records.map(item => [item.record_id, item.record_sha256])).entries()]
-      .map(([record_id, record_sha256]) => ({ record_id, record_sha256 })).sort((a, b) => a.record_id.localeCompare(b.record_id)),
+    method: 'native_text',
+    snapshot_id: snapshot.snapshot_id,
+    material_id: snapshot.material_id,
+    material_version: snapshot.material_version,
+    material_sha256: snapshot.material_sha256,
+    response_sha256: snapshot.response_sha256,
+    parser_version: snapshot.parser_version,
+    status: snapshot.status,
+    evidence_records: [
+      ...new Map(snapshot.records.map((item) => [item.record_id, item.record_sha256])).entries(),
+    ]
+      .map(([record_id, record_sha256]) => ({ record_id, record_sha256 }))
+      .sort((a, b) => a.record_id.localeCompare(b.record_id)),
   };
 }
 
@@ -213,71 +293,121 @@ function ocrSnapshotPin(snapshot: OcrPeriodEvidenceSnapshot): TargetPeriodCandid
   const recordContent = new Map<string, string>();
   for (const item of review.records) {
     const prior = recordContent.get(item.record_id);
-    const contentHash = sha256({ record: item, record_sha256: snapshot.record_sha256_by_id[item.record_id] ?? null });
-    if (prior !== undefined && prior !== contentHash) throw fail('TARGET_PERIOD_CANDIDATE_RECORD_ID_CONFLICT');
+    const contentHash = sha256({
+      record: item,
+      record_sha256: snapshot.record_sha256_by_id[item.record_id] ?? null,
+    });
+    if (prior !== undefined && prior !== contentHash)
+      throw fail('TARGET_PERIOD_CANDIDATE_RECORD_ID_CONFLICT');
     recordContent.set(item.record_id, contentHash);
   }
-  const recordIds = new Set(review.records.map(item => item.record_id));
-  if (Object.keys(snapshot.record_sha256_by_id).some(id => !recordIds.has(id)) ||
-      review.records.some(item => !snapshot.record_sha256_by_id[item.record_id])) throw fail('TARGET_PERIOD_CANDIDATE_RECORD_HASH_SET_INVALID');
+  const recordIds = new Set(review.records.map((item) => item.record_id));
+  if (
+    Object.keys(snapshot.record_sha256_by_id).some((id) => !recordIds.has(id)) ||
+    review.records.some((item) => !snapshot.record_sha256_by_id[item.record_id])
+  )
+    throw fail('TARGET_PERIOD_CANDIDATE_RECORD_HASH_SET_INVALID');
   const pages = new Map<number, string>();
   for (const page of review.pages) {
     const prior = pages.get(page.page);
-    if (prior !== undefined && prior !== page.image_sha256) throw fail('TARGET_PERIOD_CANDIDATE_PAGE_ID_CONFLICT');
+    if (prior !== undefined && prior !== page.image_sha256)
+      throw fail('TARGET_PERIOD_CANDIDATE_PAGE_ID_CONFLICT');
     pages.set(page.page, page.image_sha256);
   }
   return {
-    method: 'ocr', snapshot_id: review.snapshot_id, material_id: review.material_id,
-    material_version: review.material_version, material_sha256: snapshot.material_sha256,
-    response_sha256: review.result_sha256, parser_version: snapshot.processor_version,
-    status: `needs_confirmation:${review.coverage}`, evidence_records: [...recordIds].map(record_id => ({
-      record_id, record_sha256: snapshot.record_sha256_by_id[record_id]!,
-    })).sort((a, b) => a.record_id.localeCompare(b.record_id)),
-    page_image_sha256s: [...pages.entries()].map(([page, sha256]) => ({ page, sha256 })).sort((a, b) => a.page - b.page),
+    method: 'ocr',
+    snapshot_id: review.snapshot_id,
+    material_id: review.material_id,
+    material_version: review.material_version,
+    material_sha256: snapshot.material_sha256,
+    response_sha256: review.result_sha256,
+    parser_version: snapshot.processor_version,
+    status: `needs_confirmation:${review.coverage}`,
+    evidence_records: [...recordIds]
+      .map((record_id) => ({
+        record_id,
+        record_sha256: snapshot.record_sha256_by_id[record_id]!,
+      }))
+      .sort((a, b) => a.record_id.localeCompare(b.record_id)),
+    page_image_sha256s: [...pages.entries()]
+      .map(([page, sha256]) => ({ page, sha256 }))
+      .sort((a, b) => a.page - b.page),
   };
 }
 
 function uniqueSnapshots(snapshots: readonly TargetPeriodEvidenceSnapshot[]): {
-  snapshots: TargetPeriodEvidenceSnapshot[]; pins: TargetPeriodCandidateSnapshotPin[];
+  snapshots: TargetPeriodEvidenceSnapshot[];
+  pins: TargetPeriodCandidateSnapshotPin[];
 } {
-  const byIdentity = new Map<string, { snapshot: TargetPeriodEvidenceSnapshot; fingerprint: string; pin: TargetPeriodCandidateSnapshotPin }>();
+  const byIdentity = new Map<
+    string,
+    {
+      snapshot: TargetPeriodEvidenceSnapshot;
+      fingerprint: string;
+      pin: TargetPeriodCandidateSnapshotPin;
+    }
+  >();
   for (const snapshot of snapshots) {
-    const pin = snapshot.method === 'native_text' ? nativeSnapshotPin(snapshot) : ocrSnapshotPin(snapshot);
+    const pin =
+      snapshot.method === 'native_text' ? nativeSnapshotPin(snapshot) : ocrSnapshotPin(snapshot);
     const identity = `${pin.method}\0${pin.snapshot_id}`;
     const fingerprint = sha256({ pin, snapshot });
     const prior = byIdentity.get(identity);
-    if (prior && prior.fingerprint !== fingerprint) throw fail('TARGET_PERIOD_CANDIDATE_SNAPSHOT_ID_CONFLICT');
+    if (prior && prior.fingerprint !== fingerprint)
+      throw fail('TARGET_PERIOD_CANDIDATE_SNAPSHOT_ID_CONFLICT');
     if (!prior) byIdentity.set(identity, { snapshot, fingerprint, pin });
   }
-  const values = [...byIdentity.values()].sort((a, b) => a.pin.snapshot_id.localeCompare(b.pin.snapshot_id) || a.pin.method.localeCompare(b.pin.method));
+  const values = [...byIdentity.values()].sort(
+    (a, b) =>
+      a.pin.snapshot_id.localeCompare(b.pin.snapshot_id) ||
+      a.pin.method.localeCompare(b.pin.method),
+  );
   const ids = new Set<string>();
   for (const item of values) {
     if (ids.has(item.pin.snapshot_id)) throw fail('TARGET_PERIOD_CANDIDATE_SNAPSHOT_ID_CONFLICT');
     ids.add(item.pin.snapshot_id);
   }
-  return { snapshots: values.map(item => item.snapshot), pins: values.map(item => item.pin) };
+  return { snapshots: values.map((item) => item.snapshot), pins: values.map((item) => item.pin) };
 }
 
-function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<string, LockedFinancialMaterialRef>): PeriodSource[] {
+function nativeSources(
+  snapshot: NativePeriodEvidenceSnapshot,
+  locked: Map<string, LockedFinancialMaterialRef>,
+): PeriodSource[] {
   const key = `${snapshot.material_id}\0${snapshot.material_version}`;
   const material = locked.get(key);
-  if (!material || material.material_sha256 !== snapshot.material_sha256 || !VALID_SHA.test(snapshot.response_sha256) ||
-      !VALID_SHA.test(snapshot.material_sha256) || !validId(snapshot.snapshot_id) || !snapshot.parser_version.trim() ||
-      snapshot.records.some(item => item.material_id !== snapshot.material_id || item.material_version !== snapshot.material_version ||
-        item.content_hash !== snapshot.material_sha256 || item.extractor_version !== snapshot.parser_version ||
-        !VALID_SHA.test(item.record_sha256))) {
+  if (
+    !material ||
+    material.material_sha256 !== snapshot.material_sha256 ||
+    !VALID_SHA.test(snapshot.response_sha256) ||
+    !VALID_SHA.test(snapshot.material_sha256) ||
+    !validId(snapshot.snapshot_id) ||
+    !snapshot.parser_version.trim() ||
+    snapshot.records.some(
+      (item) =>
+        item.material_id !== snapshot.material_id ||
+        item.material_version !== snapshot.material_version ||
+        item.content_hash !== snapshot.material_sha256 ||
+        item.extractor_version !== snapshot.parser_version ||
+        !VALID_SHA.test(item.record_sha256),
+    )
+  ) {
     throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_NOT_LOCKED');
   }
   if (snapshot.status === 'failed') return [];
-  const isXlsx = snapshot.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const isXlsx =
+    snapshot.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const visibleRecords = isXlsx
-    ? snapshot.records.filter(item => item.formatting.sheet_state === 'visible')
+    ? snapshot.records.filter((item) => item.formatting.sheet_state === 'visible')
     : snapshot.records;
   // PDF parser bbox.top values share one page-local coordinate system. Bind a period token only to a nearby,
   // explicit financial table title and at most the closest entity/scope lines.
   // Missing page/bbox or a distant title leaves the period without a candidate;
   // there is no whole-page-text fallback. Pin only rows that explain the proposal.
-  const periodAnchorRowsById = new Map<string, (DocumentParseRecord & { readonly record_sha256: string })[]>();
+  const periodAnchorRowsById = new Map<
+    string,
+    (DocumentParseRecord & { readonly record_sha256: string })[]
+  >();
   const recognitionRecords: (DocumentParseRecord & { readonly record_sha256?: string })[] = [];
   if (snapshot.media_type === 'application/pdf') {
     const grouped = new Map<number, (DocumentParseRecord & { readonly record_sha256: string })[]>();
@@ -289,38 +419,51 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
       grouped.set(Number(page), pageRecords);
     }
     for (const [page, pageRecords] of grouped) {
-      const pageText = pageRecords.map(item => item.literal_quote).join('\n');
+      const pageText = pageRecords.map((item) => item.literal_quote).join('\n');
       if (/审计报告/.test(pageText) && /审计意见|我们审计了/.test(pageText)) {
         continue;
       }
-      const headers = pageRecords.filter(pdfFinancialTableHeader).flatMap(record => {
+      const headers = pageRecords.filter(pdfFinancialTableHeader).flatMap((record) => {
         const top = pdfTop(record);
         return top === null ? [] : [{ record, top }];
       });
-      const entityRows = pageRecords.filter(pdfEntityAnchor).flatMap(record => {
+      const entityRows = pageRecords.filter(pdfEntityAnchor).flatMap((record) => {
         const top = pdfTop(record);
         return top === null ? [] : [{ record, top }];
       });
-      const scopeRows = pageRecords.filter(record => /合并|母公司|公司本部/.test(record.literal_quote)).flatMap(record => {
-        const top = pdfTop(record);
-        return top === null ? [] : [{ record, top }];
-      });
+      const scopeRows = pageRecords
+        .filter((record) => /合并|母公司|公司本部/.test(record.literal_quote))
+        .flatMap((record) => {
+          const top = pdfTop(record);
+          return top === null ? [] : [{ record, top }];
+        });
       for (const token of pageRecords.filter(pdfPeriodToken)) {
         const tokenTop = pdfTop(token);
         if (tokenTop === null) continue;
         const nearestHeader = headers
-          .filter(item => item.top <= tokenTop && tokenTop - item.top <= PDF_HEADER_NEARBY_LIMIT)
-          .sort((a, b) => (tokenTop - a.top) - (tokenTop - b.top))[0];
+          .filter((item) => item.top <= tokenTop && tokenTop - item.top <= PDF_HEADER_NEARBY_LIMIT)
+          .sort((a, b) => tokenTop - a.top - (tokenTop - b.top))[0];
         if (!nearestHeader) continue;
-        const nearest = (rows: typeof entityRows) => rows
-          .filter(item => Math.abs(item.top - tokenTop) <= PDF_HEADER_NEARBY_LIMIT)
-          .sort((a, b) => Math.abs(a.top - tokenTop) - Math.abs(b.top - tokenTop))[0]?.record;
+        const nearest = (rows: typeof entityRows) =>
+          rows
+            .filter((item) => Math.abs(item.top - tokenTop) <= PDF_HEADER_NEARBY_LIMIT)
+            .sort((a, b) => Math.abs(a.top - tokenTop) - Math.abs(b.top - tokenTop))[0]?.record;
         const entity = nearest(entityRows);
         const scope = nearest(scopeRows);
-        const anchors = [...new Map([token, nearestHeader.record, entity, scope]
-          .filter((item): item is DocumentParseRecord & { readonly record_sha256: string } => item !== undefined)
-          .map(item => [item.record_id, item])).values()];
-        const context = anchors.filter(item => item.record_id !== token.record_id).map(item => item.literal_quote).join('\n');
+        const anchors = [
+          ...new Map(
+            [token, nearestHeader.record, entity, scope]
+              .filter(
+                (item): item is DocumentParseRecord & { readonly record_sha256: string } =>
+                  item !== undefined,
+              )
+              .map((item) => [item.record_id, item]),
+          ).values(),
+        ];
+        const context = anchors
+          .filter((item) => item.record_id !== token.record_id)
+          .map((item) => item.literal_quote)
+          .join('\n');
         recognitionRecords.push({ ...token, context: `${token.context}\n${context}` });
         periodAnchorRowsById.set(token.record_id, anchors);
       }
@@ -329,95 +472,180 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
     recognitionRecords.push(...visibleRecords);
   }
   const response: DocumentParseResponse = {
-    schema_version: 'document-parse-response-v1', request_id: null, parser_version: snapshot.parser_version,
+    schema_version: 'document-parse-response-v1',
+    request_id: null,
+    parser_version: snapshot.parser_version,
     // The recognition helper copies response-level warnings onto every period.
     // Those warnings are retained separately below so only record/anchor-level
     // uncertainty becomes period-specific.
     status: 'parsed',
-    material: { material_id: snapshot.material_id, material_version: snapshot.material_version,
-      media_type: snapshot.media_type, sha256: snapshot.material_sha256 },
+    material: {
+      material_id: snapshot.material_id,
+      material_version: snapshot.material_version,
+      media_type: snapshot.media_type,
+      sha256: snapshot.material_sha256,
+    },
     records: recognitionRecords.map(({ record_sha256: _hash, ...item }) => item),
-    warnings: snapshot.warnings.map(warning => ({ code: warning.code, message: warning.message })),
-    document: { page_count: null }, error: null,
+    warnings: snapshot.warnings.map((warning) => ({
+      code: warning.code,
+      message: warning.message,
+    })),
+    document: { page_count: null },
+    error: null,
   };
   const recognition = recognizeHistoricalNativeText(response, {
     profileVersion: 1,
     allowXlsxFinancialMonthRanges: isXlsx,
     allowPdfFinancialContextPeriods: snapshot.media_type === 'application/pdf',
   });
-  const recordsById = new Map(snapshot.records.map(item => [item.record_id, item]));
-  return recognition.reporting_periods.map(period => {
-    const evidence = period.provenance.evidence_refs.flatMap(id => {
+  const recordsById = new Map(snapshot.records.map((item) => [item.record_id, item]));
+  return recognition.reporting_periods.map((period) => {
+    const evidence = period.provenance.evidence_refs.flatMap((id) => {
       const row = recordsById.get(id);
       if (!row) return [];
-      const sourceRows = snapshot.media_type === 'application/pdf' ? periodAnchorRowsById.get(id) ?? [row] : [row];
-      return sourceRows.map(sourceRow => ({ evidence_method: 'native_text' as const, material_id: snapshot.material_id,
-        material_version: snapshot.material_version, material_sha256: snapshot.material_sha256, snapshot_id: snapshot.snapshot_id,
-        parser_version: snapshot.parser_version, response_sha256: snapshot.response_sha256, record_id: sourceRow.record_id,
-        record_sha256: sourceRow.record_sha256, quote: sourceRow.literal_quote, context: sourceRow.context, locator: sourceRow.locator,
-        uncertainty: [...sourceRow.uncertainty] }));
+      const sourceRows =
+        snapshot.media_type === 'application/pdf' ? (periodAnchorRowsById.get(id) ?? [row]) : [row];
+      return sourceRows.map((sourceRow) => ({
+        evidence_method: 'native_text' as const,
+        material_id: snapshot.material_id,
+        material_version: snapshot.material_version,
+        material_sha256: snapshot.material_sha256,
+        snapshot_id: snapshot.snapshot_id,
+        parser_version: snapshot.parser_version,
+        response_sha256: snapshot.response_sha256,
+        record_id: sourceRow.record_id,
+        record_sha256: sourceRow.record_sha256,
+        quote: sourceRow.literal_quote,
+        context: sourceRow.context,
+        locator: sourceRow.locator,
+        uncertainty: [...sourceRow.uncertainty],
+      }));
     });
-    return { period, evidence: evidence.map(ref => ({ ref, raw_value: period.raw_value })) };
+    return { period, evidence: evidence.map((ref) => ({ ref, raw_value: period.raw_value })) };
   });
 }
 
-function ocrSources(snapshot: OcrPeriodEvidenceSnapshot, locked: Map<string, LockedFinancialMaterialRef>): PeriodSource[] {
+function ocrSources(
+  snapshot: OcrPeriodEvidenceSnapshot,
+  locked: Map<string, LockedFinancialMaterialRef>,
+): PeriodSource[] {
   const review = snapshot.review;
   const key = `${review.material_id}\0${review.material_version}`;
   const material = locked.get(key);
-  if (!material || material.material_sha256 !== snapshot.material_sha256 || !VALID_SHA.test(review.result_sha256) ||
-      !VALID_SHA.test(snapshot.material_sha256) || !validId(review.snapshot_id) || !snapshot.processor_version.trim() ||
-      review.pages.some(page => !VALID_SHA.test(page.image_sha256)) ||
-      review.records.some(item => !VALID_SHA.test(snapshot.record_sha256_by_id[item.record_id] ?? ''))) {
+  if (
+    !material ||
+    material.material_sha256 !== snapshot.material_sha256 ||
+    !VALID_SHA.test(review.result_sha256) ||
+    !VALID_SHA.test(snapshot.material_sha256) ||
+    !validId(review.snapshot_id) ||
+    !snapshot.processor_version.trim() ||
+    review.pages.some((page) => !VALID_SHA.test(page.image_sha256)) ||
+    review.records.some(
+      (item) => !VALID_SHA.test(snapshot.record_sha256_by_id[item.record_id] ?? ''),
+    )
+  ) {
     throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_NOT_LOCKED');
   }
   const recognition = recognizeHistoricalOcr(review, { profileVersion: 1 });
-  const recordsById = new Map(review.records.map(item => [item.record_id, item]));
-  const pageHashes = new Map(review.pages.map(page => [page.page, page.image_sha256]));
-  return recognition.reporting_periods.map(period => {
-    const evidence = period.provenance.evidence_refs.flatMap(id => {
+  const recordsById = new Map(review.records.map((item) => [item.record_id, item]));
+  const pageHashes = new Map(review.pages.map((page) => [page.page, page.image_sha256]));
+  return recognition.reporting_periods.map((period) => {
+    const evidence = period.provenance.evidence_refs.flatMap((id) => {
       const row = recordsById.get(id);
       if (!row) return [];
       const pageImageSha256 = pageHashes.get(row.page);
       if (!pageImageSha256) return [];
-      return [{ evidence_method: 'ocr' as const, material_id: review.material_id,
-        material_version: review.material_version, material_sha256: snapshot.material_sha256, snapshot_id: review.snapshot_id,
-        parser_version: snapshot.processor_version, response_sha256: review.result_sha256, record_id: row.record_id,
-        record_sha256: snapshot.record_sha256_by_id[row.record_id]!, page: row.page, page_image_sha256: pageImageSha256,
-        quote: row.text, context: '', locator: { page: row.page, bbox: row.bbox }, uncertainty: [...row.uncertainty] }];
+      return [
+        {
+          evidence_method: 'ocr' as const,
+          material_id: review.material_id,
+          material_version: review.material_version,
+          material_sha256: snapshot.material_sha256,
+          snapshot_id: review.snapshot_id,
+          parser_version: snapshot.processor_version,
+          response_sha256: review.result_sha256,
+          record_id: row.record_id,
+          record_sha256: snapshot.record_sha256_by_id[row.record_id]!,
+          page: row.page,
+          page_image_sha256: pageImageSha256,
+          quote: row.text,
+          context: '',
+          locator: { page: row.page, bbox: row.bbox },
+          uncertainty: [...row.uncertainty],
+        },
+      ];
     });
-    return { period, evidence: evidence.map(ref => ({ ref, raw_value: period.raw_value })) };
+    return { period, evidence: evidence.map((ref) => ({ ref, raw_value: period.raw_value })) };
   });
 }
 
 function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeriod {
   const period = source.period;
-  const evidenceLinks = [...new Map(source.evidence.map(link =>
-    [`${link.ref.snapshot_id}\0${link.ref.record_id}\0${link.raw_value ?? ''}`, link])).values()]
-    .sort((a, b) => a.ref.material_id.localeCompare(b.ref.material_id) || a.ref.material_version - b.ref.material_version ||
-      a.ref.snapshot_id.localeCompare(b.ref.snapshot_id) || a.ref.record_id.localeCompare(b.ref.record_id) ||
-      String(a.raw_value ?? '').localeCompare(String(b.raw_value ?? '')));
-  const evidence = [...new Map(evidenceLinks.map(link => [`${link.ref.snapshot_id}\0${link.ref.record_id}`, link.ref])).values()]
-    .sort((a, b) => a.material_id.localeCompare(b.material_id) || a.material_version - b.material_version ||
-      a.snapshot_id.localeCompare(b.snapshot_id) || a.record_id.localeCompare(b.record_id));
+  const evidenceLinks = [
+    ...new Map(
+      source.evidence.map((link) => [
+        `${link.ref.snapshot_id}\0${link.ref.record_id}\0${link.raw_value ?? ''}`,
+        link,
+      ]),
+    ).values(),
+  ].sort(
+    (a, b) =>
+      a.ref.material_id.localeCompare(b.ref.material_id) ||
+      a.ref.material_version - b.ref.material_version ||
+      a.ref.snapshot_id.localeCompare(b.ref.snapshot_id) ||
+      a.ref.record_id.localeCompare(b.ref.record_id) ||
+      String(a.raw_value ?? '').localeCompare(String(b.raw_value ?? '')),
+  );
+  const evidence = [
+    ...new Map(
+      evidenceLinks.map((link) => [`${link.ref.snapshot_id}\0${link.ref.record_id}`, link.ref]),
+    ).values(),
+  ].sort(
+    (a, b) =>
+      a.material_id.localeCompare(b.material_id) ||
+      a.material_version - b.material_version ||
+      a.snapshot_id.localeCompare(b.snapshot_id) ||
+      a.record_id.localeCompare(b.record_id),
+  );
   const anchors: TargetPeriodAnchor[] = [];
   for (const { ref: item, raw_value: sourceRawValue } of evidenceLinks) {
     const text = `${item.quote}\n${item.context}`;
-    if (/报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(text) ||
-        recordIsFinancialHeader({ quote: item.quote, context: item.context, locator: item.locator })) anchors.push({ kind: 'table_header', evidence: item });
-    if (recordMentionsEntity({ quote: item.quote, context: item.context })) anchors.push({ kind: 'entity', evidence: item });
+    if (
+      /报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(text) ||
+      recordIsFinancialHeader({ quote: item.quote, context: item.context, locator: item.locator })
+    )
+      anchors.push({ kind: 'table_header', evidence: item });
+    if (recordMentionsEntity({ quote: item.quote, context: item.context }))
+      anchors.push({ kind: 'entity', evidence: item });
     if (/合并|母公司|公司本部/.test(text)) anchors.push({ kind: 'scope', evidence: item });
-    const matchedRawToken = sourceRawValue?.split('；').find(rawToken => rawToken.length > 0 && item.quote.includes(rawToken));
-    const periodEndToken = matchedRawToken ?? (period.end !== null && item.quote.includes(period.end) ? period.end : null);
+    const matchedRawToken = sourceRawValue
+      ?.split('；')
+      .find((rawToken) => rawToken.length > 0 && item.quote.includes(rawToken));
+    const periodEndToken =
+      matchedRawToken ??
+      (period.end !== null && item.quote.includes(period.end) ? period.end : null);
     if (period.end !== null && periodEndToken !== null)
       anchors.push({ kind: 'period_end', evidence: item, raw_period_token: periodEndToken });
   }
-  const uniqueAnchors = [...new Map(anchors.sort((a, b) =>
-    a.kind.localeCompare(b.kind) || a.evidence.snapshot_id.localeCompare(b.evidence.snapshot_id) ||
-    a.evidence.record_id.localeCompare(b.evidence.record_id) ||
-    (a.kind === 'period_end' ? a.raw_period_token : '').localeCompare(b.kind === 'period_end' ? b.raw_period_token : ''))
-    .map(anchor => [`${anchor.kind}\0${anchor.evidence.snapshot_id}\0${anchor.evidence.record_id}`, anchor])).values()];
-  const anchorKinds = new Set(uniqueAnchors.map(anchor => anchor.kind));
+  const uniqueAnchors = [
+    ...new Map(
+      anchors
+        .sort(
+          (a, b) =>
+            a.kind.localeCompare(b.kind) ||
+            a.evidence.snapshot_id.localeCompare(b.evidence.snapshot_id) ||
+            a.evidence.record_id.localeCompare(b.evidence.record_id) ||
+            (a.kind === 'period_end' ? a.raw_period_token : '').localeCompare(
+              b.kind === 'period_end' ? b.raw_period_token : '',
+            ),
+        )
+        .map((anchor) => [
+          `${anchor.kind}\0${anchor.evidence.snapshot_id}\0${anchor.evidence.record_id}`,
+          anchor,
+        ]),
+    ).values(),
+  ];
+  const anchorKinds = new Set(uniqueAnchors.map((anchor) => anchor.kind));
   const reasons = new Set<string>();
   reasons.add('candidate_requires_reviewer_decision');
   for (const reason of period.uncertainty) reasons.add(reason);
@@ -425,16 +653,29 @@ function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeri
   if (!anchorKinds.has('entity')) reasons.add('missing_explicit_entity_anchor');
   reasons.add('issuer_identity_requires_reviewer_binding');
   if (!anchorKinds.has('scope') || period.scope === null) reasons.add('reporting_scope_unresolved');
-  if (!anchorKinds.has('period_end') || period.end === null) reasons.add('period_end_anchor_missing');
-  if (period.start === null || period.period_kind === null) reasons.add('period_start_or_kind_unresolved');
-  if (period.end !== null && validDate(period.end) && period.end > cutoff) reasons.add('candidate_after_reporting_cutoff');
-  if (evidence.some(item => hasFormulaOrOcrUncertainty(item.uncertainty)))
+  if (!anchorKinds.has('period_end') || period.end === null)
+    reasons.add('period_end_anchor_missing');
+  if (period.start === null || period.period_kind === null)
+    reasons.add('period_start_or_kind_unresolved');
+  if (period.end !== null && validDate(period.end) && period.end > cutoff)
+    reasons.add('candidate_after_reporting_cutoff');
+  if (evidence.some((item) => hasFormulaOrOcrUncertainty(item.uncertainty)))
     reasons.add('source_contains_formula_or_ocr_uncertainty');
   return {
-    start: period.start, end: period.end, period_kind: period.period_kind, scope: period.scope, raw_value: period.raw_value,
+    start: period.start,
+    end: period.end,
+    period_kind: period.period_kind,
+    scope: period.scope,
+    raw_value: period.raw_value,
     status: 'needs_confirmation',
-    cutoff_relation: period.end === null || !validDate(period.end) ? 'unknown' : period.end <= cutoff ? 'on_or_before' : 'after',
-    evidence, anchors: uniqueAnchors,
+    cutoff_relation:
+      period.end === null || !validDate(period.end)
+        ? 'unknown'
+        : period.end <= cutoff
+          ? 'on_or_before'
+          : 'after',
+    evidence,
+    anchors: uniqueAnchors,
     pending_reasons: [...reasons].sort(),
   };
 }
@@ -446,58 +687,149 @@ function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeri
 export function proposeTargetReportingPeriods(options: CandidateOptions): TargetPeriodCandidateSet {
   if (!validDate(options.reporting_cutoff)) throw fail('TARGET_PERIOD_CANDIDATE_CUTOFF_INVALID');
   const locked = assertLockedMaterials(options.locked_materials);
-  const materialPins = [...locked.values()].sort((a, b) => a.material_id.localeCompare(b.material_id));
+  const materialPins = [...locked.values()].sort((a, b) =>
+    a.material_id.localeCompare(b.material_id),
+  );
   const unique = uniqueSnapshots(options.snapshots);
-  const sources = unique.snapshots.flatMap(snapshot => snapshot.method === 'native_text'
-    ? nativeSources(snapshot, locked) : ocrSources(snapshot, locked));
+  const sources = unique.snapshots.flatMap((snapshot) =>
+    snapshot.method === 'native_text'
+      ? nativeSources(snapshot, locked)
+      : ocrSources(snapshot, locked),
+  );
   const candidatesByPeriod = new Map<string, PeriodSource>();
   for (const source of sources) {
     const key = periodKey(source.period);
     const prior = candidatesByPeriod.get(key);
     if (!prior) candidatesByPeriod.set(key, source);
-    else candidatesByPeriod.set(key, {
-      period: { ...prior.period, raw_value: [...new Set([prior.period.raw_value, source.period.raw_value].filter((value): value is string => value !== null))].sort().join('；') || null,
-        uncertainty: [...new Set([...prior.period.uncertainty, ...source.period.uncertainty])].sort(), status: 'needs_confirmation' },
-      evidence: [...prior.evidence, ...source.evidence],
-    });
+    else
+      candidatesByPeriod.set(key, {
+        period: {
+          ...prior.period,
+          raw_value:
+            [
+              ...new Set(
+                [prior.period.raw_value, source.period.raw_value].filter(
+                  (value): value is string => value !== null,
+                ),
+              ),
+            ]
+              .sort()
+              .join('；') || null,
+          uncertainty: [
+            ...new Set([...prior.period.uncertainty, ...source.period.uncertainty]),
+          ].sort(),
+          status: 'needs_confirmation',
+        },
+        evidence: [...prior.evidence, ...source.evidence],
+      });
   }
-  const candidates = [...candidatesByPeriod.values()].map(source => makeCandidate(source, options.reporting_cutoff))
-    .sort((a, b) => String(a.end ?? '').localeCompare(String(b.end ?? '')) || String(a.start ?? '').localeCompare(String(b.start ?? '')) ||
-      String(a.scope ?? '').localeCompare(String(b.scope ?? '')) || String(a.period_kind ?? '').localeCompare(String(b.period_kind ?? '')));
+  const candidates = [...candidatesByPeriod.values()]
+    .map((source) => makeCandidate(source, options.reporting_cutoff))
+    .sort(
+      (a, b) =>
+        String(a.end ?? '').localeCompare(String(b.end ?? '')) ||
+        String(a.start ?? '').localeCompare(String(b.start ?? '')) ||
+        String(a.scope ?? '').localeCompare(String(b.scope ?? '')) ||
+        String(a.period_kind ?? '').localeCompare(String(b.period_kind ?? '')),
+    );
   const pending = new Set<string>();
   if (candidates.length === 0) pending.add('no_evidenced_reporting_period_candidates');
-  if (candidates.some(candidate => !candidate.anchors.some(anchor => anchor.kind === 'entity')))
+  if (candidates.some((candidate) => !candidate.anchors.some((anchor) => anchor.kind === 'entity')))
     pending.add('issuer_identity_not_established_by_candidate_evidence');
-  if (candidates.some(candidate => candidate.end === null || !candidate.anchors.some(anchor => anchor.kind === 'period_end')))
+  if (
+    candidates.some(
+      (candidate) =>
+        candidate.end === null || !candidate.anchors.some((anchor) => anchor.kind === 'period_end'),
+    )
+  )
     pending.add('period_end_evidence_incomplete');
-  const allRecords = unique.snapshots.flatMap(snapshot => snapshot.method === 'native_text'
-    ? snapshot.records.map(item => ({ quote: item.literal_quote, context: item.context, locator: item.locator }))
-    : snapshot.review.records.map(item => ({ quote: item.text, context: '', locator: { page: item.page, bbox: item.bbox } })));
-  if (allRecords.length > 0 && !allRecords.some(item => recordIsFinancialHeader(item)))
+  const allRecords = unique.snapshots.flatMap((snapshot) =>
+    snapshot.method === 'native_text'
+      ? snapshot.records.map((item) => ({
+          quote: item.literal_quote,
+          context: item.context,
+          locator: item.locator,
+        }))
+      : snapshot.review.records.map((item) => ({
+          quote: item.text,
+          context: '',
+          locator: { page: item.page, bbox: item.bbox },
+        })),
+  );
+  if (allRecords.length > 0 && !allRecords.some((item) => recordIsFinancialHeader(item)))
     pending.add('financial_table_header_anchor_missing');
-  if (allRecords.length > 0 && candidates.length === 0 && allRecords.some(item => recordIsFinancialHeader(item)))
+  if (
+    allRecords.length > 0 &&
+    candidates.length === 0 &&
+    allRecords.some((item) => recordIsFinancialHeader(item))
+  )
     pending.add('financial_period_end_anchor_missing');
-  if (candidates.some(candidate => candidate.cutoff_relation === 'after')) pending.add('candidate_period_after_reporting_cutoff');
-  if (candidates.some(candidate => candidate.pending_reasons.length > 0)) pending.add('one_or_more_periods_need_review');
+  if (candidates.some((candidate) => candidate.cutoff_relation === 'after'))
+    pending.add('candidate_period_after_reporting_cutoff');
+  if (candidates.some((candidate) => candidate.pending_reasons.length > 0))
+    pending.add('one_or_more_periods_need_review');
   if (unique.snapshots.length === 0) pending.add('period_evidence_snapshots_missing');
-  if (unique.snapshots.some(snapshot => snapshot.method === 'native_text' && snapshot.status === 'failed'))
+  if (
+    unique.snapshots.some(
+      (snapshot) => snapshot.method === 'native_text' && snapshot.status === 'failed',
+    )
+  )
     pending.add('one_or_more_parse_snapshots_failed');
-  if (unique.snapshots.some(snapshot => snapshot.method === 'native_text' && snapshot.status === 'needs_confirmation'))
+  if (
+    unique.snapshots.some(
+      (snapshot) => snapshot.method === 'native_text' && snapshot.status === 'needs_confirmation',
+    )
+  )
     pending.add('one_or_more_parse_snapshots_need_confirmation');
-  if (unique.snapshots.some(snapshot => snapshot.method === 'ocr' && snapshot.review.coverage !== 'complete'))
+  if (
+    unique.snapshots.some(
+      (snapshot) => snapshot.method === 'ocr' && snapshot.review.coverage !== 'complete',
+    )
+  )
     pending.add('one_or_more_ocr_snapshots_have_partial_coverage');
-  const sourceWarnings = [...new Set(unique.snapshots.flatMap(snapshot => snapshot.method === 'native_text'
-    ? [...snapshot.warnings.map(warning => `${warning.code}:${warning.message}`), ...(snapshot.status === 'failed' ? ['parse_snapshot_failed'] : []),
-      ...(snapshot.status === 'needs_confirmation' ? ['parse_snapshot_needs_confirmation'] : [])]
-    : [...snapshot.review.warnings.map(warning => `ocr_warning:${warning}`), ...(snapshot.review.coverage !== 'complete' ? ['ocr_coverage_partial'] : [])]))].sort();
-  const normalized = { status: 'needs_confirmation' as const, completeness: 'not_determined' as const,
-    reporting_cutoff: options.reporting_cutoff, locked_material_pins: materialPins, source_snapshot_pins: unique.pins,
-    candidates, source_warnings: sourceWarnings,
-    pending_reasons: [...pending].sort() };
-  return { ...normalized, candidate_hash: sha256({
-    hash_domain: 'bondbuddy:target-period-candidate-set:v1', version: 1,
-    locked_material_pins: materialPins, source_snapshot_pins: unique.pins,
-    proposal: { reporting_cutoff: options.reporting_cutoff, candidates, source_warnings: sourceWarnings,
-      pending_reasons: [...pending].sort(), completeness: 'not_determined', status: 'needs_confirmation' },
-  }) };
+  const sourceWarnings = [
+    ...new Set(
+      unique.snapshots.flatMap((snapshot) =>
+        snapshot.method === 'native_text'
+          ? [
+              ...snapshot.warnings.map((warning) => `${warning.code}:${warning.message}`),
+              ...(snapshot.status === 'failed' ? ['parse_snapshot_failed'] : []),
+              ...(snapshot.status === 'needs_confirmation'
+                ? ['parse_snapshot_needs_confirmation']
+                : []),
+            ]
+          : [
+              ...snapshot.review.warnings.map((warning) => `ocr_warning:${warning}`),
+              ...(snapshot.review.coverage !== 'complete' ? ['ocr_coverage_partial'] : []),
+            ],
+      ),
+    ),
+  ].sort();
+  const normalized = {
+    status: 'needs_confirmation' as const,
+    completeness: 'not_determined' as const,
+    reporting_cutoff: options.reporting_cutoff,
+    locked_material_pins: materialPins,
+    source_snapshot_pins: unique.pins,
+    candidates,
+    source_warnings: sourceWarnings,
+    pending_reasons: [...pending].sort(),
+  };
+  return {
+    ...normalized,
+    candidate_hash: sha256({
+      hash_domain: 'bondbuddy:target-period-candidate-set:v1',
+      version: 1,
+      locked_material_pins: materialPins,
+      source_snapshot_pins: unique.pins,
+      proposal: {
+        reporting_cutoff: options.reporting_cutoff,
+        candidates,
+        source_warnings: sourceWarnings,
+        pending_reasons: [...pending].sort(),
+        completeness: 'not_determined',
+        status: 'needs_confirmation',
+      },
+    }),
+  };
 }

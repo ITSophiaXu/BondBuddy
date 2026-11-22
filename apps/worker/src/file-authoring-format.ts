@@ -16,7 +16,12 @@ export type FormatDiagnostic = {
   input_hash: string;
   revision_author: string;
   revision_date?: string;
-  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef; plan?: FormatFileRef };
+  files: {
+    baseline: FormatFileRef;
+    tracked: FormatFileRef;
+    operations: FormatFileRef;
+    plan?: FormatFileRef;
+  };
   report?: FormatFileRef;
   /** Persisted before upload; retained until report registration or confirmed cleanup. */
   pending_report?: FormatFileRef;
@@ -25,23 +30,41 @@ export type FormatDiagnostic = {
 };
 
 export async function readFormatFile(root: string, name: string, max = WORD_FILE_MAX) {
-  const path = join(root, name), stat = await lstat(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size < 1 || stat.size > max || await realpath(path) !== resolve(path))
+  const path = join(root, name),
+    stat = await lstat(path);
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.nlink !== 1 ||
+    stat.size < 1 ||
+    stat.size > max ||
+    (await realpath(path)) !== resolve(path)
+  )
     throw Error('WORD_OUTPUT_UNSAFE');
   return readFile(path);
 }
 
 /** Always import the installed host package, never Python from a model workspace. */
 export async function runFormatPython(args: string[], signal?: AbortSignal) {
-  return promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+  return promisify(execFile)(
+    process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
     ['-B', '-s', '-m', 'bondbuddy_file_authoring.fixed_edit', ...args],
-    { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
-      timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });
+    {
+      cwd: repo,
+      env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
+      timeout: 300000,
+      maxBuffer: FORMAT_JSON_MAX,
+      signal,
+    },
+  );
 }
 
 export class AuthoringSourceUnreadable extends Error {
-  constructor(public readonly code: 'MATERIAL_UNREADABLE' | 'MATERIAL_ENCRYPTED' = 'MATERIAL_UNREADABLE') {
-    super(code); this.name = 'AuthoringSourceUnreadable';
+  constructor(
+    public readonly code: 'MATERIAL_UNREADABLE' | 'MATERIAL_ENCRYPTED' = 'MATERIAL_UNREADABLE',
+  ) {
+    super(code);
+    this.name = 'AuthoringSourceUnreadable';
   }
 }
 
@@ -51,15 +74,35 @@ export async function prepareFormatSource(input: string, manifest: string, signa
     return await runFormatPython(['prepare', '--input', input, '--manifest', manifest], signal);
   } catch (error) {
     if (signal?.aborted) throw error;
-    const failure = error as { code?: unknown; signal?: unknown; killed?: unknown; stderr?: unknown };
-    if (failure?.code === 1 && failure.signal == null && failure.killed !== true && typeof failure.stderr === 'string') {
+    const failure = error as {
+      code?: unknown;
+      signal?: unknown;
+      killed?: unknown;
+      stderr?: unknown;
+    };
+    if (
+      failure?.code === 1 &&
+      failure.signal == null &&
+      failure.killed !== true &&
+      typeof failure.stderr === 'string'
+    ) {
       let report: unknown;
-      try { report = JSON.parse(failure.stderr.trim()); } catch { /* Non-protocol failures keep the infrastructure retry path. */ }
-      if (report && typeof report === 'object' && !Array.isArray(report) &&
-          Object.keys(report).length === 1) {
+      try {
+        report = JSON.parse(failure.stderr.trim());
+      } catch {
+        /* Non-protocol failures keep the infrastructure retry path. */
+      }
+      if (
+        report &&
+        typeof report === 'object' &&
+        !Array.isArray(report) &&
+        Object.keys(report).length === 1
+      ) {
         const code = (report as { error?: unknown }).error;
         if (code === 'WORD_EDIT_SOURCE_UNREADABLE' || code === 'WORD_EDIT_SOURCE_ENCRYPTED')
-          throw new AuthoringSourceUnreadable(code === 'WORD_EDIT_SOURCE_ENCRYPTED' ? 'MATERIAL_ENCRYPTED' : 'MATERIAL_UNREADABLE');
+          throw new AuthoringSourceUnreadable(
+            code === 'WORD_EDIT_SOURCE_ENCRYPTED' ? 'MATERIAL_ENCRYPTED' : 'MATERIAL_UNREADABLE',
+          );
       }
     }
     throw error;
@@ -68,7 +111,10 @@ export async function prepareFormatSource(input: string, manifest: string, signa
 
 /** Reconstruct deliverables from the pinned source and data-only operations after the CLI exits. */
 export async function finalizeFormat(input: {
-  lockedInput: Buffer; baselineBytes: Buffer; operations: Buffer; signal?: AbortSignal;
+  lockedInput: Buffer;
+  baselineBytes: Buffer;
+  operations: Buffer;
+  signal?: AbortSignal;
 }): Promise<Map<string, Buffer>> {
   const data = JSON.parse(input.lockedInput.toString('utf8'));
   if (digest(input.baselineBytes) !== data.baseline_sha256) throw Error('INPUT_REVISION_CONFLICT');
@@ -77,17 +123,48 @@ export async function finalizeFormat(input: {
     await mkdir(join(root, 'materials'), { mode: 0o700 });
     await mkdir(join(root, 'output'), { mode: 0o700 });
     // The model cannot choose host paths or the output directory.
-    const trusted = { ...data, baseline_path: 'materials/baseline.docx',
+    const trusted = {
+      ...data,
+      baseline_path: 'materials/baseline.docx',
       materials: [{ path: 'materials/baseline.docx', sha256: data.baseline_sha256 }],
-      output: { baseline: 'output/baseline.docx', tracked: 'output/tracked.docx', clean: 'output/clean.docx' } };
+      output: {
+        baseline: 'output/baseline.docx',
+        tracked: 'output/tracked.docx',
+        clean: 'output/clean.docx',
+      },
+    };
     await writeFile(join(root, 'input.json'), JSON.stringify(trusted));
     await writeFile(join(root, 'materials/baseline.docx'), input.baselineBytes);
     await writeFile(join(root, 'operations.json'), input.operations);
-    await runFormatPython(['finalize', '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'),
-      '--output-dir', join(root, 'output'), '--skip-report'], input.signal);
+    await runFormatPython(
+      [
+        'finalize',
+        '--input',
+        join(root, 'input.json'),
+        '--operations',
+        join(root, 'operations.json'),
+        '--output-dir',
+        join(root, 'output'),
+        '--skip-report',
+      ],
+      input.signal,
+    );
     const files = new Map<string, Buffer>();
-    for (const name of ['tracked.docx', 'clean.docx', 'baseline.docx', 'operations.json', 'format-plan.json'])
-      files.set(name, await readFormatFile(join(root, 'output'), name, name.endsWith('.json') ? FORMAT_JSON_MAX : WORD_FILE_MAX));
+    for (const name of [
+      'tracked.docx',
+      'clean.docx',
+      'baseline.docx',
+      'operations.json',
+      'format-plan.json',
+    ])
+      files.set(
+        name,
+        await readFormatFile(
+          join(root, 'output'),
+          name,
+          name.endsWith('.json') ? FORMAT_JSON_MAX : WORD_FILE_MAX,
+        ),
+      );
     return files;
   } finally {
     await rm(root, { recursive: true, force: true });

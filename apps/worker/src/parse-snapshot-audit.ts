@@ -79,7 +79,10 @@ function asObject(value: unknown): JsonObject | null {
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (isObject(value)) {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -115,18 +118,33 @@ function restoredRecord(snapshot: AuditSnapshotRow, row: AuditEvidenceRow): Json
 
 function asJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  try { return JSON.parse(value) as unknown; } catch { throw new Error('AUDIT_INVALID_EVIDENCE'); }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new Error('AUDIT_INVALID_EVIDENCE');
+  }
 }
 
-export function orderedRecordsSha256(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRow[]): string {
+export function orderedRecordsSha256(
+  snapshot: AuditSnapshotRow,
+  evidence: AuditEvidenceRow[],
+): string {
   const ordered = [...evidence].sort((a, b) => Number(a.ordinal) - Number(b.ordinal));
   return sha256(canonical(ordered.map((row) => restoredRecord(snapshot, row))));
 }
 
-export function orderedContentSha256(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRow[]): string {
+export function orderedContentSha256(
+  snapshot: AuditSnapshotRow,
+  evidence: AuditEvidenceRow[],
+): string {
   const ordered = [...evidence].sort((a, b) => Number(a.ordinal) - Number(b.ordinal));
   const records = ordered.map((row) => {
-    const { material_id: _materialId, material_version: _materialVersion, content_hash: _contentHash, ...content } = restoredRecord(snapshot, row);
+    const {
+      material_id: _materialId,
+      material_version: _materialVersion,
+      content_hash: _contentHash,
+      ...content
+    } = restoredRecord(snapshot, row);
     return content;
   });
   return sha256(canonical(records));
@@ -146,7 +164,9 @@ export function compareDocxSnapshots(
   evidenceB: AuditEvidenceRow[],
 ): DocxComparisonMetric {
   if (jobIdA === jobIdB) return { status: 'trivial_same_job_replay' };
-  if (snapshotA.content_sha256.trim().toLowerCase() !== snapshotB.content_sha256.trim().toLowerCase()) {
+  if (
+    snapshotA.content_sha256.trim().toLowerCase() !== snapshotB.content_sha256.trim().toLowerCase()
+  ) {
     return { status: 'not_comparable', reason: 'source_sha256_mismatch' };
   }
   if (snapshotA.parser_version !== snapshotB.parser_version) {
@@ -154,20 +174,34 @@ export function compareDocxSnapshots(
   }
   return {
     status: 'comparable',
-    ordered_content_hashes_equal: orderedContentSha256(snapshotA, evidenceA) === orderedContentSha256(snapshotB, evidenceB),
+    ordered_content_hashes_equal:
+      orderedContentSha256(snapshotA, evidenceA) === orderedContentSha256(snapshotB, evidenceB),
   };
 }
 
-export function anchorSnapshotMatchesDocxPair(anchor: AuditSnapshotRow, docxA: AuditSnapshotRow, docxB: AuditSnapshotRow): boolean {
+export function anchorSnapshotMatchesDocxPair(
+  anchor: AuditSnapshotRow,
+  docxA: AuditSnapshotRow,
+  docxB: AuditSnapshotRow,
+): boolean {
   const sourceSha = anchor.content_sha256.trim().toLowerCase();
-  return sourceSha === docxA.content_sha256.trim().toLowerCase() && sourceSha === docxB.content_sha256.trim().toLowerCase() &&
-    anchor.parser_version === docxA.parser_version && anchor.parser_version === docxB.parser_version;
+  return (
+    sourceSha === docxA.content_sha256.trim().toLowerCase() &&
+    sourceSha === docxB.content_sha256.trim().toLowerCase() &&
+    anchor.parser_version === docxA.parser_version &&
+    anchor.parser_version === docxB.parser_version
+  );
 }
 
-export function snapshotMetric(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRow[]): ParseSnapshotMetric {
-  if (!SHA256.test(snapshot.response_sha256.trim().toLowerCase()) ||
-      Number(snapshot.record_count) !== evidence.length ||
-      evidence.some((row, index) => Number(row.ordinal) !== index)) {
+export function snapshotMetric(
+  snapshot: AuditSnapshotRow,
+  evidence: AuditEvidenceRow[],
+): ParseSnapshotMetric {
+  if (
+    !SHA256.test(snapshot.response_sha256.trim().toLowerCase()) ||
+    Number(snapshot.record_count) !== evidence.length ||
+    evidence.some((row, index) => Number(row.ordinal) !== index)
+  ) {
     throw new Error('AUDIT_SNAPSHOT_INTEGRITY_MISMATCH');
   }
   return {
@@ -187,8 +221,9 @@ function pathParts(locator: unknown): JsonObject[] {
 
 export function docxAnchorMetric(evidence: AuditEvidenceRow[]): DocxAnchorMetric {
   const docx = evidence.filter((row) => row.locator_type === 'docx_block');
-  const countForParagraph = (paragraph: number) => docx.filter((row) =>
-    pathParts(row.locator).some((part) => part.paragraph === paragraph)).length;
+  const countForParagraph = (paragraph: number) =>
+    docx.filter((row) => pathParts(row.locator).some((part) => part.paragraph === paragraph))
+      .length;
   const p249Cell = docx.filter((row) => {
     const parts = pathParts(row.locator);
     // The parser's native cell locator is the stable identity for this table
@@ -213,15 +248,23 @@ export function xlsxMetric(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRo
   const document = isObject(meta?.document) ? meta.document : null;
   const warnings = Array.isArray(meta?.warnings) ? meta.warnings : [];
   const declared = Number(document?.cached_formula_results);
-  if (!Number.isSafeInteger(declared) || declared < 0) throw new Error('AUDIT_XLSX_METADATA_UNAVAILABLE');
+  if (!Number.isSafeInteger(declared) || declared < 0)
+    throw new Error('AUDIT_XLSX_METADATA_UNAVAILABLE');
   const cachedRows = evidence.filter((row) => {
     const formatting = asObject(row.formatting);
     return Object.hasOwn(formatting ?? {}, 'cached_formula_result');
   });
-  const verifiedMarkers = cachedRows.filter((row) => Array.isArray(asJson(row.uncertainty)) &&
-    (asJson(row.uncertainty) as unknown[]).includes('formula_cached_result_unverified')).length;
-  const hasWarning = warnings.some((warning) => isObject(warning) && warning.code === 'XLSX_FORMULA_CACHE_UNVERIFIED');
-  const consistent = declared === cachedRows.length && cachedRows.length === verifiedMarkers &&
+  const verifiedMarkers = cachedRows.filter(
+    (row) =>
+      Array.isArray(asJson(row.uncertainty)) &&
+      (asJson(row.uncertainty) as unknown[]).includes('formula_cached_result_unverified'),
+  ).length;
+  const hasWarning = warnings.some(
+    (warning) => isObject(warning) && warning.code === 'XLSX_FORMULA_CACHE_UNVERIFIED',
+  );
+  const consistent =
+    declared === cachedRows.length &&
+    cachedRows.length === verifiedMarkers &&
     (declared === 0 || (snapshot.response_status === 'needs_confirmation' && hasWarning));
   return {
     ...base,
@@ -232,11 +275,16 @@ export function xlsxMetric(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRo
 }
 
 function validateJobId(value: unknown): string {
-  if (typeof value !== 'string' || !SAFE_ID.test(value)) throw new Error('AUDIT_INVALID_CONFIGURATION');
+  if (typeof value !== 'string' || !SAFE_ID.test(value))
+    throw new Error('AUDIT_INVALID_CONFIGURATION');
   return value;
 }
 
-async function readSnapshot(client: PoolClient, jobId: string, expectedMediaType: string): Promise<{ snapshot: AuditSnapshotRow; evidence: AuditEvidenceRow[] }> {
+async function readSnapshot(
+  client: PoolClient,
+  jobId: string,
+  expectedMediaType: string,
+): Promise<{ snapshot: AuditSnapshotRow; evidence: AuditEvidenceRow[] }> {
   const job = await client.query(
     `SELECT j.owner_user_id,j.project_id,j.material_id,j.material_version,j.material_sha256,j.parser_version,j.state AS job_state,
             m.media_type,s.content_sha256,s.response_status,s.response_sha256,s.record_count,s.response_meta,s.parser_version AS snapshot_parser_version
@@ -246,16 +294,30 @@ async function readSnapshot(client: PoolClient, jobId: string, expectedMediaType
        JOIN bb_parse_snapshots s ON s.owner_user_id=j.owner_user_id AND s.project_id=j.project_id
         AND s.material_id=j.material_id AND s.material_version=j.material_version AND s.parser_version=j.parser_version
         AND lower(btrim(s.content_sha256::text))=lower(btrim(j.material_sha256::text))
-      WHERE j.id=$1 AND j.job_type='parse' AND j.subtype='material_parse'`, [jobId]);
+      WHERE j.id=$1 AND j.job_type='parse' AND j.subtype='material_parse'`,
+    [jobId],
+  );
   if (job.rows.length !== 1) throw new Error('AUDIT_PARSE_JOB_OR_SNAPSHOT_NOT_FOUND');
   const row = job.rows[0]!;
-  if (row.job_state !== 'succeeded' || row.media_type !== expectedMediaType || row.parser_version !== row.snapshot_parser_version ||
-      !['parsed', 'needs_confirmation'].includes(String(row.response_status))) throw new Error('AUDIT_PARSE_JOB_NOT_AUDITABLE');
+  if (
+    row.job_state !== 'succeeded' ||
+    row.media_type !== expectedMediaType ||
+    row.parser_version !== row.snapshot_parser_version ||
+    !['parsed', 'needs_confirmation'].includes(String(row.response_status))
+  )
+    throw new Error('AUDIT_PARSE_JOB_NOT_AUDITABLE');
   const snapshot: AuditSnapshotRow = {
-    owner_user_id: String(row.owner_user_id), project_id: String(row.project_id), material_id: String(row.material_id),
-    material_version: Number(row.material_version), media_type: String(row.media_type), content_sha256: String(row.content_sha256),
-    parser_version: String(row.parser_version), response_status: String(row.response_status),
-    response_sha256: String(row.response_sha256), record_count: Number(row.record_count), response_meta: row.response_meta,
+    owner_user_id: String(row.owner_user_id),
+    project_id: String(row.project_id),
+    material_id: String(row.material_id),
+    material_version: Number(row.material_version),
+    media_type: String(row.media_type),
+    content_sha256: String(row.content_sha256),
+    parser_version: String(row.parser_version),
+    response_status: String(row.response_status),
+    response_sha256: String(row.response_sha256),
+    record_count: Number(row.record_count),
+    response_meta: row.response_meta,
   };
   const result = await client.query(
     `SELECT record_id,locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,ordinal
@@ -264,7 +326,14 @@ async function readSnapshot(client: PoolClient, jobId: string, expectedMediaType
         AND snapshot_id=(SELECT id FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3
           AND material_version=$4 AND parser_version=$5)
       ORDER BY ordinal`,
-    [snapshot.owner_user_id, snapshot.project_id, snapshot.material_id, snapshot.material_version, snapshot.parser_version]);
+    [
+      snapshot.owner_user_id,
+      snapshot.project_id,
+      snapshot.material_id,
+      snapshot.material_version,
+      snapshot.parser_version,
+    ],
+  );
   return { snapshot, evidence: result.rows as AuditEvidenceRow[] };
 }
 
@@ -278,7 +347,11 @@ interface Targets {
 function parseTargets(raw: string | undefined): Targets {
   if (!raw) throw new Error('AUDIT_CONFIGURATION_REQUIRED');
   let parsed: unknown;
-  try { parsed = JSON.parse(raw) as unknown; } catch { throw new Error('AUDIT_INVALID_CONFIGURATION'); }
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error('AUDIT_INVALID_CONFIGURATION');
+  }
   if (!isObject(parsed)) throw new Error('AUDIT_INVALID_CONFIGURATION');
   return {
     docx_a_job_id: validateJobId(parsed.docx_a_job_id),
@@ -288,11 +361,19 @@ function parseTargets(raw: string | undefined): Targets {
   };
 }
 
-export async function runParseSnapshotAudit(databaseUrl: string | undefined, targetsValue: string | undefined): Promise<Record<string, unknown>> {
+export async function runParseSnapshotAudit(
+  databaseUrl: string | undefined,
+  targetsValue: string | undefined,
+): Promise<Record<string, unknown>> {
   if (!databaseUrl) throw new Error('AUDIT_DATABASE_URL_REQUIRED');
   const targets = parseTargets(targetsValue);
-  if (targets.docx_a_job_id === targets.docx_b_job_id) throw new Error('AUDIT_DISTINCT_DOCX_JOB_IDS_REQUIRED');
-  const pool = new Pool({ connectionString: databaseUrl, max: 1, application_name: 'bondbuddy-parse-snapshot-audit' });
+  if (targets.docx_a_job_id === targets.docx_b_job_id)
+    throw new Error('AUDIT_DISTINCT_DOCX_JOB_IDS_REQUIRED');
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    application_name: 'bondbuddy-parse-snapshot-audit',
+  });
   const client = await pool.connect();
   try {
     await client.query('BEGIN READ ONLY');
@@ -303,9 +384,19 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
     const docxB = await readSnapshot(client, targets.docx_b_job_id, DOCX_MEDIA);
     const anchors = await readSnapshot(client, targets.anchor_docx_job_id, DOCX_MEDIA);
     const xlsx = await readSnapshot(client, targets.xlsx_job_id, XLSX_MEDIA);
-    const anchorBindingMatches = anchorSnapshotMatchesDocxPair(anchors.snapshot, docxA.snapshot, docxB.snapshot);
-    const docxComparison = compareDocxSnapshots(targets.docx_a_job_id, docxA.snapshot, docxA.evidence,
-      targets.docx_b_job_id, docxB.snapshot, docxB.evidence);
+    const anchorBindingMatches = anchorSnapshotMatchesDocxPair(
+      anchors.snapshot,
+      docxA.snapshot,
+      docxB.snapshot,
+    );
+    const docxComparison = compareDocxSnapshots(
+      targets.docx_a_job_id,
+      docxA.snapshot,
+      docxA.evidence,
+      targets.docx_b_job_id,
+      docxB.snapshot,
+      docxB.evidence,
+    );
     const result = {
       schema_version: 'parse-snapshot-audit-v1',
       database_access: 'read_only_transaction',
@@ -318,13 +409,20 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
       anchor_source_binding_status: anchorBindingMatches ? 'matches_docx_pair' : 'mismatch',
       rq_202506_01_anchor_locator_presence: anchorBindingMatches
         ? docxAnchorMetric(anchors.evidence)
-        : { source_quote_independent_check: 'not_performed', locator_check: 'skipped_source_binding_mismatch' },
+        : {
+            source_quote_independent_check: 'not_performed',
+            locator_check: 'skipped_source_binding_mismatch',
+          },
       xlsx: xlsxMetric(xlsx.snapshot, xlsx.evidence),
     };
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch { /* retain the original audit failure */ }
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* retain the original audit failure */
+    }
     throw error;
   } finally {
     client.release();
@@ -333,14 +431,22 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runParseSnapshotAudit(process.env.BB_PARSE_AUDIT_DATABASE_URL, process.env.BB_PARSE_AUDIT_TARGETS_JSON)
+  runParseSnapshotAudit(
+    process.env.BB_PARSE_AUDIT_DATABASE_URL,
+    process.env.BB_PARSE_AUDIT_TARGETS_JSON,
+  )
     .then((report) => {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (report.audit_status === 'failed_anchor_binding') process.exitCode = 1;
     })
     .catch((error: unknown) => {
-      const code = error instanceof Error && /^AUDIT_[A-Z0-9_]+$/.test(error.message) ? ` (${error.message})` : '';
-      process.stderr.write(`parse snapshot audit failed${code}; inspect the redacted audit configuration\n`);
+      const code =
+        error instanceof Error && /^AUDIT_[A-Z0-9_]+$/.test(error.message)
+          ? ` (${error.message})`
+          : '';
+      process.stderr.write(
+        `parse snapshot audit failed${code}; inspect the redacted audit configuration\n`,
+      );
       process.exitCode = 1;
     });
 }

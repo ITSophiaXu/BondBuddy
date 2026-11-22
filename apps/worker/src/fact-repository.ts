@@ -31,15 +31,25 @@ export interface FactEvidenceAnchor {
   readonly source_anchor_review?: { readonly verifier_id: string; readonly verified_at: string };
   /** OCR provenance is resolved from the immutable #139 result by the trusted reader. */
   readonly ocr_source?: {
-    readonly snapshot_id: string; readonly result_sha256: string; readonly record_id: string;
-    readonly page: number; readonly bbox: readonly [number, number, number, number];
-    readonly page_image_sha256: string; readonly coordinate_system: string;
+    readonly snapshot_id: string;
+    readonly result_sha256: string;
+    readonly record_id: string;
+    readonly page: number;
+    readonly bbox: readonly [number, number, number, number];
+    readonly page_image_sha256: string;
+    readonly coordinate_system: string;
   };
   /** Kept separate from literal_quote so a correction cannot masquerade as source text. */
   readonly ocr_correction?: {
-    readonly correction_id: string; readonly revision: number; readonly corrected_text: string;
-    readonly reason: string; readonly actor_user_id: string; readonly created_at: string;
-    readonly period: string | null; readonly scope: string | null; readonly unit: string | null;
+    readonly correction_id: string;
+    readonly revision: number;
+    readonly corrected_text: string;
+    readonly reason: string;
+    readonly actor_user_id: string;
+    readonly created_at: string;
+    readonly period: string | null;
+    readonly scope: string | null;
+    readonly unit: string | null;
   };
 }
 
@@ -93,52 +103,106 @@ function validDate(value: string): boolean {
 }
 
 function validIsoDay(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) &&
-    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+  );
 }
 
 function validateIdentity(context: FactRepositoryContext, identity: FactIdentity): string {
-  if (!context.ownerUserId.trim() || !context.projectId.trim() || identity.accountId !== context.ownerUserId ||
-    !identity.entityId.trim() || !identity.scope.trim() || !identity.metric.trim() || !identity.unit.trim() ||
-    !identity.basis.trim() || !identity.dataVersion.trim()) throw factError('INVALID_FACT_IDENTITY');
+  if (
+    !context.ownerUserId.trim() ||
+    !context.projectId.trim() ||
+    identity.accountId !== context.ownerUserId ||
+    !identity.entityId.trim() ||
+    !identity.scope.trim() ||
+    !identity.metric.trim() ||
+    !identity.unit.trim() ||
+    !identity.basis.trim() ||
+    !identity.dataVersion.trim()
+  )
+    throw factError('INVALID_FACT_IDENTITY');
   for (const date of [identity.period.start, identity.period.end, identity.period.asOf]) {
     if (date !== undefined && !validIsoDay(date)) throw factError('INVALID_FACT_PERIOD');
   }
   return factIdentityKey(identity);
 }
 
-function validateEvidence(candidate: FactCandidate, materialId: string, materialVersion: number,
-  evidence: readonly FactEvidenceAnchor[]): void {
-  if (!Number.isSafeInteger(materialVersion) || materialVersion < 1 || !materialId.trim() || evidence.length === 0) {
+function validateEvidence(
+  candidate: FactCandidate,
+  materialId: string,
+  materialVersion: number,
+  evidence: readonly FactEvidenceAnchor[],
+): void {
+  if (
+    !Number.isSafeInteger(materialVersion) ||
+    materialVersion < 1 ||
+    !materialId.trim() ||
+    evidence.length === 0
+  ) {
     throw factError('FACT_SOURCE_EVIDENCE_REQUIRED');
   }
   for (const anchor of evidence) {
-    if (!anchor.evidence_id.trim() || anchor.material_id !== materialId || anchor.material_version !== materialVersion ||
-      !/^[a-f0-9]{64}$/.test(anchor.content_hash) || !anchor.locator_type.trim() || !isRecord(anchor.locator) ||
-      !anchor.literal_quote.trim() || !anchor.extraction_method.trim() || !anchor.extraction_version.trim() ||
-      !(anchor.confidence === null || (Number.isFinite(anchor.confidence) && anchor.confidence >= 0 && anchor.confidence <= 1)) ||
-      !Array.isArray(anchor.uncertainty) || !anchor.uncertainty.every((reason) => typeof reason === 'string')) {
+    if (
+      !anchor.evidence_id.trim() ||
+      anchor.material_id !== materialId ||
+      anchor.material_version !== materialVersion ||
+      !/^[a-f0-9]{64}$/.test(anchor.content_hash) ||
+      !anchor.locator_type.trim() ||
+      !isRecord(anchor.locator) ||
+      !anchor.literal_quote.trim() ||
+      !anchor.extraction_method.trim() ||
+      !anchor.extraction_version.trim() ||
+      !(
+        anchor.confidence === null ||
+        (Number.isFinite(anchor.confidence) && anchor.confidence >= 0 && anchor.confidence <= 1)
+      ) ||
+      !Array.isArray(anchor.uncertainty) ||
+      !anchor.uncertainty.every((reason) => typeof reason === 'string')
+    ) {
       throw factError('INVALID_FACT_EVIDENCE');
     }
   }
-  if (new Set(evidence.map((anchor) => anchor.content_hash)).size !== 1) throw factError('FACT_EVIDENCE_HASH_MISMATCH');
-  if (candidate.auditCheck && !evidence.some((anchor) => anchor.evidence_id === candidate.auditCheck?.evidenceId)) {
+  if (new Set(evidence.map((anchor) => anchor.content_hash)).size !== 1)
+    throw factError('FACT_EVIDENCE_HASH_MISMATCH');
+  if (
+    candidate.auditCheck &&
+    !evidence.some((anchor) => anchor.evidence_id === candidate.auditCheck?.evidenceId)
+  ) {
     throw factError('FACT_AUDIT_EVIDENCE_MISMATCH');
   }
 }
 
-function validateCandidate(context: FactRepositoryContext, candidate: FactCandidate,
-  materialId: string, materialVersion: number, evidence: readonly FactEvidenceAnchor[]): {
-    key: string; status: FactStatus; occurred: string; validAsOf: string | null; valueKind: 'decimal' | 'text' | 'unknown' | 'not_applicable';
-    valueDecimal: string | null; valueText: string | null; uncertainty: string[];
-  } {
+function validateCandidate(
+  context: FactRepositoryContext,
+  candidate: FactCandidate,
+  materialId: string,
+  materialVersion: number,
+  evidence: readonly FactEvidenceAnchor[],
+): {
+  key: string;
+  status: FactStatus;
+  occurred: string;
+  validAsOf: string | null;
+  valueKind: 'decimal' | 'text' | 'unknown' | 'not_applicable';
+  valueDecimal: string | null;
+  valueText: string | null;
+  uncertainty: string[];
+} {
   const key = validateIdentity(context, candidate.identity);
-  if (candidate.source.kind === 'template' || candidate.source.kind === 'reference') throw factError('NON_ISSUER_FACT_SOURCE');
+  if (candidate.source.kind === 'template' || candidate.source.kind === 'reference')
+    throw factError('NON_ISSUER_FACT_SOURCE');
   if (candidate.source.kind === 'user_statement' && !validDate(candidate.source.observedAt)) {
     throw factError('USER_STATEMENT_DATE_REQUIRED');
   }
-  if (!candidate.source.sourceId.trim() || !validDate(candidate.source.observedAt)) throw factError('INVALID_FACT_SOURCE');
-  if (!Number.isFinite(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1) {
+  if (!candidate.source.sourceId.trim() || !validDate(candidate.source.observedAt))
+    throw factError('INVALID_FACT_SOURCE');
+  if (
+    !Number.isFinite(candidate.confidence) ||
+    candidate.confidence < 0 ||
+    candidate.confidence > 1
+  ) {
     throw factError('INVALID_CONFIDENCE');
   }
   validateEvidence(candidate, materialId, materialVersion, evidence);
@@ -160,17 +224,42 @@ function validateCandidate(context: FactRepositoryContext, candidate: FactCandid
     valueKind = candidate.value.kind;
   }
   const evidenceUncertainty = evidence.flatMap((anchor) => anchor.uncertainty);
-  if (candidate.source.kind === 'audited' && evidence.some((anchor) => /ocr/i.test(anchor.extraction_method) &&
-    anchor.evidence_id !== candidate.auditCheck?.evidenceId)) evidenceUncertainty.push('OCR_REVIEW_REQUIRED');
-  const uncertainty = [...new Set([...(candidate.uncertainty ? [candidate.uncertainty] : []), ...evidenceUncertainty])];
-  const persistedCandidate = uncertainty.length > 0 ? { ...candidate, uncertainty: uncertainty.join('; ') } : candidate;
+  if (
+    candidate.source.kind === 'audited' &&
+    evidence.some(
+      (anchor) =>
+        /ocr/i.test(anchor.extraction_method) &&
+        anchor.evidence_id !== candidate.auditCheck?.evidenceId,
+    )
+  )
+    evidenceUncertainty.push('OCR_REVIEW_REQUIRED');
+  const uncertainty = [
+    ...new Set([...(candidate.uncertainty ? [candidate.uncertainty] : []), ...evidenceUncertainty]),
+  ];
+  const persistedCandidate =
+    uncertainty.length > 0 ? { ...candidate, uncertainty: uncertainty.join('; ') } : candidate;
   const status = factCandidateStatus(persistedCandidate);
-  if (status === 'verified' && (candidate.source.kind !== 'audited' || !candidate.auditCheck || evidence.length === 0 ||
-    evidence.some((anchor) => anchor.uncertainty.length > 0))) throw factError('VERIFICATION_EVIDENCE_REQUIRED');
+  if (
+    status === 'verified' &&
+    (candidate.source.kind !== 'audited' ||
+      !candidate.auditCheck ||
+      evidence.length === 0 ||
+      evidence.some((anchor) => anchor.uncertainty.length > 0))
+  )
+    throw factError('VERIFICATION_EVIDENCE_REQUIRED');
   const validAsOf = candidate.source.validAsOf;
-  if (validAsOf !== undefined && !validIsoDay(validAsOf)) throw factError('INVALID_FACT_VALID_DATE');
-  return { key, status, occurred: new Date(candidate.source.observedAt).toISOString(), validAsOf: validAsOf ?? null,
-    valueKind, valueDecimal, valueText, uncertainty };
+  if (validAsOf !== undefined && !validIsoDay(validAsOf))
+    throw factError('INVALID_FACT_VALID_DATE');
+  return {
+    key,
+    status,
+    occurred: new Date(candidate.source.observedAt).toISOString(),
+    validAsOf: validAsOf ?? null,
+    valueKind,
+    valueDecimal,
+    valueText,
+    uncertainty,
+  };
 }
 
 function identityHash(identityKey: string): string {
@@ -208,9 +297,21 @@ async function verifyPersistedEvidence(
           AND e.locator_type = $7 AND e.locator = $8::jsonb AND e.literal_quote = $9
           AND e.extraction_method = $10 AND e.extractor_version = $11
           AND e.confidence IS NOT DISTINCT FROM $12::numeric AND e.uncertainty = $13::jsonb`,
-      [context.ownerUserId, context.projectId, material.id, material.version, anchor.evidence_id, anchor.content_hash,
-        anchor.locator_type, JSON.stringify(anchor.locator), anchor.literal_quote, anchor.extraction_method,
-        anchor.extraction_version, anchor.confidence, JSON.stringify(anchor.uncertainty)],
+      [
+        context.ownerUserId,
+        context.projectId,
+        material.id,
+        material.version,
+        anchor.evidence_id,
+        anchor.content_hash,
+        anchor.locator_type,
+        JSON.stringify(anchor.locator),
+        anchor.literal_quote,
+        anchor.extraction_method,
+        anchor.extraction_version,
+        anchor.confidence,
+        JSON.stringify(anchor.uncertainty),
+      ],
     );
     const count = Number(result.rows[0]?.match_count);
     if (count === 0) throw factError('FACT_SOURCE_EVIDENCE_NOT_FOUND');
@@ -219,14 +320,25 @@ async function verifyPersistedEvidence(
 }
 
 function mapStatus(value: unknown): FactStatus {
-  if (value === 'extracted' || value === 'verified' || value === 'user_asserted' || value === 'conflicted' ||
-    value === 'needs_confirmation' || value === 'superseded') return value;
+  if (
+    value === 'extracted' ||
+    value === 'verified' ||
+    value === 'user_asserted' ||
+    value === 'conflicted' ||
+    value === 'needs_confirmation' ||
+    value === 'superseded'
+  )
+    return value;
   throw factError('INVALID_FACT_ROW');
 }
 
 function mapJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  try { return JSON.parse(value) as unknown; } catch { throw factError('INVALID_FACT_ROW'); }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw factError('INVALID_FACT_ROW');
+  }
 }
 
 function timestampString(value: unknown): string | null {
@@ -236,7 +348,8 @@ function timestampString(value: unknown): string | null {
 }
 
 function dayString(value: unknown): string | null {
-  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date && Number.isFinite(value.getTime()))
+    return value.toISOString().slice(0, 10);
   if (typeof value === 'string' && validDate(value)) return value.slice(0, 10);
   return null;
 }
@@ -245,29 +358,51 @@ function mapRow(row: Record<string, unknown>): StoredFactCandidate {
   const identity = mapJson(row.fact_key) as FactIdentity;
   const evidence = mapJson(row.evidence);
   const uncertainty = mapJson(row.uncertainty);
-  if (!isRecord(identity) || !Array.isArray(evidence) || !Array.isArray(uncertainty) ||
-    typeof row.material_id !== 'string' || !Number.isSafeInteger(Number(row.material_version)) ||
-    timestampString(row.source_observed_at) === null || typeof row.source_kind !== 'string' || typeof row.source_ref !== 'string' ||
-    typeof row.value_kind !== 'string') throw factError('INVALID_FACT_ROW');
+  if (
+    !isRecord(identity) ||
+    !Array.isArray(evidence) ||
+    !Array.isArray(uncertainty) ||
+    typeof row.material_id !== 'string' ||
+    !Number.isSafeInteger(Number(row.material_version)) ||
+    timestampString(row.source_observed_at) === null ||
+    typeof row.source_kind !== 'string' ||
+    typeof row.source_ref !== 'string' ||
+    typeof row.value_kind !== 'string'
+  )
+    throw factError('INVALID_FACT_ROW');
 
   let value: FactCandidate['value'];
-  if (row.value_kind === 'decimal' && typeof row.value_decimal === 'string') value = { kind: 'known', decimalOrText: row.value_decimal };
-  else if (row.value_kind === 'text' && typeof row.value_text === 'string') value = { kind: 'known', decimalOrText: row.value_text };
-  else if (row.value_kind === 'unknown' || row.value_kind === 'not_applicable') value = { kind: row.value_kind };
+  if (row.value_kind === 'decimal' && typeof row.value_decimal === 'string')
+    value = { kind: 'known', decimalOrText: row.value_decimal };
+  else if (row.value_kind === 'text' && typeof row.value_text === 'string')
+    value = { kind: 'known', decimalOrText: row.value_text };
+  else if (row.value_kind === 'unknown' || row.value_kind === 'not_applicable')
+    value = { kind: row.value_kind };
   else throw factError('INVALID_FACT_ROW');
 
   const anchorRows = evidence as FactEvidenceAnchor[];
-  const confidenceValues = anchorRows.map((anchor) => anchor.candidate_confidence)
+  const confidenceValues = anchorRows
+    .map((anchor) => anchor.candidate_confidence)
     .filter((item): item is number => typeof item === 'number');
-  const evidenceConfidence = anchorRows.map((anchor) => anchor.confidence).filter((item): item is number => typeof item === 'number');
-  const confidence = confidenceValues[0] ?? (evidenceConfidence.length ? Math.min(...evidenceConfidence) : 0);
+  const evidenceConfidence = anchorRows
+    .map((anchor) => anchor.confidence)
+    .filter((item): item is number => typeof item === 'number');
+  const confidence =
+    confidenceValues[0] ?? (evidenceConfidence.length ? Math.min(...evidenceConfidence) : 0);
   const reviewedAnchor = anchorRows.find((anchor) => anchor.source_anchor_review !== undefined);
   const verifiedAt = timestampString(row.verification_at);
-  const verification = row.verification_actor_kind === 'internal_reviewer' && typeof row.verification_actor_id === 'string' && verifiedAt &&
+  const verification =
+    row.verification_actor_kind === 'internal_reviewer' &&
+    typeof row.verification_actor_id === 'string' &&
+    verifiedAt &&
     reviewedAnchor
-    ? { kind: 'source_anchor_review' as const, evidenceId: reviewedAnchor.evidence_id,
-      verifierId: row.verification_actor_id, verifierRole: 'internal_reviewer' as const }
-    : null;
+      ? {
+          kind: 'source_anchor_review' as const,
+          evidenceId: reviewedAnchor.evidence_id,
+          verifierId: row.verification_actor_id,
+          verifierRole: 'internal_reviewer' as const,
+        }
+      : null;
   const sourceObservedAt = timestampString(row.source_observed_at)!;
   const sourceValidAsOf = dayString(row.source_valid_as_of);
   const candidate: FactCandidate = {
@@ -295,7 +430,15 @@ function mapRow(row: Record<string, unknown>): StoredFactCandidate {
       materialVersion: Number(row.material_version),
       sourceObservedAt,
       ...(sourceValidAsOf ? { sourceValidAsOf } : {}),
-      ...(verification ? { verification: { actorId: verification.verifierId, actorRole: 'internal_reviewer', verifiedAt: verifiedAt! } } : {}),
+      ...(verification
+        ? {
+            verification: {
+              actorId: verification.verifierId,
+              actorRole: 'internal_reviewer',
+              verifiedAt: verifiedAt!,
+            },
+          }
+        : {}),
       createdAt: timestampString(row.created_at) ?? String(row.created_at),
     },
   };
@@ -317,7 +460,10 @@ async function insertFactCandidateInternal(
   const validated = validateCandidate(context, candidate, material.id, material.version, evidence);
   // User statements may be supported by chat evidence, which has no parser
   // snapshot. Material-derived audited/external evidence must resolve exactly.
-  if (evidenceAuthority === 'native_parser' && (candidate.source.kind === 'audited' || candidate.source.kind === 'external')) {
+  if (
+    evidenceAuthority === 'native_parser' &&
+    (candidate.source.kind === 'audited' || candidate.source.kind === 'external')
+  ) {
     await verifyPersistedEvidence(dependencies.pool, context, material, evidence);
   }
   const id = dependencies.newId?.() ?? randomUUID();
@@ -337,21 +483,49 @@ async function insertFactCandidateInternal(
            AND m.sha256 = $22
       )
      RETURNING ${RETURNING_COLUMNS}`,
-    [id, context.ownerUserId, context.projectId, candidate.identity.entityId, identityHash(validated.key),
-      JSON.stringify(candidate.identity), validated.valueDecimal, validated.valueText, validated.valueKind,
-      candidate.source.kind, candidate.source.sourceId, validated.status, validated.occurred, validated.validAsOf,
-      verification ? 'internal_reviewer' : null, verification?.verifierId ?? null,
-      verification ? now.toISOString() : null, material.id, material.version,
-      JSON.stringify(evidence.map((anchor) => ({
-        ...anchor,
-        candidate_confidence: candidate.confidence,
-        ...(verification && candidate.auditCheck?.evidenceId === anchor.evidence_id
-          ? { source_anchor_review: { verifier_id: verification.verifierId, verified_at: now.toISOString() } }
-          : {}),
-      }))), JSON.stringify(validated.uncertainty), evidence[0]!.content_hash],
+    [
+      id,
+      context.ownerUserId,
+      context.projectId,
+      candidate.identity.entityId,
+      identityHash(validated.key),
+      JSON.stringify(candidate.identity),
+      validated.valueDecimal,
+      validated.valueText,
+      validated.valueKind,
+      candidate.source.kind,
+      candidate.source.sourceId,
+      validated.status,
+      validated.occurred,
+      validated.validAsOf,
+      verification ? 'internal_reviewer' : null,
+      verification?.verifierId ?? null,
+      verification ? now.toISOString() : null,
+      material.id,
+      material.version,
+      JSON.stringify(
+        evidence.map((anchor) => ({
+          ...anchor,
+          candidate_confidence: candidate.confidence,
+          ...(verification && candidate.auditCheck?.evidenceId === anchor.evidence_id
+            ? {
+                source_anchor_review: {
+                  verifier_id: verification.verifierId,
+                  verified_at: now.toISOString(),
+                },
+              }
+            : {}),
+        })),
+      ),
+      JSON.stringify(validated.uncertainty),
+      evidence[0]!.content_hash,
+    ],
   );
   if (result.rows.length !== 1) throw factError('FACT_SOURCE_MATERIAL_NOT_FOUND');
-  if (result.rows[0]!.owner_user_id !== context.ownerUserId || result.rows[0]!.project_id !== context.projectId) {
+  if (
+    result.rows[0]!.owner_user_id !== context.ownerUserId ||
+    result.rows[0]!.project_id !== context.projectId
+  ) {
     throw factError('FACT_SCOPE_MISMATCH');
   }
   return mapRow(result.rows[0]!);
@@ -364,77 +538,152 @@ export async function insertOcrFactCandidate(
   dependencies: FactRepositoryDependencies,
   context: FactRepositoryContext,
   candidate: FactCandidate,
-  source: { readonly materialId: string; readonly materialVersion: number; readonly snapshotId: string;
-    readonly resultSha256: string; readonly recordId: string; readonly correctionId?: string },
+  source: {
+    readonly materialId: string;
+    readonly materialVersion: number;
+    readonly snapshotId: string;
+    readonly resultSha256: string;
+    readonly recordId: string;
+    readonly correctionId?: string;
+  },
 ): Promise<StoredFactCandidate> {
   if (!dependencies.blobs) throw factError('OCR_FACT_BLOB_READER_REQUIRED');
-  if (candidate.auditCheck != null || (candidate as FactCandidate & { status?: string }).status === 'verified') {
+  if (
+    candidate.auditCheck != null ||
+    (candidate as FactCandidate & { status?: string }).status === 'verified'
+  ) {
     throw factError('OCR_FACT_CANNOT_BE_VERIFIED');
   }
-  const resolved = await readOcrFactSource(dependencies.pool as unknown as Pool|PoolClient, dependencies.blobs, {
-    owner: context.ownerUserId, projectId: context.projectId, materialId: source.materialId,
-    version: source.materialVersion, snapshotId: source.snapshotId, resultSha256: source.resultSha256,
-    recordId: source.recordId, ...(source.correctionId ? { correctionId: source.correctionId } : {}),
-  });
+  const resolved = await readOcrFactSource(
+    dependencies.pool as unknown as Pool | PoolClient,
+    dependencies.blobs,
+    {
+      owner: context.ownerUserId,
+      projectId: context.projectId,
+      materialId: source.materialId,
+      version: source.materialVersion,
+      snapshotId: source.snapshotId,
+      resultSha256: source.resultSha256,
+      recordId: source.recordId,
+      ...(source.correctionId ? { correctionId: source.correctionId } : {}),
+    },
+  );
   if (resolved.materialRole === 'reference' || resolved.materialRole === 'template') {
     throw factError('NON_ISSUER_FACT_SOURCE');
   }
   if (!resolved.record.text.trim()) throw factError('OCR_FACT_LITERAL_REQUIRED');
   if (resolved.correction) {
-    if (candidate.source.kind !== 'user_statement' || candidate.value.kind !== 'known' ||
-      candidate.value.decimalOrText !== resolved.correction.corrected_text) {
+    if (
+      candidate.source.kind !== 'user_statement' ||
+      candidate.value.kind !== 'known' ||
+      candidate.value.decimalOrText !== resolved.correction.corrected_text
+    ) {
       throw factError('OCR_CORRECTION_VALUE_MISMATCH');
     }
   } else if (source.correctionId !== undefined || candidate.source.kind === 'user_statement') {
     throw factError('OCR_CORRECTION_REQUIRED');
   } else if (resolved.record.numeric.kind === 'number') {
-    if (candidate.value.kind !== 'known' || candidate.value.decimalOrText !== resolved.record.numeric.decimal) {
+    if (
+      candidate.value.kind !== 'known' ||
+      candidate.value.decimalOrText !== resolved.record.numeric.decimal
+    ) {
       throw factError('OCR_FACT_VALUE_MISMATCH');
     }
-    if (resolved.record.numeric.unit !== null && candidate.identity.unit !== resolved.record.numeric.unit) {
+    if (
+      resolved.record.numeric.unit !== null &&
+      candidate.identity.unit !== resolved.record.numeric.unit
+    ) {
       throw factError('OCR_FACT_UNIT_MISMATCH');
     }
-  } else if (candidate.value.kind !== 'known' || candidate.value.decimalOrText !== resolved.record.text) {
+  } else if (
+    candidate.value.kind !== 'known' ||
+    candidate.value.decimalOrText !== resolved.record.text
+  ) {
     throw factError('OCR_FACT_VALUE_MISMATCH');
   }
   if (candidate.source.kind === 'template' || candidate.source.kind === 'reference') {
     throw factError('NON_ISSUER_FACT_SOURCE');
   }
 
-  const evidence: FactEvidenceAnchor[] = [{
-    evidence_id: resolved.record.record_id,
-    material_id: resolved.materialId,
-    material_version: resolved.materialVersion,
-    content_hash: resolved.materialSha256,
-    locator_type: 'ocr_page_bbox',
-    locator: { page: resolved.record.page, bbox: resolved.record.bbox, coordinate_system: resolved.page.coordinate_system,
-      snapshot_id: resolved.snapshotId, result_sha256: resolved.resultSha256,
-      page_image_sha256: resolved.page.image_sha256, record_id: resolved.record.record_id },
-    literal_quote: resolved.record.text,
-    extraction_method: 'ocr',
-    extraction_version: resolved.processorVersion,
-    confidence: resolved.record.confidence,
-    uncertainty: [...new Set([...resolved.record.uncertainty, 'OCR_REVIEW_REQUIRED'])],
-    ocr_source: { snapshot_id: resolved.snapshotId, result_sha256: resolved.resultSha256,
-      record_id: resolved.record.record_id, page: resolved.record.page, bbox: resolved.record.bbox,
-      page_image_sha256: resolved.page.image_sha256, coordinate_system: resolved.page.coordinate_system },
-    ...(resolved.correction ? { ocr_correction: { correction_id: resolved.correction.correction_id,
-      revision: resolved.correction.revision, corrected_text: resolved.correction.corrected_text,
-      reason: resolved.correction.reason, actor_user_id: resolved.correction.actor_user_id,
-      created_at: resolved.correction.created_at, period: resolved.correction.period,
-      scope: resolved.correction.scope, unit: resolved.correction.unit } } : {}),
-  }];
+  const evidence: FactEvidenceAnchor[] = [
+    {
+      evidence_id: resolved.record.record_id,
+      material_id: resolved.materialId,
+      material_version: resolved.materialVersion,
+      content_hash: resolved.materialSha256,
+      locator_type: 'ocr_page_bbox',
+      locator: {
+        page: resolved.record.page,
+        bbox: resolved.record.bbox,
+        coordinate_system: resolved.page.coordinate_system,
+        snapshot_id: resolved.snapshotId,
+        result_sha256: resolved.resultSha256,
+        page_image_sha256: resolved.page.image_sha256,
+        record_id: resolved.record.record_id,
+      },
+      literal_quote: resolved.record.text,
+      extraction_method: 'ocr',
+      extraction_version: resolved.processorVersion,
+      confidence: resolved.record.confidence,
+      uncertainty: [...new Set([...resolved.record.uncertainty, 'OCR_REVIEW_REQUIRED'])],
+      ocr_source: {
+        snapshot_id: resolved.snapshotId,
+        result_sha256: resolved.resultSha256,
+        record_id: resolved.record.record_id,
+        page: resolved.record.page,
+        bbox: resolved.record.bbox,
+        page_image_sha256: resolved.page.image_sha256,
+        coordinate_system: resolved.page.coordinate_system,
+      },
+      ...(resolved.correction
+        ? {
+            ocr_correction: {
+              correction_id: resolved.correction.correction_id,
+              revision: resolved.correction.revision,
+              corrected_text: resolved.correction.corrected_text,
+              reason: resolved.correction.reason,
+              actor_user_id: resolved.correction.actor_user_id,
+              created_at: resolved.correction.created_at,
+              period: resolved.correction.period,
+              scope: resolved.correction.scope,
+              unit: resolved.correction.unit,
+            },
+          }
+        : {}),
+    },
+  ];
   const observedCandidate: FactCandidate = resolved.correction
-    ? { ...candidate, confidence: resolved.record.confidence ?? 0,
-      source: { kind: 'user_statement', sourceId: resolved.correction.correction_id,
-        observedAt: resolved.correction.created_at, ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}) },
-      auditCheck: null }
-    : { ...candidate, confidence: resolved.record.confidence ?? 0,
-      source: { kind: candidate.source.kind, sourceId: resolved.materialId, observedAt: resolved.snapshotCreatedAt,
-        ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}) },
-      uncertainty: [candidate.uncertainty, 'OCR_REVIEW_REQUIRED'].filter(Boolean).join('; '), auditCheck: null };
-  return insertFactCandidateInternal(dependencies, context, observedCandidate,
-    { id: resolved.materialId, version: resolved.materialVersion }, evidence, 'verified_ocr_reader');
+    ? {
+        ...candidate,
+        confidence: resolved.record.confidence ?? 0,
+        source: {
+          kind: 'user_statement',
+          sourceId: resolved.correction.correction_id,
+          observedAt: resolved.correction.created_at,
+          ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}),
+        },
+        auditCheck: null,
+      }
+    : {
+        ...candidate,
+        confidence: resolved.record.confidence ?? 0,
+        source: {
+          kind: candidate.source.kind,
+          sourceId: resolved.materialId,
+          observedAt: resolved.snapshotCreatedAt,
+          ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}),
+        },
+        uncertainty: [candidate.uncertainty, 'OCR_REVIEW_REQUIRED'].filter(Boolean).join('; '),
+        auditCheck: null,
+      };
+  return insertFactCandidateInternal(
+    dependencies,
+    context,
+    observedCandidate,
+    { id: resolved.materialId, version: resolved.materialVersion },
+    evidence,
+    'verified_ocr_reader',
+  );
 }
 
 /** Existing native parser path. Its evidence verification and status rules are unchanged. */
@@ -445,7 +694,14 @@ export async function insertFactCandidate(
   material: { readonly id: string; readonly version: number },
   evidence: readonly FactEvidenceAnchor[],
 ): Promise<StoredFactCandidate> {
-  return insertFactCandidateInternal(dependencies, context, candidate, material, evidence, 'native_parser');
+  return insertFactCandidateInternal(
+    dependencies,
+    context,
+    candidate,
+    material,
+    evidence,
+    'native_parser',
+  );
 }
 
 /** Lists all source candidates in an owner/project scope; an identity narrows the query without hiding conflicts. */
@@ -454,7 +710,8 @@ export async function listFactCandidates(
   context: FactRepositoryContext,
   identity?: FactIdentity,
 ): Promise<readonly StoredFactCandidate[]> {
-  if (!context.ownerUserId.trim() || !context.projectId.trim()) throw factError('INVALID_FACT_SCOPE');
+  if (!context.ownerUserId.trim() || !context.projectId.trim())
+    throw factError('INVALID_FACT_SCOPE');
   let result: { rows: Record<string, unknown>[] };
   if (identity) {
     const key = validateIdentity(context, identity);
@@ -472,7 +729,11 @@ export async function listFactCandidates(
       [context.ownerUserId, context.projectId],
     );
   }
-  if (result.rows.some((row) => row.owner_user_id !== context.ownerUserId || row.project_id !== context.projectId)) {
+  if (
+    result.rows.some(
+      (row) => row.owner_user_id !== context.ownerUserId || row.project_id !== context.projectId,
+    )
+  ) {
     throw factError('FACT_SCOPE_MISMATCH');
   }
   return result.rows.map(mapRow);

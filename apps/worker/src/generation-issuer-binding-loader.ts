@@ -20,7 +20,10 @@ import {
 } from '@bondbuddy/contracts';
 import { loadApprovedGenerationIssuerBindingForLock } from '@bondbuddy/api/generation-issuer-binding';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import type { ApprovedGenerationIssuerBinding, NoHistoryRunScope } from './no-history-model-stage.js';
+import type {
+  ApprovedGenerationIssuerBinding,
+  NoHistoryRunScope,
+} from './no-history-model-stage.js';
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const shaPattern = /^[a-f0-9]{64}$/;
@@ -48,10 +51,22 @@ export function pinnedGenerationIssuerBindingRef(manifest: unknown): PinnedRef |
   if (!Number.isSafeInteger(raw.version) || (raw.version as number) < 1) return null;
   if (typeof raw.content_sha256 !== 'string' || !shaPattern.test(raw.content_sha256)) return null;
   if (typeof entityId !== 'string' || !entityPattern.test(entityId)) return null;
-  return { ref: { binding_id: raw.binding_id, version: raw.version as number, content_sha256: raw.content_sha256 }, issuerEntityId: entityId };
+  return {
+    ref: {
+      binding_id: raw.binding_id,
+      version: raw.version as number,
+      content_sha256: raw.content_sha256,
+    },
+    issuerEntityId: entityId,
+  };
 }
 
-function materialKey(item: { material_id: string; material_version: number; role: string; sha256: string }): string {
+function materialKey(item: {
+  material_id: string;
+  material_version: number;
+  role: string;
+  sha256: string;
+}): string {
   return `${item.material_id}\u0000${item.material_version}\u0000${item.role}\u0000${item.sha256}`;
 }
 
@@ -60,17 +75,39 @@ function materialKey(item: { material_id: string; material_version: number; role
  * the same id/version/role/hash. An added, removed or swapped issuer material (or a binding that
  * covered extra non-selected files) is a conflict and never authorizes generation.
  */
-export function lockedIssuerMaterialsMatch(manifest: unknown, selected: readonly MaterialPin[]): boolean {
+export function lockedIssuerMaterialsMatch(
+  manifest: unknown,
+  selected: readonly MaterialPin[],
+): boolean {
   if (!isRecord(manifest) || !Array.isArray(manifest.materials)) return false;
   const locked: string[] = [];
   for (const item of manifest.materials) {
     if (!isRecord(item)) return false;
     if (typeof item.role !== 'string' || !ISSUER_ROLES.has(item.role)) continue;
-    if (typeof item.material_id !== 'string' || typeof item.sha256 !== 'string' ||
-        !Number.isSafeInteger(item.material_version) || (item.material_version as number) < 1) return false;
-    locked.push(materialKey({ material_id: item.material_id, material_version: item.material_version as number, role: item.role, sha256: item.sha256 }));
+    if (
+      typeof item.material_id !== 'string' ||
+      typeof item.sha256 !== 'string' ||
+      !Number.isSafeInteger(item.material_version) ||
+      (item.material_version as number) < 1
+    )
+      return false;
+    locked.push(
+      materialKey({
+        material_id: item.material_id,
+        material_version: item.material_version as number,
+        role: item.role,
+        sha256: item.sha256,
+      }),
+    );
   }
-  const pinned = selected.map(pin => materialKey({ material_id: pin.material_id, material_version: pin.material_version, role: pin.role, sha256: pin.material_sha256 }));
+  const pinned = selected.map((pin) =>
+    materialKey({
+      material_id: pin.material_id,
+      material_version: pin.material_version,
+      role: pin.role,
+      sha256: pin.material_sha256,
+    }),
+  );
   if (locked.length !== pinned.length || locked.length === 0) return false;
   locked.sort();
   pinned.sort();
@@ -78,7 +115,9 @@ export function lockedIssuerMaterialsMatch(manifest: unknown, selected: readonly
 }
 
 /** Trusted re-verification of an already-pinned ref; injectable only for tests/tooling. */
-export type VerifyPinnedBinding = (ref: GenerationIssuerBindingRef) => Promise<GenerationIssuerBindingResponse | null>;
+export type VerifyPinnedBinding = (
+  ref: GenerationIssuerBindingRef,
+) => Promise<GenerationIssuerBindingResponse | null>;
 
 /**
  * Default trusted worker loader for `NoHistoryStageAdapters.loadApprovedIssuerBinding`. Reads the
@@ -95,28 +134,62 @@ export async function loadPinnedApprovedGenerationIssuerBinding(
   const inputHash = scope.inputHash.trim();
   if (!shaPattern.test(inputHash)) return null;
   try {
-    const input = (await pool.query(`SELECT manifest,input_hash FROM bb_input_revisions
+    const input = (
+      await pool.query(
+        `SELECT manifest,input_hash FROM bb_input_revisions
       WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,
-      [scope.ownerUserId, scope.projectId, scope.inputRevision])).rows[0];
+        [scope.ownerUserId, scope.projectId, scope.inputRevision],
+      )
+    ).rows[0];
     if (!isRecord(input) || String(input.input_hash).trim() !== inputHash) return null;
     if (inputManifestHash(input.manifest) !== inputHash) return null;
     const pinned = pinnedGenerationIssuerBindingRef(input.manifest);
     if (!pinned) return null;
     const binding = await (verify
       ? verify(pinned.ref)
-      : loadApprovedGenerationIssuerBindingForLock(pool, { ownerUserId: scope.ownerUserId, projectId: scope.projectId }, pinned.ref));
-    if (!binding || binding.status !== 'approved' || !binding.issuer_entity_id ||
-        binding.issuer_entity_id !== pinned.issuerEntityId ||
-        binding.binding_id !== pinned.ref.binding_id || binding.version !== pinned.ref.version ||
-        binding.content_sha256 !== pinned.ref.content_sha256 ||
-        binding.owner_user_id !== scope.ownerUserId || binding.project_id !== scope.projectId ||
-        !lockedIssuerMaterialsMatch(input.manifest, binding.selected_materials)) return null;
+      : loadApprovedGenerationIssuerBindingForLock(
+          pool,
+          { ownerUserId: scope.ownerUserId, projectId: scope.projectId },
+          pinned.ref,
+        ));
+    if (
+      !binding ||
+      binding.status !== 'approved' ||
+      !binding.issuer_entity_id ||
+      binding.issuer_entity_id !== pinned.issuerEntityId ||
+      binding.binding_id !== pinned.ref.binding_id ||
+      binding.version !== pinned.ref.version ||
+      binding.content_sha256 !== pinned.ref.content_sha256 ||
+      binding.owner_user_id !== scope.ownerUserId ||
+      binding.project_id !== scope.projectId ||
+      !lockedIssuerMaterialsMatch(input.manifest, binding.selected_materials)
+    )
+      return null;
     const approval = binding.review_events[binding.review_events.length - 1];
-    if (!approval || approval.action !== 'approve' || !approval.review_id.trim() || !approval.reviewed_at.trim() ||
-        !Number.isSafeInteger(approval.binding_version) || approval.binding_version !== binding.version ||
-        approval.binding_content_sha256 !== binding.content_sha256) return null;
-    return { ownerUserId: scope.ownerUserId, projectId: scope.projectId, runId: scope.runId, inputRevision: scope.inputRevision,
-      inputHash, bindingId: binding.binding_id, version: binding.version, contentSha256: binding.content_sha256,
-      issuerEntityId: binding.issuer_entity_id, reviewEventId: approval.review_id, reviewedAt: approval.reviewed_at };
-  } catch { return null; }
+    if (
+      !approval ||
+      approval.action !== 'approve' ||
+      !approval.review_id.trim() ||
+      !approval.reviewed_at.trim() ||
+      !Number.isSafeInteger(approval.binding_version) ||
+      approval.binding_version !== binding.version ||
+      approval.binding_content_sha256 !== binding.content_sha256
+    )
+      return null;
+    return {
+      ownerUserId: scope.ownerUserId,
+      projectId: scope.projectId,
+      runId: scope.runId,
+      inputRevision: scope.inputRevision,
+      inputHash,
+      bindingId: binding.binding_id,
+      version: binding.version,
+      contentSha256: binding.content_sha256,
+      issuerEntityId: binding.issuer_entity_id,
+      reviewEventId: approval.review_id,
+      reviewedAt: approval.reviewed_at,
+    };
+  } catch {
+    return null;
+  }
 }

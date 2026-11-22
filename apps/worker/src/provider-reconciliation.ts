@@ -13,8 +13,21 @@ export async function reuseProviderCallOrSend<T>(input: {
   attemptNo: number;
   validateResult: (value: unknown) => boolean;
   send: () => Promise<T>;
-}): Promise<{reused:boolean;value:T|unknown;resultRef?:string;resultSha256?:string}> {
-  const result=await readCheckpointedProviderResult({pool:input.pool,blobs:input.blobs,lease:input.lease,logicalCallId:input.logicalCallId,attemptNo:input.attemptNo,validateResult:input.validateResult});
-  if (result) return {reused:true,value:result.value,resultRef:result.result_ref,resultSha256:result.result_sha256};
-  return {reused:false,value:await input.send()};
+}): Promise<{ reused: boolean; value: T | unknown; resultRef?: string; resultSha256?: string }> {
+  const result = await readCheckpointedProviderResult({
+    pool: input.pool,
+    blobs: input.blobs,
+    lease: input.lease,
+    logicalCallId: input.logicalCallId,
+    attemptNo: input.attemptNo,
+    validateResult: input.validateResult,
+  });
+  if (result)
+    return {
+      reused: true,
+      value: result.value,
+      resultRef: result.result_ref,
+      resultSha256: result.result_sha256,
+    };
+  return { reused: false, value: await input.send() };
 }

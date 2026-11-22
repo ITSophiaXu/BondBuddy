@@ -1,5 +1,10 @@
 import type { Pool } from 'pg';
-import { userReferenceParseReviewAccepted, validUserReferenceOutline, type UserReferenceOutline, type UserReferencePin } from '@bondbuddy/contracts';
+import {
+  userReferenceParseReviewAccepted,
+  validUserReferenceOutline,
+  type UserReferenceOutline,
+  type UserReferencePin,
+} from '@bondbuddy/contracts';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { NoHistoryRunScope } from './no-history-model-stage.js';
 
@@ -8,18 +13,34 @@ export type UserReferenceLoad =
   | { status: 'needs_review'; reason: string }
   | { status: 'accepted'; outline: UserReferenceOutline };
 
-const hash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const hash = (value: unknown): value is string =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 /** Reads only the immutable approved chapter projection; parser text never reaches the stage. */
-export async function loadUserReferenceOutline(pool: Pool, scope: NoHistoryRunScope): Promise<UserReferenceLoad> {
-  const input = (await pool.query(`SELECT manifest,input_hash FROM bb_input_revisions
+export async function loadUserReferenceOutline(
+  pool: Pool,
+  scope: NoHistoryRunScope,
+): Promise<UserReferenceLoad> {
+  const input = (
+    await pool.query(
+      `SELECT manifest,input_hash FROM bb_input_revisions
     WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,
-    [scope.ownerUserId,scope.projectId,scope.inputRevision])).rows[0];
-  if (!input || !hash(scope.inputHash) || input.input_hash.trim() !== scope.inputHash ||
-      inputManifestHash(input.manifest) !== scope.inputHash) return { status: 'needs_review', reason: 'input_lock_invalid' };
+      [scope.ownerUserId, scope.projectId, scope.inputRevision],
+    )
+  ).rows[0];
+  if (
+    !input ||
+    !hash(scope.inputHash) ||
+    input.input_hash.trim() !== scope.inputHash ||
+    inputManifestHash(input.manifest) !== scope.inputHash
+  )
+    return { status: 'needs_review', reason: 'input_lock_invalid' };
   const pin = input.manifest?.user_reference_pin as UserReferencePin | undefined;
   if (!pin) return { status: 'none' };
-  if (pin.schema_version !== 'user-reference-pin-v1') return { status: 'needs_review', reason: 'pin_invalid' };
-  const row = (await pool.query(`SELECT p.*,m.role,m.sha256 AS current_sha256,m.deleted_at,
+  if (pin.schema_version !== 'user-reference-pin-v1')
+    return { status: 'needs_review', reason: 'pin_invalid' };
+  const row = (
+    await pool.query(
+      `SELECT p.*,m.role,m.sha256 AS current_sha256,m.deleted_at,
     s.content_sha256 AS snapshot_sha256,s.response_sha256 AS snapshot_response_sha256,
     s.response_status,s.response_schema_version,s.record_count,s.response_meta,
     evidence.evidence_count,evidence.uncertain_count,
@@ -54,53 +75,116 @@ export async function loadUserReferenceOutline(pool: Pool, scope: NoHistoryRunSc
       AND c.project_id=p.project_id
     LEFT JOIN bb_user_reference_reviewer_grants cg ON cg.id=c.reviewer_grant_id AND cg.reviewer_user_id=c.reviewer_user_id
     WHERE p.owner_user_id=$1 AND p.project_id=$2 AND p.input_revision=$3`,
-    [scope.ownerUserId,scope.projectId,scope.inputRevision])).rows[0];
-  if (!row || row.material_id !== pin.material_id || row.material_version !== pin.material_version ||
-      row.material_sha256.trim() !== pin.material_sha256 || row.parse_snapshot_id !== pin.parse_snapshot_id ||
-      row.parse_response_sha256?.trim() !== pin.parse_response_sha256 ||
-      row.status !== pin.status || row.authorization_status !== pin.authorization_status ||
-      row.readability_status !== pin.readability_status || row.applicability_status !== pin.applicability_status ||
-      row.target_market !== pin.target_market || row.target_offering !== pin.target_offering ||
-      row.target_product !== pin.target_product || row.target_document_stage !== pin.target_document_stage ||
-      row.target_context_id !== pin.target_context_id || row.target_context_hash !== pin.target_context_hash ||
-      row.fact_isolation_check_version !== pin.fact_isolation_check_version || row.review_id !== pin.review_id ||
-      row.reviewer_user_id !== pin.reviewer_user_id || row.reviewer_grant_id !== pin.reviewer_grant_id ||
-      row.role !== 'reference' || row.deleted_at || row.current_sha256.trim() !== pin.material_sha256 ||
-      row.snapshot_sha256.trim() !== pin.material_sha256 || row.response_status === 'failed' ||
-      row.snapshot_response_sha256.trim() !== pin.parse_response_sha256 ||
-      row.response_schema_version !== 'document-parse-response-v1' || row.record_count < 1)
+      [scope.ownerUserId, scope.projectId, scope.inputRevision],
+    )
+  ).rows[0];
+  if (
+    !row ||
+    row.material_id !== pin.material_id ||
+    row.material_version !== pin.material_version ||
+    row.material_sha256.trim() !== pin.material_sha256 ||
+    row.parse_snapshot_id !== pin.parse_snapshot_id ||
+    row.parse_response_sha256?.trim() !== pin.parse_response_sha256 ||
+    row.status !== pin.status ||
+    row.authorization_status !== pin.authorization_status ||
+    row.readability_status !== pin.readability_status ||
+    row.applicability_status !== pin.applicability_status ||
+    row.target_market !== pin.target_market ||
+    row.target_offering !== pin.target_offering ||
+    row.target_product !== pin.target_product ||
+    row.target_document_stage !== pin.target_document_stage ||
+    row.target_context_id !== pin.target_context_id ||
+    row.target_context_hash !== pin.target_context_hash ||
+    row.fact_isolation_check_version !== pin.fact_isolation_check_version ||
+    row.review_id !== pin.review_id ||
+    row.reviewer_user_id !== pin.reviewer_user_id ||
+    row.reviewer_grant_id !== pin.reviewer_grant_id ||
+    row.role !== 'reference' ||
+    row.deleted_at ||
+    row.current_sha256.trim() !== pin.material_sha256 ||
+    row.snapshot_sha256.trim() !== pin.material_sha256 ||
+    row.response_status === 'failed' ||
+    row.snapshot_response_sha256.trim() !== pin.parse_response_sha256 ||
+    row.response_schema_version !== 'document-parse-response-v1' ||
+    row.record_count < 1
+  )
     return { status: 'needs_review', reason: 'pin_stale' };
   const materials = Array.isArray(input.manifest.materials) ? input.manifest.materials : [];
-  if (!materials.some((item: Record<string, unknown>) => item.material_id === pin.material_id &&
-      item.material_version === pin.material_version && item.role === 'reference' && item.sha256 === pin.material_sha256))
+  if (
+    !materials.some(
+      (item: Record<string, unknown>) =>
+        item.material_id === pin.material_id &&
+        item.material_version === pin.material_version &&
+        item.role === 'reference' &&
+        item.sha256 === pin.material_sha256,
+    )
+  )
     return { status: 'needs_review', reason: 'material_not_locked' };
   if (pin.status !== 'accepted') return { status: 'needs_review', reason: `pin_${pin.status}` };
-  if (!pin.target_context_id || !pin.target_context_hash || !pin.target_product || !pin.target_document_stage ||
-      row.context_status !== 'accepted' || row.context_grant_revoked_at || !row.context_reviewer_user_id ||
-      !row.context_reviewer_grant_id || row.context_hash?.trim() !== pin.target_context_hash ||
-      inputManifestHash({ market:row.context_market,offering:row.context_offering,
-        product:row.context_product,document_stage:row.context_stage }) !== pin.target_context_hash ||
-      row.context_market !== pin.target_market || row.context_offering !== pin.target_offering ||
-      row.context_product !== pin.target_product || row.context_stage !== pin.target_document_stage ||
-      input.manifest.market !== pin.target_market || input.manifest.offering !== pin.target_offering)
+  if (
+    !pin.target_context_id ||
+    !pin.target_context_hash ||
+    !pin.target_product ||
+    !pin.target_document_stage ||
+    row.context_status !== 'accepted' ||
+    row.context_grant_revoked_at ||
+    !row.context_reviewer_user_id ||
+    !row.context_reviewer_grant_id ||
+    row.context_hash?.trim() !== pin.target_context_hash ||
+    inputManifestHash({
+      market: row.context_market,
+      offering: row.context_offering,
+      product: row.context_product,
+      document_stage: row.context_stage,
+    }) !== pin.target_context_hash ||
+    row.context_market !== pin.target_market ||
+    row.context_offering !== pin.target_offering ||
+    row.context_product !== pin.target_product ||
+    row.context_stage !== pin.target_document_stage ||
+    input.manifest.market !== pin.target_market ||
+    input.manifest.offering !== pin.target_offering
+  )
     return { status: 'needs_review', reason: 'target_context_stale' };
-  if (!row.review_id || row.review_status !== 'accepted' || row.grant_revoked_at || !row.reviewer_grant_id ||
-      row.review_authorization_status !== 'accepted' || row.review_readability_status !== 'accepted' ||
-      row.review_applicability_status !== 'accepted' || row.review_sha256.trim() !== pin.material_sha256 ||
-      row.review_snapshot_id !== pin.parse_snapshot_id || row.review_market !== pin.target_market ||
-      row.review_offering !== pin.target_offering || row.review_product !== pin.target_product ||
-      row.review_stage !== pin.target_document_stage || row.review_isolation_version !== pin.fact_isolation_check_version ||
-      row.review_reviewer_user_id !== pin.reviewer_user_id || row.review_reviewer_grant_id !== pin.reviewer_grant_id ||
-      !validUserReferenceOutline(row.outline) || JSON.stringify(row.outline) !== JSON.stringify(row.review_outline) ||
-      row.review_outline_sha256?.trim() !== inputManifestHash(row.review_outline) ||
-      row.review_parse_response_sha256?.trim() !== pin.parse_response_sha256 ||
-      !userReferenceParseReviewAccepted(row,row.review_warning_codes))
+  if (
+    !row.review_id ||
+    row.review_status !== 'accepted' ||
+    row.grant_revoked_at ||
+    !row.reviewer_grant_id ||
+    row.review_authorization_status !== 'accepted' ||
+    row.review_readability_status !== 'accepted' ||
+    row.review_applicability_status !== 'accepted' ||
+    row.review_sha256.trim() !== pin.material_sha256 ||
+    row.review_snapshot_id !== pin.parse_snapshot_id ||
+    row.review_market !== pin.target_market ||
+    row.review_offering !== pin.target_offering ||
+    row.review_product !== pin.target_product ||
+    row.review_stage !== pin.target_document_stage ||
+    row.review_isolation_version !== pin.fact_isolation_check_version ||
+    row.review_reviewer_user_id !== pin.reviewer_user_id ||
+    row.review_reviewer_grant_id !== pin.reviewer_grant_id ||
+    !validUserReferenceOutline(row.outline) ||
+    JSON.stringify(row.outline) !== JSON.stringify(row.review_outline) ||
+    row.review_outline_sha256?.trim() !== inputManifestHash(row.review_outline) ||
+    row.review_parse_response_sha256?.trim() !== pin.parse_response_sha256 ||
+    !userReferenceParseReviewAccepted(row, row.review_warning_codes)
+  )
     return { status: 'needs_review', reason: 'review_stale' };
-  return { status: 'accepted', outline: {
-    schema_version: 'user-reference-outline-v1',owner_user_id:scope.ownerUserId,project_id:scope.projectId,
-    run_id:scope.runId,input_revision:scope.inputRevision,input_hash:scope.inputHash,
-    material_id:pin.material_id,material_version:pin.material_version,material_sha256:pin.material_sha256,
-    parse_snapshot_id:pin.parse_snapshot_id,review_id:pin.review_id!,fact_isolation_check_version:pin.fact_isolation_check_version!,
-    chapters:row.outline,
-  } };
+  return {
+    status: 'accepted',
+    outline: {
+      schema_version: 'user-reference-outline-v1',
+      owner_user_id: scope.ownerUserId,
+      project_id: scope.projectId,
+      run_id: scope.runId,
+      input_revision: scope.inputRevision,
+      input_hash: scope.inputHash,
+      material_id: pin.material_id,
+      material_version: pin.material_version,
+      material_sha256: pin.material_sha256,
+      parse_snapshot_id: pin.parse_snapshot_id,
+      review_id: pin.review_id!,
+      fact_isolation_check_version: pin.fact_isolation_check_version!,
+      chapters: row.outline,
+    },
+  };
 }

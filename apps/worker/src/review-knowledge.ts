@@ -13,7 +13,9 @@ export const REVIEW_AUDIT_KNOWLEDGE_PIN = Object.freeze({
 
 const relativePath = 'knowledge/audit-reconciliation/METHODS.md';
 /** Same depth for apps/worker/src, apps/worker/dist, and the Docker /app layout. */
-export const REVIEW_AUDIT_KNOWLEDGE_PATH = fileURLToPath(new URL(`../../../${relativePath}`, import.meta.url));
+export const REVIEW_AUDIT_KNOWLEDGE_PATH = fileURLToPath(
+  new URL(`../../../${relativePath}`, import.meta.url),
+);
 
 export interface ReviewKnowledgeDocument {
   readonly id: string;
@@ -24,20 +26,30 @@ export interface ReviewKnowledgeDocument {
 }
 
 /** Deployments/tests may select an absolute repository root; the file and hash stay fixed. */
-export async function loadReviewAuditKnowledge(options: { repositoryRoot?: string } = {}): Promise<ReviewKnowledgeDocument> {
+export async function loadReviewAuditKnowledge(
+  options: { repositoryRoot?: string } = {},
+): Promise<ReviewKnowledgeDocument> {
   if (options.repositoryRoot !== undefined && !isAbsolute(options.repositoryRoot)) {
     throw new Error('REVIEW_AUDIT_KNOWLEDGE_ROOT_MUST_BE_ABSOLUTE');
   }
-  const path = options.repositoryRoot === undefined
-    ? REVIEW_AUDIT_KNOWLEDGE_PATH
-    : join(options.repositoryRoot, relativePath);
+  const path =
+    options.repositoryRoot === undefined
+      ? REVIEW_AUDIT_KNOWLEDGE_PATH
+      : join(options.repositoryRoot, relativePath);
   let bytes: Buffer;
-  try { bytes = await readFile(path); }
-  catch (cause) { throw new Error(`REVIEW_AUDIT_KNOWLEDGE_UNAVAILABLE: ${relativePath}`, { cause }); }
+  try {
+    bytes = await readFile(path);
+  } catch (cause) {
+    throw new Error(`REVIEW_AUDIT_KNOWLEDGE_UNAVAILABLE: ${relativePath}`, { cause });
+  }
   const contentSHA = createHash('sha256').update(bytes).digest('hex');
   if (contentSHA !== REVIEW_AUDIT_KNOWLEDGE_PIN.contentSHA) {
     throw new Error('REVIEW_AUDIT_KNOWLEDGE_CONTENT_SHA_MISMATCH');
   }
   // Hash the real bytes before decoding; do not normalize line endings or accept a caller-supplied pin.
-  return Object.freeze({ ...REVIEW_AUDIT_KNOWLEDGE_PIN, contentSHA, markdown: bytes.toString('utf8') });
+  return Object.freeze({
+    ...REVIEW_AUDIT_KNOWLEDGE_PIN,
+    contentSHA,
+    markdown: bytes.toString('utf8'),
+  });
 }

@@ -1,29 +1,63 @@
 import { Pool } from 'pg';
-import { listOperatorReconciliations, resolveOperatorReconciliation, repairUnifiedTimeoutRetry, requeueGeneratedWordDelivery, requeueFailedReviewAssembly, type OperatorReconcileDecision } from '@bondbuddy/api/queue';
+import {
+  listOperatorReconciliations,
+  resolveOperatorReconciliation,
+  repairUnifiedTimeoutRetry,
+  requeueGeneratedWordDelivery,
+  requeueFailedReviewAssembly,
+  type OperatorReconcileDecision,
+} from '@bondbuddy/api/queue';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 
-const usage = 'usage: reconcile-run list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id> | deliver-generated-pair <run_id> | reassemble-review <run_id> <attempt_id> <result_sha256>';
+const usage =
+  'usage: reconcile-run list | resolve <run_id> <attempt_id> <retry_unknown_usage|fail_run> <reason_code> | repair-timeout-retry <run_id> <attempt_id> | deliver-generated-pair <run_id> | reassemble-review <run_id> <attempt_id> <result_sha256>';
 
-export async function runReconcileCommand(pool:Pool,args:string[],actor:string,blobs?:PrivateBlobs) {
-  if(args.length===1 && args[0]==='list')return listOperatorReconciliations(pool);
-  if(args.length===2 && args[0]==='deliver-generated-pair')return requeueGeneratedWordDelivery(pool,{runId:args[1]!,actor});
-  if(args.length===3 && args[0]==='repair-timeout-retry')return repairUnifiedTimeoutRetry(pool,{runId:args[1]!,attemptId:args[2]!,actor});
-  if(args.length===4 && args[0]==='reassemble-review'){
-    if(!blobs)throw new Error('Review reassembly requires private Blob evidence');
-    return requeueFailedReviewAssembly(pool,blobs,{runId:args[1]!,attemptId:args[2]!,resultSha256:args[3]!,actor});
+export async function runReconcileCommand(
+  pool: Pool,
+  args: string[],
+  actor: string,
+  blobs?: PrivateBlobs,
+) {
+  if (args.length === 1 && args[0] === 'list') return listOperatorReconciliations(pool);
+  if (args.length === 2 && args[0] === 'deliver-generated-pair')
+    return requeueGeneratedWordDelivery(pool, { runId: args[1]!, actor });
+  if (args.length === 3 && args[0] === 'repair-timeout-retry')
+    return repairUnifiedTimeoutRetry(pool, { runId: args[1]!, attemptId: args[2]!, actor });
+  if (args.length === 4 && args[0] === 'reassemble-review') {
+    if (!blobs) throw new Error('Review reassembly requires private Blob evidence');
+    return requeueFailedReviewAssembly(pool, blobs, {
+      runId: args[1]!,
+      attemptId: args[2]!,
+      resultSha256: args[3]!,
+      actor,
+    });
   }
-  if(args.length===5 && args[0]==='resolve') {
-    const [,runId,attemptId,decision,reasonCode]=args;
-    return resolveOperatorReconciliation(pool,{runId:runId!,attemptId:attemptId!,decision:decision as OperatorReconcileDecision,reasonCode:reasonCode!,actor});
+  if (args.length === 5 && args[0] === 'resolve') {
+    const [, runId, attemptId, decision, reasonCode] = args;
+    return resolveOperatorReconciliation(pool, {
+      runId: runId!,
+      attemptId: attemptId!,
+      decision: decision as OperatorReconcileDecision,
+      reasonCode: reasonCode!,
+      actor,
+    });
   }
   throw new Error(usage);
 }
 
-if(process.argv[1]?.endsWith('/reconcile-run.js')){
-  const pool=new Pool({connectionString:process.env.DATABASE_URL});
-  const blobs=process.argv[2]==='reassemble-review'&&process.env.AZURE_STORAGE_CONNECTION_STRING?azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING):undefined;
-  runReconcileCommand(pool,process.argv.slice(2),process.env.BB_RECONCILE_ACTOR??'',blobs).then(result=>{
-    process.stdout.write(JSON.stringify(result)+'\n');
-  }).catch(error=>{process.stderr.write(`${error instanceof Error?error.message:'reconciliation failed'}\n`);process.exitCode=1;})
-    .finally(()=>pool.end());
+if (process.argv[1]?.endsWith('/reconcile-run.js')) {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const blobs =
+    process.argv[2] === 'reassemble-review' && process.env.AZURE_STORAGE_CONNECTION_STRING
+      ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING)
+      : undefined;
+  runReconcileCommand(pool, process.argv.slice(2), process.env.BB_RECONCILE_ACTOR ?? '', blobs)
+    .then((result) => {
+      process.stdout.write(JSON.stringify(result) + '\n');
+    })
+    .catch((error) => {
+      process.stderr.write(`${error instanceof Error ? error.message : 'reconciliation failed'}\n`);
+      process.exitCode = 1;
+    })
+    .finally(() => pool.end());
 }

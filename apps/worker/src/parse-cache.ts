@@ -61,7 +61,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function assertCacheableContext(context: ParseCacheContext): void {
   if (!context.ownerUserId.trim()) throw cacheError('INVALID_CACHE_IDENTITY');
-  if (context.request.options.max_pages !== undefined) throw cacheError('PARSE_CACHE_MAX_PAGES_UNSUPPORTED');
+  if (context.request.options.max_pages !== undefined)
+    throw cacheError('PARSE_CACHE_MAX_PAGES_UNSUPPORTED');
   // Reuse the domain's canonical identity validation and account-scoped key semantics.
   parseCacheKey({
     accountId: context.ownerUserId,
@@ -78,42 +79,84 @@ function assertCacheableContext(context: ParseCacheContext): void {
 function hasAuthorizedLocalPath(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasAuthorizedLocalPath);
   if (!isObject(value)) return false;
-  return Object.entries(value).some(([key, child]) => key === 'authorized_local_path' || hasAuthorizedLocalPath(child));
+  return Object.entries(value).some(
+    ([key, child]) => key === 'authorized_local_path' || hasAuthorizedLocalPath(child),
+  );
 }
 
 function assertStrictCachedResponse(value: unknown): asserts value is DocumentParseResponse {
-  if (!isObject(value) || Object.keys(value).sort().join(',') !== 'document,error,material,parser_version,records,request_id,schema_version,status,warnings' ||
-    value.schema_version !== DOCUMENT_PARSE_RESPONSE_VERSION || typeof value.request_id !== 'string' ||
-    typeof value.parser_version !== 'string' || !['parsed', 'needs_confirmation'].includes(String(value.status)) ||
-    !isObject(value.material) || !Array.isArray(value.records) || !Array.isArray(value.warnings) || !isObject(value.document) ||
-    value.error !== null || hasAuthorizedLocalPath(value)) {
+  if (
+    !isObject(value) ||
+    Object.keys(value).sort().join(',') !==
+      'document,error,material,parser_version,records,request_id,schema_version,status,warnings' ||
+    value.schema_version !== DOCUMENT_PARSE_RESPONSE_VERSION ||
+    typeof value.request_id !== 'string' ||
+    typeof value.parser_version !== 'string' ||
+    !['parsed', 'needs_confirmation'].includes(String(value.status)) ||
+    !isObject(value.material) ||
+    !Array.isArray(value.records) ||
+    !Array.isArray(value.warnings) ||
+    !isObject(value.document) ||
+    value.error !== null ||
+    hasAuthorizedLocalPath(value)
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_OBJECT');
   }
   const material = value.material;
-  if (Object.keys(material).sort().join(',') !== 'material_id,material_version,media_type,sha256' ||
-    typeof material.material_id !== 'string' || !Number.isSafeInteger(material.material_version) ||
-    typeof material.media_type !== 'string' || typeof material.sha256 !== 'string') {
+  if (
+    Object.keys(material).sort().join(',') !== 'material_id,material_version,media_type,sha256' ||
+    typeof material.material_id !== 'string' ||
+    !Number.isSafeInteger(material.material_version) ||
+    typeof material.media_type !== 'string' ||
+    typeof material.sha256 !== 'string'
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_OBJECT');
   }
   for (const record of value.records) {
-    if (!isObject(record) || Object.keys(record).sort().join(',') !==
-      'confidence,content_hash,context,extraction_method,extractor_version,formatting,literal_quote,locator,locator_type,material_id,material_version,record_id,uncertainty' ||
-      typeof record.record_id !== 'string' || typeof record.material_id !== 'string' ||
-      !Number.isSafeInteger(record.material_version) || typeof record.content_hash !== 'string' ||
-      typeof record.locator_type !== 'string' || !isObject(record.locator) || typeof record.literal_quote !== 'string' ||
-      typeof record.context !== 'string' || record.extraction_method !== 'native_text' ||
+    if (
+      !isObject(record) ||
+      Object.keys(record).sort().join(',') !==
+        'confidence,content_hash,context,extraction_method,extractor_version,formatting,literal_quote,locator,locator_type,material_id,material_version,record_id,uncertainty' ||
+      typeof record.record_id !== 'string' ||
+      typeof record.material_id !== 'string' ||
+      !Number.isSafeInteger(record.material_version) ||
+      typeof record.content_hash !== 'string' ||
+      typeof record.locator_type !== 'string' ||
+      !isObject(record.locator) ||
+      typeof record.literal_quote !== 'string' ||
+      typeof record.context !== 'string' ||
+      record.extraction_method !== 'native_text' ||
       typeof record.extractor_version !== 'string' ||
-      !(record.confidence === null || (typeof record.confidence === 'number' && Number.isFinite(record.confidence) && record.confidence >= 0 && record.confidence <= 1)) ||
-      !Array.isArray(record.uncertainty) || !record.uncertainty.every((item) => typeof item === 'string') || !isObject(record.formatting)) {
+      !(
+        record.confidence === null ||
+        (typeof record.confidence === 'number' &&
+          Number.isFinite(record.confidence) &&
+          record.confidence >= 0 &&
+          record.confidence <= 1)
+      ) ||
+      !Array.isArray(record.uncertainty) ||
+      !record.uncertainty.every((item) => typeof item === 'string') ||
+      !isObject(record.formatting)
+    ) {
       throw cacheError('INVALID_PARSE_CACHE_OBJECT');
     }
   }
   for (const warning of value.warnings) {
-    if (!isObject(warning) || Object.keys(warning).sort().join(',') !== 'code,message' ||
-      typeof warning.code !== 'string' || typeof warning.message !== 'string') throw cacheError('INVALID_PARSE_CACHE_OBJECT');
+    if (
+      !isObject(warning) ||
+      Object.keys(warning).sort().join(',') !== 'code,message' ||
+      typeof warning.code !== 'string' ||
+      typeof warning.message !== 'string'
+    )
+      throw cacheError('INVALID_PARSE_CACHE_OBJECT');
   }
-  if (!Object.hasOwn(value.document, 'page_count') ||
-    !(value.document.page_count === null || (Number.isSafeInteger(value.document.page_count) && Number(value.document.page_count) >= 0))) {
+  if (
+    !Object.hasOwn(value.document, 'page_count') ||
+    !(
+      value.document.page_count === null ||
+      (Number.isSafeInteger(value.document.page_count) && Number(value.document.page_count) >= 0)
+    )
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_OBJECT');
   }
 }
@@ -123,24 +166,41 @@ function rowFrom(value: Record<string, unknown>): CacheRow {
 }
 
 function assertRowMatches(row: CacheRow, context: ParseCacheContext): void {
-  if (row.owner_user_id !== context.ownerUserId || row.content_sha256 !== context.request.material.sha256 ||
-    row.parser_version !== context.versions.parserVersion || row.ocr_version !== context.versions.ocrVersion ||
-    row.basis_version !== context.versions.basisVersion || !['parsed', 'needs_confirmation'].includes(row.result_state) ||
-    typeof row.object_key !== 'string' || row.object_key.length === 0 ||
-    typeof row.object_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(row.object_sha256)) {
+  if (
+    row.owner_user_id !== context.ownerUserId ||
+    row.content_sha256 !== context.request.material.sha256 ||
+    row.parser_version !== context.versions.parserVersion ||
+    row.ocr_version !== context.versions.ocrVersion ||
+    row.basis_version !== context.versions.basisVersion ||
+    !['parsed', 'needs_confirmation'].includes(row.result_state) ||
+    typeof row.object_key !== 'string' ||
+    row.object_key.length === 0 ||
+    typeof row.object_sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(row.object_sha256)
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_METADATA');
   }
   const bytes = Number(row.object_bytes);
   if (!Number.isSafeInteger(bytes) || bytes < 1) throw cacheError('INVALID_PARSE_CACHE_METADATA');
 }
 
-function responseForCurrentMaterial(value: unknown, context: ParseCacheContext): DocumentParseResponse {
+function responseForCurrentMaterial(
+  value: unknown,
+  context: ParseCacheContext,
+): DocumentParseResponse {
   assertStrictCachedResponse(value);
   const originMaterial = value.material!;
-  if (value.parser_version !== context.versions.parserVersion || originMaterial.sha256 !== context.request.material.sha256 ||
+  if (
+    value.parser_version !== context.versions.parserVersion ||
+    originMaterial.sha256 !== context.request.material.sha256 ||
     originMaterial.media_type !== context.request.material.media_type ||
-    value.records.some((record) => record.material_id !== originMaterial.material_id || record.material_version !== originMaterial.material_version ||
-      record.content_hash !== context.request.material.sha256)) {
+    value.records.some(
+      (record) =>
+        record.material_id !== originMaterial.material_id ||
+        record.material_version !== originMaterial.material_version ||
+        record.content_hash !== context.request.material.sha256,
+    )
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_OBJECT');
   }
   const rebound: DocumentParseResponse = {
@@ -161,7 +221,11 @@ function responseForCurrentMaterial(value: unknown, context: ParseCacheContext):
   return validateDocumentParseResponse(rebound, context.request);
 }
 
-async function deleteAttemptObject(dependencies: ParseCacheDependencies, objectKey: string, checkReference: boolean): Promise<void> {
+async function deleteAttemptObject(
+  dependencies: ParseCacheDependencies,
+  objectKey: string,
+  checkReference: boolean,
+): Promise<void> {
   if (!dependencies.blobs.deletePrivate) return;
   try {
     if (checkReference) {
@@ -169,7 +233,8 @@ async function deleteAttemptObject(dependencies: ParseCacheDependencies, objectK
       // the object if metadata now points to it; if this check is unavailable,
       // leave a harmless orphan rather than risk deleting a referenced cache.
       const reference = await dependencies.pool.query(
-        'SELECT 1 FROM bb_parse_cache WHERE object_key = $1 LIMIT 1', [objectKey],
+        'SELECT 1 FROM bb_parse_cache WHERE object_key = $1 LIMIT 1',
+        [objectKey],
       );
       if (reference.rows.length !== 0) return;
     }
@@ -191,8 +256,13 @@ export async function lookupParseCache(
        FROM bb_parse_cache
       WHERE owner_user_id = $1 AND content_sha256 = $2 AND parser_version = $3
         AND ocr_version = $4 AND basis_version = $5`,
-    [context.ownerUserId, context.request.material.sha256, context.versions.parserVersion,
-      context.versions.ocrVersion, context.versions.basisVersion],
+    [
+      context.ownerUserId,
+      context.request.material.sha256,
+      context.versions.parserVersion,
+      context.versions.ocrVersion,
+      context.versions.basisVersion,
+    ],
   );
   if (result.rows.length === 0) return null;
   if (result.rows.length !== 1) throw cacheError('INVALID_PARSE_CACHE_METADATA');
@@ -201,11 +271,18 @@ export async function lookupParseCache(
   const bytes = await dependencies.blobs.getPrivate(row.object_key);
   if (bytes === null) throw cacheError('PARSE_CACHE_OBJECT_MISSING');
   const actual = Buffer.from(bytes);
-  if (actual.byteLength !== Number(row.object_bytes) || createHash('sha256').update(actual).digest('hex') !== row.object_sha256) {
+  if (
+    actual.byteLength !== Number(row.object_bytes) ||
+    createHash('sha256').update(actual).digest('hex') !== row.object_sha256
+  ) {
     throw cacheError('PARSE_CACHE_OBJECT_CORRUPT');
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(actual.toString('utf8')); } catch { throw cacheError('INVALID_PARSE_CACHE_OBJECT'); }
+  try {
+    parsed = JSON.parse(actual.toString('utf8'));
+  } catch {
+    throw cacheError('INVALID_PARSE_CACHE_OBJECT');
+  }
   const rebound = responseForCurrentMaterial(parsed, context);
   if (rebound.status !== row.result_state) throw cacheError('INVALID_PARSE_CACHE_METADATA');
   return rebound;
@@ -218,12 +295,17 @@ export async function saveParseCache(
   response: DocumentParseResponse,
   maxObjectBytes = DOCUMENT_PARSER_MAX_OUTPUT_BYTES,
 ): Promise<boolean> {
-  if (!Number.isSafeInteger(maxObjectBytes) || maxObjectBytes < 1 || maxObjectBytes > DOCUMENT_PARSER_MAX_OUTPUT_BYTES) {
+  if (
+    !Number.isSafeInteger(maxObjectBytes) ||
+    maxObjectBytes < 1 ||
+    maxObjectBytes > DOCUMENT_PARSER_MAX_OUTPUT_BYTES
+  ) {
     throw cacheError('INVALID_PARSE_CACHE_LIMIT');
   }
   assertCacheableContext(context);
   const validated = validateDocumentParseResponse(response, context.request);
-  if (validated.parser_version !== context.versions.parserVersion) throw cacheError('PARSE_CACHE_VERSION_MISMATCH');
+  if (validated.parser_version !== context.versions.parserVersion)
+    throw cacheError('PARSE_CACHE_VERSION_MISMATCH');
   if (validated.status === 'failed') return false;
   assertStrictCachedResponse(validated);
   const bytes = Buffer.from(JSON.stringify(validated), 'utf8');
@@ -249,9 +331,17 @@ export async function saveParseCache(
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (owner_user_id, content_sha256, parser_version, ocr_version, basis_version) DO NOTHING
        RETURNING object_key`,
-      [context.ownerUserId, context.request.material.sha256, context.versions.parserVersion,
-        context.versions.ocrVersion, context.versions.basisVersion, validated.status,
-        objectKey, objectSha256, bytes.byteLength],
+      [
+        context.ownerUserId,
+        context.request.material.sha256,
+        context.versions.parserVersion,
+        context.versions.ocrVersion,
+        context.versions.basisVersion,
+        validated.status,
+        objectKey,
+        objectSha256,
+        bytes.byteLength,
+      ],
     );
   } catch (error) {
     await deleteAttemptObject(dependencies, objectKey, true);

@@ -8,12 +8,20 @@ import type { LibrarySourceInput } from '@bondbuddy/api/library';
 export type DiscoveredItem = {
   /** Stable per revision; the sync log key. */
   itemKey: string;
-  externalKey: string; issuerKey: string; issuerName: string; title: string;
-  sourceRevision: string; sourceRevisionRank: number;
-  mediaType: 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  sourceUrl: string | null; disclosedAt: string | null; market: 'sse' | 'szse' | 'nafmii' | null;
+  externalKey: string;
+  issuerKey: string;
+  issuerName: string;
+  title: string;
+  sourceRevision: string;
+  sourceRevisionRank: number;
+  mediaType:
+    'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  sourceUrl: string | null;
+  disclosedAt: string | null;
+  market: 'sse' | 'szse' | 'nafmii' | null;
   /** Adapter-private fetch locator (URL or staged blob key); never user material. */
-  locator: string; expectedSha256?: string;
+  locator: string;
+  expectedSha256?: string;
 };
 export type Discovery = { items: DiscoveredItem[]; cursorAfter: Record<string, unknown> };
 export interface LibrarySourceAdapter {
@@ -23,25 +31,45 @@ export interface LibrarySourceAdapter {
   fetch(item: DiscoveredItem): Promise<Buffer>;
 }
 export class SourceError extends Error {
-  constructor(public code: 'LIBRARY_SOURCE_UNREACHABLE' | 'LIBRARY_FETCH_FAILED' | 'LIBRARY_BYTES_INVALID', public retryable: boolean, public detail: string | null = null) { super(code); }
+  constructor(
+    public code: 'LIBRARY_SOURCE_UNREACHABLE' | 'LIBRARY_FETCH_FAILED' | 'LIBRARY_BYTES_INVALID',
+    public retryable: boolean,
+    public detail: string | null = null,
+  ) {
+    super(code);
+  }
 }
 
 // ---------------------------------------------------------------- SSE bond project platform
 export const SSE_BOND_SOURCE: LibrarySourceInput = {
-  id: 'sse_bond_project_platform', kind: 'public_disclosure', market: 'sse',
+  id: 'sse_bond_project_platform',
+  kind: 'public_disclosure',
+  market: 'sse',
   displayName: '上海证券交易所 公司债券项目信息平台（募集说明书）',
   // Recorded verbatim from the site legal notice checked 2026-09-25: non-commercial browsing/downloading is
   // permitted; use for profit needs written permission from 上证所信息网络有限公司. Hence evaluation_only.
-  authorizationBasis: 'sse.com.cn legal notice: non-commercial browse/download permitted; commercial use requires written permission from SSE Infonet. Registered evaluation_only until a licence is recorded.',
-  termsUrl: 'https://www.sse.com.cn/home/legal/', usageRights: 'evaluation_only', staleAfterSeconds: 2 * 86400, syncIntervalSeconds: 86400,
+  authorizationBasis:
+    'sse.com.cn legal notice: non-commercial browse/download permitted; commercial use requires written permission from SSE Infonet. Registered evaluation_only until a licence is recorded.',
+  termsUrl: 'https://www.sse.com.cn/home/legal/',
+  usageRights: 'evaluation_only',
+  staleAfterSeconds: 2 * 86400,
+  syncIntervalSeconds: 86400,
 };
 const SSE_QUERY = 'https://query.sse.com.cn/commonSoaQuery.do';
 const SSE_FILES = 'https://static.sse.com.cn/bond';
 const PROSPECTUS_FILE_TYPE = 11; // "1-1 …募集说明书"
-export type FetchLike = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal }) => Promise<Pick<Response, 'ok' | 'status' | 'json' | 'body'>>;
+export type FetchLike = (
+  url: string,
+  init?: { headers?: Record<string, string>; signal?: AbortSignal },
+) => Promise<Pick<Response, 'ok' | 'status' | 'json' | 'body'>>;
 
 export type SseOptions = {
-  fetch?: FetchLike; maxProjects?: number; maxPages?: number; pageSize?: number; delayMs?: number; timeoutMs?: number;
+  fetch?: FetchLike;
+  maxProjects?: number;
+  maxPages?: number;
+  pageSize?: number;
+  delayMs?: number;
+  timeoutMs?: number;
   /** Deterministic clock for request-spacing tests; production uses a monotonic clock and timer. */
   clock?: { now(): number; sleep(ms: number): Promise<void> };
   /** bond_type filter. ABS (2) is not a prospectus target; non-public projects (1,6) expose no files on the platform (observed 2026-09-25). */
@@ -54,18 +82,29 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
   private readonly http: FetchLike;
   private requestTail: Promise<void> = Promise.resolve();
   private lastRequestStart: number | undefined;
-  constructor(private readonly options: SseOptions = {}) { this.http = options.fetch ?? (globalThis.fetch as unknown as FetchLike); }
-  private async get<T>(url: string, consume: (response: Awaited<ReturnType<FetchLike>>) => Promise<T>): Promise<T> {
+  constructor(private readonly options: SseOptions = {}) {
+    this.http = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
+  }
+  private async get<T>(
+    url: string,
+    consume: (response: Awaited<ReturnType<FetchLike>>) => Promise<T>,
+  ): Promise<T> {
     // Hold the slot through body consumption, so concurrent discover/fetch calls and retries cannot
     // race the spacing clock. A failed request still advances it; waiting does not consume body time.
     const prior = this.requestTail;
     let release!: () => void;
-    this.requestTail = new Promise<void>(resolve => { release = resolve; });
+    this.requestTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await prior;
     try {
-      const clock = this.options.clock ?? { now: () => performance.now(), sleep: (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)) };
+      const clock = this.options.clock ?? {
+        now: () => performance.now(),
+        sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      };
       const requested = this.options.delayMs;
-      const spacing = requested !== undefined && Number.isFinite(requested) ? Math.max(700, requested) : 700;
+      const spacing =
+        requested !== undefined && Number.isFinite(requested) ? Math.max(700, requested) : 700;
       if (this.lastRequestStart !== undefined) {
         const remaining = spacing - (clock.now() - this.lastRequestStart);
         if (remaining > 0) await clock.sleep(remaining);
@@ -74,19 +113,34 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 180_000);
       try {
-        const response = await this.http(url, { headers: { 'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)', Referer: 'https://bond.sse.com.cn/' }, signal: controller.signal });
+        const response = await this.http(url, {
+          headers: {
+            'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)',
+            Referer: 'https://bond.sse.com.cn/',
+          },
+          signal: controller.signal,
+        });
         return await consume(response);
       } catch (error) {
-        if (controller.signal.aborted) throw Object.assign(new Error('SSE request timed out'), { name: 'TimeoutError' });
+        if (controller.signal.aborted)
+          throw Object.assign(new Error('SSE request timed out'), { name: 'TimeoutError' });
         throw error;
-      } finally { clearTimeout(timer); }
-    } finally { release(); }
+      } finally {
+        clearTimeout(timer);
+      }
+    } finally {
+      release();
+    }
   }
   private async query(params: Record<string, string>) {
     const url = `${SSE_QUERY}?${new URLSearchParams(params)}`;
     try {
-      return await this.get(url, async response => {
-        if (!response.ok) throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', response.status >= 500 || response.status === 429);
+      return await this.get(url, async (response) => {
+        if (!response.ok)
+          throw new SourceError(
+            'LIBRARY_SOURCE_UNREACHABLE',
+            response.status >= 500 || response.status === 429,
+          );
         return response.json();
       });
     } catch (error) {
@@ -99,19 +153,34 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
    * Projects are listed newest PUBLISH_DATE first. The cursor is the highest PUBLISH_DATE fully seen; the
    * next run rescans that date again (overlap), so late same-day files are caught and repeats dedupe to unchanged.
    */
-  async discover(cursor: Record<string, unknown>, _checkpoint: Record<string, any> = {}): Promise<Discovery> {
+  async discover(
+    cursor: Record<string, unknown>,
+    _checkpoint: Record<string, any> = {},
+  ): Promise<Discovery> {
     const since = typeof cursor.publish_date === 'string' ? cursor.publish_date : null;
-    const maxProjects = this.options.maxProjects ?? 5, pageSize = this.options.pageSize ?? 20, maxPages = this.options.maxPages ?? 5;
+    const maxProjects = this.options.maxProjects ?? 5,
+      pageSize = this.options.pageSize ?? 20,
+      maxPages = this.options.maxPages ?? 5;
     const projects: any[] = [];
     let highWater = since;
     for (let page = 1; page <= maxPages && projects.length < maxProjects; page++) {
-      const body = await this.query({ isPagination: 'true', sqlId: 'ZQ_XMLB', bond_type: this.options.bondTypes ?? '0,3,5,7', 'pageHelp.pageSize': String(pageSize), 'pageHelp.pageNo': String(page) });
+      const body = await this.query({
+        isPagination: 'true',
+        sqlId: 'ZQ_XMLB',
+        bond_type: this.options.bondTypes ?? '0,3,5,7',
+        'pageHelp.pageSize': String(pageSize),
+        'pageHelp.pageNo': String(page),
+      });
       const rows: any[] = body?.pageHelp?.data ?? [];
       if (!rows.length) break;
       let reachedCursor = false;
       for (const row of rows) {
-        if (since && String(row.PUBLISH_DATE) < since) { reachedCursor = true; break; }
-        if (!highWater || String(row.PUBLISH_DATE) > highWater) highWater = String(row.PUBLISH_DATE);
+        if (since && String(row.PUBLISH_DATE) < since) {
+          reachedCursor = true;
+          break;
+        }
+        if (!highWater || String(row.PUBLISH_DATE) > highWater)
+          highWater = String(row.PUBLISH_DATE);
         projects.push(row);
         if (projects.length >= maxProjects) break;
       }
@@ -119,19 +188,42 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
     }
     const items: DiscoveredItem[] = [];
     for (const project of projects) {
-      const body = await this.query({ isPagination: 'false', sqlId: 'ZQ_GGJG', bond_type: '0,1,2,3,5,6,7', audit_id: String(project.BOND_NUM) });
-      const files: any[] = (body?.result ?? []).filter((f: any) => Number(f.FILE_TYPE) === PROSPECTUS_FILE_TYPE && /募集说明书/.test(String(f.FILE_TITLE)) && /\.pdf$/i.test(String(f.FILE_PATH)));
+      const body = await this.query({
+        isPagination: 'false',
+        sqlId: 'ZQ_GGJG',
+        bond_type: '0,1,2,3,5,6,7',
+        audit_id: String(project.BOND_NUM),
+      });
+      const files: any[] = (body?.result ?? []).filter(
+        (f: any) =>
+          Number(f.FILE_TYPE) === PROSPECTUS_FILE_TYPE &&
+          /募集说明书/.test(String(f.FILE_TITLE)) &&
+          /\.pdf$/i.test(String(f.FILE_PATH)),
+      );
       // FILE_VERSION restarts per upload batch (seen live: two different "v1" files), so the revision
       // order is (FILE_TIME, FILE_VERSION) and the item identity is the immutable file path.
-      const rank = (f: any) => Number(String(f.FILE_TIME).replaceAll('-', '')) * 100 + Number(f.FILE_VERSION);
-      for (const file of files.filter((f: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(f.FILE_TIME))).sort((a, b) => rank(a) - rank(b))) {
-        const fileId = String(file.FILE_PATH).split('/').pop()!.replace(/\.pdf$/i, '');
+      const rank = (f: any) =>
+        Number(String(f.FILE_TIME).replaceAll('-', '')) * 100 + Number(f.FILE_VERSION);
+      for (const file of files
+        .filter((f: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(f.FILE_TIME)))
+        .sort((a, b) => rank(a) - rank(b))) {
+        const fileId = String(file.FILE_PATH)
+          .split('/')
+          .pop()!
+          .replace(/\.pdf$/i, '');
         items.push({
-          itemKey: `${project.BOND_NUM}:${fileId}`, externalKey: String(project.BOND_NUM),
-          issuerKey: String(project.ISSUER_ID || project.FULL_NAME), issuerName: String(project.FULL_NAME), title: String(project.AUDIT_NAME),
-          sourceRevision: `${file.FILE_TIME}#v${file.FILE_VERSION}#${fileId}`, sourceRevisionRank: rank(file),
-          mediaType: 'application/pdf', sourceUrl: `${SSE_FILES}${file.FILE_PATH}`, disclosedAt: String(file.FILE_TIME),
-          market: 'sse', locator: `${SSE_FILES}${file.FILE_PATH}`,
+          itemKey: `${project.BOND_NUM}:${fileId}`,
+          externalKey: String(project.BOND_NUM),
+          issuerKey: String(project.ISSUER_ID || project.FULL_NAME),
+          issuerName: String(project.FULL_NAME),
+          title: String(project.AUDIT_NAME),
+          sourceRevision: `${file.FILE_TIME}#v${file.FILE_VERSION}#${fileId}`,
+          sourceRevisionRank: rank(file),
+          mediaType: 'application/pdf',
+          sourceUrl: `${SSE_FILES}${file.FILE_PATH}`,
+          disclosedAt: String(file.FILE_TIME),
+          market: 'sse',
+          locator: `${SSE_FILES}${file.FILE_PATH}`,
         });
       }
     }
@@ -139,12 +231,18 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
   }
 
   async fetch(item: DiscoveredItem): Promise<Buffer> {
-    if (!item.locator.startsWith(`${SSE_FILES}/`)) throw new SourceError('LIBRARY_FETCH_FAILED', false);
+    if (!item.locator.startsWith(`${SSE_FILES}/`))
+      throw new SourceError('LIBRARY_FETCH_FAILED', false);
     let responseStarted = false;
     try {
-      return await this.get(item.locator, async response => {
+      return await this.get(item.locator, async (response) => {
         responseStarted = true;
-        if (!response.ok) throw new SourceError('LIBRARY_FETCH_FAILED', response.status >= 500 || response.status === 429 || response.status === 404, `http_${response.status}`);
+        if (!response.ok)
+          throw new SourceError(
+            'LIBRARY_FETCH_FAILED',
+            response.status >= 500 || response.status === 429 || response.status === 404,
+            `http_${response.status}`,
+          );
         if (!response.body) throw new SourceError('LIBRARY_FETCH_FAILED', true, 'body_interrupted');
         const reader = response.body.getReader();
         const chunks: Buffer[] = [];
@@ -160,14 +258,25 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
             }
             chunks.push(Buffer.from(value));
           }
-        } finally { reader.releaseLock(); }
+        } finally {
+          reader.releaseLock();
+        }
         const bytes = Buffer.concat(chunks, size);
-        if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') throw new SourceError('LIBRARY_BYTES_INVALID', true, 'not_pdf');
+        if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-')
+          throw new SourceError('LIBRARY_BYTES_INVALID', true, 'not_pdf');
         return bytes;
       });
     } catch (error) {
       if (error instanceof SourceError) throw error;
-      throw new SourceError('LIBRARY_FETCH_FAILED', true, error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : responseStarted ? 'body_interrupted' : 'network');
+      throw new SourceError(
+        'LIBRARY_FETCH_FAILED',
+        true,
+        error instanceof Error && error.name === 'TimeoutError'
+          ? 'timeout'
+          : responseStarted
+            ? 'body_interrupted'
+            : 'network',
+      );
     }
   }
 }
@@ -181,22 +290,40 @@ export class OperatorImportAdapter implements LibrarySourceAdapter {
   readonly sourceId = OPERATOR_IMPORT_SOURCE.id;
   readonly mode = 'import' as const;
   constructor(private readonly blobs: PrivateBlobs) {}
-  async discover(cursor: Record<string, unknown>, checkpoint: Record<string, any>): Promise<Discovery> {
+  async discover(
+    cursor: Record<string, unknown>,
+    checkpoint: Record<string, any>,
+  ): Promise<Discovery> {
     const staged: any[] = Array.isArray(checkpoint.import_items) ? checkpoint.import_items : [];
     return {
       cursorAfter: { ...cursor },
-      items: staged.map(s => ({
-        itemKey: `${s.external_key}:${s.source_revision}:${String(s.sha256).slice(0, 12)}`, externalKey: s.external_key, issuerKey: s.issuer_key, issuerName: s.issuer_name, title: s.title,
-        sourceRevision: s.source_revision, sourceRevisionRank: Number(s.source_revision_rank) || 1, mediaType: s.media_type, sourceUrl: null,
-        disclosedAt: s.disclosed_at ?? null, market: s.market ?? null, locator: s.staged_key, expectedSha256: s.sha256,
+      items: staged.map((s) => ({
+        itemKey: `${s.external_key}:${s.source_revision}:${String(s.sha256).slice(0, 12)}`,
+        externalKey: s.external_key,
+        issuerKey: s.issuer_key,
+        issuerName: s.issuer_name,
+        title: s.title,
+        sourceRevision: s.source_revision,
+        sourceRevisionRank: Number(s.source_revision_rank) || 1,
+        mediaType: s.media_type,
+        sourceUrl: null,
+        disclosedAt: s.disclosed_at ?? null,
+        market: s.market ?? null,
+        locator: s.staged_key,
+        expectedSha256: s.sha256,
       })),
     };
   }
   async fetch(item: DiscoveredItem): Promise<Buffer> {
-    if (!/^library\/import-staging\/[a-f0-9]{64}$/.test(item.locator)) throw new SourceError('LIBRARY_FETCH_FAILED', false);
+    if (!/^library\/import-staging\/[a-f0-9]{64}$/.test(item.locator))
+      throw new SourceError('LIBRARY_FETCH_FAILED', false);
     const bytes = await this.blobs.getIfExists(item.locator);
     if (!bytes) throw new SourceError('LIBRARY_FETCH_FAILED', false);
-    if (item.expectedSha256 && createHash('sha256').update(bytes).digest('hex') !== item.expectedSha256) throw new SourceError('LIBRARY_BYTES_INVALID', false);
+    if (
+      item.expectedSha256 &&
+      createHash('sha256').update(bytes).digest('hex') !== item.expectedSha256
+    )
+      throw new SourceError('LIBRARY_BYTES_INVALID', false);
     return bytes;
   }
 }

@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import { normalizeDecimal } from '@bondbuddy/domain/facts';
-import { getParseSnapshot, type ParseEvidencePool, type StoredParseSnapshot } from './parse-evidence-repository.js';
-import { supportsDocxAuxiliaryTargets, type DocxAuxiliaryTarget, type DocumentParseRecord } from './document-parser.js';
+import {
+  getParseSnapshot,
+  type ParseEvidencePool,
+  type StoredParseSnapshot,
+} from './parse-evidence-repository.js';
+import {
+  supportsDocxAuxiliaryTargets,
+  type DocxAuxiliaryTarget,
+  type DocumentParseRecord,
+} from './document-parser.js';
 
 export interface FactEvidenceContextPool extends ParseEvidencePool {}
 
@@ -55,7 +63,8 @@ export interface FactEvidenceContextManifest {
   readonly fact_identity: Record<string, unknown>;
   readonly candidate_value: FactEvidenceCandidateValue;
   readonly source_kind: 'audited' | 'external';
-  readonly candidate_status: 'extracted' | 'verified' | 'user_asserted' | 'conflicted' | 'needs_confirmation' | 'superseded';
+  readonly candidate_status:
+    'extracted' | 'verified' | 'user_asserted' | 'conflicted' | 'needs_confirmation' | 'superseded';
   readonly candidate_uncertainty: readonly string[];
   readonly candidate_confidence: number;
   readonly material_id: string;
@@ -96,12 +105,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function json(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  try { return JSON.parse(value) as unknown; } catch { throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID'); }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+  }
 }
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (isRecord(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  if (isRecord(value))
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
   return JSON.stringify(value);
 }
 
@@ -111,16 +128,26 @@ function sha256(value: string): string {
 
 function normalizedDecimal(value: unknown): string | null {
   if (value === null) return null;
-  if (typeof value !== 'string' || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
-  try { return normalizeDecimal(value); } catch { throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID'); }
+  if (typeof value !== 'string' || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value))
+    throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+  try {
+    return normalizeDecimal(value);
+  } catch {
+    throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+  }
 }
 
 function normalizedCandidateValue(value: FactEvidenceCandidateValue): FactEvidenceCandidateValue {
   const normalized = { ...value, value_decimal: normalizedDecimal(value.value_decimal) };
-  if ((normalized.value_kind === 'decimal' && (normalized.value_decimal === null || normalized.value_text !== null)) ||
-    (normalized.value_kind === 'text' && (normalized.value_decimal !== null || normalized.value_text === null)) ||
+  if (
+    (normalized.value_kind === 'decimal' &&
+      (normalized.value_decimal === null || normalized.value_text !== null)) ||
+    (normalized.value_kind === 'text' &&
+      (normalized.value_decimal !== null || normalized.value_text === null)) ||
     ((normalized.value_kind === 'unknown' || normalized.value_kind === 'not_applicable') &&
-      (normalized.value_decimal !== null || normalized.value_text !== null))) throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+      (normalized.value_decimal !== null || normalized.value_text !== null))
+  )
+    throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
   return normalized;
 }
 
@@ -147,12 +174,18 @@ function assessAuxiliary(
     if (scope.status === 'unreferenced' && scope.body_references.length === 0) {
       relevance = 'not_relevant';
       relevanceReason = 'parser_records_auxiliary_target_as_unreferenced';
-    } else if (scope.status === 'resolved' && scope.body_references.every(reference => reference.stable_ref !== null)) {
-      const references = scope.body_references.map(reference => reference.stable_ref!);
-      relevance = references.some(reference => selectedStableRefs.has(reference)) ? 'relevant' : 'not_relevant';
-      relevanceReason = relevance === 'relevant'
-        ? 'body_reference_matches_selected_evidence'
-        : 'complete_body_reference_list_has_no_selected_evidence';
+    } else if (
+      scope.status === 'resolved' &&
+      scope.body_references.every((reference) => reference.stable_ref !== null)
+    ) {
+      const references = scope.body_references.map((reference) => reference.stable_ref!);
+      relevance = references.some((reference) => selectedStableRefs.has(reference))
+        ? 'relevant'
+        : 'not_relevant';
+      relevanceReason =
+        relevance === 'relevant'
+          ? 'body_reference_matches_selected_evidence'
+          : 'complete_body_reference_list_has_no_selected_evidence';
     }
   } else if (target.kind === 'header' || target.kind === 'footer') {
     // The parser identifies section relationships, but current body records do not bind each
@@ -178,15 +211,28 @@ function assessAuxiliary(
 }
 
 export function deriveFactEvidenceContextManifest(input: {
-  ownerUserId: string; projectId: string; candidateId: string; identityHash: string; sourceKind: 'audited' | 'external';
-  inputRevision: number; inputHash: string; factIdentity: Record<string, unknown>;
+  ownerUserId: string;
+  projectId: string;
+  candidateId: string;
+  identityHash: string;
+  sourceKind: 'audited' | 'external';
+  inputRevision: number;
+  inputHash: string;
+  factIdentity: Record<string, unknown>;
   candidateValue: FactEvidenceCandidateValue;
-  candidateStatus: FactEvidenceContextManifest['candidate_status']; candidateUncertainty: string[]; candidateConfidence: number;
-  materialId: string; materialVersion: number; sourceSha256: string; snapshot: StoredParseSnapshot;
-  selectedRecords: DocumentParseRecord[]; auxiliaryTargets: DocxAuxiliaryTarget[]; docx: boolean;
+  candidateStatus: FactEvidenceContextManifest['candidate_status'];
+  candidateUncertainty: string[];
+  candidateConfidence: number;
+  materialId: string;
+  materialVersion: number;
+  sourceSha256: string;
+  snapshot: StoredParseSnapshot;
+  selectedRecords: DocumentParseRecord[];
+  auxiliaryTargets: DocxAuxiliaryTarget[];
+  docx: boolean;
 }): FactEvidenceContextManifest {
   const reasons = new Set<string>();
-  const selectedBody = input.selectedRecords.map(record => ({
+  const selectedBody = input.selectedRecords.map((record) => ({
     record_id: record.record_id,
     content_sha256: record.content_hash,
     locator_type: record.locator_type,
@@ -194,36 +240,64 @@ export function deriveFactEvidenceContextManifest(input: {
     confidence: record.confidence,
     uncertainty: record.uncertainty,
   }));
-  const refs = new Set(selectedBody.map(member => member.record_id));
-  if (selectedBody.length === 0 || refs.size !== selectedBody.length) reasons.add('BODY_EVIDENCE_SELECTION_EMPTY_OR_DUPLICATED');
-  if (!input.snapshot.evidenceComplete || input.snapshot.evidence.length !== input.snapshot.evidenceRecordCount) {
+  const refs = new Set(selectedBody.map((member) => member.record_id));
+  if (selectedBody.length === 0 || refs.size !== selectedBody.length)
+    reasons.add('BODY_EVIDENCE_SELECTION_EMPTY_OR_DUPLICATED');
+  if (
+    !input.snapshot.evidenceComplete ||
+    input.snapshot.evidence.length !== input.snapshot.evidenceRecordCount
+  ) {
     reasons.add('PARSE_EVIDENCE_INVENTORY_INCOMPLETE');
   }
   if (input.snapshot.response.status === 'failed') reasons.add('PARSE_SNAPSHOT_FAILED');
-  if (input.docx && !supportsDocxAuxiliaryTargets(input.snapshot.response.parser_version)) reasons.add('DOCX_AUXILIARY_INVENTORY_VERSION_UNSUPPORTED');
+  if (input.docx && !supportsDocxAuxiliaryTargets(input.snapshot.response.parser_version))
+    reasons.add('DOCX_AUXILIARY_INVENTORY_VERSION_UNSUPPORTED');
   if (input.docx && !Array.isArray(input.snapshot.response.document.auxiliary_targets)) {
     reasons.add('DOCX_AUXILIARY_INVENTORY_MISSING');
   }
 
-  const selectedStableRefs = new Set(input.selectedRecords.map(stableRef).filter((ref): ref is string => ref !== null));
-  const auxiliary = input.auxiliaryTargets.map(target => assessAuxiliary(target, selectedStableRefs));
-  const knownTargets = new Set(input.auxiliaryTargets.map(target => `${target.kind}:${target.part_name}`));
+  const selectedStableRefs = new Set(
+    input.selectedRecords.map(stableRef).filter((ref): ref is string => ref !== null),
+  );
+  const auxiliary = input.auxiliaryTargets.map((target) =>
+    assessAuxiliary(target, selectedStableRefs),
+  );
+  const knownTargets = new Set(
+    input.auxiliaryTargets.map((target) => `${target.kind}:${target.part_name}`),
+  );
   for (const target of input.auxiliaryTargets) {
     if (target.scope.truncated) reasons.add('AUXILIARY_SCOPE_TRUNCATED');
-    if (target.scope.status === 'unknown' || target.scope.status === 'partially_resolved') reasons.add('AUXILIARY_SCOPE_UNKNOWN');
-    if (target.scope.relationships.some(relation => relation.status !== 'resolved')) reasons.add('AUXILIARY_RELATION_UNRESOLVED');
-    if (target.scope.relationships.some(relation => relation.status === 'resolved' && relation.target_part !== null &&
-      ['header', 'footer', 'footnotes', 'endnotes'].includes(relation.relationship_type) &&
-      !knownTargets.has(`${relation.relationship_type === 'footnotes' ? 'footnote' : relation.relationship_type === 'endnotes' ? 'endnote' : relation.relationship_type}:${relation.target_part}`))) {
+    if (target.scope.status === 'unknown' || target.scope.status === 'partially_resolved')
+      reasons.add('AUXILIARY_SCOPE_UNKNOWN');
+    if (target.scope.relationships.some((relation) => relation.status !== 'resolved'))
+      reasons.add('AUXILIARY_RELATION_UNRESOLVED');
+    if (
+      target.scope.relationships.some(
+        (relation) =>
+          relation.status === 'resolved' &&
+          relation.target_part !== null &&
+          ['header', 'footer', 'footnotes', 'endnotes'].includes(relation.relationship_type) &&
+          !knownTargets.has(
+            `${relation.relationship_type === 'footnotes' ? 'footnote' : relation.relationship_type === 'endnotes' ? 'endnote' : relation.relationship_type}:${relation.target_part}`,
+          ),
+      )
+    ) {
       reasons.add('AUXILIARY_TARGET_MISSING');
     }
-    if (!target.parseable || !target.locator_resolved || target.part_sha256 === null || target.target_sha256 === null) {
+    if (
+      !target.parseable ||
+      !target.locator_resolved ||
+      target.part_sha256 === null ||
+      target.target_sha256 === null
+    ) {
       reasons.add('AUXILIARY_TARGET_UNREADABLE');
     }
   }
-  if (auxiliary.some(target => target.relevance === 'unknown')) reasons.add('AUXILIARY_RELEVANCE_UNKNOWN');
+  if (auxiliary.some((target) => target.relevance === 'unknown'))
+    reasons.add('AUXILIARY_RELEVANCE_UNKNOWN');
 
-  const completenessStatus: 'complete' | 'incomplete' = reasons.size === 0 ? 'complete' : 'incomplete';
+  const completenessStatus: 'complete' | 'incomplete' =
+    reasons.size === 0 ? 'complete' : 'incomplete';
   const base = {
     schema_version: 'fact-evidence-context-v1' as const,
     owner_user_id: input.ownerUserId,
@@ -259,14 +333,25 @@ export function deriveFactEvidenceContextManifest(input: {
 
 function mapStored(row: Record<string, unknown>, replayed: boolean): StoredFactEvidenceContextSet {
   const manifest = json(row.manifest);
-  if (!isRecord(manifest) || typeof row.id !== 'string' || typeof row.evidence_set_sha256 !== 'string' ||
-    !['complete', 'incomplete'].includes(String(row.completeness_status)) || typeof row.reviewable !== 'boolean' ||
-    manifest.evidence_set_sha256 !== String(row.evidence_set_sha256).trim() || manifest.reviewable !== row.reviewable) {
+  if (
+    !isRecord(manifest) ||
+    typeof row.id !== 'string' ||
+    typeof row.evidence_set_sha256 !== 'string' ||
+    !['complete', 'incomplete'].includes(String(row.completeness_status)) ||
+    typeof row.reviewable !== 'boolean' ||
+    manifest.evidence_set_sha256 !== String(row.evidence_set_sha256).trim() ||
+    manifest.reviewable !== row.reviewable
+  ) {
     throw fail('FACT_EVIDENCE_CONTEXT_ROW_INVALID');
   }
-  return { id: row.id, evidenceSetSha256: String(row.evidence_set_sha256).trim(),
-    completenessStatus: row.completeness_status as 'complete' | 'incomplete', reviewable: row.reviewable,
-    manifest: manifest as unknown as FactEvidenceContextManifest, replayed };
+  return {
+    id: row.id,
+    evidenceSetSha256: String(row.evidence_set_sha256).trim(),
+    completenessStatus: row.completeness_status as 'complete' | 'incomplete',
+    reviewable: row.reviewable,
+    manifest: manifest as unknown as FactEvidenceContextManifest,
+    replayed,
+  };
 }
 
 /**
@@ -277,15 +362,21 @@ export async function createFactEvidenceContextSet(
   dependencies: FactEvidenceContextDependencies,
   request: FactEvidenceContextRequest,
 ): Promise<StoredFactEvidenceContextSet> {
-  if (![request.ownerUserId, request.projectId, request.candidateId].every(value => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value))) {
+  if (
+    ![request.ownerUserId, request.projectId, request.candidateId].every((value) =>
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value),
+    )
+  ) {
     throw fail('FACT_EVIDENCE_CONTEXT_REQUEST_INVALID');
   }
   const client = await dependencies.pool.connect();
   let open = false;
   try {
-    await client.query('BEGIN'); open = true;
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [`fact-evidence-context:${request.ownerUserId}:${request.projectId}:${request.candidateId}`]);
+    await client.query('BEGIN');
+    open = true;
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `fact-evidence-context:${request.ownerUserId}:${request.projectId}:${request.candidateId}`,
+    ]);
     const source = await client.query(
       `SELECT c.id AS candidate_id, c.owner_user_id, c.project_id, c.fact_key_hash, c.fact_key, c.value_kind, c.value_decimal, c.value_text,
               c.source_kind, c.status, c.uncertainty,
@@ -308,22 +399,52 @@ export async function createFactEvidenceContextSet(
         FOR SHARE OF c, r, s, m`,
       [request.ownerUserId, request.projectId, request.candidateId],
     );
-    if (source.rows.length !== 1) throw fail(source.rows.length === 0
-      ? 'FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND' : 'FACT_EVIDENCE_CONTEXT_SOURCE_AMBIGUOUS');
+    if (source.rows.length !== 1)
+      throw fail(
+        source.rows.length === 0
+          ? 'FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND'
+          : 'FACT_EVIDENCE_CONTEXT_SOURCE_AMBIGUOUS',
+      );
     const row = source.rows[0]!;
     const storedEvidence = json(row.evidence);
     const factIdentity = json(row.fact_key);
     const candidateUncertainty = json(row.uncertainty);
-    if (!Array.isArray(storedEvidence) || !isRecord(factIdentity) || !Array.isArray(candidateUncertainty) ||
-      !candidateUncertainty.every(reason => typeof reason === 'string') || !/^[a-f0-9]{64}$/.test(String(row.fact_key_hash)) ||
-      String(row.response_sha256).trim() !== String(row.parse_response_sha256).trim()) throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
-    const evidenceIds = storedEvidence.map(anchor => isRecord(anchor) ? anchor.evidence_id : null);
-    if (evidenceIds.length === 0 || evidenceIds.some(id => typeof id !== 'string') || new Set(evidenceIds).size !== evidenceIds.length) {
+    if (
+      !Array.isArray(storedEvidence) ||
+      !isRecord(factIdentity) ||
+      !Array.isArray(candidateUncertainty) ||
+      !candidateUncertainty.every((reason) => typeof reason === 'string') ||
+      !/^[a-f0-9]{64}$/.test(String(row.fact_key_hash)) ||
+      String(row.response_sha256).trim() !== String(row.parse_response_sha256).trim()
+    )
+      throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+    const evidenceIds = storedEvidence.map((anchor) =>
+      isRecord(anchor) ? anchor.evidence_id : null,
+    );
+    if (
+      evidenceIds.length === 0 ||
+      evidenceIds.some((id) => typeof id !== 'string') ||
+      new Set(evidenceIds).size !== evidenceIds.length
+    ) {
       throw fail('FACT_EVIDENCE_CONTEXT_REFS_INCOMPLETE');
     }
-    const candidateConfidences = storedEvidence.map(anchor => isRecord(anchor) ? anchor.candidate_confidence : null);
-    if (candidateConfidences.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) ||
-      new Set(candidateConfidences).size !== 1 || !['extracted', 'verified', 'user_asserted', 'conflicted', 'needs_confirmation', 'superseded'].includes(String(row.status))) {
+    const candidateConfidences = storedEvidence.map((anchor) =>
+      isRecord(anchor) ? anchor.candidate_confidence : null,
+    );
+    if (
+      candidateConfidences.some(
+        (value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1,
+      ) ||
+      new Set(candidateConfidences).size !== 1 ||
+      ![
+        'extracted',
+        'verified',
+        'user_asserted',
+        'conflicted',
+        'needs_confirmation',
+        'superseded',
+      ].includes(String(row.status))
+    ) {
       throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
     }
 
@@ -338,47 +459,81 @@ export async function createFactEvidenceContextSet(
       }),
       query: (sql, values) => client.query(sql, values),
     };
-    const snapshot = await getParseSnapshot({ pool: transactionPool }, {
-      ownerUserId: request.ownerUserId, projectId: request.projectId,
-      materialId: String(row.material_id), materialVersion: Number(row.material_version),
-    }, String(row.snapshot_id));
-    if (!snapshot || snapshot.responseSha256 !== String(row.response_sha256).trim() ||
-      snapshot.parserVersion !== String(row.parser_version) || snapshot.contentSha256 !== String(row.content_sha256).trim()) {
+    const snapshot = await getParseSnapshot(
+      { pool: transactionPool },
+      {
+        ownerUserId: request.ownerUserId,
+        projectId: request.projectId,
+        materialId: String(row.material_id),
+        materialVersion: Number(row.material_version),
+      },
+      String(row.snapshot_id),
+    );
+    if (
+      !snapshot ||
+      snapshot.responseSha256 !== String(row.response_sha256).trim() ||
+      snapshot.parserVersion !== String(row.parser_version) ||
+      snapshot.contentSha256 !== String(row.content_sha256).trim()
+    ) {
       throw fail('FACT_EVIDENCE_CONTEXT_PARSE_SNAPSHOT_MISMATCH');
     }
-    const recordsById = new Map(snapshot.evidence.map(record => [record.record_id, record]));
+    const recordsById = new Map(snapshot.evidence.map((record) => [record.record_id, record]));
     const selectedRecords: DocumentParseRecord[] = [];
     for (const raw of storedEvidence) {
-      if (!isRecord(raw) || typeof raw.evidence_id !== 'string') throw fail('FACT_EVIDENCE_CONTEXT_REFS_INCOMPLETE');
+      if (!isRecord(raw) || typeof raw.evidence_id !== 'string')
+        throw fail('FACT_EVIDENCE_CONTEXT_REFS_INCOMPLETE');
       const parsed = recordsById.get(raw.evidence_id);
-      if (!parsed || raw.material_id !== snapshot.materialId || Number(raw.material_version) !== snapshot.materialVersion ||
-        raw.content_hash !== parsed.content_hash || raw.locator_type !== parsed.locator_type || !same(raw.locator, parsed.locator) ||
-        raw.literal_quote !== parsed.literal_quote || raw.extraction_method !== parsed.extraction_method ||
-        raw.extraction_version !== parsed.extractor_version || raw.confidence !== parsed.confidence || !same(raw.uncertainty, parsed.uncertainty)) {
+      if (
+        !parsed ||
+        raw.material_id !== snapshot.materialId ||
+        Number(raw.material_version) !== snapshot.materialVersion ||
+        raw.content_hash !== parsed.content_hash ||
+        raw.locator_type !== parsed.locator_type ||
+        !same(raw.locator, parsed.locator) ||
+        raw.literal_quote !== parsed.literal_quote ||
+        raw.extraction_method !== parsed.extraction_method ||
+        raw.extraction_version !== parsed.extractor_version ||
+        raw.confidence !== parsed.confidence ||
+        !same(raw.uncertainty, parsed.uncertainty)
+      ) {
         throw fail('FACT_EVIDENCE_CONTEXT_REF_MISMATCH');
       }
       selectedRecords.push(parsed);
     }
-    if (snapshot.evidence.length !== Number(row.record_count)) throw fail('FACT_EVIDENCE_CONTEXT_PARSE_INVENTORY_INCOMPLETE');
-    const docx = row.media_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (snapshot.evidence.length !== Number(row.record_count))
+      throw fail('FACT_EVIDENCE_CONTEXT_PARSE_INVENTORY_INCOMPLETE');
+    const docx =
+      row.media_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     const targets = Array.isArray(snapshot.response.document.auxiliary_targets)
-      ? snapshot.response.document.auxiliary_targets as DocxAuxiliaryTarget[] : [];
+      ? (snapshot.response.document.auxiliary_targets as DocxAuxiliaryTarget[])
+      : [];
     const manifest = deriveFactEvidenceContextManifest({
-      ownerUserId: request.ownerUserId, projectId: request.projectId, candidateId: request.candidateId,
-      inputRevision: Number(row.input_revision), inputHash: String(row.input_hash).trim(),
-      identityHash: String(row.fact_key_hash).trim(), factIdentity,
+      ownerUserId: request.ownerUserId,
+      projectId: request.projectId,
+      candidateId: request.candidateId,
+      inputRevision: Number(row.input_revision),
+      inputHash: String(row.input_hash).trim(),
+      identityHash: String(row.fact_key_hash).trim(),
+      factIdentity,
       candidateValue: {
         value_kind: row.value_kind as FactEvidenceCandidateValue['value_kind'],
         value_decimal: normalizedDecimal(row.value_decimal),
         value_text: row.value_text === null ? null : String(row.value_text),
       },
       candidateStatus: row.status as FactEvidenceContextManifest['candidate_status'],
-      candidateUncertainty: candidateUncertainty as string[], candidateConfidence: candidateConfidences[0] as number,
+      candidateUncertainty: candidateUncertainty as string[],
+      candidateConfidence: candidateConfidences[0] as number,
       sourceKind: row.source_kind as 'audited' | 'external',
-      materialId: snapshot.materialId, materialVersion: snapshot.materialVersion, sourceSha256: snapshot.contentSha256,
-      snapshot, selectedRecords, auxiliaryTargets: targets, docx,
+      materialId: snapshot.materialId,
+      materialVersion: snapshot.materialVersion,
+      sourceSha256: snapshot.contentSha256,
+      snapshot,
+      selectedRecords,
+      auxiliaryTargets: targets,
+      docx,
     });
-    if (Buffer.byteLength(canonical(manifest), 'utf8') > 1024 * 1024) throw fail('FACT_EVIDENCE_CONTEXT_TOO_LARGE');
+    if (Buffer.byteLength(canonical(manifest), 'utf8') > 1024 * 1024)
+      throw fail('FACT_EVIDENCE_CONTEXT_TOO_LARGE');
     const id = `fact-evidence-context-${manifest.evidence_set_sha256}`;
     const inserted = await client.query(
       `INSERT INTO bb_fact_evidence_context_sets
@@ -387,9 +542,24 @@ export async function createFactEvidenceContextSet(
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'fact-evidence-context-v1',$13,$14,$15,$16::jsonb)
        ON CONFLICT(owner_user_id,project_id,candidate_id,evidence_set_sha256) DO NOTHING
        RETURNING id,evidence_set_sha256,completeness_status,reviewable,manifest`,
-      [id, request.ownerUserId, request.projectId, request.candidateId, Number(row.input_revision), String(row.input_hash).trim(),
-        snapshot.materialId, snapshot.materialVersion, snapshot.snapshotId, snapshot.parserVersion, snapshot.responseSha256, snapshot.contentSha256,
-        manifest.evidence_set_sha256, manifest.completeness_status, manifest.reviewable, JSON.stringify(manifest)],
+      [
+        id,
+        request.ownerUserId,
+        request.projectId,
+        request.candidateId,
+        Number(row.input_revision),
+        String(row.input_hash).trim(),
+        snapshot.materialId,
+        snapshot.materialVersion,
+        snapshot.snapshotId,
+        snapshot.parserVersion,
+        snapshot.responseSha256,
+        snapshot.contentSha256,
+        manifest.evidence_set_sha256,
+        manifest.completeness_status,
+        manifest.reviewable,
+        JSON.stringify(manifest),
+      ],
     );
     let result = inserted.rows[0];
     let replayed = false;
@@ -400,14 +570,26 @@ export async function createFactEvidenceContextSet(
           WHERE owner_user_id=$1 AND project_id=$2 AND candidate_id=$3 AND evidence_set_sha256=$4`,
         [request.ownerUserId, request.projectId, request.candidateId, manifest.evidence_set_sha256],
       );
-      if (prior.rows.length !== 1 || !same(json(prior.rows[0]!.manifest), manifest)) throw fail('FACT_EVIDENCE_CONTEXT_IDEMPOTENCY_CONFLICT');
-      result = prior.rows[0]; replayed = true;
+      if (prior.rows.length !== 1 || !same(json(prior.rows[0]!.manifest), manifest))
+        throw fail('FACT_EVIDENCE_CONTEXT_IDEMPOTENCY_CONFLICT');
+      result = prior.rows[0];
+      replayed = true;
     }
-    await client.query('COMMIT'); open = false;
+    await client.query('COMMIT');
+    open = false;
     return mapStored(result!, replayed);
   } catch (error) {
-    if (open) { try { await client.query('ROLLBACK'); } catch { /* preserve original failure */ } }
+    if (open) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* preserve original failure */
+      }
+    }
     throw error instanceof Error && error.name === 'FactEvidenceContextRepositoryError'
-      ? error : fail('FACT_EVIDENCE_CONTEXT_PERSIST_FAILED');
-  } finally { client.release(); }
+      ? error
+      : fail('FACT_EVIDENCE_CONTEXT_PERSIST_FAILED');
+  } finally {
+    client.release();
+  }
 }

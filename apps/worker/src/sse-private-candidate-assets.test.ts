@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain/sse-private-applicability';
+import {
+  SSE_PRIVATE_APPLICABILITY_DICTIONARY,
+  SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION,
+} from '@bondbuddy/domain/sse-private-applicability';
 import {
   loadSsePrivateCandidateBundle,
   SSE_PRIVATE_CANDIDATE_ASSET_PIN,
@@ -26,17 +29,35 @@ async function readCandidateBytes() {
 test('loads the exact draft.6 assets as a candidate-only descriptor with deterministic coverage gaps', async () => {
   const bundle = await loadSsePrivateCandidateBundle(repositoryRoot);
   assert.equal(bundle.status, 'candidate_only');
-  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.version, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.dictionaryVersion);
-  assert.equal(SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.reviewTaxonomyVersion);
-  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.contentSha256);
+  assert.equal(
+    SSE_PRIVATE_APPLICABILITY_DICTIONARY.version,
+    SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.dictionaryVersion,
+  );
+  assert.equal(
+    SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION,
+    SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.reviewTaxonomyVersion,
+  );
+  assert.equal(
+    SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256,
+    SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.contentSha256,
+  );
   assert.deepEqual(bundle.taxonomy, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy);
   assert.equal(bundle.rulePack.id, 'sse-private');
   assert.equal(bundle.rulePack.version, '2026.09.27-draft.6');
-  assert.equal(bundle.rulePack.contentSha256, SSE_PRIVATE_CANDIDATE_ASSET_PIN.rulePack.contentSha256);
+  assert.equal(
+    bundle.rulePack.contentSha256,
+    SSE_PRIVATE_CANDIDATE_ASSET_PIN.rulePack.contentSha256,
+  );
   assert.equal(bundle.coverage.items.length, 32);
   assert.equal(bundle.coverage.openBlockers.length, 4);
-  assert.deepEqual(bundle.coverage.items.map((item) => item.itemId), [...bundle.coverage.items.map((item) => item.itemId)].sort());
-  assert.deepEqual(bundle.coverage.openBlockers.map((item) => item.blockerId), [...bundle.coverage.openBlockers.map((item) => item.blockerId)].sort());
+  assert.deepEqual(
+    bundle.coverage.items.map((item) => item.itemId),
+    [...bundle.coverage.items.map((item) => item.itemId)].sort(),
+  );
+  assert.deepEqual(
+    bundle.coverage.openBlockers.map((item) => item.blockerId),
+    [...bundle.coverage.openBlockers.map((item) => item.blockerId)].sort(),
+  );
 
   const uncovered = bundle.coverage.items.filter((item) => item.disposition === 'uncovered');
   assert.equal(uncovered.length, 31);
@@ -56,11 +77,13 @@ test('fails closed on changed asset bytes and missing runtime assets', async () 
   const changedPack = Buffer.concat([bytes.rulePackBytes, Buffer.from(' ')]);
   assert.throws(
     () => verifySsePrivateCandidateAssetBytes({ ...bytes, rulePackBytes: changedPack }),
-    (error: unknown) => error instanceof SsePrivateCandidateAssetError && error.code === 'RULE_PACK_BYTES_MISMATCH',
+    (error: unknown) =>
+      error instanceof SsePrivateCandidateAssetError && error.code === 'RULE_PACK_BYTES_MISMATCH',
   );
 
   await assert.rejects(
     loadSsePrivateCandidateBundle(join(repositoryRoot, '.missing-candidate-root')),
-    (error: unknown) => error instanceof SsePrivateCandidateAssetError && error.code === 'CANDIDATE_ASSET_MISSING',
+    (error: unknown) =>
+      error instanceof SsePrivateCandidateAssetError && error.code === 'CANDIDATE_ASSET_MISSING',
   );
 });

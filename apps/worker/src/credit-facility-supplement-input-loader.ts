@@ -39,7 +39,10 @@ export interface CreditFacilitySupplementUncertainty {
 }
 
 export type CreditFacilitySupplementInputLoad =
-  | { readonly status: 'loaded'; readonly projection: readonly CreditFacilitySupplementUncertainty[] }
+  | {
+      readonly status: 'loaded';
+      readonly projection: readonly CreditFacilitySupplementUncertainty[];
+    }
   | { readonly status: 'needs_review'; readonly reason: string; readonly projection: readonly [] };
 
 export interface CreditFacilitySupplementInputLoaderDatabase {
@@ -60,7 +63,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  try { return JSON.parse(value) as unknown; } catch { return null; }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 function isStatus(value: unknown): value is CreditFacilitySupplementAssertionStatus {
@@ -79,10 +86,17 @@ function parseRefs(manifest: unknown): VersionRef[] | null {
   const seen = new Set<string>();
   const result: VersionRef[] = [];
   for (const item of raw) {
-    if (!isRecord(item) || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(String(item.supplement_id ?? '')) ||
-      !Number.isSafeInteger(item.version) || Number(item.version) < 1 ||
-      typeof item.request_hash !== 'string' || !/^[a-f0-9]{64}$/.test(item.request_hash) ||
-      !isStatus(item.status) || item.eligible_for_manuscript !== false) return null;
+    if (
+      !isRecord(item) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(String(item.supplement_id ?? '')) ||
+      !Number.isSafeInteger(item.version) ||
+      Number(item.version) < 1 ||
+      typeof item.request_hash !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(item.request_hash) ||
+      !isStatus(item.status) ||
+      item.eligible_for_manuscript !== false
+    )
+      return null;
     const ref = {
       supplement_id: item.supplement_id as string,
       version: Number(item.version),
@@ -98,10 +112,19 @@ function parseRefs(manifest: unknown): VersionRef[] | null {
 }
 
 function amount(value: unknown): CreditFacilitySupplementUncertaintyAmount | null {
-  if (!isRecord(value) || typeof value.bank !== 'string' || typeof value.asOf !== 'string' ||
-    !(value.amount === null || typeof value.amount === 'string') || typeof value.currency !== 'string' ||
-    typeof value.unit !== 'string' || typeof value.basis !== 'string' || typeof value.scope !== 'string' ||
-    typeof value.sourceId !== 'string' || typeof value.statementDate !== 'string') return null;
+  if (
+    !isRecord(value) ||
+    typeof value.bank !== 'string' ||
+    typeof value.asOf !== 'string' ||
+    !(value.amount === null || typeof value.amount === 'string') ||
+    typeof value.currency !== 'string' ||
+    typeof value.unit !== 'string' ||
+    typeof value.basis !== 'string' ||
+    typeof value.scope !== 'string' ||
+    typeof value.sourceId !== 'string' ||
+    typeof value.statementDate !== 'string'
+  )
+    return null;
   return {
     bank: value.bank,
     asOf: value.asOf,
@@ -123,8 +146,13 @@ export async function loadCreditFacilitySupplementUncertainty(
   database: CreditFacilitySupplementInputLoaderDatabase,
   lock: CreditFacilitySupplementInputLock,
 ): Promise<CreditFacilitySupplementInputLoad> {
-  if (typeof lock.ownerUserId !== 'string' || typeof lock.projectId !== 'string' ||
-    !Number.isSafeInteger(lock.inputRevision) || lock.inputRevision < 1 || !/^[a-f0-9]{64}$/.test(lock.inputHash)) {
+  if (
+    typeof lock.ownerUserId !== 'string' ||
+    typeof lock.projectId !== 'string' ||
+    !Number.isSafeInteger(lock.inputRevision) ||
+    lock.inputRevision < 1 ||
+    !/^[a-f0-9]{64}$/.test(lock.inputHash)
+  ) {
     return failed('invalid_input_lock');
   }
 
@@ -137,15 +165,20 @@ export async function loadCreditFacilitySupplementUncertainty(
   );
   if (inputResult.rows.length !== 1) return failed('input_revision_missing_or_foreign');
   const input = inputResult.rows[0]!;
-  if (input.owner_user_id !== lock.ownerUserId || input.project_id !== lock.projectId ||
-    Number(input.revision) !== lock.inputRevision || String(input.input_hash).trim() !== lock.inputHash) {
+  if (
+    input.owner_user_id !== lock.ownerUserId ||
+    input.project_id !== lock.projectId ||
+    Number(input.revision) !== lock.inputRevision ||
+    String(input.input_hash).trim() !== lock.inputHash
+  ) {
     return failed('input_revision_lock_mismatch');
   }
 
   const manifest = parseJson(input.manifest);
   if (!isRecord(manifest)) return failed('input_manifest_invalid');
   try {
-    if (inputManifestHash(manifest) !== lock.inputHash) return failed('input_manifest_hash_mismatch');
+    if (inputManifestHash(manifest) !== lock.inputHash)
+      return failed('input_manifest_hash_mismatch');
   } catch {
     return failed('input_manifest_hash_invalid');
   }
@@ -161,19 +194,35 @@ export async function loadCreditFacilitySupplementUncertainty(
     );
     if (result.rows.length !== 1) return failed('supplement_missing_or_foreign');
     const row = result.rows[0]!;
-    if (row.owner_user_id !== lock.ownerUserId || row.project_id !== lock.projectId || row.id !== ref.supplement_id ||
-      Number(row.supplement_version) !== ref.version || String(row.request_hash).trim() !== ref.request_hash) {
+    if (
+      row.owner_user_id !== lock.ownerUserId ||
+      row.project_id !== lock.projectId ||
+      row.id !== ref.supplement_id ||
+      Number(row.supplement_version) !== ref.version ||
+      String(row.request_hash).trim() !== ref.request_hash
+    ) {
       return failed('supplement_lock_mismatch');
     }
     const stored = parseJson(row.supplement);
-    if (!isStatus(row.status) || row.status !== ref.status || !isRecord(stored) || stored.status !== row.status ||
-      stored.eligibleForManuscript !== false || !isRecord(stored.amounts)) {
+    if (
+      !isStatus(row.status) ||
+      row.status !== ref.status ||
+      !isRecord(stored) ||
+      stored.status !== row.status ||
+      stored.eligibleForManuscript !== false ||
+      !isRecord(stored.amounts)
+    ) {
       return failed('supplement_status_or_shape_changed');
     }
     const total = amount(stored.amounts.total);
     const used = amount(stored.amounts.used);
     const unused = amount(stored.amounts.unused);
-    if (!total || !used || !unused || !(stored.reason === undefined || stored.reason === null || typeof stored.reason === 'string')) {
+    if (
+      !total ||
+      !used ||
+      !unused ||
+      !(stored.reason === undefined || stored.reason === null || typeof stored.reason === 'string')
+    ) {
       return failed('supplement_projection_invalid');
     }
     projection.push({

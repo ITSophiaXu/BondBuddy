@@ -1,9 +1,15 @@
 /** Lossless field-name deduplication, not summarisation or relevance filtering. */
 export function promptTable<T extends Record<string, unknown>>(records: readonly T[]) {
   const columns = records.length ? Object.keys(records[0]!) : [];
-  if (records.some(record => Object.keys(record).length !== columns.length ||
-    columns.some(key => !Object.hasOwn(record, key)))) throw new Error('UPDATE_PROMPT_TABLE_SHAPE');
-  return { columns, rows: records.map(record => columns.map(key => record[key])) };
+  if (
+    records.some(
+      (record) =>
+        Object.keys(record).length !== columns.length ||
+        columns.some((key) => !Object.hasOwn(record, key)),
+    )
+  )
+    throw new Error('UPDATE_PROMPT_TABLE_SHAPE');
+  return { columns, rows: records.map((record) => columns.map((key) => record[key])) };
 }
 
 /** All rules, source quotes, locators, applicability, exceptions and unknown states remain. */
