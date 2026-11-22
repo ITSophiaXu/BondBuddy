@@ -6,7 +6,7 @@ import { conflict, missing, Problem, project, materialDto, readBlobToFile, trans
 import { assertUploadVersion, cachedUploadVersion, recordUploadIntegrity, boundedVersion } from './upload-integrity.js';
 import { registerUploadedProspectus } from './prospectus-versions.js';
 import { assertProspectusUploadFormat } from './prospectus-upload.js';
-import { enqueueMaterialParse } from './material-jobs.js';
+import { enqueueAuditPdfQuality, enqueueMaterialParse } from './material-jobs.js';
 import { appendProjectMaterialEvent } from './project-material-events.js';
 import { recordOperation } from './observability.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
@@ -52,6 +52,8 @@ async function commitPreparedUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:
       const accepted=async (m:any)=>{
         if(m.role==='historical')await registerUploadedProspectus(client,user,id,m,
           uploadProject.kind==='update'&&uploadProject.update_details?.authoring_mode==='unified_v1'&&!receipt.rowCount&&u.state!=='completed');
+        if (uploadProject.kind === 'update' && m.role === 'audit' && m.media_type === 'application/pdf')
+          await enqueueAuditPdfQuality(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
         // Unified authoring reads the original in the Codex task. Do not start an
         // independent parsing/OCR pass simply because the original has been stored.
         if (uploadProject.update_details?.authoring_mode !== 'unified_v1')

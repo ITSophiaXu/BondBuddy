@@ -1,19 +1,25 @@
-// A fixed, read-only Stop hook for the pinned Codex 0.167.0 CLI. This checks
+// Fixed read-only authoring hooks for pinned Codex 0.169.0. Stop checks
 // required file availability, not content quality or layout. Never writes a
 // journal, invents no_changes, executes model text, or starts another CLI.
 import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SESSION_START_COMMAND, SESSION_START_TIMEOUT } from './file-authoring-session-start.js';
 
 export const COMPLETION_COMMAND = '/usr/local/bin/node /app/apps/worker/dist/file-authoring-completion.js';
 export function fileCompletionArgs(): string[] {
-  // Codex normalizes the handler and hashes sorted JSON (config/fingerprint.rs).
-  // Trust only this reviewed application handler; never bypass hook trust.
-  const identity = { event_name: 'stop', hooks: [{ async: false, command: COMPLETION_COMMAND, timeout: 10, type: 'command' }] };
-  const hash = 'sha256:' + createHash('sha256').update(JSON.stringify(identity)).digest('hex');
-  const source = process.platform === 'win32' ? 'C:\\<session-flags>\\config.toml:stop:0:0' : '/<session-flags>/config.toml:stop:0:0';
-  return ['--enable', 'hooks', '-c', `hooks={Stop=[{hooks=[{type="command",command=${JSON.stringify(COMPLETION_COMMAND)},timeout=10}]}],state={${JSON.stringify(source)}={trusted_hash=${JSON.stringify(hash)}}}}`];
+  // Codex normalizes each event handler independently before hashing sorted JSON.
+  // Both application-owned handlers must be trusted; never bypass hook trust.
+  const trusted=(event:string,command:string,timeout:number)=>{
+    const identity={event_name:event,hooks:[{async:false,command,timeout,type:'command'}]};
+    const hash='sha256:'+createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+    const source=(process.platform==='win32'?'C:\\<session-flags>\\config.toml:':'/<session-flags>/config.toml:')+event+':0:0';
+    return JSON.stringify(source)+'={trusted_hash='+JSON.stringify(hash)+'}';
+  };
+  const handler=(command:string,timeout:number)=>'{hooks=[{type="command",command='+JSON.stringify(command)+',timeout='+timeout+'}]}';
+  return ['--enable','hooks','-c','hooks={Stop=['+handler(COMPLETION_COMMAND,10)+'],SessionStart=['+handler(SESSION_START_COMMAND,SESSION_START_TIMEOUT)+'],state={'
+    +trusted('stop',COMPLETION_COMMAND,10)+','+trusted('session_start',SESSION_START_COMMAND,SESSION_START_TIMEOUT)+'}}'];
 }
 
 async function available(root: string, name: string, max: number) {

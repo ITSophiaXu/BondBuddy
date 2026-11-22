@@ -26,6 +26,9 @@ def document(stamp):
     style.font.name = 'SimSun'
     style.font.size = Pt(12)
     style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    language = OxmlElement('w:lang')
+    language.set(qn('w:eastAsia'), 'zh-CN')
+    style.element.rPr.append(language)
     moment = datetime.fromisoformat(stamp.replace('Z', '+00:00')).astimezone(timezone.utc)
     doc.core_properties.created = moment
     doc.core_properties.modified = moment

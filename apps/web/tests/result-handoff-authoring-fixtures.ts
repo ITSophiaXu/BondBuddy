@@ -1,3 +1,4 @@
+import {serveAuditPdfQuality} from './audit-pdf-quality-fixture';
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
@@ -64,6 +65,7 @@ export async function install(page:Page,s=fixture()){
   validateFixture(s);expect(installed.has(page)).toBe(false);installed.set(page,s);page.on('pageerror',e=>s.errors.push(e.message));
   await page.route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
+    if(await serveAuditPdfQuality(route,ids.project,s.materials))return;
     try{
       const req=route.request(),url=new URL(req.url()),method=req.method(),path=url.pathname.slice('/api/v1'.length),body:unknown=req.postData()?fixtureRequest(req):null;s.calls.push({method,path,body:structuredClone(body)});
       if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});

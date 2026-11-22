@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY product-prototype/public/workpaper-entry.css product-prototype/public/
 COPY product-prototype/public/upload-progress.css product-prototype/public/
-COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/payment-experience.css product-prototype/public/
+COPY product-prototype/public/subscription-billing.css product-prototype/public/subscription-topup.css product-prototype/public/billing-price-admin.css product-prototype/public/payment-experience.css product-prototype/public/
 COPY apps apps
 # Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
 COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
@@ -151,6 +151,7 @@ COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-
 COPY --chmod=0644 deploy/m1/codex-image-model-catalog.json /opt/bondbuddy/codex-image-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-file-authoring-model-catalog.json /opt/bondbuddy/codex-file-authoring-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-copilot-file-authoring-model-catalog.json /opt/bondbuddy/codex-copilot-file-authoring-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-deepseek-model-catalog.json /opt/bondbuddy/codex-deepseek-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-deepseek-LICENSE.txt /opt/bondbuddy/codex-deepseek-LICENSE.txt
 COPY --from=build --chown=root:root /app/python python

@@ -16,7 +16,9 @@ from docx.shared import Inches, Pt
 from lxml import etree as ET
 
 from bondbuddy_file_authoring.check import package, resolve_revisions
-from bondbuddy_file_authoring.fixed_edit import Editor, empty_log, finalize, load_input, write_json
+from bondbuddy_file_authoring.fixed_edit import (Editor, RECOVERY_BATCH_BYTES, RECOVERY_BATCH_OPERATIONS,
+                                                 RECOVERY_BATCH_POLICY, RECOVERY_BATCH_POLICY_BYTES,
+                                                 empty_log, finalize, load_input, write_json)
 from bondbuddy_file_authoring.format_diff import audit, canonical
 from bondbuddy_file_authoring.template_manifest import build_manifest, node_text, sha
 from bondbuddy_file_authoring.word_patch import Patcher, paragraph_text, q, serialized, xml
@@ -505,6 +507,53 @@ class FixedEditTests(unittest.TestCase):
         self.assertEqual(inspected.returncode, 0, inspected.stderr)
         self.assertEqual(json.loads(inspected.stdout)['nodes'][0]['text'], '保留😀并更新文字。')
 
+    def test_output_limit_retry_bounds_batches_without_losing_saved_edits(self):
+        node = self.node('保留😀的原始段落。')
+        operation = self.root / 'op.json'
+        args = [sys.executable, '-m', 'bondbuddy_file_authoring.fixed_edit', 'apply',
+                '--input', str(self.input), '--operations', str(self.log_path), '--operation-file', str(operation)]
+
+        def apply(value):
+            write_json(operation, value)
+            return subprocess.run(args, capture_output=True, encoding='utf-8', timeout=15)
+
+        def replace(op_id, before, after):
+            return {'id': op_id, 'kind': 'replace_text', 'node_id': node['node_id'], 'before': before, 'after': after}
+
+        # First segment wrote this exact edit before exhausting its provider output.
+        first = replace('kept', node['text'], '已保存。')
+        self.assertEqual(apply(first).returncode, 0)
+        saved = self.log_path.read_bytes()
+        (self.root / RECOVERY_BATCH_POLICY).write_bytes(RECOVERY_BATCH_POLICY_BYTES)
+        adds = [replace(f'part-{i}', '已保存。' if i == 0 else f'小批次{i - 1}。', f'小批次{i}。')
+                for i in range(RECOVERY_BATCH_OPERATIONS + 1)]
+        oversized = apply(adds)
+        self.assertEqual(oversized.returncode, 1)
+        self.assertEqual(json.loads(oversized.stderr)['error'], 'WORD_EDIT_BATCH_LIMIT')
+        self.assertEqual(self.log_path.read_bytes(), saved)
+        for chunk in (adds[:-1], adds[-1:]):
+            result = apply(chunk)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        saved = self.log_path.read_bytes()
+
+        # Bytes are counted in UTF-8 rather than code points. A single atomic
+        # operation assembled on disk remains supported even when not splittable.
+        large = '长' * (RECOVERY_BATCH_BYTES // 3 + 1)
+        one = replace('large-one', adds[-1]['after'], large)
+        two = replace('short-final', large, '最终短段落。')
+        oversized = apply([one, two])
+        self.assertEqual(oversized.returncode, 1)
+        self.assertEqual(json.loads(oversized.stderr)['error'], 'WORD_EDIT_BATCH_LIMIT')
+        self.assertEqual(self.log_path.read_bytes(), saved)
+        for value in (one, two):
+            result = apply(value)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.log_path.read_text())['operations'], [first, *adds, one, two])
+        output = self.root / 'recovered-words'
+        finalize(self.input, self.log_path, output)
+        self.assertTrue((output / 'tracked.docx').is_file())
+        self.assertIn('最终短段落。', Document(output / 'clean.docx').paragraphs[2].text)
+
     def test_large_prospectus_replay_finishes_without_repeated_document_scans(self):
         # A long, run-heavy synthetic package exercises the real finalization
         # subprocess and its deadline, not a mock of the XML query implementation.
@@ -626,6 +675,122 @@ class WordQualityPreflightTests(unittest.TestCase):
         from bondbuddy_file_authoring.preflight import preflight
         return preflight(self.input, self.log_path, self.report_path)
 
+    def require_render_check(self):
+        # Real source paragraphs activate the same size gate as a long draft;
+        # only the renderer is mocked, never preflight or the quality checker.
+        doc = Document(self.source)
+        for index in range(100):
+            doc.add_paragraph(f'合成预检说明第{index + 1}项，原有实质披露保持完整。')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        self.log = empty_log(self.data, self.source.read_bytes())
+        self.node = next(n for n in build_manifest(self.source)['nodes']
+                         if n['kind'] == 'paragraph' and n['text'] == self.financial)
+        self.log['operations'] = [self.operation(self.financial.replace('6月末', '9月末').replace('100', '120'))]
+        self.save()
+
+    def test_rendering_only_failure_hands_off_current_operations_without_passing(self):
+        from bondbuddy_file_authoring.document_size import PageCountError
+        self.require_render_check()
+        before = {path: path.read_bytes() for path in (self.input, self.source, self.log_path)}
+        for reason in ('renderer_missing', 'renderer_failed', 'render_timeout',
+                       'render_output_invalid', 'render_pdf_unreadable'):
+            with self.subTest(reason=reason), patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                    patch('bondbuddy_file_authoring.document_size.shutil.which',
+                          return_value=None if reason == 'renderer_missing' else '/synthetic/libreoffice'), \
+                    patch('bondbuddy_file_authoring.document_size.render_pages',
+                          side_effect=PageCountError(reason)) as renderer:
+                result = self.check()
+            self.assertEqual(renderer.call_count, 0 if reason == 'renderer_missing' else 1)
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(result['quality_report']['status'], 'failed')
+            self.assertEqual(result['issues'], [{'code': 'WORD_PAGE_COUNT_UNAVAILABLE', 'reason': reason}])
+            self.assertEqual(result['quality_report']['issues'], result['issues'])
+            self.assertEqual(result['quality_report']['document_size_check']['page_check'],
+                             {'status': 'unavailable', 'reason': reason})
+            self.assertTrue(result['snapshot_current'])
+            self.assertEqual(result['input_hash'], self.data['input_hash'])
+            self.assertEqual(result['input_sha256'], sha(before[self.input]))
+            self.assertEqual(result['baseline_sha256'], sha(before[self.source]))
+            self.assertEqual(result['operations_sha256'], sha(before[self.log_path]))
+            self.assertEqual(result['host_handoff'], {
+                'action': 'defer_page_rendering_to_host', 'reason': 'rendering_infrastructure_only',
+                'operations_sha256': result['operations_sha256'], 'host_validation_required': True,
+                'authoring_completion': 'not_verified'})
+            for field in ('host_acceptance', 'delivery_registered', 'release_authorized'):
+                self.assertFalse(result[field])
+            self.assertEqual(json.loads(self.report_path.read_text(encoding='utf-8')), result)
+            self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_successful_render_removes_stale_handoff_from_previous_report(self):
+        from bondbuddy_file_authoring.document_size import PageCountError
+        self.require_render_check()
+        with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \
+                patch('bondbuddy_file_authoring.document_size.render_pages',
+                      side_effect=PageCountError('render_output_invalid')):
+            failed = self.check()
+        self.assertIn('host_handoff', failed)
+        with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \
+                patch('bondbuddy_file_authoring.document_size.render_pages',
+                      side_effect=[{'pages': 60}, {'pages': 60}]) as renderer:
+            result = self.check()
+        self.assertEqual(renderer.call_count, 2)
+        self.assertEqual(result['status'], 'passed', result)
+        self.assertEqual(result['quality_report']['document_size_check']['page_check']['status'], 'passed')
+        self.assertNotIn('host_handoff', result)
+        self.assertEqual(json.loads(self.report_path.read_text(encoding='utf-8')), result)
+
+    def test_rendering_and_content_failures_cannot_request_host_handoff(self):
+        from bondbuddy_file_authoring.document_size import PageCountError
+        self.require_render_check()
+        # Expected-source anchors are checked after pagination, so this exercises
+        # a genuine mixed report without fabricating quality-checker output.
+        self.data['expected_text'] = [{'text': 'Synthetic evidence anchor deliberately absent from the draft.'}]
+        self.save()
+        with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \
+                patch('bondbuddy_file_authoring.document_size.render_pages',
+                      side_effect=PageCountError('render_output_invalid')) as renderer:
+            result = self.check()
+        self.assertEqual(renderer.call_count, 1)
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual({issue['code'] for issue in result['issues']},
+                         {'WORD_PAGE_COUNT_UNAVAILABLE', 'WORD_EXPECTED_FACT_MISMATCH'})
+        self.assertEqual(result['quality_report']['issues'], result['issues'])
+        self.assertTrue(result['snapshot_current'])
+        self.assertNotIn('host_handoff', result)
+
+    def test_log_change_during_rendering_invalidates_handoff_and_overwrites_old_report(self):
+        from bondbuddy_file_authoring.document_size import PageCountError
+        self.require_render_check()
+        with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \
+                patch('bondbuddy_file_authoring.document_size.render_pages',
+                      side_effect=PageCountError('render_output_invalid')):
+            old = self.check()
+        self.assertIn('host_handoff', old)
+
+        def change_log(*args, **kwargs):
+            self.log['operations'].append(self.operation('后来追加的合成修改。', 'later', self.log['operations'][0]['after']))
+            self.save()
+            raise PageCountError('render_output_invalid')
+
+        with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \
+                patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \
+                patch('bondbuddy_file_authoring.document_size.render_pages', side_effect=change_log):
+            result = self.check()
+        self.assertEqual(result['status'], 'failed')
+        self.assertFalse(result['snapshot_current'])
+        self.assertEqual(result['issues'], [{'code': 'WORD_PREFLIGHT_INPUT_CHANGED'}])
+        self.assertEqual(result['quality_report']['issues'],
+                         [{'code': 'WORD_PAGE_COUNT_UNAVAILABLE', 'reason': 'render_output_invalid'}])
+        self.assertEqual(result['operations_sha256'], old['operations_sha256'])
+        self.assertNotEqual(result['operations_sha256'], sha(self.log_path.read_bytes()))
+        self.assertNotIn('host_handoff', result)
+        self.assertEqual(json.loads(self.report_path.read_text(encoding='utf-8')), result)
+
     def test_numeric_update_has_identical_host_report_and_no_approval_flags(self):
         from bondbuddy_file_authoring.quality import verify
         result = self.check()
@@ -638,6 +803,30 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertFalse(result['release_authorized'])
         self.assertEqual(result['factual_accuracy'], 'not_verified')
         self.assertEqual(result['visual_review'], 'not_run')
+        self.assertNotIn('host_handoff', result)
+
+    def test_whole_manuscript_collapse_is_rejected_identically_by_preflight_and_host(self):
+        from bondbuddy_file_authoring.quality import verify
+        doc = Document(self.source)
+        self.financial *= 4
+        doc.paragraphs[3].text = self.financial
+        for _ in range(19):
+            doc.add_paragraph(self.financial)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        self.log = empty_log(self.data, self.source.read_bytes())
+        nodes = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == self.financial]
+        self.assertEqual(len(nodes), 20)
+        self.log['operations'] = [{'id': f'condense-{i}', 'kind': 'replace_text', 'node_id': n['node_id'],
+                                   'before': n['text'], 'after': '本期财务信息已更新为新的简短说明。'} for i, n in enumerate(nodes)]
+        self.save()
+        result = self.check()
+        finalize(self.input, self.log_path, self.root / 'delivered', skip_report=True)
+        self.assertEqual(result['quality_report'], verify(self.input))
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('WORD_DOCUMENT_SIZE_REDUCED', {i['code'] for i in result['issues']})
+        self.assertEqual(result['quality_report']['metrics']['ratios']['nonempty_paragraphs'], 1)
+        self.assertNotIn('host_handoff', result)
 
     def test_preflight_preserves_locked_files_and_formal_outputs_and_cleans_temporary_area(self):
         paths = [self.input, self.source, self.log_path, self.root / 'output/tracked.docx', self.root / 'output/clean.docx']
@@ -675,6 +864,16 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertEqual(change['before'][0]['node_id'], heading['node_id'])
         self.assertEqual(change['after'][0]['node_id'], heading['node_id'])
         self.assertEqual(change['before'][0]['recognition'], 'outline')
+        self.assertEqual(result['diagnostics']['chapter_content'], [])
+        self.assertNotIn('host_handoff', result)
+
+    def test_renamed_section_empty_body_keeps_current_diagnostic_locations(self):
+        heading = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == '第二章 财务会计信息')
+        self.log['operations'] = [self.operation(''), {'id': 'heading', 'kind': 'replace_text',
+                                 'node_id': heading['node_id'], 'before': heading['text'], 'after': '第二章 目标发行人财务信息'}]
+        self.save()
+        result = self.check()
+        self.assertEqual(result['diagnostics']['outline']['status'], 'unchanged')
         finding = result['diagnostics']['chapter_content'][0]
         self.assertFalse(finding['current_key_found'])
         self.assertEqual(finding['current_matching_source_nodes']['paragraphs'][0]['node_id'], heading['node_id'])
@@ -734,7 +933,9 @@ class WordQualityPreflightTests(unittest.TestCase):
     def test_missing_or_empty_log_overwrites_fake_pass_with_failure(self):
         for raw, expected in [(None, 'WORD_EDIT_LOG_REQUIRED'), (b'', 'WORD_EDIT_FILE_INVALID')]:
             with self.subTest(expected=expected):
-                write_json(self.report_path, {'status': 'passed', 'host_acceptance': True})
+                write_json(self.report_path, {'status': 'passed', 'host_acceptance': True,
+                                             'host_handoff': {'action': 'defer_page_rendering_to_host',
+                                                              'operations_sha256': 'f' * 64}})
                 if raw is None:
                     self.log_path.unlink()
                 else:
@@ -743,6 +944,8 @@ class WordQualityPreflightTests(unittest.TestCase):
                 self.assertEqual(result['status'], 'failed')
                 self.assertEqual(result['issues'], [{'code': expected}])
                 self.assertFalse(json.loads(self.report_path.read_text(encoding='utf-8'))['host_acceptance'])
+                self.assertNotIn('host_handoff', result)
+                self.assertNotIn('host_handoff', json.loads(self.report_path.read_text(encoding='utf-8')))
 
     def test_wrong_input_or_baseline_hash_cannot_pass(self):
         for field in ('input_hash', 'baseline_sha256'):
@@ -912,6 +1115,42 @@ class WordQualityPreflightTests(unittest.TestCase):
         report = json.loads(self.report_path.read_text(encoding='utf-8'))
         formula = next(i for i in report['issues'] if i['code'] == 'WORD_SOURCE_FORMULA_CHANGED')
         self.assertIn('流动资产', json.dumps(formula, ensure_ascii=False))
+        self.assertNotIn('host_handoff', summary)
+
+    def test_cli_render_handoff_preserves_exit_one_and_keeps_private_diagnostics_in_report(self):
+        self.require_render_check()
+        diagnostic = 'render_output_invalid: synthetic-private-renderer-stderr-canary'
+        program = '''
+import os
+from unittest.mock import patch
+from bondbuddy_file_authoring.document_size import PageCountError
+from bondbuddy_file_authoring.fixed_edit import main
+with patch.dict(os.environ, {'BONDBUDDY_WORD_LIBREOFFICE': ''}), \\
+     patch('bondbuddy_file_authoring.document_size.shutil.which', return_value='/synthetic/libreoffice'), \\
+     patch('bondbuddy_file_authoring.document_size.render_pages', side_effect=PageCountError(%r)):
+    raise SystemExit(main())
+''' % diagnostic
+        run = subprocess.run([sys.executable, '-c', program, 'preflight', '--input', str(self.input),
+                              '--operations', str(self.log_path), '--report', str(self.report_path)],
+                             capture_output=True, encoding='utf-8', timeout=30)
+        self.assertEqual(run.returncode, 1, run.stderr)
+        summary = json.loads(run.stdout)
+        report = json.loads(self.report_path.read_text(encoding='utf-8'))
+        self.assertEqual(summary['status'], 'failed')
+        self.assertEqual(summary['report'], str(self.report_path))
+        self.assertEqual(summary['issues'], [{'code': 'WORD_PAGE_COUNT_UNAVAILABLE'}])
+        self.assertEqual(summary['host_handoff'], report['host_handoff'])
+        self.assertEqual(summary['host_handoff']['action'], 'defer_page_rendering_to_host')
+        self.assertEqual(summary['host_handoff']['operations_sha256'], sha(self.log_path.read_bytes()))
+        self.assertTrue(summary['host_handoff']['host_validation_required'])
+        self.assertEqual(summary['host_handoff']['authoring_completion'], 'not_verified')
+        self.assertNotIn('quality_report', summary)
+        self.assertNotIn('diagnostics', summary)
+        for private in (self.financial, diagnostic):
+            self.assertNotIn(private, run.stdout)
+            self.assertNotIn(private, run.stderr)
+        self.assertEqual(json.loads(run.stderr), {'error': 'WORD_PREFLIGHT_REJECTED'})
+        self.assertEqual(report['issues'], [{'code': 'WORD_PAGE_COUNT_UNAVAILABLE', 'reason': diagnostic}])
 
     def test_cli_failure_returns_report_path_without_dumping_private_paragraphs(self):
         self.log['operations'] = [self.operation('不完整更新。')]
@@ -926,6 +1165,7 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertNotIn(self.financial, run.stdout)
         self.assertIn('WORD_PREFLIGHT_REJECTED', run.stderr)
         self.assertTrue(json.loads(self.report_path.read_text(encoding='utf-8'))['diagnostics']['chapter_content'])
+        self.assertNotIn('host_handoff', summary)
 
 
 if __name__ == '__main__':
