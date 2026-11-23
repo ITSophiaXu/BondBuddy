@@ -1,0 +1,12 @@
+/* #963: feedback stays beside existing editor download, save and selection controls. */
+.review-editor-feedback-note{margin:8px 0 12px;padding:10px 12px;border-left:3px solid #8ba16d;background:#f5f8f1;color:#3e5141;font-size:13px;line-height:1.65;overflow-wrap:anywhere}
+.review-editor-feedback-note[data-unsaved=true]{border-color:#b1904b;background:#faf7ee}
+.review-editor-unsaved{margin:0 0 14px;font-size:13px;color:#596852;overflow-wrap:anywhere}
+.review-editor-unsaved summary{cursor:pointer;width:fit-content;padding:4px 0}
+.review-editor-unsaved ul{margin:6px 0;padding-left:24px}
+.review-editor-unsaved[hidden]{display:none}
+.review-editor-current-feedback{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;line-height:1.6;color:#69756e;overflow-wrap:anywhere}
+.review-editor-current-feedback button{font:inherit;background:none;border:0;color:#285d48;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:5px 0}
+.review-editor-current-feedback button:disabled{cursor:default;opacity:.5}
+.review-editor-toolbar [data-editor-save]{max-width:100%;white-space:normal;text-align:left;line-height:1.6}
+@media(max-width:600px){.review-editor-feedback-note{font-size:12px}.review-editor-current-feedback button{min-height:36px}.review-editor-toolbar [data-editor-save]{width:100%}}
