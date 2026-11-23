@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {randomUUID as uid} from 'node:crypto';
 import Fastify from 'fastify';
 import {Pool} from 'pg';
-import {PROJECT_QA_PRICE,type QaInput,type QaResult} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,PROJECT_QA_LIST_PRICE,type QaDraft,type QaInput,type QaResult} from '@bondbuddy/contracts';
 import {Problem,publicProblem,transaction,digest,type PrivateBlobs} from '@bondbuddy/api/data';
 import {registerProjectQa} from '@bondbuddy/api/project-qa';
+import {collectionTasksSql,collectionFilesSql} from '../../api/dist/project-collection.js';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {configureAutomaticBilling} from '../../api/dist/automatic-billing-context.js';
@@ -57,7 +58,7 @@ async function setup(mode:Mode){
  await pool.query('UPDATE bb_project_qa_runs SET result=$2,result_hash=$3 WHERE run_id=$1',[prep.run_id,result,inputManifestHash(result)]);
  await finish(pool,lease,'succeeded',{artifactId:doc.artifactId,artifactVersion:1,blobs});
  let revision=0;
- const draft={preparation_id:prep.run_id,questions,materials:[prospectus],requirements:'Synthetic evidenced response',use_knowledge:false};
+ const draft:QaDraft={preparation_id:prep.run_id,questions,materials:[prospectus],requirements:'Synthetic evidenced response',use_knowledge:false};
  const save=async()=>{const w=await post('/draft',{expected_revision:revision,draft});revision=w.revision;};await save();
  async function quote(){
   let q=await post('/quote',{expected_revision:revision});
@@ -79,10 +80,11 @@ async function setup(mode:Mode){
   assert.equal(await ctx.validateBeforeModelCall!(),null);assert.equal(await ctx.validateBeforeModelCall!(),null,'provider replay keeps the accepted price');
   const m=await loadProjectQaInput(ctx);if(pauseNext){pauseNext=false;return {kind:'pause',stage:'capability_not_ready',reason:'synthetic_checkpoint_pause'};}modelEntries++;if(fail)return {kind:'fail',code:'SYNTHETIC_PROVIDER_FAILED'};
   const bytes=makeSyntheticDocxFixture({text:'Synthetic answers '+ctx.run.id}),sha256=digest(bytes),key=`owners/${owner}/projects/${project}/runs/${ctx.run.id}/qa/${sha256}/document.docx`;await blobs.put(key,bytes,media);
-  const value:QaResult={...result,input_hash:ctx.run.input_hash.trim(),document:{key,sha256,byte_size:bytes.length},answers:m.questions.map(q=>({question_id:q.id,answer:'Synthetic answer',status:'missing',missing_materials:['Synthetic evidence gap'],citations:[],case_ids:[],approach:'Synthetic regression'}))};
+  const taskQuestions=m.price_version===PROJECT_QA_LIST_PRICE.version?questions:m.questions;
+  const value:QaResult={...result,input_hash:ctx.run.input_hash.trim(),document:{key,sha256,byte_size:bytes.length},questions:taskQuestions,answers:taskQuestions.map(q=>({question_id:q.id,answer:'Synthetic answer',status:'missing',missing_materials:['Synthetic evidence gap'],citations:[],case_ids:[],approach:'Synthetic regression'}))};
   await pool.query('UPDATE bb_project_qa_runs SET result=$2,result_hash=$3 WHERE run_id=$1',[ctx.run.id,value,inputManifestHash(value)]);return {kind:'done',value};
  }};
- return {pool,app,blobs,owner,project,draft,save,start,quote,post,get revision(){return revision;},get modelEntries(){return modelEntries;},set fail(v:boolean){fail=v;},set pauseNext(v:boolean){pauseNext=v;},
+ return {pool,app,blobs,owner,project,source,draft,save,start,quote,post,get revision(){return revision;},get modelEntries(){return modelEntries;},set fail(v:boolean){fail=v;},set pauseNext(v:boolean){pauseNext=v;},
   execute:()=>runPipelineOnce({pool,blobs,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,synthetic,projectQaDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))}),
   read:async(id:string)=>{const run=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[id])).rows[0];const input=(await pool.query('SELECT * FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[project,run.input_revision])).rows[0];return {run,input};},
   close:async()=>{await app.close();await pool.end();}};
@@ -121,6 +123,31 @@ for(const mode of ['legacy','reviewed','automatic','coverage'] as const)test(`QA
     assert.equal(await h.execute(),'succeeded');assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100000-expected,frozen:0});
    }
   }else assert.equal(input.manifest.price_version,PROJECT_QA_PRICE.version);
+ }finally{await h.close();}
+});
+
+test('whole-list fixed price starts without a preparation link and settles exactly 12000 points after Word delivery',{skip:!database,timeout:120000},async()=>{
+ const h=await setup('legacy');
+ try{
+  h.draft.source=h.source;h.draft.preparation_id=null;h.draft.questions=[];await h.save();
+  const q=await h.post('/quote',{expected_revision:h.revision});
+  assert.deepEqual(q,{points:PROJECT_QA_LIST_PRICE.points,price_version:PROJECT_QA_LIST_PRICE.version});
+  const started=await h.post('/runs',{request_id:uid(),expected_revision:h.revision,expected_points:q.points,price_version:q.price_version});
+  const {run,input}=await h.read(started.run_id),manifest=input.manifest as QaInput;
+  assert.equal(manifest.preparation_id,null);assert.deepEqual(manifest.questions,[]);
+  assert.equal(await projectQaInputGate(h.pool,run,input),null);
+  assert.equal(await projectQaPriceValid(h.pool,run,{...manifest,price_version:PROJECT_QA_PRICE.version}),false);
+  assert.equal(await projectQaPriceValid(h.pool,run,{...manifest,points:PROJECT_QA_PRICE.points}),false);
+  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:88000,frozen:12000});
+  assert.equal(await h.execute(),'succeeded');
+  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:88000,frozen:0});
+  const delivered=(await h.pool.query('SELECT result FROM bb_project_qa_runs WHERE run_id=$1',[started.run_id])).rows[0].result as QaResult;
+  assert.equal(delivered.questions.length,7);assert.equal(delivered.answers.length,7);
+  assert.equal((await h.pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[started.run_id])).rows[0].n,1);
+  const taskRows=(await h.pool.query(`WITH members AS(SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2),tasks AS(${collectionTasksSql}) SELECT operation FROM tasks`,[h.owner,h.project])).rows;
+  assert.deepEqual(taskRows.map(row=>row.operation),['qa_answer'],'recognition is not a separate user task');
+  const fileRows=(await h.pool.query(`WITH members AS(SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2),files AS(${collectionFilesSql}) SELECT source,run_id FROM files WHERE source='artifact'`,[h.owner,h.project])).rows;
+  assert.deepEqual(fileRows.map(row=>row.run_id),[started.run_id],'only the answered Word is a downloadable Q&A result');
  }finally{await h.close();}
 });
 

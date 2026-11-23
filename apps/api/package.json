@@ -10,6 +10,7 @@
     "./none-baseline": {"types":"./dist/none-baseline.d.ts","default":"./dist/none-baseline.js"},
     "./docx-inspector": {"types":"./dist/docx-inspector.d.ts","default":"./dist/docx-inspector.js"},
     "./project-qa": {"types":"./dist/project-qa.d.ts","default":"./dist/project-qa.js"},
+    "./qa-knowledge": {"types":"./dist/qa-knowledge.d.ts","default":"./dist/qa-knowledge.js"},
     "./project-file-consistency": {"types":"./dist/project-file-consistency.d.ts","default":"./dist/project-file-consistency.js"},
     "./project-file-storage": {"types":"./dist/project-file-storage.d.ts","default":"./dist/project-file-storage.js"},
     "./project-file-workspace": {"types":"./dist/project-file-workspace.d.ts","default":"./dist/project-file-workspace.js"},

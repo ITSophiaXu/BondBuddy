@@ -9,7 +9,7 @@ import {isAutomaticCharge,displayCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import {reportBlocks,reportBlockHtml} from './review-report-document';
 
-import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,isAutomaticPriceVersion,qaProspectusIssue,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,QaWorkspaceSchema,qaSchemas,type QaWorkspace,type QaDraft,type QaRun,type ProjectFileAsset} from './billing-types.js';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_LIST_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,isAutomaticPriceVersion,qaProspectusIssue,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,QaWorkspaceSchema,qaSchemas,type QaWorkspace,type QaDraft,type QaRun,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ProspectusPanel} from './prospectus-panel';
@@ -30,14 +30,14 @@ import './project-qa-workspace.css';
 import {cny,isCnyPrice,displayPrice,scopeReady,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';
 
 const preparationWarning=(warning:string)=>warning==='没有找到明确的问题编号或问句。请根据原文选择问题段落后开始。'?'暂未能整理出可回答的问题，请检查清单正文或更换文件后重试。':warning==='识别到超过 200 个候选问题，请分批处理或调整范围。'?'清单超过本轮 200 题上限，请拆分文件后重新上传。':warning;
-const steps=['上传资料','生成回复','回答与补件'];
+const steps=['上传问题清单','开始回答','下载回填文档'];
 const terminal=new Set(['succeeded','failed','cancelled','rejected','test_completed']);
 const wordScope='保留完整原问题清单，仅回填本轮所选问题，不会自动合并历史答案。';
 const noAcceptance=new Set(['INPUT_REVISION_CONFLICT','PROJECT_RUN_ACTIVE','CREDITS_INSUFFICIENT','QUOTE_CHANGED','INPUT_REQUIRED','MATERIAL_UNREADABLE']);
 
 export class ProjectQaWorkspace {
  private fileProgress=new Map<string,FileUploadProgress>();private preparingUpload?:File;
- private get unitPoints(){return this.state?.price.points??PROJECT_QA_PRICE.points;}
+ private get unitPoints(){return this.state?.price.points??PROJECT_QA_LIST_PRICE.points;}
  private priceText(points:string|number|bigint){return displayCharge(this.state?.price,points);}
  private pendingPrice(pending:QaRecoveryPending|undefined){return pending?.kind==='answer'?isOutcomePriceVersion(pending.request.price_version)&&!isAutomaticPriceVersion(pending.request.price_version)?cny(pending.request.expected_points):formatPoints(pending.request.expected_points)+' 积分':'包含在回复任务内';}
  private controller=new AbortController();
@@ -167,7 +167,7 @@ export class ProjectQaWorkspace {
   const unavailable=this.state!.draft.materials.some(a=>!this.state!.materials.some(m=>key(a)===key(m.asset)));
   const save=document.querySelector<HTMLButtonElement>('#qa-save'),start=document.querySelector<HTMLButtonElement>('#qa-start');
   if(save)save.disabled=blocked;
-  if(start)start.disabled=blocked||!!this.prospectusIssue()||unavailable||!this.state!.draft.questions.length||!!qaPreparationFor(this.state!.draft,this.state!.runs,this.id!).error;
+  if(start)start.disabled=blocked||!!this.prospectusIssue()||unavailable||(!this.state!.draft.source&&!this.state!.draft.questions.length)||(!this.state!.draft.source&&!!qaPreparationFor(this.state!.draft,this.state!.runs,this.id!).error);
  }
  private adoptLocal(value:QaRecoveryValue){
   this.state!.draft=structuredClone(value.draft);this.state!.revision=value.revision;
@@ -217,7 +217,7 @@ export class ProjectQaWorkspace {
 
 
  private prospectusIssue(){
-  const d=this.state!.draft,source=this.state!.runs.find(r=>r.run_id===d.preparation_id)?.manifest.source.asset;
+  const d=this.state!.draft,source=d.source??this.state!.runs.find(r=>r.run_id===d.preparation_id)?.manifest.source.asset;
   return qaProspectusIssue(this.state!.prospectus,d.materials,source);
  }
  private defaultMaterials(r:QaRun){
@@ -229,7 +229,7 @@ export class ProjectQaWorkspace {
  private selectProspectus(){
   if(this.locked()||this.busy||!this.state!.prospectus)return;
   const d=this.state!.draft,p=this.state!.prospectus;
-  const source=this.state!.runs.find(r=>r.run_id===d.preparation_id)?.manifest.source.asset;
+  const source=d.source??this.state!.runs.find(r=>r.run_id===d.preparation_id)?.manifest.source.asset;
   if(source&&key(source)===key(p.asset)){this.status('问题清单不能作为募集说明书，请重新选择。');return;}
   if(!d.materials.some(a=>key(a)===key(p.asset))){
    if(d.materials.length>=50){this.status('本轮材料已达 50 份，请先移除一份补充材料，再选入募集说明书。');return;}
@@ -238,13 +238,13 @@ export class ProjectQaWorkspace {
   this.paint();
  }
  private workflow(run:QaRun|undefined,prepared:QaRun|undefined){
-  const active=run?.operation==='prepare'?0:run?.operation==='answer'?2:prepared?1:0;
+  const active=run?.operation==='answer'?run.state==='succeeded'?2:1:this.state?.draft.source||prepared?1:0;
   return `<ol class="qa-workflow" aria-label="项目问答流程">${steps.map((label,i)=>`<li ${i===active?'aria-current="step"':''}><span>${i+1}</span>${label}</li>`).join('')}</ol>`;
  }
  private projectMaterials(run?:QaRun){
   const historical=run?.operation==='answer',p=historical?run.manifest.prospectus:this.state!.prospectus;
   const selected=p&&(historical||this.state!.draft.materials.some(a=>key(a)===key(p.asset)));
-  return `<section class="panel qa-project-materials" aria-label="项目资料"><header><div><h2>${historical?'本轮项目资料':'项目资料'}</h2><p>${historical?'回答使用提交时固定的材料版本。':'募集说明书是回答的必需资料，可补充财务报告、业务明细等材料。'}</p></div><span class="qa-material-badge ${p?'':'is-missing'}">${p?'募集说明书已就绪':historical?'历史依据待核对':'缺少募集说明书'}</span></header><div class="qa-prospectus-row"><span class="qa-upload-icon" aria-hidden="true">${prototypeIcon('file')}</span><div><strong>${p?esc(p.filename):historical?'此历史任务未单独记录募集说明书版本':'先提供本项目募集说明书'}</strong><p>${p?`采用版本 V${p.sequence}${run?.operation==='prepare'?' · 用于本轮回答':selected?' · 已纳入本轮材料':' · 回答前需选入本轮材料'}`:historical?'请在逐题回答中核对当时引用的材料。':'问题清单可以先上传整理；补齐募集说明书后才能开始回答。'}</p></div>${!historical?`<button class="btn ${p?'secondary':'primary'}" id="qa-manage-prospectus" ${this.locked()?'disabled':''}>${p?'管理募集说明书':'上传或选择募集说明书'}</button>`:''}</div>${!historical?`<footer>${p&&!run&&!selected&&this.state!.draft.preparation_id?`<button class="btn secondary" id="qa-select-prospectus" ${this.locked()?'disabled':''}>用于本轮回答</button>`:''}<button class="text-button" id="qa-refresh-materials" ${this.locked()?'disabled':''}>刷新项目资料</button></footer>`:''}</section>`;
+  return `<section class="panel qa-project-materials" aria-label="项目资料"><header><div><h2>${historical?'本轮项目资料':'项目资料'}</h2><p>${historical?'回答使用提交时固定的材料版本。':'募集说明书是回答的必需资料，可补充财务报告、业务明细等材料。'}</p></div><span class="qa-material-badge ${p?'':'is-missing'}">${p?'募集说明书已就绪':historical?'历史依据待核对':'缺少募集说明书'}</span></header><div class="qa-prospectus-row"><span class="qa-upload-icon" aria-hidden="true">${prototypeIcon('file')}</span><div><strong>${p?esc(p.filename):historical?'此历史任务未单独记录募集说明书版本':'先提供本项目募集说明书'}</strong><p>${p?`采用版本 V${p.sequence}${run?.operation==='prepare'?' · 用于本轮回答':selected?' · 已纳入本轮材料':' · 回答前需选入本轮材料'}`:historical?'请在逐题回答中核对当时引用的材料。':'问题清单已保存；补齐募集说明书后才能开始回答。'}</p></div>${!historical?`<button class="btn ${p?'secondary':'primary'}" id="qa-manage-prospectus" ${this.locked()?'disabled':''}>${p?'管理募集说明书':'上传或选择募集说明书'}</button>`:''}</div>${!historical?`<footer>${p&&!run&&!selected&&(this.state!.draft.preparation_id||this.state!.draft.source)?`<button class="btn secondary" id="qa-select-prospectus" ${this.locked()?'disabled':''}>用于本轮回答</button>`:''}<button class="text-button" id="qa-refresh-materials" ${this.locked()?'disabled':''}>刷新项目资料</button></footer>`:''}</section>`;
  }
  private async manageProspectus(){
   if(this.locked()||this.busy)return;
@@ -286,7 +286,7 @@ export class ProjectQaWorkspace {
    case 'validating':return '正在检查回答与问题清单的对应关系。';
    case 'delivering':return '正在把回答写回问题清单并生成 Word。';
    case 'settlement_pending':return '正在确认 Word 交付结果。';
-   default:return '正在逐题回答；写回问题清单后提供 Word 下载。';
+   default:return r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'正在识别并回答整份问题清单；写回原文档后提供 Word 下载。':'正在逐题回答；写回问题清单后提供 Word 下载。';
   }
  }
  private usePreparation(r:QaRun){
@@ -402,24 +402,24 @@ export class ProjectQaWorkspace {
    const run=row.dataset.qaAnswerRun!,question=row.dataset.qaAnswerQuestion!;let saved=this.answerDisclosures.get(run);if(!saved){saved=new Map();this.answerDisclosures.set(run,saved);}saved.set(question,row.open);
   });
   const run=this.currentRun(),requested=this.selectedRun(),check=qaPreparationFor(this.state.draft,this.state.runs,this.id!),prepared=check.preparation,locked=this.locked()||this.busy;
-  const editing=prepared&&(this.pending||!requested||run?.run_id===prepared.run_id);
+  const editing=(this.state.draft.source&&!requested)||(prepared&&(this.pending||!requested||run?.run_id===prepared.run_id));
   const preparing=run?.operation==='prepare'&&!editing;
-  let content=editing?this.draft(prepared):requested&&!run?`<div class="collection-empty"><h3>无法读取指定的问答版本</h3><p>此版本可能已移除或暂不可用。没有改用其他版本。</p><a href="${esc(this.href())}">返回本项目准备内容与历史</a></div>`:preparing?'<p class="muted">问题识别属于上传准备。确认题目和项目材料后，点击“开始回答”才会写回 Word 并生成下载成果。</p>':run?this.result(run):`<div class="collection-empty"><h3>让回答留在问题旁边</h3><p>上传问题清单和项目材料 → 生成回复 → 下载 Word</p>${this.state.draft.preparation_id?`<p role="alert">${esc(check.error??'当前准备依据无法核实，请重新读取。')} 现有输入仍保留。</p>`:''}</div>`;
+  let content=editing?this.draft(prepared):requested&&!run?`<div class="collection-empty"><h3>无法读取指定的问答版本</h3><p>此版本可能已移除或暂不可用。没有改用其他版本。</p><a href="${esc(this.href())}">返回本项目准备内容与历史</a></div>`:preparing?'<p class="muted">这是旧版任务的问题识别记录。新版清单从“开始回答”后识别并回填。</p>':run?this.result(run):`<div class="collection-empty"><h3>让回答留在问题旁边</h3><p>上传问题清单和项目材料 → 开始回答 → 下载已回填的 Word</p>${this.state.draft.preparation_id?`<p role="alert">${esc(check.error??'当前准备依据无法核实，请重新读取。')} 现有输入仍保留。</p>`:''}</div>`;
   if(!editing&&(run||!prepared)&&this.uploadEnvelopes.some(e=>e.kind==='supplement'))content+=`<details class="qa-materials" open><summary>原准备的补充材料</summary>${this.uploadRows('supplement')}</details>`;
-  const empty=!run&&!requested&&!prepared;
+  const empty=!run&&!requested&&!prepared&&!this.state.draft.source;
   const history=this.state.runs.filter(r=>r.operation==='answer').sort((a,b)=>b.sequence-a.sequence);
-  const sourceName=run?.manifest.source.filename??prepared?.manifest.source.filename;
+  const sourceName=run?.manifest.source.filename??prepared?.manifest.source.filename??this.state.materials.find(m=>this.state!.draft.source&&key(m.asset)===key(this.state!.draft.source))?.filename;
   const upload=`<section class="panel qa-upload ${empty?'qa-upload-empty':'qa-upload-compact'}" aria-label="问题清单上传">
    <div class="qa-upload-icon" aria-hidden="true">${prototypeIcon('file')}</div><div class="qa-upload-copy"><h2>${empty?'上传问题清单':'问题清单'}</h2><p>${sourceName?esc(sourceName):'选择 Word 或 PDF，结合本项目材料逐题回答。'}</p></div>
    <label class="bb-upload-picker bb-upload-picker--compact btn ${empty?'primary':'secondary'}">${empty?'选择问题清单':'更换问题清单'}<input id="qa-upload" type="file" accept=".docx,.doc,.pdf" aria-label="上传问题清单" ${locked||this.hasUploads()?'disabled':''}></label>
-   ${empty?`<small>支持 DOCX、DOC、PDF · 单份不超过 100 MB<br>${isCnyPrice(this.state!.price)?'上传后自动处理，开始回答前展示费用':'上传后自动处理，开始回答后生成文档 · 每题 '+this.priceText(this.unitPoints)}</small>`:''}
+   ${empty?`<small>支持 DOCX、DOC、PDF · 单份不超过 100 MB<br>上传后只保存文件；点击“开始回答”后识别并回答 · ¥120 / 份（12,000 积分）</small>`:''}
    ${this.uploadRows('source')}
    ${preparing?this.preparationStatus(run!):''}
    ${empty?'<p class="qa-format-note">支持可检索的 PDF；扫描页请补充可提取文字的文件。</p>':''}
   </section>`;
   const resultFirst=run?.operation==='answer'&&!editing;
   const supporting=this.projectMaterials(run)+upload;
-  const documentPanel=empty?`<div class="qa-deliverables"><div><span aria-hidden="true">${prototypeIcon('file')}</span><div><h3>回答完成后下载 Word</h3><p>先在页面审阅回答，再下载包含回答和补件要求的文件。</p></div></div><div><span aria-hidden="true">${prototypeIcon('check')}</span><div><h3>待补材料清单</h3><p>逐题列出缺少的材料，补齐后可继续生成新版本。</p></div></div></div>${this.state.draft.preparation_id||this.uploadEnvelopes.some(e=>e.kind==='supplement')?content:''}`:`<section class="panel qa-document"><h2>${editing||preparing?'生成回复':run?.operation==='answer'&&!terminal.has(run.state)?'回答进度':'回答成果'}</h2>${resultFirst?`<p class="qa-result-context ${run!.manifest.prospectus?'':'qa-warning'}">${run!.manifest.prospectus?'本轮依据：'+esc(run!.manifest.prospectus.filename)+' · V'+run!.manifest.prospectus.sequence:'此历史任务未单独记录募集说明书版本，请核对逐题引用。'}</p>`:''}<div id="qa-document-body">${content}</div></section>`;
+  const documentPanel=empty?`<div class="qa-deliverables"><div><span aria-hidden="true">${prototypeIcon('file')}</span><div><h3>回答完成后下载 Word</h3><p>先在页面审阅回答，再下载包含回答和补件要求的文件。</p></div></div><div><span aria-hidden="true">${prototypeIcon('check')}</span><div><h3>待补材料清单</h3><p>逐题列出缺少的材料，补齐后可继续生成新版本。</p></div></div></div>${this.state.draft.preparation_id||this.uploadEnvelopes.some(e=>e.kind==='supplement')?content:''}`:`<section class="panel qa-document"><h2>${editing?'开始回答':preparing?'旧版问题识别':run?.operation==='answer'&&!terminal.has(run.state)?'回答进度':'回答成果'}</h2>${resultFirst?`<p class="qa-result-context ${run!.manifest.prospectus?'':'qa-warning'}">${run!.manifest.prospectus?'本轮依据：'+esc(run!.manifest.prospectus.filename)+' · V'+run!.manifest.prospectus.sequence:'此历史任务未单独记录募集说明书版本，请核对逐题引用。'}</p>`:''}<div id="qa-document-body">${content}</div></section>`;
   this.shell(`<div class="qa-page" data-view="${resultFirst?'result':'preparation'}">${this.header()}<p id="project-qa-status" role="status">${esc(this.statusText())}</p>${this.preparingUpload?uploadProgressHtml(uploadActivity(),this.preparingUpload.name):''}${this.recovery()}${this.activeTasks()}
    <div class="qa-toolbar" ${!history.length?'hidden':''}><label for="qa-history">历史记录</label><select id="qa-history" aria-label="问答历史版本" ${locked?'disabled':''}><option value="">准备下一轮</option>${history.map(r=>`<option value="${esc(r.run_id)}" ${r.run_id===run?.run_id?'selected':''}>${r.answer_sequence?`第 ${r.answer_sequence} 次 · `:''}回答问题 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??'状态待核对')} · ${esc(date(r.created_at))}</option>`).join('')}</select></div>
    ${this.workflow(run,prepared)}<div class="qa-layout">${resultFirst?documentPanel+supporting:supporting+documentPanel}</div></div>`,'qa');
@@ -451,14 +451,22 @@ export class ProjectQaWorkspace {
   if(this.persist()){this.conflict=false;this.message=useServer?'已采用服务器准备；尚未开始回答。':'本机准备已放在最新修订上，请核对后保存；尚未覆盖服务器。';}
   this.paint();
  }
- private draft(prepared:QaRun){
+ private draft(prepared?:QaRun){
+  if(this.state!.draft.source&&!this.state!.draft.preparation_id)return this.directDraft();
+  if(!prepared)return '<p class="qa-warning">旧版问题清单解析结果不可用，请重新读取。</p>';
   const d=this.state!.draft,points=BigInt(d.questions.length)*int64(this.unitPoints),pendingQuote=isCnyPrice(this.state!.price);
   const available=this.state!.materials.filter(m=>key(m.asset)!==key(prepared.manifest.source.asset));
   const missing=d.materials.filter(a=>!available.some(m=>key(a)===key(m.asset)));
   return `<p class="qa-round-summary">本轮 <strong>${d.questions.length} 个问题</strong> ${pendingQuote?' · 本次费用依问题与材料范围报价':`· 每题 ${this.priceText(this.unitPoints)} · 本轮 <strong>${this.priceText(points)}</strong>`}</p>${this.sourceRun&&this.state!.runs.find(r=>r.run_id===this.sourceRun)?.operation==='answer'?'<p class="qa-warning">已从指定历史任务准备下一轮，尚未提交。可补充材料和回答要求。</p>':''}<p id="qa-word-scope" class="muted">${wordScope}</p>${this.prospectusIssue()?`<p class="qa-warning" id="qa-required-material">${esc(this.prospectusIssue()!)}</p>`:''}<fieldset id="qa-preparation-controls" ${this.locked()||this.busy?'disabled':''}><legend class="sr-only">本轮准备内容</legend>${prepared.result!.warnings.map(w=>`<p class="qa-warning">${esc(preparationWarning(w))}</p>`).join('')}<details class="qa-question-preview" data-qa-questions-preview ${this.questionsOpen||!d.questions.length?'open':''}><summary>查看问题内容 · ${d.questions.length} 题</summary><div class="qa-question-list">${d.questions.map((q,i)=>`<article data-qa-question-id="${q.id}"><div><strong>问题 ${i+1}</strong></div><p>${esc(q.question)}</p></article>`).join('')||'<div class="qa-prepared-heading"><h3>暂未能整理出可回答的问题</h3><p>请检查问题清单正文，或更换可读取的 Word / PDF 后重试。</p></div>'}</div></details>${this.references.render(JSON.stringify([this.id,d.preparation_id]),available,d.materials,'<label class="bb-upload-picker bb-upload-picker--compact btn secondary">补充项目材料<input id="qa-supplement" type="file" accept=".docx,.doc,.pdf,.xlsx" multiple aria-label="补充项目材料" '+(this.hasUploads()?'disabled':'')+'></label>'+this.uploadRows('supplement'))}<label class="qa-field">本轮回答要求<textarea id="qa-requirements" ${d.included_followup_of?'readonly':''} rows="3" maxlength="16000" placeholder="例如：逐项解释报告期变化，保留待补材料提示">${esc(d.requirements)}</textarea></label>${d.included_followup_of?'<section class="qa-warning"><p>本轮沿用原题与原要求，按原单核实补料／修正，不新增收费。</p><button class="text-button" id="qa-new-scope">改为新事实／独立范围，重新报价</button></section>':''}<section class="qa-start-summary" aria-label="本轮费用"><h3>${pendingQuote?'本轮任务范围':'本轮费用 · '+this.priceText(points)}</h3>${this.state!.prospectus?`<p>本轮使用：${esc(this.state!.prospectus.filename)} · V${this.state!.prospectus.sequence}，以及 ${Math.max(0,d.materials.length-1)} 份补充材料。</p>`:''}<p>${pendingQuote?'按本轮实际范围计费；原范围内补料与平台纠错包含。':'开始时冻结积分，回答文档交付后扣费；包含待补材料建议。失败或取消释放冻结积分，补充材料后重新回答按新一轮所选问题数计费。'}</p></section><footer class="qa-actions"><button class="btn secondary" id="qa-save">保存准备内容</button><button class="btn primary" id="qa-start" ${!d.questions.length||missing.length||this.prospectusIssue()?'disabled':''}>${pendingQuote?'开始回答':'开始回答 · '+this.priceText(points)}</button></footer></fieldset>`;
  }
- private bindDraft(prepared:QaRun){
+ private directDraft(){
+  const d=this.state!.draft,source=d.source!,available=this.state!.materials.filter(m=>key(m.asset)!==key(source));
+  const missing=d.materials.filter(a=>!available.some(m=>key(a)===key(m.asset)));
+  return `<p class="qa-round-summary">问题清单已保存。点击“开始回答”后识别全部问题、逐题回答并写回原文档。</p><p id="qa-word-scope" class="muted">整份问题清单固定 ¥120（12,000 积分），与识别出的题数无关。</p>${this.prospectusIssue()?`<p class="qa-warning" id="qa-required-material">${esc(this.prospectusIssue()!)}</p>`:''}<fieldset id="qa-preparation-controls" ${this.locked()||this.busy?'disabled':''}><legend class="sr-only">回答材料与要求</legend>${this.references.render(JSON.stringify([this.id,source]),available,d.materials,'<label class="bb-upload-picker bb-upload-picker--compact btn secondary">补充项目材料<input id="qa-supplement" type="file" accept=".docx,.doc,.pdf,.xlsx" multiple aria-label="补充项目材料" '+(this.hasUploads()?'disabled':'')+'></label>'+this.uploadRows('supplement'))}<label class="qa-field">本轮回答要求<textarea id="qa-requirements" rows="3" maxlength="16000" placeholder="例如：逐项解释报告期变化，保留待补材料提示">${esc(d.requirements)}</textarea></label><section class="qa-start-summary" aria-label="本轮费用"><h3>整份固定 ¥120 · 12,000 积分</h3>${this.state!.prospectus?`<p>本轮使用：${esc(this.state!.prospectus.filename)} · V${this.state!.prospectus.sequence}，以及 ${Math.max(0,d.materials.length-1)} 份补充材料。</p>`:''}<p>开始时预留积分；回答文档交付后结算。任务失败或取消则释放预留积分。</p></section><footer class="qa-actions"><button class="btn secondary" id="qa-save">保存准备内容</button><button class="btn primary" id="qa-start" ${missing.length||this.prospectusIssue()?'disabled':''}>开始回答 · ¥120</button></footer></fieldset>`;
+ }
+ private bindDraft(prepared?:QaRun){
   const d=this.state!.draft;
+  const source=d.source??prepared?.manifest.source.asset;
   const materialPool=[...this.state!.materials.map(m=>m.asset),...d.materials];
   document.querySelectorAll<HTMLInputElement>('[data-qa-material]').forEach(c=>c.addEventListener('change',()=>{
    if(!c.isConnected)return;
@@ -467,7 +475,7 @@ export class ProjectQaWorkspace {
    if(c.checked){
     if(selected)return;
     const asset=materialPool.find(a=>key(a)===c.dataset.materialKey);
-    if(!asset||c.dataset.qaMaterial==='missing'||key(asset)===key(prepared.manifest.source.asset)){c.checked=false;this.status('当前参考版本暂不可核实，原选择仍保留。');return;}
+    if(!asset||c.dataset.qaMaterial==='missing'||source&&key(asset)===key(source)){c.checked=false;this.status('当前参考版本暂不可核实，原选择仍保留。');return;}
     if(d.materials.length>=50){c.checked=false;this.status('每轮最多参考 50 份材料，请先取消一份再添加。原选择已保留。');return;}
     d.materials=[...d.materials,structuredClone(asset)];
    }else d.materials=d.materials.filter(a=>key(a)!==c.dataset.materialKey);
@@ -565,14 +573,29 @@ export class ProjectQaWorkspace {
   return 'qa-answer-'+[...new Uint8Array(hash)].map(n=>n.toString(16).padStart(2,'0')).join('');
  }
  private async startAnswer(){
+  if(this.state!.draft.source&&!this.state!.draft.preparation_id){
+   if(this.locked()||this.hasUploads())return;
+   const issue=this.prospectusIssue();if(issue){this.status(issue);return;}
+   await this.save();if(!this.live()||this.locked())return;
+   const revision=this.state!.revision,draft=structuredClone(this.state!.draft);
+   const submit=async()=>{
+    if(this.state!.revision!==revision||!qaSameDraft(this.state!.draft,draft))throw new ApiError(409,'QUOTE_CHANGED');
+    const request_id=await this.answerRequestId();if(!this.live()||this.locked())return;
+    this.pending={kind:'answer',request:{request_id,expected_revision:revision,expected_points:serializeInt64(PROJECT_QA_LIST_PRICE.points),price_version:PROJECT_QA_LIST_PRICE.version}};
+    if(!this.persist()){this.paint();return;}await this.sendPending();
+   };
+   const d=this.modal('确认回答整份问题清单','<p>整份问题清单固定 <strong>¥120（12,000 积分）</strong>。点击开始后识别全部问题、逐题回答，并将回答写回 Word 供下载。</p><p>开始时预留积分，文档交付后结算；失败或取消释放预留积分。</p><button class="btn primary" id="qa-confirm">确认并开始 · ¥120</button>');
+   d.querySelector('#qa-confirm')!.addEventListener('click',()=>void this.act(submit,'submit'));
+   return;
+  }
   if(!isCnyPrice(this.state!.price)){
   if(this.locked()||this.hasUploads()||!this.state!.draft.questions.length)return;
   const issue=this.prospectusIssue();if(issue){this.status(issue);return;}
-  const points=this.state!.draft.questions.length*PROJECT_QA_PRICE.points;
+  const points=this.state!.draft.questions.length*60;
    await this.save();
    if(!this.live()||this.locked())return;
    const request_id=await this.answerRequestId();if(!this.live()||this.locked())return;
-   this.pending={kind:'answer',request:{request_id,expected_revision:this.state!.revision,expected_points:serializeInt64(points),price_version:PROJECT_QA_PRICE.version}};
+   this.pending={kind:'answer',request:{request_id,expected_revision:this.state!.revision,expected_points:serializeInt64(points),price_version:'project-qa-question-60-v1'}};
    if(!this.persist()){this.paint();return;}
    await this.sendPending();
    return;
@@ -601,23 +624,26 @@ export class ProjectQaWorkspace {
  }
  private result(r:QaRun){
   if(r.operation==='prepare')return this.preparationStatus(r);
+  const questions=r.result?.questions??r.manifest.questions;
   const active=!terminal.has(r.state),follow=r.operation==='answer'?qaFollowupFor(r,this.state!.runs,this.id!):undefined;
-  if(follow&&!this.followup.has(r.run_id))this.followup.set(r.run_id,new Set(follow.missingIds.length?follow.missingIds:r.manifest.questions.map(q=>q.id)));
+  if(follow&&!this.followup.has(r.run_id))this.followup.set(r.run_id,new Set(follow.missingIds.length?follow.missingIds:questions.map(q=>q.id)));
   const selected=this.followup.get(r.run_id)??new Set<string>();
   const answers=r.result?.answers??[];
-  const overview=!active&&follow?follow.error?`<section class="qa-result-overview" aria-label="本轮结果与下一步" data-qa-result-run="${esc(r.run_id)}"><h3>本轮结果与下一步</h3><p class="qa-warning">待补范围无法核实。${esc(follow.error)}</p><button class="btn secondary" id="qa-prepare-next" disabled>准备下一轮</button></section>`:`<section class="qa-result-overview" aria-label="本轮结果与下一步" data-qa-result-run="${esc(r.run_id)}"><h3>本轮结果与下一步</h3><p>原题 ${r.manifest.questions.length} 个 · 已有处理结果 ${answers.length} 个 · 待补材料 / 未回答 ${follow.missingIds.length} 个</p><div class="qa-result-navigation">${follow.missingIds.length?'<button class="btn secondary" id="qa-view-missing" '+(this.locked()||this.busy?'disabled':'')+'>查看待补问题</button>':''}<button class="btn secondary" id="qa-prepare-next" ${this.locked()||this.busy?'disabled':''}>${isCnyPrice(r.manifest)?'补充材料／原范围修正':'准备下一轮'}</button></div><p class="muted">${isCnyPrice(r.manifest)?'原已付范围补料或纠错不新增收费；新事实、独立新增范围另行报价。':'先查看原题与待补材料；准备下一轮时仍需采用选题、核对参考方式和费用。'}</p></section>`:'';
-  return `${r.operation==='answer'&&r.state==='succeeded'&&r.artifact_id?`<section class="qa-download-card" aria-label="下载回答文档"><div><h3>已回答的问题清单可下载</h3><p>${esc(r.manifest.source.filename)} · 含本轮回答及待补材料</p><a href="${esc(this.filesHref())}">查看项目文件</a></div><button class="btn primary" id="qa-download">下载已回答的问题清单（Word）</button></section>`:''}<div class="qa-run-head"><h3>回答问题并写回清单 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??r.state)}</h3><p>${esc(date(r.created_at))} · ${r.manifest.questions.length} 题 · ${displayPrice(r.manifest,r.manifest.points)}</p><p>${int64(r.reserved_points)>0n?'已预留 '+(displayCharge(r.manifest,r.reserved_points))+'，交付后结算':int64(r.charged_points)>0n?'已结算 '+(displayCharge(r.manifest,r.charged_points)):'本次尚未扣费'}</p>${active?`<p role="status">${this.answerActivity(r)}</p>${['running','validating','delivering','settlement_pending'].includes(r.state)?'<progress aria-label="回答问题并写回问题清单"></progress>':''}<p>关闭页面后任务继续，原件与历史成果保留。</p><button class="btn secondary" data-run-action="${['paused','awaiting_input'].includes(r.state)?'resume':'pause'}" ${this.pending?'disabled':''}>${['paused','awaiting_input'].includes(r.state)?'继续任务':'暂停任务'}</button><button class="text-button" data-run-action="cancel" ${this.pending?'disabled':''}>停止本轮</button>`:''}</div><p id="qa-word-scope" class="muted">${wordScope}</p>${r.result?.warnings.map(w=>`<p class="qa-warning">${esc(preparationWarning(w))}</p>`).join('')??''}${r.error_code==='MATERIAL_UNREADABLE'?`<section class="qa-missing-list" aria-label="需要补充可读募集说明书"><h3>请补充可读取的募集说明书</h3><p>未能从“${esc(r.manifest.prospectus?.filename??'募集说明书')}”提取可引用正文。请上传可检索 PDF 或 Word；扫描文件请先完成文字识别，再在项目资料中采用新版本并重新回答。</p><p>本轮未生成回答文件，冻结积分将释放。</p><a class="btn secondary" href="${esc(this.href())}">返回准备，补充募集说明书</a></section>`:''}${this.missingMaterials(r)}${overview}${answers.length?`<p class="muted">回答草稿仍需人工审阅。</p>${answers.map(a=>`<details class="qa-answer" data-qa-answer-question="${esc(a.question_id)}" data-qa-answer-run="${esc(r.run_id)}" ${(this.answerDisclosures.get(r.run_id)?.get(a.question_id)??false)?'open':''}><summary><b>原文段落 ${(r.manifest.questions.find(q=>q.id===a.question_id)?.start??0)+1}</b><span>${esc(r.manifest.questions.find(q=>q.id===a.question_id)?.question??'无法核实题目对应关系')}</span><small>${a.status==='missing'?'待补材料':'回答草稿'}</small></summary><div class="qa-answer-body">${reportBlocks(a.answer).map(reportBlockHtml).join('')}</div>${a.missing_materials.length?`<div class="qa-warning"><strong>需要补充</strong><ul>${a.missing_materials.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div>`:''}${a.approach?`<p>回答思路：${esc(a.approach)}</p>`:''}</details>`).join('')}`:''}${['failed','cancelled','rejected'].includes(r.state)?'<p role="alert">本轮未完成交付，未交付部分的预留将释放。原件和历次成果保留。</p>':''}${!active&&follow?`<details class="qa-followup" data-qa-followup-run="${esc(r.run_id)}" ${this.followupOpen.has(r.run_id)?'open':''}><summary>补充材料后重新回答</summary><h3 id="qa-followup-heading" tabindex="-1">补充材料，准备下一轮</h3><p>优先选择待补材料或未回答的问题。可调整选题；采用后仍需核对材料、参考方式和费用。</p>${follow.error?`<p role="alert">${esc(follow.error)}</p>`:''}<fieldset ${this.locked()||follow.error?'disabled':''}><legend>本轮要重新回答的问题</legend><div class="qa-followup-tools"><button class="text-button" id="qa-followup-missing">只选待补材料 / 未回答</button><button class="text-button" id="qa-followup-all">选择全部问题</button></div>${r.manifest.questions.map(q=>`<label><input type="checkbox" data-qa-followup value="${esc(q.id)}" ${selected.has(q.id)?'checked':''}><span><b>原文段落 ${q.start+1}${q.end>q.start?'–'+(q.end+1):''}</b> · ${follow.missingIds.includes(q.id)?'待补材料 / 未回答':'已有回答草稿'}<br>${esc(q.question)}</span></label>`).join('')}<p id="qa-followup-price">已选 ${selected.size} 题 · ${isCnyPrice(r.manifest)&&(int64(r.charged_points)>0n||r.manifest.included_followup_of)?'原单范围补料／修正 '+displayCharge(r.manifest,0)+'（服务端核对）':isCnyPrice(this.state!.price)?'下一轮依实际范围报价':'下一轮 '+this.priceText(BigInt(selected.size)*int64(this.unitPoints))}</p><button class="btn secondary" id="qa-continue" ${!selected.size?'disabled':''}>采用选中问题，准备下一轮</button></fieldset></details>`:''}`;
+  const overview=!active&&follow?follow.error?`<section class="qa-result-overview" aria-label="本轮结果与下一步" data-qa-result-run="${esc(r.run_id)}"><h3>本轮结果与下一步</h3><p class="qa-warning">待补范围无法核实。${esc(follow.error)}</p><button class="btn secondary" id="qa-prepare-next" disabled>准备下一轮</button></section>`:`<section class="qa-result-overview" aria-label="本轮结果与下一步" data-qa-result-run="${esc(r.run_id)}"><h3>本轮结果与下一步</h3><p>原题 ${questions.length} 个 · 已有处理结果 ${answers.length} 个 · 待补材料 / 未回答 ${follow.missingIds.length} 个</p><div class="qa-result-navigation">${follow.missingIds.length?'<button class="btn secondary" id="qa-view-missing" '+(this.locked()||this.busy?'disabled':'')+'>查看待补问题</button>':''}<button class="btn secondary" id="qa-prepare-next" ${this.locked()||this.busy?'disabled':''}>${r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'重新回答整份清单':isCnyPrice(r.manifest)?'补充材料／原范围修正':'准备下一轮'}</button></div><p class="muted">${r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'下一轮仍按整份清单固定 ¥120 计费。':isCnyPrice(r.manifest)?'原已付范围补料或纠错不新增收费；新事实、独立新增范围另行报价。':'先查看原题与待补材料；准备下一轮时仍需采用选题、核对参考方式和费用。'}</p></section>`:'';
+  return `${r.operation==='answer'&&r.state==='succeeded'&&r.artifact_id?`<section class="qa-download-card" aria-label="下载回答文档"><div><h3>已回答的问题清单可下载</h3><p>${esc(r.manifest.source.filename)} · 含本轮回答及待补材料</p><a href="${esc(this.filesHref())}">查看项目文件</a></div><button class="btn primary" id="qa-download">下载已回答的问题清单（Word）</button></section>`:''}<div class="qa-run-head"><h3>回答问题并写回清单 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??r.state)}</h3><p>${esc(date(r.created_at))} · ${questions.length?questions.length+' 题 · ':r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'整份清单识别与回答中 · ':''}${r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'¥120（12,000 积分）':displayPrice(r.manifest,r.manifest.points)}</p><p>${int64(r.reserved_points)>0n?'已预留 '+(displayCharge(r.manifest,r.reserved_points))+'，交付后结算':int64(r.charged_points)>0n?'已结算 '+(displayCharge(r.manifest,r.charged_points)):'本次尚未扣费'}</p>${active?`<p role="status">${this.answerActivity(r)}</p>${['running','validating','delivering','settlement_pending'].includes(r.state)?'<progress aria-label="回答问题并写回问题清单"></progress>':''}<p>关闭页面后任务继续，原件与历史成果保留。</p><button class="btn secondary" data-run-action="${['paused','awaiting_input'].includes(r.state)?'resume':'pause'}" ${this.pending?'disabled':''}>${['paused','awaiting_input'].includes(r.state)?'继续任务':'暂停任务'}</button><button class="text-button" data-run-action="cancel" ${this.pending?'disabled':''}>停止本轮</button>`:''}</div><p id="qa-word-scope" class="muted">${r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?'全部问题回答后写回原清单并交付 Word。':wordScope}</p>${r.result?.warnings.map(w=>`<p class="qa-warning">${esc(preparationWarning(w))}</p>`).join('')??''}${r.error_code==='MATERIAL_UNREADABLE'?`<section class="qa-missing-list" aria-label="需要补充可读募集说明书"><h3>请补充可读取的募集说明书</h3><p>未能从“${esc(r.manifest.prospectus?.filename??'募集说明书')}”提取可引用正文。请上传可检索 PDF 或 Word；扫描文件请先完成文字识别，再在项目资料中采用新版本并重新回答。</p><p>本轮未生成回答文件，冻结积分将释放。</p><a class="btn secondary" href="${esc(this.href())}">返回准备，补充募集说明书</a></section>`:''}${this.missingMaterials(r)}${overview}${answers.length?`<p class="muted">回答草稿仍需人工审阅。</p>${answers.map(a=>`<details class="qa-answer" data-qa-answer-question="${esc(a.question_id)}" data-qa-answer-run="${esc(r.run_id)}" ${(this.answerDisclosures.get(r.run_id)?.get(a.question_id)??false)?'open':''}><summary><b>原文段落 ${(questions.find(q=>q.id===a.question_id)?.start??0)+1}</b><span>${esc(questions.find(q=>q.id===a.question_id)?.question??'无法核实题目对应关系')}</span><small>${a.status==='missing'?'待补材料':'回答草稿'}</small></summary><div class="qa-answer-body">${reportBlocks(a.answer).map(reportBlockHtml).join('')}</div>${a.missing_materials.length?`<div class="qa-warning"><strong>需要补充</strong><ul>${a.missing_materials.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div>`:''}${a.approach?`<p>回答思路：${esc(a.approach)}</p>`:''}</details>`).join('')}`:''}${['failed','cancelled','rejected'].includes(r.state)?'<p role="alert">本轮未完成交付，未交付部分的预留将释放。原件和历次成果保留。</p>':''}${!active&&follow&&r.manifest.price_version!==PROJECT_QA_LIST_PRICE.version?`<details class="qa-followup" data-qa-followup-run="${esc(r.run_id)}" ${this.followupOpen.has(r.run_id)?'open':''}><summary>补充材料后重新回答</summary><h3 id="qa-followup-heading" tabindex="-1">补充材料，准备下一轮</h3><p>优先选择待补材料或未回答的问题。可调整选题；采用后仍需核对材料、参考方式和费用。</p>${follow.error?`<p role="alert">${esc(follow.error)}</p>`:''}<fieldset ${this.locked()||follow.error?'disabled':''}><legend>本轮要重新回答的问题</legend><div class="qa-followup-tools"><button class="text-button" id="qa-followup-missing">只选待补材料 / 未回答</button><button class="text-button" id="qa-followup-all">选择全部问题</button></div>${questions.map(q=>`<label><input type="checkbox" data-qa-followup value="${esc(q.id)}" ${selected.has(q.id)?'checked':''}><span><b>原文段落 ${q.start+1}${q.end>q.start?'–'+(q.end+1):''}</b> · ${follow.missingIds.includes(q.id)?'待补材料 / 未回答':'已有回答草稿'}<br>${esc(q.question)}</span></label>`).join('')}<p id="qa-followup-price">已选 ${selected.size} 题 · ${isCnyPrice(r.manifest)&&(int64(r.charged_points)>0n||r.manifest.included_followup_of)?'原单范围补料／修正 '+displayCharge(r.manifest,0)+'（服务端核对）':isCnyPrice(this.state!.price)?'下一轮依实际范围报价':'下一轮 '+this.priceText(BigInt(selected.size)*int64(this.unitPoints))}</p><button class="btn secondary" id="qa-continue" ${!selected.size?'disabled':''}>采用选中问题，准备下一轮</button></fieldset></details>`:''}`;
  }
  private missingMaterials(r:QaRun){
   if(r.operation!=='answer'||!terminal.has(r.state))return '';
+  const questions=r.result?.questions??r.manifest.questions;
   const follow=qaFollowupFor(r,this.state!.runs,this.id!);
   if(follow.error)return '<section class="qa-missing-list"><h3>待补材料清单</h3><p>题目与回答的对应关系暂无法核实，请重新读取此版本。</p></section>';
   const answers=r.result?.answers??[];
-  const missing=r.manifest.questions.filter(q=>follow.missingIds.includes(q.id));
+  const missing=questions.filter(q=>follow.missingIds.includes(q.id));
   if(!terminal.has(r.state))return '';
-  return `<section class="qa-missing-list" aria-label="待补材料清单"><header><h3>待补材料清单</h3><span>${missing.length?missing.length+' 个问题待补充':'暂无待补材料'}</span></header>${missing.length?`<p>补齐以下材料后，可选择对应问题生成新版本。</p><ol>${missing.map(q=>{const a=answers.find(a=>a.question_id===q.id);return `<li><h4>问题 ${r.manifest.questions.indexOf(q)+1} · ${esc(q.question)}</h4><ul>${a?.missing_materials.length?a.missing_materials.map(m=>`<li>${esc(m)}</li>`).join(''):'<li>本题尚未形成具体材料建议，请核对问题及现有材料后重新回答。</li>'}</ul></li>`;}).join('')}</ol>`:'<p>本轮未列出材料缺口，请下载文档核对回答及依据。</p>'}</section>`;
+  return `<section class="qa-missing-list" aria-label="待补材料清单"><header><h3>待补材料清单</h3><span>${missing.length?missing.length+' 个问题待补充':'暂无待补材料'}</span></header>${missing.length?`<p>补齐以下材料后，可选择对应问题生成新版本。</p><ol>${missing.map(q=>{const a=answers.find(a=>a.question_id===q.id);return `<li><h4>问题 ${questions.indexOf(q)+1} · ${esc(q.question)}</h4><ul>${a?.missing_materials.length?a.missing_materials.map(m=>`<li>${esc(m)}</li>`).join(''):'<li>本题尚未形成具体材料建议，请核对问题及现有材料后重新回答。</li>'}</ul></li>`;}).join('')}</ol>`:'<p>本轮未列出材料缺口，请下载文档核对回答及依据。</p>'}</section>`;
  }
  private bindResult(r:QaRun){
+  const questions=r.result?.questions??r.manifest.questions;
   document.querySelector('#qa-download')?.addEventListener('click',()=>void this.act(async()=>{const a=await this.api.artifact(r.artifact_id!,this.controller.signal);if(a.artifact_id!==r.artifact_id||a.run_id!==r.run_id)throw new UserFacingError('当前回填 Word 与所选问答任务的对应关系无法核实，请重新读取后再下载。');const bytes=await this.api.artifactBytes(a,this.controller.signal);if(this.live())this.downloads.save(bytes,artifactFilename(a));},'download'));
   document.querySelectorAll<HTMLElement>('[data-run-action]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{if(this.pending)return;await this.api.runAction(r.run_id,b.dataset.runAction as 'pause'|'resume'|'cancel',this.controller.signal);await this.refresh(true);})));
   document.querySelector('#qa-use-preparation')?.addEventListener('click',()=>{
@@ -633,12 +659,17 @@ export class ProjectQaWorkspace {
   }));
   document.querySelector('#qa-prepare-next')?.addEventListener('click',()=>{
    if(!this.live()||this.busy||this.locked()||!follow||follow.error)return;
+   if(r.manifest.price_version===PROJECT_QA_LIST_PRICE.version){
+    this.state!.draft={source:structuredClone(r.manifest.source.asset),preparation_id:null,questions:[],materials:r.manifest.materials.map(m=>structuredClone(m.asset)),requirements:r.manifest.requirements,use_knowledge:false};
+    this.needsKnowledgeChoice=false;this.sourceRun=r.run_id;this.changed();
+    if(!this.cacheProblem)location.hash=this.href();else this.paint();return;
+   }
    openFollowup();
    const heading=document.querySelector<HTMLElement>('#qa-followup-heading');heading?.focus({preventScroll:true});heading?.scrollIntoView({block:'start'});
   });
   document.querySelector('#qa-view-missing')?.addEventListener('click',()=>{
    if(!this.live()||this.busy||this.locked()||!follow||follow.error||!follow.missingIds.length)return;
-   const candidates=r.manifest.questions.filter(q=>follow.missingIds.includes(q.id)),rows=[...document.querySelectorAll<HTMLDetailsElement>('[data-qa-answer-question]')].filter(row=>row.dataset.qaAnswerRun===r.run_id);
+   const candidates=questions.filter(q=>follow.missingIds.includes(q.id)),rows=[...document.querySelectorAll<HTMLDetailsElement>('[data-qa-answer-question]')].filter(row=>row.dataset.qaAnswerRun===r.run_id);
    let saved=this.answerDisclosures.get(r.run_id);if(!saved){saved=new Map();this.answerDisclosures.set(r.run_id,saved);}
    rows.filter(row=>follow.missingIds.includes(row.dataset.qaAnswerQuestion!)).forEach(row=>{saved!.set(row.dataset.qaAnswerQuestion!,true);row.open=true;});
    const first=candidates[0];if(!first)return;
@@ -657,12 +688,12 @@ export class ProjectQaWorkspace {
   }));
   const choose=(ids:string[])=>{if(this.locked())return;this.followup.set(r.run_id,new Set(ids));document.querySelectorAll<HTMLInputElement>('[data-qa-followup]').forEach(input=>input.checked=ids.includes(input.value));updatePrice();};
   document.querySelector('#qa-followup-missing')?.addEventListener('click',()=>choose(follow?.missingIds??[]));
-  document.querySelector('#qa-followup-all')?.addEventListener('click',()=>choose(r.manifest.questions.map(q=>q.id)));
+  document.querySelector('#qa-followup-all')?.addEventListener('click',()=>choose(questions.map(q=>q.id)));
   document.querySelector('#qa-continue')?.addEventListener('click',()=>{
    if(this.busy||this.locked()||!follow||follow.error)return;
-   const selected=this.followup.get(r.run_id)!,questions=r.manifest.questions.filter(q=>selected.has(q.id));
-   if(!questions.length)return;
-   this.state!.draft={...(isCnyPrice(r.manifest)&&r.state==='succeeded'&&(int64(r.charged_points)>0n||r.manifest.included_followup_of)?{included_followup_of:r.manifest.included_followup_of??r.run_id}:{}),preparation_id:r.manifest.preparation_id,questions:structuredClone(questions),materials:r.manifest.materials.map(m=>structuredClone(m.asset)),requirements:r.manifest.requirements,use_knowledge:false};
+   const selected=this.followup.get(r.run_id)!,selectedQuestions=questions.filter(q=>selected.has(q.id));
+   if(!selectedQuestions.length)return;
+   this.state!.draft=r.manifest.price_version===PROJECT_QA_LIST_PRICE.version?{source:structuredClone(r.manifest.source.asset),preparation_id:null,questions:[],materials:r.manifest.materials.map(m=>structuredClone(m.asset)),requirements:r.manifest.requirements,use_knowledge:false}:{...(isCnyPrice(r.manifest)&&r.state==='succeeded'&&(int64(r.charged_points)>0n||r.manifest.included_followup_of)?{included_followup_of:r.manifest.included_followup_of??r.run_id}:{}),preparation_id:r.manifest.preparation_id,questions:structuredClone(selectedQuestions),materials:r.manifest.materials.map(m=>structuredClone(m.asset)),requirements:r.manifest.requirements,use_knowledge:false};
    this.needsKnowledgeChoice=false;this.sourceRun=r.run_id;this.changed();
    if(!this.cacheProblem)location.hash=this.href();else this.paint();
   });
@@ -713,7 +744,7 @@ export class ProjectQaWorkspace {
  }
  private uploadRows(kind:QaUploadKind){
   const errors=this.uploadSelections.map((s,index)=>({s,index})).filter(({s})=>s.kind===kind).map(({s,index})=>`<article class="qa-upload-recovery bb-upload-file"><strong>${esc(s.name)}</strong><p role="alert">${esc(s.message)}</p><button class="bb-upload-action text-button" data-qa-selection="${index}">移除此本机选择</button></article>`).join('');
-  return `${kind==='source'&&this.uploadProblem?`<p class="qa-warning" role="alert">${esc(this.uploadProblem)}</p>`:''}${errors}${this.uploadEnvelopes.filter(e=>e.kind===kind).map(e=>`<div class="qa-upload-recovery bb-upload-file" data-qa-upload-batch="${esc(e.id)}"><p>${kind==='source'?'问题清单上传待确认。':'补充材料上传待确认。'}</p>${e.items.map((item,index)=>`<article data-qa-upload-id="${esc(item.id)}"><strong>${esc(item.declaration.filename)}</strong>${uploadProgressHtml(this.fileProgress.get(item.id),item.declaration.filename,{error:this.uploadErrors.get(item.id),paused:!this.busy&&!item.material,complete:!!item.material})}<p>${item.applied?'已加入原准备，待清理本机上传记录':e.handedOff?'已移交原文件处理请求，请在上方恢复原请求':item.material?'服务器已确认保存原文件；'+(kind==='source'?'尚未开始文件处理':'尚需确认加入原准备'):'重试会先确认保存结果，需要原文件时再重新选择。'}</p>${item.applied||e.handedOff?'':`<button class="bb-upload-action bb-upload-action--primary btn secondary" data-qa-upload-action="resume" data-operation="${esc(item.id)}" ${index>0&&!e.items[index-1].applied||!!this.pending?'disabled':''}>确认原上传${kind==='supplement'?'并加入原准备':''}</button>${this.uploadNeedsFile.has(item.id)?`<label class="bb-upload-picker bb-upload-picker--compact btn secondary">重新选择原文件<input type="file" data-qa-upload-reselect="${esc(item.id)}" accept="${kind==='source'?'.doc,.docx,.pdf':'.doc,.docx,.pdf,.xlsx'}" aria-label="重新选择原文件 ${esc(item.declaration.filename)}"></label>`:''}${kind==='source'&&item.material?`<button class="bb-upload-action bb-upload-action--primary btn primary" data-qa-upload-action="prepare" data-operation="${esc(item.id)}" ${this.pending?'disabled':''}>继续文件处理</button>`:''}`}</article>`).join('')}<button class="bb-upload-action text-button" data-qa-upload-stop="${esc(e.id)}">${e.handedOff||e.items.every(i=>i.applied)?'完成':'取消本次上传'}</button><small>取消不会删除已保存文件或撤销已提交的识别。</small></div>`).join('')}`;
+  return `${kind==='source'&&this.uploadProblem?`<p class="qa-warning" role="alert">${esc(this.uploadProblem)}</p>`:''}${errors}${this.uploadEnvelopes.filter(e=>e.kind===kind).map(e=>`<div class="qa-upload-recovery bb-upload-file" data-qa-upload-batch="${esc(e.id)}"><p>${kind==='source'?'问题清单上传待确认。':'补充材料上传待确认。'}</p>${e.items.map((item,index)=>`<article data-qa-upload-id="${esc(item.id)}"><strong>${esc(item.declaration.filename)}</strong>${uploadProgressHtml(this.fileProgress.get(item.id),item.declaration.filename,{error:this.uploadErrors.get(item.id),paused:!this.busy&&!item.material,complete:!!item.material})}<p>${item.applied?'已加入原准备，待清理本机上传记录':e.handedOff?'旧版处理请求已保留，请核对原请求':item.material?'服务器已确认保存原文件；尚需确认加入当前准备':'重试会先确认保存结果，需要原文件时再重新选择。'}</p>${item.applied||e.handedOff?'':`<button class="bb-upload-action bb-upload-action--primary btn secondary" data-qa-upload-action="resume" data-operation="${esc(item.id)}" ${index>0&&!e.items[index-1].applied||!!this.pending?'disabled':''}>确认原上传并加入准备</button>${this.uploadNeedsFile.has(item.id)?`<label class="bb-upload-picker bb-upload-picker--compact btn secondary">重新选择原文件<input type="file" data-qa-upload-reselect="${esc(item.id)}" accept="${kind==='source'?'.doc,.docx,.pdf':'.doc,.docx,.pdf,.xlsx'}" aria-label="重新选择原文件 ${esc(item.declaration.filename)}"></label>`:''}`}</article>`).join('')}<button class="bb-upload-action text-button" data-qa-upload-stop="${esc(e.id)}">${e.handedOff||e.items.every(i=>i.applied)?'完成':'取消本次上传'}</button><small>取消不会删除已保存文件或已提交任务。</small></div>`).join('')}`;
  }
  private bindUploads(){
   document.querySelectorAll<HTMLElement>('[data-qa-upload-action]').forEach(button=>button.addEventListener('click',()=>void this.act(async()=>{
@@ -734,7 +765,7 @@ export class ProjectQaWorkspace {
   try{
    if(this.locked()||this.hasUploads())throw new UserFacingError('请先确认原上传或停止本机后续保存，再选择新文件。');
    if(!this.owner||!this.uploadCore.has(kind))throw new UserFacingError('尚未核实当前账号，未建立上传会话。');
-   if(kind==='supplement'&&(!this.state!.draft.preparation_id||this.state!.draft.materials.length+files.length>50))throw new UserFacingError('每轮最多参考 50 份材料，请先核对原问题清单和材料数量。');
+   if(kind==='supplement'&&(!this.state!.draft.preparation_id&&!this.state!.draft.source||this.state!.draft.materials.length+files.length>50))throw new UserFacingError('每轮最多参考 50 份材料，请先核对原问题清单和材料数量。');
    if(!this.persist())throw new UserFacingError(this.cacheProblem);
    this.preparingUpload=files[0];this.paint();
    const base=this.snapshot(),declarations:Dto<'UploadCreateRequest'>[]=[];
@@ -747,9 +778,7 @@ export class ProjectQaWorkspace {
    for(const [index,item] of envelope.items.entries()){this.uploadFiles.set(item.id,files[index]);this.uploadCore.get(kind)!.begin(item.declaration,qaUploadContext(envelope,index),item.id);}
    this.preparingUpload=undefined;this.scanUploads();this.paint();
    for(let index=0;index<envelope.items.length;index++)await this.resumeUpload(envelope.id,index,files[index]);
-   // Initial file selection retains the existing upload-and-free-identification
-   // intent. Reload/retry only confirms the upload; its next task is explicit.
-   if(kind==='source'){await this.continueSource(envelope.id);return;}
+   if(kind==='source'){await this.save();if(this.live())this.message='问题清单已保存。点击“开始回答”后才会识别并回答。';return;}
    if(this.live())this.message='已补充材料并保留原准备选择。可直接开始回答。';
   }catch(error){if(this.live()){
    this.message=this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save');
@@ -778,7 +807,6 @@ export class ProjectQaWorkspace {
   if(item.material&&!qaUploadMaterialMatches(item.material,material))throw new UserFacingError('原文件的已保存版本发生变化，未替换引用。');
   if(!item.material){const next=structuredClone(e);next.items[index].material=material;e=this.retainUpload(next,e);item=e.items[index];}
   this.uploadErrors.delete(item.id);this.uploadNeedsFile.delete(item.id);this.uploadFiles.delete(item.id);
-  if(e.kind==='source')return;
   const expected=qaUploadExpected(e),next=qaUploadExpected(e,index),fresh=await this.read();if(!this.live())return;
   if(fresh.revision!==e.base.revision)throw new UserFacingError('服务器中的原准备内容已变化。文件已保存，但没有加入当前另一轮；请核对原轮次或停止本机后续保存。');
   const local=this.cache!.read(),snapshot=this.snapshot();
