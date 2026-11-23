@@ -66,11 +66,14 @@
 
 北京时间12:03:38.265（UTC04:03:38.265）实际 `model_cancellation/source=task_signal/phase=native/error_class=abort`，随后 `MODEL_CANCELLED` / `SIGTERM`。call 的 duration_ms 为5,640,754，约94.013分钟。12:04:03（UTC04:04:03）的 lost 晚于取消，不能反推取消前一定续租失败。当前无成果，业务暂停待对账，用量unknown，27,195积分仍预留。
 
+新增窄核验：受理02:28:38.212479 UTC至取消04:03:38.264623243 UTC，间隔 **5,700.052144243秒，恰95分钟加52.144毫秒**，也等于原65分钟测试检查点再加30分钟与52.144毫秒。03:12、03:20、03:33 UTC三个已存job快照的 `lease_until − updated_at` 均为120秒滚动续租，最后保存03:33:32续到03:35:32，不能解释为固定95分钟租约。冻结候选源码及原本地测试helper未找到95分钟或65+30的取消计时路径，均未绑定实际生产build。请核实是否存在外层任务时限、租约累计预算、托管进程生命周期，或人工/自动操作；时间吻合只是候选，必须有实际触发器与有效build/config证据。
+
 完整留存 review 窗口只有10条事件，无 abort actor/reason/renew。exec 在产生端已20MiB截断，原/替代内容入口均 container_read 失败；execution-configs 无过滤也 ValueError。普通 timeout、用户取消、worker重启和后来的解析数据库错误均未获足够支持。候选源码不是现场 build。
 
 |请核实的现场证据|admin 回复或受保护证据索引|
 |---|---|
 |task_signal 的发起 reason/operation/actor：renew error、lease expiry、cancel、drain 或其他|待补|
+|受理后95分钟中断是否来自外层时限/累计预算/进程生命周期/人工或自动操作；请给实际触发事件与有效build/config，不能仅据时间吻合定因|待补|
 |取消前最后一次成功 renew、lease_until、DB错误码/持续时间、租约状态；区分取消后 lost|待补|
 |同时间部署/重建/排空动作与原回执；实际 drain 时限/超时事件|待补|
 |实际 build 与 effective timeout/lease/concurrency 配置的脱敏摘要|待补|
