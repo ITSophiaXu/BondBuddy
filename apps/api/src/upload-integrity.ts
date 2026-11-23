@@ -29,7 +29,10 @@ export async function cachedUploadVersion(client:Pick<PoolClient,'query'>, blobs
 export async function recordUploadIntegrity(client: PoolClient, material: StoredMaterial, verified: BlobDigest) {
   if (verified.sha256 !== material.sha256.trim() || verified.byteSize !== Number(material.byte_size))
     throw new Problem(503,'DATA_UNAVAILABLE','Saved material integrity differs');
-  if (!verified.etag) return; // Legacy/test adapters must retain the full-read path.
+  // An API ingress proof confirms what the server sent and the stored version,
+  // but it is not the existing full-read integrity receipt. First consumers
+  // still hash the Blob bytes, and later deduplication retains its full-read fallback.
+  if (!verified.etag || verified.trustedIngress) return;
   await client.query(`INSERT INTO bb_upload_integrity_receipts
     (owner_user_id,project_id,material_id,material_version,object_key,sha256,byte_size,object_etag)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
