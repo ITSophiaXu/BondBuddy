@@ -4,6 +4,8 @@
 
 第一阶段：腾讯云主站运行网页、API、唯一业务 PostgreSQL 与必要运维；原 Azure 业务机器运行编制、复核；当前迁移布局由主站运行纯解析。继续使用 PG 队列与原私有 Azure Blob。无新增 HTTP 执行协议、批内并发、价格、状态机、模型、认证或页面变更。双端迁移已由 #906/#908 完成；本 #911 的普通生命周期采纳与验收另行执行，隔离检查不冒充这次采纳验收。
 
+发布前先完成[部署权限与身份管理](#部署权限与身份管理)。实际主站、解析及执行节点的位置和入口以最新组件收据为准；本页历史云端放置、Compose 服务定义和本地模板均不证明当前线上布局。
+
 ## 角色与入口
 
 | 角色 | Compose | 常驻服务 | 单次服务 |
@@ -37,6 +39,100 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 模板见 `.env.main.example`、`.env.execution.example`：仅补角色字段，保留原收费开关、Blob、模型、Provider、认证、超时、条款及出口白名单。不要把示例占位值用于生产。业务 Codex 的**模型目录和真实执行参数继续固定 1000000 窗口、900000 压缩**；本次将 Dockerfile 的业务 CLI 最小更新到已核对的官方稳定版0.167.0及官方包校验值，并添加来源标签；保留业务适配器参数和模型目录契约。验收实际 `token_count.info.model_context_window=1000000`，不是只看目录。业务窗口与开发环境窗口各自独立。
 
 `execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
+
+## 部署权限与身份管理
+
+### 先确认目标和既有入口
+
+本节用于既有环境的发布接续，不授予任何权限，不新增审批流程，也不代替发布门禁。`main` / `execution` 是部署角色，不是云 IAM、Linux 用户或业务日志角色。已有组件混版或弹性执行节点时，先使用该环境已验证的组件发布入口；不得用本页整角色命令覆盖其他在途组件。现存节点和未来启动模板须分别留生效证据。
+
+在发布 Issue/PR 或既有受保护运维记录中填写以下信息；凭据只登记保管位置或标识，不登记实际内容：
+
+| 接续信息 | 必须明确的内容 |
+| --- | --- |
+| 目标范围 | 环境名、云账号/订阅、地域、主站及实际执行节点实例 ID、角色、Compose project；以最新组件收据和运行观察核对 |
+| 操作入口 | 既有受限运维入口或经批准的 SSH 别名、主机密钥核验来源、执行身份、授权范围及授权记录 |
+| 版本与配置 | 请求完整 SHA、实际应用/部署脚本 SHA、私有 env/覆盖/状态目录位置及配置 hash；不贴 env 原文 |
+| 当前状态与前像 | 各组件实际镜像 ID、服务及进程状态、在途任务、pending 操作、唯一 PG 和已应用迁移、回滚版本与配置前像 |
+| 接续状态 | 当前步骤、已完成证据、失败/未知结果、同环境冲突锁的范围及解除条件、其他获授权执行者可取用的记录入口 |
+
+优先复用已配置并验证的运维身份。应用身份被 TAT、云 API 或管理接口拒绝，仅说明该身份不具备该操作权限；先核查既有管理入口，不给业务 worker 扩权，不要求某个指定人员在线。关键目标或身份未核实，应记录为“未核验”，不能凭示例参数继续发布。
+
+### 最小权限矩阵
+
+| 操作范围 | 所需身份及边界 | 验证方式 |
+| --- | --- | --- |
+| 仓库与发布分支 | 开发身份仅需目标仓库的分支推送、PR 及适用的合并能力；沿用 `develop`/`master` 发布规则，不要求全仓库管理员 | 下述 Git/`gh` 只读检查；读取成功不证明推送、合并或发布状态写入成功 |
+| 发布验收状态 | 专用发布服务或 GitHub App 对该仓库具备 commit status 写入权限，私有验收证据由受控发布者保管 | 按[受控质量发布身份](../../scripts/prospectus-quality-publisher.md)验证准确 SHA 的回执；不得手工发 success 来试权限，不借用模型身份 |
+| 目标服务器发布 | 获授权入口能传输/加载已验镜像、调用目标角色入口、检查实际容器并写入该环境状态目录 | 核对入口授权策略，再运行下述配置/状态检查；只读诊断账号不能作为部署账号 |
+| 系统安全配置 | 当前执行端入口安装 AppArmor 配置需要 root 或对应的受限 sudo；只允许已核源码和固定目标，不能开放任意安装命令 | 由获授权执行者核对 `id`、`sudo -n -l` 和[安装脚本](../../deploy/m1/scripts/install-codex-file-sandbox.sh)；本步骤不安装或 reload 配置 |
+| 私有配置与凭据 | 部署服务按需要读取现有 env、覆盖和发布凭据；配置写入只用于本次批准范围。模型进程不得访问发布凭据 | 核对文件 owner/ACL；env/私钥为 `0600`、私有父目录为 `0700`，挂载和取用范围按本文契约验证 |
+| 主站数据库迁移 | 使用既有迁移身份；按本批迁移核对目标表所有者或等效 DDL 能力，新建对象所需 schema 权限，以及迁移记录表的读取/写入能力 | 连接/schema 探测及下述 schema/表所有者检查；只读连接成功不证明 DDL 权限，迁移只在主站执行 |
+| Blob/模型运行访问 | 延续既有服务身份、对象范围、供应商账号与出口策略；无需把服务密钥交给每位开发 | 复用适用的已授权读写/供应商验收证据；文件存在不证明授权可用，缺证据如实记录 |
+| 云资源创建/启停/调整 | 只有此次操作涉及云资源管理时，才由既有云管理身份获得准确实例/资源范围的相应权限 | 检查该身份的有效策略与原始云回执；不能用查看 CVM 的权限推断 TAT 执行权限，也不能用云 Reader 推断 Linux sudo 权限 |
+
+直接访问 Docker socket 通常具有接近宿主机 root 的能力；Compose project 名称和容器标签只是分组，不是权限隔离。优先使用既有受限发布入口，不为普通开发或模型 worker 新增 Docker socket、广泛 sudo、Azure Owner 或腾讯云全局管理员权限。业务日志授权与撤销另见[日志运维说明](../M1-LOG-OPERATIONS.md)，不等同于服务器发布授权。
+
+### 发布前的权限核查命令
+
+以下为检查模板，不执行发布或授权。将参数替换为本批已核值，在已有获授权入口运行；受限入口不支持 shell 时，由其现有发布接口执行等效检查，不能为运行这些示例临时开放 shell。失败停止对应步骤，保留退出码和脱敏输出，不用空值或默认目标继续。
+
+开发端核对仓库访问：
+
+```sh
+set -euo pipefail
+git ls-remote --exit-code origin HEAD
+gh api repos/ITSophiaXu/BondBuddy --jq '.permissions'
+```
+
+Git 和 `gh` 可能使用不同身份；私有仓库 404 可能是错误账号、token 范围或仓库授权问题。先核已有身份配置，不打印 token，不通过扩大所有仓库权限来解决。GitHub App 的权限按其 installation 范围和既有授权记录核验，不能仅看 `.permissions` 判断发布身份权限。
+
+在每个目标服务器分别核对配置与运行状态。`ROLE` 只能取该环境实际的 `main` 或 `execution`；路径须指向既有部署目录和私有 env：
+
+```sh
+set -euo pipefail
+ROLE='main'
+DEPLOY_CHECKOUT='/absolute/path/to/verified/deployment-checkout'
+export BB_ENV_FILE='/absolute/path/to/existing/main-private.env'
+cd "$DEPLOY_CHECKOUT"
+test -r "$BB_ENV_FILE"
+stat -c '%a %U:%G' "$BB_ENV_FILE"
+bash deploy/m1/scripts/role-compose.sh "$ROLE" config --quiet
+bash deploy/m1/scripts/role-compose.sh "$ROLE" config --services
+bash deploy/m1/scripts/role-compose.sh "$ROLE" ps
+```
+
+执行端使用其已核 `execution` 目录和私有 env 再做同样检查。不得打印完整 Compose JSON、容器 Env、数据库 URL 或私钥。这些命令不启动业务服务；但角色配置入口可能在首次合法采纳时写入环境绑定，因此必须在已核状态目录中由获授权入口执行，不能用新 state 目录探测。
+
+连接/schema 探测使用现有入口：
+
+```sh
+set -euo pipefail
+bash deploy/m1/scripts/role-compose.sh "$ROLE" probe connect
+bash deploy/m1/scripts/role-compose.sh "$ROLE" probe schema
+```
+
+这里的 `ROLE` / `BB_ENV_FILE` / 工作目录沿用上一步。`probe` 的 SQL 为只读，但会创建并删除临时探测容器，仍需获授权 Docker 操作能力；不能把它当普通日志读取权限。schema 探测按实际加载镜像里的迁移清单核对，不证明尚未加载的新版本迁移已应用；新候选缺迁移时按主站发布流程处理，不跳过失败启动执行端。
+
+数据库迁移身份可在主站作只读核查：
+
+```sh
+set -euo pipefail
+test "$ROLE" = main
+bash deploy/m1/scripts/role-compose.sh main exec -T postgres \
+  psql -U bondbuddy -d bondbuddy -v ON_ERROR_STOP=1 -c \
+  "BEGIN READ ONLY; SELECT current_user, has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_in_public; SELECT c.relname AS table_name, pg_has_role(current_user, c.relowner, 'USAGE') AS can_use_table_owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') ORDER BY c.relname; ROLLBACK;"
+```
+
+该命令检查现有 `bondbuddy` 数据库身份的 public schema 创建权限和各表所有者能力，不执行 ALTER 或迁移。按本批迁移涉及的表逐项核对；需要修改的既有目标表缺失、所需权限为 false 或查询错误不能记为通过。新建表则核对对应 schema 权限。如果环境的迁移身份不同，须核对实际 `migrate` 服务使用的身份，不能用这里的账号代替。还须核对迁移记录表的实际读取/写入权限、其他待应用迁移及兼容性；不能以这些 SELECT 代替迁移验收。
+
+### 授权、轮换、撤销与发布接续
+
+1. **按既有流程授权**：记录环境、资源/命令范围、执行身份、用途、有效期或复核时间和现有授权依据；由相应仓库/主机/数据库/云管理员或受控服务执行。复用仍适用的授权与发布例外，不新增重复审批。不在文档或 Issue 中交换密码、token、私钥；个人 SSH 使用个人 key，只交公钥登记。
+2. **验证身份而非猜测权限**：按矩阵核对实际入口和有效策略，记录成功、失败、未执行各项。无法独立发布时由已有权限的受控发布入口执行，不把日志账号改成 root，不为模型 worker 复制运维凭据。
+3. **隔离保管与轮换**：个人、部署服务、模型/Blob、PG 转发和质量发布身份分开；凭据由目标环境的既有受保护配置或凭据管理入口保管，模型目录不可读。轮换时先核实际使用者、在途操作和恢复路径，再按已有受控流程验证替代身份并撤销旧身份，不批量覆盖或停整机。
+4. **撤销权限**：通过原授权入口撤销对应 SSH 公钥/入口 ACL、受限 sudo、GitHub App/token、云角色或数据库授权；按实际使用范围处理，不撤销其他服务共享身份。已有 SSH 会话、短 token 或数据库连接可能仍有效，须核其生命周期并由既有管理策略收束；撤销记录保留，不以删除审计作为撤销。
+5. **完成和接续**：将执行身份、应用/脚本 SHA、配置 hash、各端实际镜像及服务状态、迁移、适用质量凭据、原始症状验收和回滚前像写入发布记录。仅实际冲突步骤互斥，完成立即释放；未知云操作先查回执和实际进程再重试。接续记录可由其他已授权执行者读取，不能以 PR、留言、单端成功或镜像存在代替节点实际生效。
 
 ## 私有覆盖、解析放置与独立配置版本（#911）
 
