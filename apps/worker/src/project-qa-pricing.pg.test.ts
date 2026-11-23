@@ -93,6 +93,11 @@ async function setup(mode:Mode){
 for(const mode of ['legacy','reviewed','automatic','coverage'] as const)test(`QA ${mode}: accepted price passes worker, delivers Word and settles once`,{skip:!database,timeout:120000},async()=>{
  const h=await setup(mode);
  try{
+  if(mode==='legacy'){
+   const mismatch=await h.app.inject({method:'POST',url:`/api/v1/projects/${h.project}/qa/runs`,payload:{request_id:uid(),expected_revision:h.revision,expected_points:420,price_version:PROJECT_QA_LIST_PRICE.version}});
+   assert.equal(mismatch.statusCode,409,'old per-question draft cannot enter the new fixed-price path');
+   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100000,frozen:0});
+  }
   const started=await h.start(),expected={legacy:420,reviewed:3817,automatic:8526,coverage:3900}[mode];assert.equal(started.points,expected);
   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100000-expected,frozen:expected});
   const {run,input}=await h.read(started.run_id);assert.equal(await projectQaInputGate(h.pool,run,input),null);
@@ -132,6 +137,9 @@ test('whole-list fixed price starts without a preparation link and settles exact
   h.draft.source=h.source;h.draft.preparation_id=null;h.draft.questions=[];await h.save();
   const q=await h.post('/quote',{expected_revision:h.revision});
   assert.deepEqual(q,{points:PROJECT_QA_LIST_PRICE.points,price_version:PROJECT_QA_LIST_PRICE.version});
+  const mismatch=await h.app.inject({method:'POST',url:`/api/v1/projects/${h.project}/qa/runs`,payload:{request_id:uid(),expected_revision:h.revision,expected_points:q.points,price_version:PROJECT_QA_PRICE.version}});
+  assert.equal(mismatch.statusCode,409,'same numeric amount cannot turn a whole-list draft into a legacy per-question run');
+  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100000,frozen:0});
   const started=await h.post('/runs',{request_id:uid(),expected_revision:h.revision,expected_points:q.points,price_version:q.price_version});
   const {run,input}=await h.read(started.run_id),manifest=input.manifest as QaInput;
   assert.equal(manifest.preparation_id,null);assert.deepEqual(manifest.questions,[]);
@@ -139,6 +147,9 @@ test('whole-list fixed price starts without a preparation link and settles exact
   assert.equal(await projectQaPriceValid(h.pool,run,{...manifest,price_version:PROJECT_QA_PRICE.version}),false);
   assert.equal(await projectQaPriceValid(h.pool,run,{...manifest,points:PROJECT_QA_PRICE.points}),false);
   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:88000,frozen:12000});
+  h.pauseNext=true;assert.equal(await h.execute(),'paused');
+  assert.deepEqual(await creditBalance(h.pool,h.owner),{available:88000,frozen:12000},'pause keeps the original fixed-price hold');
+  await action(h.pool,h.owner,started.run_id,'resume',uid());
   assert.equal(await h.execute(),'succeeded');
   assert.deepEqual(await creditBalance(h.pool,h.owner),{available:88000,frozen:0});
   const delivered=(await h.pool.query('SELECT result FROM bb_project_qa_runs WHERE run_id=$1',[started.run_id])).rows[0].result as QaResult;
