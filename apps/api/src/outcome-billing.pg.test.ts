@@ -61,6 +61,29 @@ async function reserveAuthoring(pool:Pool,owner:string,s:Awaited<ReturnType<type
  return transaction(pool,async c=>{const p=(await c.query('SELECT * FROM bb_projects WHERE id=$1',[s.project])).rows[0];await reserveCredits(c,owner,s.run,quote,s.input,p,undefined,false);});
 }
 
+test('approved authoring scope remains executable after identical input is locked again', {skip:!database},async()=>{
+ const pool=new Pool({connectionString:database});
+ try{
+  const owner=await setup(pool),s=await seed(pool,owner,authoring(),undefined,'update');
+  const pending=(await quoteCredits(pool,owner,s.project,1,s.hash,true)).quote;
+  await approve(pool,pending.scope_quote_id!,s.hash,42731);
+  const first=(await quoteCredits(pool,owner,s.project,1,s.hash,true)).quote;
+  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,2,$2,1,$3,$4,$5,'[]')",[s.project,owner,s.hash,s.input.manifest,JSON.stringify(s.input.manifest.materials)]);
+  await pool.query('UPDATE bb_projects SET latest_input_revision=2 WHERE id=$1',[s.project]);
+  const second=(await quoteCredits(pool,owner,s.project,2,s.hash,true)).quote;
+  assert.equal(second.scope_quote_id,first.scope_quote_id);
+  assert.notEqual(second.quote_id,first.quote_id);
+  assert.equal(second.input_revision,2);
+  assert.equal((await quoteCredits(pool,owner,s.project,2,s.hash,true)).quote.quote_id,second.quote_id);
+  await fund(pool,owner,second.points);
+  const run=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,2,$4,$1,'update',$4,'queued') RETURNING *",[randomUUID(),owner,s.project,s.hash])).rows[0];
+  const current={...s,run,input:{...s.input,revision:2}};
+  await assert.rejects(reserveAuthoring(pool,owner,current,first.quote_id),{code:'QUOTE_CHANGED'});
+  await reserveAuthoring(pool,owner,current,second.quote_id);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[run.id])).rows[0].n,1);
+ }finally{await pool.end();}
+});
+
 test('outcome quote pins full delivery price, ignores progress debit, releases failures, settles delivered pair once and supports idempotent correction', {skip:!database,timeout:120000},async()=>{
  const pool=new Pool({connectionString:database}),blobs=memoryBlobs();
  try{
