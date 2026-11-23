@@ -18,6 +18,17 @@ function config(role, values = {}, state = join(dir,'state')) {
  return JSON.parse(execFileSync('bash', ['deploy/m1/scripts/role-compose.sh', role, 'config', '--format', 'json'],
  { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,{...values,...(values.BB_ROLE_OVERRIDE_FILE?{BB_ROLE_STATE_DIR:state}:{})}),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
 }
+test('diagnostics carry explicit server identity to model workers and the pure main parser',()=>{
+ const values={BB_EXECUTION_NODE_ID:'synthetic-node',BB_EXECUTION_NODE_NAME:'synthetic-vm',
+  BB_EXECUTION_CLOUD_PROVIDER:'local',BB_EXECUTION_HOST_ID:'a'.repeat(64),BB_WORKER_RESOURCE_LOG_ENABLED:'1'};
+ const execution=config('execution',values);
+ for(const name of ['worker','worker-review'])for(const [key,value] of Object.entries(values))
+  assert.equal(execution.services[name].environment[key],value);
+ const main=covered('main',bridgeOverlay,values);
+ const parser=config('main',main.values,join(main.area,'state')).services['worker-parse'];
+ for(const [key,value] of Object.entries(values))assert.equal(parser.environment[key],value);
+ assert.equal(parser.environment.BB_MODEL_EXECUTION_HOST_ID,undefined);
+});
 test('roles have disjoint local services; internal execution containers use only the dual-network SSH bridge', () => {
  const main=config('main'), execution=config('execution');
  assert.deepEqual(Object.keys(main.services).sort(), ['api','egress','migrate','ops','postgres','web']);
