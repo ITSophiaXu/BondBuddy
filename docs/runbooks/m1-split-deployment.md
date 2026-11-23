@@ -38,11 +38,7 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 
 模板见 `.env.main.example`、`.env.execution.example`：仅补角色字段，保留原收费开关、Blob、模型、Provider、认证、超时、条款及出口白名单。不要把示例占位值用于生产。业务 Codex 的**模型目录和真实执行参数继续固定 1000000 窗口、900000 压缩**；本次将 Dockerfile 的业务 CLI 最小更新到已核对的官方稳定版0.167.0及官方包校验值，并添加来源标签；保留业务适配器参数和模型目录契约。验收实际 `token_count.info.model_context_window=1000000`，不是只看目录。业务窗口与开发环境窗口各自独立。
 
-`execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
-
-当前源码默认编制和复核的通用槽位各为 2，另保留 1 个编制交互槽位和 1 个复核助手槽位，纯解析并发保持 1。编制、复核和助手共享 `BB_MODEL_CALL_CONCURRENCY=6`，不是每个 worker 各 6；使用第 5、6 个模型槽位前必须应用已有迁移 `0182_model_call_capacity_six.sql`。同机 Compose 和 execution Compose 的默认值一致。已有私有 env 或覆盖文件的显式值仍优先，源码修改不会自动改变运行中环境；发布前核对有效配置、资源配额及在途任务。
-
-`development/v1.0.0` 原基线尚无共享模型槽位表，本次同时补入前置迁移 `0179_model_call_capacity.sql` 与模型调用接入；迁移入口会先建表再执行 `0182`，不需要引入其他历史迁移或功能。执行端两类 worker 必须使用相同的预算及 `BB_MODEL_EXECUTION_HOST_ID`。该身份填写执行宿主机 `/etc/machine-id` 原字节的 SHA-256（`sha256sum /etc/machine-id` 输出的首列），不是容器 ID；角色配置检查会拒绝缺失、非法或两类 worker 不一致的值。保留复核助手单槽位，不引入多助手槽位扩容。
+`execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
 
 ## 部署权限与身份管理
 
@@ -71,7 +67,7 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 | 目标服务器发布 | 获授权入口能传输/加载已验镜像、调用目标角色入口、检查实际容器并写入该环境状态目录 | 核对入口授权策略，再运行下述配置/状态检查；只读诊断账号不能作为部署账号 |
 | 系统安全配置 | 当前执行端入口安装 AppArmor 配置需要 root 或对应的受限 sudo；只允许已核源码和固定目标，不能开放任意安装命令 | 由获授权执行者核对 `id`、`sudo -n -l` 和[安装脚本](../../deploy/m1/scripts/install-codex-file-sandbox.sh)；本步骤不安装或 reload 配置 |
 | 私有配置与凭据 | 部署服务按需要读取现有 env、覆盖和发布凭据；配置写入只用于本次批准范围。模型进程不得访问发布凭据 | 核对文件 owner/ACL；env/私钥为 `0600`、私有父目录为 `0700`，挂载和取用范围按本文契约验证 |
-| 主站数据库迁移 | 使用既有迁移身份；本次模型槽位变更需要目标表所有者或等效 DDL 能力，还须有迁移记录表的读取/写入能力 | 连接/schema 探测及下述表所有者检查；只读连接成功不证明 DDL 权限，迁移只在主站执行 |
+| 主站数据库迁移 | 使用既有迁移身份；按本批迁移核对目标表所有者或等效 DDL 能力，新建对象所需 schema 权限，以及迁移记录表的读取/写入能力 | 连接/schema 探测及下述 schema/表所有者检查；只读连接成功不证明 DDL 权限，迁移只在主站执行 |
 | Blob/模型运行访问 | 延续既有服务身份、对象范围、供应商账号与出口策略；无需把服务密钥交给每位开发 | 复用适用的已授权读写/供应商验收证据；文件存在不证明授权可用，缺证据如实记录 |
 | 云资源创建/启停/调整 | 只有此次操作涉及云资源管理时，才由既有云管理身份获得准确实例/资源范围的相应权限 | 检查该身份的有效策略与原始云回执；不能用查看 CVM 的权限推断 TAT 执行权限，也不能用云 Reader 推断 Linux sudo 权限 |
 
@@ -118,17 +114,17 @@ bash deploy/m1/scripts/role-compose.sh "$ROLE" probe schema
 
 这里的 `ROLE` / `BB_ENV_FILE` / 工作目录沿用上一步。`probe` 的 SQL 为只读，但会创建并删除临时探测容器，仍需获授权 Docker 操作能力；不能把它当普通日志读取权限。schema 探测按实际加载镜像里的迁移清单核对，不证明尚未加载的新版本迁移已应用；新候选缺迁移时按主站发布流程处理，不跳过失败启动执行端。
 
-本次槽位迁移的 DDL 身份可在主站作只读核查：
+数据库迁移身份可在主站作只读核查：
 
 ```sh
 set -euo pipefail
 test "$ROLE" = main
 bash deploy/m1/scripts/role-compose.sh main exec -T postgres \
   psql -U bondbuddy -d bondbuddy -v ON_ERROR_STOP=1 -c \
-  "BEGIN READ ONLY; SELECT current_user, pg_has_role(current_user, c.relowner, 'USAGE') AS can_use_table_owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='bb_model_capacity_holders'; ROLLBACK;"
+  "BEGIN READ ONLY; SELECT current_user, has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_in_public; SELECT c.relname AS table_name, pg_has_role(current_user, c.relowner, 'USAGE') AS can_use_table_owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p') ORDER BY c.relname; ROLLBACK;"
 ```
 
-该命令检查现有 `bondbuddy` 数据库身份的目标表所有者能力，不执行 ALTER 或迁移；零行表示目标表不存在，false 或错误不能记为通过。如果环境的迁移身份不同，须核对实际 `migrate` 服务使用的身份，不能用这里的账号代替。还须核对其他待应用迁移、迁移记录权限和兼容性；不能以这一条 SELECT 代替迁移验收。
+该命令检查现有 `bondbuddy` 数据库身份的 public schema 创建权限和各表所有者能力，不执行 ALTER 或迁移。按本批迁移涉及的表逐项核对；需要修改的既有目标表缺失、所需权限为 false 或查询错误不能记为通过。新建表则核对对应 schema 权限。如果环境的迁移身份不同，须核对实际 `migrate` 服务使用的身份，不能用这里的账号代替。还须核对迁移记录表的实际读取/写入权限、其他待应用迁移及兼容性；不能以这些 SELECT 代替迁移验收。
 
 ### 授权、轮换、撤销与发布接续
 

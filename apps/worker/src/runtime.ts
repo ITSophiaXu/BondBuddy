@@ -4,7 +4,6 @@
 // whose blocker cleared (parsed materials, reconciled provider calls, OCR availability) and can
 // forward #79 logs. SIGTERM/SIGINT stop claiming, drain in-flight work, then release leases so
 // another worker resumes from the durable checkpoint at once. Nothing here trusts a browser.
-import { modelCallConcurrency } from './model-call-budget.js';
 import {runUploadConfirmationOnce} from '@bondbuddy/api/upload-confirmation';
 import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
@@ -355,8 +354,6 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
   if(env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'&&(!env.BB_UPLOAD_SPOOL_DIR?.startsWith('/')||!Number.isSafeInteger(Number(env.BB_UPLOAD_SPOOL_MAX_BYTES))||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<1))
     throw new Error('Upload confirmation requires an explicit absolute spool path and byte budget');
-  modelCallConcurrency(env);
-  intEnv(env, 'BB_REVIEW_ASSISTANT_SLOTS', 1, 1, 1);
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);

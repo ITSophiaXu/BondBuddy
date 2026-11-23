@@ -59,19 +59,6 @@ try {
     const c = JSON.parse(readFileSync(0, 'utf8')), s = c.services;
     if (!c.networks.backend.internal || c.name !== project) fail();
     if (role === 'execution' && (s.postgres || s.migrate || s.api || s.web || s['pg-tunnel'].ports?.length)) fail();
-    if (role === 'execution') {
-      for (const name of ['worker', 'worker-review']) {
-        const e = s[name]?.environment;
-        if (!/^(?:[1-9]|1[0-6])$/.test(e?.BB_WORKER_CONCURRENCY ?? '') ||
-            !/^[1-6]$/.test(e?.BB_MODEL_CALL_CONCURRENCY ?? '')) fail();
-      }
-      const authoring = s.worker.environment, review = s['worker-review'].environment;
-      if (!/^[0-4]$/.test(authoring.BB_WORKER_INTERACTIVE_SLOTS ?? '') ||
-          review.BB_REVIEW_ASSISTANT_SLOTS !== '1' ||
-          authoring.BB_MODEL_CALL_CONCURRENCY !== review.BB_MODEL_CALL_CONCURRENCY ||
-          !/^[a-f0-9]{64}$/.test(authoring.BB_MODEL_EXECUTION_HOST_ID ?? '') ||
-          authoring.BB_MODEL_EXECUTION_HOST_ID !== review.BB_MODEL_EXECUTION_HOST_ID) fail();
-    }
     if (role === 'main') {
       const pg = s.postgres, mount = pg.volumes.find(v => v.target === '/var/lib/postgresql/data');
       if (mount?.type !== 'volume' || mount.source !== 'pgdata' || pg.ports?.length !== 1 || pg.ports[0].host_ip !== '127.0.0.1' || Number(pg.ports[0].target) !== 5432 || !fixedPort(pg.ports[0].published) || pg.ports[0].published !== binding.pg_forward_port) fail();

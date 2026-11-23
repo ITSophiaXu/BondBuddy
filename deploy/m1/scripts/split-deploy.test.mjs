@@ -8,7 +8,6 @@ const root = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(root, '.split-test-'));
 process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 const base = { BB_IMAGE_TAG: 'synthetic', POSTGRES_PASSWORD: 'synthetic', BB_MAIN_DATABASE_URL:'postgresql://bondbuddy:synthetic@postgres:5432/bondbuddy', BB_PUBLIC_ORIGIN: 'https://bondbuddy.test', BB_TERMS_VERSION: 'synthetic',
- BB_MODEL_EXECUTION_HOST_ID: 'a'.repeat(64),
  BB_TRIAL_SOURCE_SALT: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_PARSE_CACHE_OCR_VERSION: 'synthetic', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic',
  BB_EXECUTION_DATABASE_URL: 'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy', BB_PG_SSH_HOST: 'synthetic.test', BB_PG_SSH_USER: 'tunnel',
  BB_PG_SSH_KEY_FILE: '/dev/null', BB_PG_SSH_KNOWN_HOSTS_FILE: '/dev/null', BB_FILE_TEMPLATE_HOST_DIR: dir, BB_PAYMENT_SECRETS_DIR: dir, BB_INTEGRITY_MODE: 'beijing',BB_INTEGRITY_BEIJING_HOST:'synthetic.test',BB_INTEGRITY_SSH_DIR:dir };
@@ -27,7 +26,7 @@ test('roles have disjoint local services; internal execution containers use only
  for(const name of ['worker','worker-review','worker-parse']) {
   const s=execution.services[name]; assert.deepEqual(Object.keys(s.networks),['backend']); assert.ok(s.depends_on['pg-tunnel']);
   assert.equal(s.depends_on.postgres,undefined); assert.equal(s.depends_on.migrate,undefined);
-  assert.equal(new URL(s.environment.DATABASE_URL).hostname,'pg-tunnel'); assert.equal(s.environment.BB_WORKER_CONCURRENCY,name==='worker-parse'?'1':'2');
+  assert.equal(new URL(s.environment.DATABASE_URL).hostname,'pg-tunnel'); assert.equal(s.environment.BB_WORKER_CONCURRENCY,'1');
  }
  assert.equal(execution.networks.backend.internal,true);
  assert.deepEqual(Object.keys(execution.services['pg-tunnel'].networks).sort(),['backend','edge']);
@@ -49,7 +48,7 @@ test('execution lease defaults and overrides reach all three groups without loca
   for(const name of ['worker','worker-review','worker-parse']) {
    const s=services[name];
    assert.equal(s.environment.BB_WORKER_LEASE_SECONDS,lease || '120',name);
-   assert.equal(s.environment.BB_WORKER_CONCURRENCY,name==='worker-parse'?'1':'2',name);
+   assert.equal(s.environment.BB_WORKER_CONCURRENCY,'1',name);
    assert.equal(new URL(s.environment.DATABASE_URL).hostname,'pg-tunnel',name);
    assert.ok(s.depends_on['pg-tunnel'],name);
    assert.equal(s.depends_on.postgres,undefined,name); assert.equal(s.depends_on.migrate,undefined,name);
@@ -64,31 +63,6 @@ test('execution lease setting does not change the legacy same-host environment',
   {cwd:root,env:configProcessEnv,stdio:['ignore','pipe','pipe']}));
  for(const name of ['worker','worker-review','worker-parse']) {
   assert.equal(legacy.services[name].environment.BB_WORKER_LEASE_SECONDS,undefined,name);
- }
-});
-test('two general slots preserve dedicated channels and a shared six-call budget',()=>{
- const c=config('execution');
- for(const name of ['worker','worker-review']) {
-  assert.equal(c.services[name].environment.BB_WORKER_CONCURRENCY,'2');
-  assert.equal(c.services[name].environment.BB_MODEL_CALL_CONCURRENCY,'6');
- }
- assert.equal(c.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'1');
- assert.equal(c.services['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS,'1');
- assert.equal(c.services['worker-parse'].environment.BB_WORKER_CONCURRENCY,'1');
- const overridden=config('execution',{BB_AUTHORING_WORKER_CONCURRENCY:'1',BB_REVIEW_WORKER_CONCURRENCY:'3',BB_MODEL_CALL_CONCURRENCY:'4'});
- assert.equal(overridden.services.worker.environment.BB_WORKER_CONCURRENCY,'1');
- assert.equal(overridden.services['worker-review'].environment.BB_WORKER_CONCURRENCY,'3');
- for(const name of ['worker','worker-review']) assert.equal(overridden.services[name].environment.BB_MODEL_CALL_CONCURRENCY,'4');
-});
-test('execution rejects invalid or mismatched model capacity and host identity',()=>{
- for(const values of [
-  {BB_MODEL_CALL_CONCURRENCY:'7'},{BB_MODEL_CALL_CONCURRENCY:'0'},{BB_MODEL_CALL_CONCURRENCY:'6.0'},
-  {BB_MODEL_EXECUTION_HOST_ID:''},{BB_MODEL_EXECUTION_HOST_ID:'invalid'},
-  {BB_AUTHORING_WORKER_CONCURRENCY:'0'},{BB_REVIEW_ASSISTANT_SLOTS:'2'},
- ]) assert.throws(()=>config('execution',values));
- for(const environment of ['BB_MODEL_CALL_CONCURRENCY: "4"','BB_MODEL_EXECUTION_HOST_ID: "'+'b'.repeat(64)+'"']) {
-  const mismatch=covered('execution',`services:\n  worker-review:\n    environment:\n      ${environment}\n`);
-  assert.throws(()=>config('execution',mismatch.values,join(mismatch.area,'state')));
  }
 });
 test('integrity modes are explicit, mutually exclusive and keep the PG tunnel',()=>{
