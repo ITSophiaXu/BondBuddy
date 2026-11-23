@@ -18,6 +18,14 @@ test('whole-list answer recovery keeps its 12000-point version separate from leg
  for(const request of [{...saved.pending!.request,expected_points:PROJECT_QA_PRICE.points},{...saved.pending!.request,price_version:PROJECT_QA_PRICE.version}]){
   assert.equal(cache.save({...saved,pending:{kind:'answer',request}} as QaRecoveryValue).status,'invalid');
  }
+ const sameAmount=PROJECT_QA_LIST_PRICE.points;
+ const legacy:QaRecoveryValue={revision:8,draft:{preparation_id:'old-prepare',questions:Array.from({length:200},(_,i)=>({id:`q${i}`,start:i,end:i,question:`问题 ${i}`})),materials:[],requirements:'',use_knowledge:false},
+  pending:{kind:'answer',request:{request_id:'old-200-questions',expected_revision:8,expected_points:sameAmount,price_version:PROJECT_QA_PRICE.version}}};
+ const oldCache=new QaRecoveryCache('owner','project',new MemoryStorage());
+ assert.equal(oldCache.save(legacy).status,'valid');
+ assert.equal(oldCache.save({...legacy,pending:{kind:'answer',request:{...legacy.pending!.request,price_version:PROJECT_QA_LIST_PRICE.version}}} as QaRecoveryValue).status,'invalid',
+  'same numeric amount cannot turn a 200-question legacy request into a whole-list request');
+ assert.equal(cache.save({...saved,pending:{kind:'answer',request:{...saved.pending!.request,scope_quote_id:'old-scope'}}} as QaRecoveryValue).status,'invalid');
 });
 test('ordinary upgrade restores the original numeric QA request without changing its identity or bytes',()=>{
   const storage=new MemoryStorage(),cache=new QaRecoveryCache('owner','project',storage);

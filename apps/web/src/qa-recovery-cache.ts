@@ -1,6 +1,6 @@
 import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
-import {PROJECT_QA_LIST_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
+import {PROJECT_QA_LIST_PRICE,LEGACY_PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -68,11 +68,15 @@ function validValueInner(value:unknown,project:string,allowUndefinedOptional=fal
       validDraft(pending.request.draft)&&sameDraft(value.draft,pending.request.draft);
   }
   if(pending.kind==='answer'){
-    return Value.Check(billingRecoverySchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
-      (value.draft.preparation_id!==null&&value.draft.questions.length>0||!!value.draft.source&&value.draft.preparation_id===null&&value.draft.questions.length===0)&&
-      (isOutcomePriceVersion(pending.request.price_version)?pending.request.included_followup_of===value.draft.included_followup_of&&(int64(pending.request.expected_points)===0n&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
-      pending.request.price_version===PROJECT_QA_LIST_PRICE.version&&int64(pending.request.expected_points)===BigInt(PROJECT_QA_LIST_PRICE.points)||
-      pending.request.price_version==='project-qa-question-60-v1'&&int64(pending.request.expected_points)===BigInt(value.draft.questions.length)*60n);
+    if(!Value.Check(billingRecoverySchemas.QaAnswerRequest,pending.request)||!validId(pending.request.request_id)||pending.request.expected_revision!==value.revision)return false;
+    const request=pending.request,draft=value.draft;
+    if(request.price_version===PROJECT_QA_LIST_PRICE.version)return !!draft.source&&draft.preparation_id===null&&draft.questions.length===0&&
+      !request.included_followup_of&&!request.scope_quote_id&&int64(request.expected_points)===BigInt(PROJECT_QA_LIST_PRICE.points);
+    if(draft.preparation_id===null||!draft.questions.length)return false;
+    if(isOutcomePriceVersion(request.price_version))return request.included_followup_of===draft.included_followup_of&&
+      (int64(request.expected_points)===0n&&!!draft.included_followup_of||validId(request.scope_quote_id));
+    return request.price_version===LEGACY_PROJECT_QA_PRICE.version&&!request.included_followup_of&&!request.scope_quote_id&&
+      int64(request.expected_points)===BigInt(draft.questions.length)*BigInt(LEGACY_PROJECT_QA_PRICE.points);
   }
   return false;
 }
