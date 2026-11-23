@@ -347,7 +347,7 @@ export async function inspectAuthorizedPdf<T>(
     const stagingRoot = dependencies.tempRoot ?? process.env.BB_PARSE_STAGING_DIR;
     if (stagingRoot) ({directory, cleanup} = await createParseStaging(stagingRoot));
     else { directory = await mkdtemp(join(tmpdir(), 'bb-pdf-quality-')); cleanup = () => rm(directory!, {recursive: true, force: true}); }
-    const path = join(directory, 'source.pdf');
+    const path = join(directory, 'source');
     await stageMaterial(dependencies.blobs, row, path);
     return await inspect(path);
   } catch (error) {
