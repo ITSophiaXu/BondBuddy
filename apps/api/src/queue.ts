@@ -688,7 +688,8 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         if(!ready?.result||ready.result.document.sha256!==artifact.sha256.trim())throw new Problem(422,'DELIVERY_FAILED','Assessment report required');
       }else if(j.subtype==='project_qa_v1'){
         const ready=(await client.query('SELECT operation,result,manifest FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[r.owner_user_id,r.project_id,r.id])).rows[0];
-        if(!ready?.result||ready.operation==='answer'&&ready.result.answers.length!==ready.manifest.questions.length||ready.result.document.sha256!==artifact.sha256.trim())
+        const questions=ready?.manifest?.price_version==='project-qa-list-12000-v1'?ready?.result?.questions:ready?.manifest?.questions;
+        if(!ready?.result||ready.operation==='answer'&&(!Array.isArray(questions)||ready.manifest.price_version==='project-qa-list-12000-v1'&&(!questions.length||questions.length>200)||ready.result.answers.length!==questions.length)||ready.result.document.sha256!==artifact.sha256.trim())
           throw new Problem(422,'DELIVERY_FAILED','Question coverage and filled Word required');
       }else if(j.subtype==='integrity_v1'){
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);

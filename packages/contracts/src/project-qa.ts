@@ -4,10 +4,12 @@ import {OutcomePriceVersionSchema,CommerceMetadataFields} from './commerce.js';
 
 export const QA_HISTORY_CAPABILITY={header:'x-bb-qa-history',value:'answer-sequence-v1'} as const;
 export const PROJECT_QA_PRICE={points:60,version:'project-qa-question-60-v1'} as const;
+export const LEGACY_PROJECT_QA_PRICE=PROJECT_QA_PRICE;
+export const PROJECT_QA_LIST_PRICE={points:12000,version:'project-qa-list-12000-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:250}),text=Type.String({maxLength:16000});
 const hash=Type.String({pattern:'^[a-f0-9]{64}$'}),nullable=<T extends import('@sinclair/typebox').TSchema>(s:T)=>Type.Union([s,Type.Null()]);
-const qaPriceVersion=Type.Union([Type.Literal(PROJECT_QA_PRICE.version),OutcomePriceVersionSchema]);
+const qaPriceVersion=Type.Union([Type.Literal(PROJECT_QA_LIST_PRICE.version),Type.Literal(PROJECT_QA_PRICE.version),OutcomePriceVersionSchema]);
 export const QaQuestionSchema=obj({id,start:Type.Integer({minimum:0}),end:Type.Integer({minimum:0}),question:Type.String({minLength:1,maxLength:16000})});
 export type QaQuestion=Static<typeof QaQuestionSchema>;
 export const QaCaseContentSchema=obj({title:Type.String({minLength:1,maxLength:250}),url:Type.String({minLength:1,maxLength:4096}),topic:Type.String({minLength:1,maxLength:250}),question:Type.String({minLength:1,maxLength:16000}),answer:Type.String({minLength:1,maxLength:16000}),approach:Type.String({minLength:1,maxLength:16000}),evidence_requirements:text});
@@ -17,9 +19,9 @@ export const QaCitationSchema=obj({asset_index:Type.Integer({minimum:0}),span_id
 export const QaAnswerSchema=obj({question_id:id,answer:Type.String({minLength:1,maxLength:16000}),status:Type.Union([Type.Literal('draft'),Type.Literal('missing')]),missing_materials:Type.Array(Type.String({minLength:1,maxLength:2000}),{maxItems:30}),citations:Type.Array(QaCitationSchema,{maxItems:200}),case_ids:Type.Array(id,{uniqueItems:true,maxItems:8}),approach:text});
 export type QaAnswer=Static<typeof QaAnswerSchema>;
 export const QaAssetSchema=obj({filename:short,asset:ProjectFileAssetSchema});
-export const QaDraftSchema=obj({included_followup_of:Type.Optional(id),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(ProjectFileAssetSchema,{maxItems:50}),requirements:text,use_knowledge:Type.Boolean()});
+export const QaDraftSchema=obj({included_followup_of:Type.Optional(id),source:Type.Optional(ProjectFileAssetSchema),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(ProjectFileAssetSchema,{maxItems:50}),requirements:text,use_knowledge:Type.Boolean()});
 export type QaDraft=Static<typeof QaDraftSchema>;
-export const QaInputSchema=obj({...CommerceMetadataFields,included_followup_of:Type.Optional(id),version:Type.Literal('project-qa-v1'),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),project_name:short,source:QaAssetSchema,prospectus:Type.Optional(ProjectFileSourceSchema),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(QaAssetSchema,{maxItems:50}),requirements:text,cases:Type.Array(QaCaseSchema,{maxItems:40}),price_version:qaPriceVersion,points:Type.Integer({minimum:0,maximum:100000000})});
+export const QaInputSchema=obj({...CommerceMetadataFields,included_followup_of:Type.Optional(id),use_knowledge:Type.Optional(Type.Boolean()),version:Type.Literal('project-qa-v1'),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),project_name:short,source:QaAssetSchema,prospectus:Type.Optional(ProjectFileSourceSchema),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(QaAssetSchema,{maxItems:50}),requirements:text,cases:Type.Array(QaCaseSchema,{maxItems:40}),price_version:qaPriceVersion,points:Type.Integer({minimum:0,maximum:100000000})});
 export type QaInput=Static<typeof QaInputSchema>;
 export const QaDocumentSchema=obj({key:Type.String({maxLength:4096}),sha256:hash,byte_size:Type.Integer({minimum:1,maximum:104857600})});
 export const QaEvidenceTextSchema=obj({...ProjectFileTextSchema.properties,format:Type.Union(['docx','pdf','doc','xlsx','unreadable'].map(x=>Type.Literal(x)))});

@@ -34,9 +34,9 @@ export async function listProjects(pool: Pool, owner: string, query: Query, task
       WITH members AS (${memberProjectsSql('p')}),tasks AS (${collectionTasksSql})
       SELECT count(*)::int AS total,count(*) FILTER(WHERE state IN ${activeTaskSql})::int AS active,
         count(*) FILTER(WHERE lane_rank=1 AND state NOT IN ${activeTaskSql} AND state<>'succeeded')::int AS attention,
-        count(*) FILTER(WHERE lane_rank=1 AND state='succeeded')::int AS completed,max(updated_at) AS activity_at,
+        count(*) FILTER(WHERE lane_rank=1 AND state='succeeded' AND operation IS DISTINCT FROM 'qa_prepare')::int AS completed,max(updated_at) AS activity_at,
         (SELECT to_jsonb(t) FROM tasks t ORDER BY (state IN ${terminalTaskSql}),created_at DESC,id DESC LIMIT 1) AS latest,
-        (SELECT to_jsonb(t) FROM tasks t WHERE state IN ${terminalTaskSql} ORDER BY created_at DESC,id DESC LIMIT 1) AS recent_result
+        (SELECT to_jsonb(t) FROM tasks t WHERE state IN ${terminalTaskSql} AND operation IS DISTINCT FROM 'qa_prepare' ORDER BY created_at DESC,id DESC LIMIT 1) AS recent_result
       FROM tasks
     ) summary ON true
     LEFT JOIN LATERAL (

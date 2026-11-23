@@ -4,10 +4,11 @@ import {join} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
-import {QaAnswerSchema,QaResultSchema,qaSearchTerms,qaSameAsset,type QaAnswer,type QaInput,type QaResult,type QaQuestion} from '@bondbuddy/contracts';
+import {QaAnswerSchema,QaResultSchema,PROJECT_QA_LIST_PRICE,qaSearchTerms,qaSameAsset,type QaAnswer,type QaInput,type QaResult,type QaQuestion} from '@bondbuddy/contracts';
 import {digest,transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
+import {qaCaseSearch} from '@bondbuddy/api/qa-knowledge';
 import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js';
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
 import {loadProjectQaInput} from './project-qa-input.js';
@@ -87,8 +88,23 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     const parsed=JSON.parse(await readFile(join(dir,'prepared.json'),'utf8'));
     result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'prepared.docx')),snapshot:parsed.snapshot,questions:parsed.questions,answers:[],warnings:parsed.warnings,evidence:[]};
    }else{
-    const prepared=(await ctx.pool.query('SELECT result FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[ctx.run.owner_user_id,ctx.run.project_id,input.preparation_id])).rows[0].result as QaResult;
+    let prepared:QaResult;
+    if(input.price_version===PROJECT_QA_LIST_PRICE.version){
+     const source=await sourceBytes(ctx,input.source.asset),path=join(dir,source.media==='application/pdf'?'source.pdf':source.media==='application/msword'?'source.doc':'source.docx');
+     await writeFile(path,source.bytes,{mode:0o600});
+     await python(ctx,['prepare',path,join(dir,'prepared.docx'),join(dir,'prepared.json')]);
+     const parsed=JSON.parse(await readFile(join(dir,'prepared.json'),'utf8'));
+     if(!Array.isArray(parsed.questions)||!parsed.questions.length||parsed.questions.length>200)return {kind:'fail',code:'INPUT_REQUIRED'};
+     prepared={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'prepared.docx')),snapshot:parsed.snapshot,questions:parsed.questions,answers:[],warnings:parsed.warnings,evidence:[]};
+    }else{
+     prepared=(await ctx.pool.query('SELECT result FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[ctx.run.owner_user_id,ctx.run.project_id,input.preparation_id])).rows[0].result as QaResult;
+    }
     const bytes=await ctx.blobs.getIfExistsBounded(prepared.document.key,max);if(!bytes||digest(bytes)!==prepared.document.sha256)throw Error('INPUT_REVISION_CONFLICT');await writeFile(join(dir,'source.docx'),bytes,{mode:0o600});
+    const questions=input.price_version===PROJECT_QA_LIST_PRICE.version?prepared.questions:input.questions;
+    const cases=[...input.cases];
+    if(input.price_version===PROJECT_QA_LIST_PRICE.version&&input.use_knowledge)for(const question of questions){
+     for(const item of await qaCaseSearch(ctx.pool,question.question,3))if(!cases.some(old=>old.id===item.id)&&cases.length<40)cases.push(item);
+    }
     const evidence:QaResult['evidence']=[],warnings=[...prepared.warnings];
     for(const [i,material] of input.materials.entries()){
      const source=await sourceBytes(ctx,material.asset),ext=source.media==='application/pdf'?'.pdf':source.media==='application/msword'?'.doc':source.media.includes('spreadsheet')?'.xlsx':source.media.includes('wordprocessingml')?'.docx':'.unsupported',path=join(dir,'evidence-'+i+ext);
@@ -100,12 +116,12 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     if(input.prospectus&&(prospectusIndex<0||!evidence[prospectusIndex]?.snapshot.spans.some(s=>s.text.trim())))return {kind:'fail',code:'MATERIAL_UNREADABLE'};
     const projectContext={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length})),introduction:prospectusIndex<0?[]:evidence[prospectusIndex].snapshot.spans.filter(s=>s.text.trim()).slice(0,12).map(s=>({span_id:s.id,text:s.text.slice(0,1200)}))};
     const answers:QaAnswer[]=[];
-    for(const question of input.questions){
+    for(const question of questions){
      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
      if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
-     const recovered=await reusableQaAnswer(ctx.pool,ctx.run,input,question.id,answer=>
+     const recovered=input.price_version===PROJECT_QA_LIST_PRICE.version?null:await reusableQaAnswer(ctx.pool,ctx.run,input,question.id,answer=>
       (answer.citations.length>0&&answer.citations.every(c=>c.quote.trim()&&evidence[c.asset_index]?.snapshot.spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))||qaUnanswered(answer))
-      &&answer.case_ids.every(id=>input.cases.some(c=>c.id===id)));
+      &&answer.case_ids.every(id=>cases.some(c=>c.id===id)));
      if(recovered){
       // Persist provenance before copying, so a crash cannot leave an unaudited
       // recovered answer. Both writes independently enforce the active lease.
@@ -115,7 +131,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
       answers.push(answer);continue;
      }
      const terms=new Set(qaSearchTerms(question.question));
-     const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
+     const questionCases=cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
      const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
@@ -128,9 +144,9 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      const answer=groundedQaAnswer(outcome.value as QaAnswer,question,{...input,cases:questionCases},evidence);
      await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});answers.push(answer);
     }
-    await writeFile(join(dir,'fill.json'),JSON.stringify({source_sha256:prepared.document.sha256,questions:input.questions,answers,evidence,cases:input.cases,warnings}),{mode:0o600});
+    await writeFile(join(dir,'fill.json'),JSON.stringify({source_sha256:prepared.document.sha256,questions,answers,evidence,cases,warnings}),{mode:0o600});
     await python(ctx,['fill',join(dir,'source.docx'),join(dir,'fill.json'),join(dir,'filled.docx')]);
-    result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'filled.docx')),snapshot:prepared.snapshot,questions:input.questions,answers,evidence,warnings};
+    result={version:'project-qa-result-v1',input_hash:ctx.run.input_hash.trim(),document:await store(ctx,join(dir,'filled.docx')),snapshot:prepared.snapshot,questions,answers,evidence,warnings};
    }
    if(!Value.Check(QaResultSchema,result))throw Error('QA_RESULT_INVALID');
    await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('UPDATE bb_project_qa_runs SET result=$3,result_hash=$4 WHERE owner_user_id=$1 AND run_id=$2 AND result IS NULL',[ctx.run.owner_user_id,ctx.run.id,result,inputManifestHash(result)]);});

@@ -1,6 +1,6 @@
 import type {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
-import {QaInputSchema,qaProspectusIssue,PROJECT_QA_PRICE,isOutcomePriceVersion,isAutomaticPriceVersion,type QaInput} from '@bondbuddy/contracts';
+import {QaInputSchema,qaProspectusIssue,PROJECT_QA_LIST_PRICE,LEGACY_PROJECT_QA_PRICE,isOutcomePriceVersion,isAutomaticPriceVersion,type QaInput} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
 import {validateQaQuestions,validateIncludedQaFollowup,qaAnswerScope} from '@bondbuddy/api/project-qa';
@@ -16,12 +16,13 @@ export async function projectQaPriceValid(pool:Pool,run:RunRow,m:QaInput):Promis
   WHERE q.owner_user_id=$1 AND q.run_id=$2 AND r.project_id=$3 AND q.input_hash=$4`,
  [run.owner_user_id,run.id,run.project_id,run.input_hash])).rows[0];
  if(!q||Number(q.points)!==m.points||q.price_version!==m.price_version||q.question_count!==m.questions.length
-  ||q.unit_points!==(commercial?0:PROJECT_QA_PRICE.points))return false;
+  ||q.unit_points!==(commercial?0:m.price_version===PROJECT_QA_LIST_PRICE.version?PROJECT_QA_LIST_PRICE.points:LEGACY_PROJECT_QA_PRICE.points))return false;
  if(m.points>0){
   if(q.reservation_state!=='held'||q.reservation_quote_id!==q.id||Number(q.reservation_points)!==m.points||q.billing_policy!=='on_delivery')return false;
  }else if(q.reservation_id!==null)return false;
- if(!commercial)return m.price_version===PROJECT_QA_PRICE.version&&m.points===m.questions.length*PROJECT_QA_PRICE.points
-  &&!m.included_followup_of&&!m.scope_quote_id&&q.scope_quote_id===null;
+ if(!commercial)return !m.included_followup_of&&!m.scope_quote_id&&q.scope_quote_id===null&&(
+  m.price_version===PROJECT_QA_LIST_PRICE.version&&m.points===PROJECT_QA_LIST_PRICE.points&&m.preparation_id===null&&m.questions.length===0||
+  m.price_version===LEGACY_PROJECT_QA_PRICE.version&&m.points===m.questions.length*LEGACY_PROJECT_QA_PRICE.points);
  if(m.pricing_mode!=='outcome_cny_v1'||m.amount_fen!==m.points||m.quote_status!=='ready'
   ||inputManifestHash(q.scope_lines)!==inputManifestHash(m.scope_lines))return false;
  if(m.included_followup_of){
@@ -54,10 +55,13 @@ export async function projectQaInputGate(pool:Pool,run:RunRow,input:InputRevisio
   if(m.operation==='prepare'){if(m.points!==0||m.questions.length||m.materials.length||m.cases.length||m.preparation_id)return fail;}
   else{
    if(m.prospectus&&qaProspectusIssue(m.prospectus,m.materials.map(x=>x.asset),m.source.asset))return fail;
-   if(!m.questions.length)return fail;
-   const parent=(await pool.query("SELECT q.* FROM bb_project_qa_runs q JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='prepare' AND r.state='succeeded'",[run.owner_user_id,run.project_id,m.preparation_id])).rows[0];
-   if(!parent?.result||inputManifestHash(parent.result)!==parent.result_hash.trim()||inputManifestHash(parent.manifest.source)!==inputManifestHash(m.source))return fail;
-   validateQaQuestions(m.questions,parent.result);
+   if(m.price_version===PROJECT_QA_LIST_PRICE.version){if(m.preparation_id!==null||m.questions.length||m.cases.length)return fail;}
+   else{
+    if(!m.questions.length)return fail;
+    const parent=(await pool.query("SELECT q.* FROM bb_project_qa_runs q JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='prepare' AND r.state='succeeded'",[run.owner_user_id,run.project_id,m.preparation_id])).rows[0];
+    if(!parent?.result||inputManifestHash(parent.result)!==parent.result_hash.trim()||inputManifestHash(parent.manifest.source)!==inputManifestHash(m.source))return fail;
+    validateQaQuestions(m.questions,parent.result);
+   }
    if(!await projectQaPriceValid(pool,run,m))return fail;
    if(m.cases.some(c=>c.status!=='approved'||inputManifestHash(c.content)!==c.sha256))return fail;
   }
