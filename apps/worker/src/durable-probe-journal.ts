@@ -1,3 +1,4 @@
+import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool } from 'pg';
 import {randomUUID} from 'node:crypto';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
@@ -99,6 +100,7 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
       if(inserted.rowCount!==1)throw new Error('MODEL_EXECUTION_CONFIG_ALREADY_RECORDED_OR_LEASE_LOST');
     }));
   }
+  acquireCallSlot(signal?: AbortSignal) { return modelCallBudgetFor(this.codexInput.pool).acquire(signal, `run:${this.codexInput.lease.runId}`); }
 
   async recordWebSearchEvents(intent: ProviderCallIntent, events: NonNullable<import('./codex-adapter.js').CodexProcessResult['web_search_events']>) {
     const { pool, lease } = this.codexInput;

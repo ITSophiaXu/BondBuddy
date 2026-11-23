@@ -38,6 +38,20 @@ Open `http://localhost:18087`. Windows entry points delegate to WSL with this ex
 
 Run `lifecycle-check.mjs` before account/task acceptance while the environment is idle. It verifies a repeated start preserves container identities, an idle stop preserves named volumes, and restart preserves the database marker and data counts, then leaves the environment running. It makes no real model or merchant calls.
 
+## Worker and model capacity
+
+API admission limits and the shared model budget remain separate from Worker
+slots. `BB_WORKER_CONCURRENCY=2` and `BB_REVIEW_WORKER_CONCURRENCY=2` give authoring
+and review Workers two general task slots each. The dedicated authoring interactive
+slot and review assistant slot remain enabled at one each; parsing stays at one.
+`BB_MODEL_CALL_CONCURRENCY=6` permits up to six model calls globally, not six per
+Worker. The model budget accepts integers 1 through 6 and defaults to 6. Existing
+databases require migration `0182_model_call_capacity_six.sql` before Workers use
+slots 5 and 6. Apply the same model budget to authoring and review Workers, and
+deploy only after active work drains. A four-call override still queues the fifth
+and sixth calls. Do not combine benchmark results collected under different model
+budgets.
+
 The first build creates an ignored `.local/local-prelaunch/config.json`, private `runtime.env`, and an optional operator-managed `model.env`. A new UUID derives a random `bb_billing_functional_<hex16>` database and Compose project. Private PostgreSQL/Blob keys are generated once. No database or Blob host ports are published. Every Docker container, network and named volume carries the instance label. Do not copy config between checkouts or edit its identity fields.
 
 `build.mjs` archives tracked `HEAD` (never untracked local credentials, outputs or uncommitted files), hashes the archive, and builds production API, worker, web and egress targets. Commit intended new source scripts first: the archive includes them once they belong to `HEAD`; ignored `.local/` samples, credentials and outputs stay outside the archive. On a Windows-managed worktree, Git runs with `core.autocrlf=false` and `core.eol=lf`; the three executable Linux runtime scripts are compared with their tracked blob bytes before building. This avoids Windows Git's archive CRLF conversion breaking a Linux shebang. Every build uses a unique run ID for image tags, source archives, logs and a permanent receipt. The previous build receipt and its image tags remain valid even if a later rebuild fails; `build.json` is atomically replaced only after every image is built. Compose takes `BB_IMAGE_TAG` from that same published receipt, overriding stale values in the shell or local env files; building does not change `runtime.env`. Immutable image IDs, commit/tree, labels, commands, exit codes and logs are retained under `.local/local-prelaunch/receipts/`. Local scripts are mounted separately; their behavior must be identified separately from the production image commit. Buildx is required for the production Dockerfile.

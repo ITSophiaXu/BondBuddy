@@ -54,6 +54,25 @@ function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 
+test('production options reject invalid model capacity and preserve one review assistant', async () => {
+  const pool = new Pool(), blobs = azureBlobs('UseDevelopmentStorage=true');
+  const env = { BB_WORKER_JOB_KINDS: 'run', BB_WORKER_RUN_KINDS: 'review',
+    BB_WORKER_CONCURRENCY: '2', BB_MODEL_CALL_CONCURRENCY: '6', BB_REVIEW_ASSISTANT_SLOTS: '1' };
+  try {
+    const options = workerRuntimeOptionsFromEnv(pool, blobs, env);
+    assert.equal(options.concurrency, 2);
+    assert.ok(options.reviewAssistant);
+    for (const value of ['0', '7', '6.0', '']) {
+      assert.throws(() => workerRuntimeOptionsFromEnv(pool, blobs, { ...env, BB_MODEL_CALL_CONCURRENCY: value }),
+        /Invalid BB_MODEL_CALL_CONCURRENCY/);
+    }
+    assert.throws(() => workerRuntimeOptionsFromEnv(pool, blobs, { ...env, BB_REVIEW_ASSISTANT_SLOTS: '2' }),
+      /BB_REVIEW_ASSISTANT_SLOTS/);
+  } finally {
+    await pool.end();
+  }
+});
+
 test('synthetic #17 production entry: heartbeat, parse claim, capability_not_ready run, probe loop, SIGTERM', { skip: !connection || !blobConnection }, async () => {
   const pool = new Pool({ connectionString: connection });
   const container = `bb-entry-${randomUUID()}`;

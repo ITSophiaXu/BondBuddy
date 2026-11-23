@@ -959,3 +959,41 @@ test('schema re-ask uses bounded host feedback, preserves usage and rejects a se
   assert.equal(fallback.status,'completed');
  }finally{await cleanup();}
 });
+
+test('capacity wait does not prepare a large workspace or record an intent; fresh gates and release precede send',async()=>{
+ const {config,cleanup}=await setup();
+ const controller=new AbortController();let granted!:()=>void;
+ const ready=new Promise<void>(resolve=>{granted=resolve;});let releases=0,prepared=0,gateChecks=0;
+ const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
+ journal.acquireCallSlot=async()=>{await ready;return {signal:controller.signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{releases++;}};};
+ try {
+  const task=runContainedModelCall(call('large',{output:{kind:'text'},fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>null},beforeIntent:async()=>{gateChecks++;throw new Error('FRESH_GATE_CLOSED');}}),journal,config);
+  await new Promise(r=>setTimeout(r,30));assert.equal(prepared,0);assert.equal(journal.intents.length,0);
+  granted();await assert.rejects(task,/FRESH_GATE_CLOSED/);
+  assert.equal(gateChecks,1);assert.equal(prepared,0);assert.equal(journal.intents.length,0);assert.equal(releases,1);
+ } finally {await cleanup();}
+});
+
+test('every schema reask re-enters capacity and releases even when persistence fails',async()=>{
+ const {config,cleanup}=await setup({max_schema_reasks:1});let grants=0,releases=0;
+ const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
+ journal.acquireCallSlot=async()=>{grants++;return {signal:new AbortController().signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{releases++;}};};
+ try {
+  await runContainedModelCall(call('SCENARIO:invalid_json'),journal,config);
+  assert.equal(grants,2);assert.equal(releases,2);
+  journal.recordIntent=async()=>{throw new Error('INTENT_WRITE_FAILED');};
+  await assert.rejects(runContainedModelCall(call('ordinary'),journal,config),/INTENT_WRITE_FAILED/);
+  assert.equal(grants,3);assert.equal(releases,3);
+ }finally{await cleanup();}
+});
+
+test('a gate closing during workspace preparation prevents intent and spawn after the second fresh check',async()=>{
+ const {config,cleanup}=await setup();let gates=0,prepared=0,released=0;
+ const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
+ journal.acquireCallSlot=async()=>({signal:new AbortController().signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{released++;}});
+ try {
+  await assert.rejects(runContainedModelCall(call('synthetic',{output:{kind:'text'},beforeIntent:async()=>{gates++;if(prepared)throw new Error('INPUT_GATE_CHANGED');},fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>null}}),journal,config),/INPUT_GATE_CHANGED/);
+  assert.equal(gates,2);assert.equal(prepared,1);assert.equal(journal.intents.length,0);assert.equal(released,1);
+  assert.deepEqual(await readdir(config.work_root),[]);
+ }finally{await cleanup();}
+});

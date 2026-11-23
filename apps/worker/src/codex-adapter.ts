@@ -1,4 +1,5 @@
 import { AUTHORING_IMAGE_BUDGET_SIGNAL } from './authoring-image-tools.js';
+import type { ModelCallPermit } from './model-call-budget.js';
 // Server-side Codex adapter with durable intent, usage, cancellation and result replay.
 // Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
@@ -731,7 +732,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
         resolveResult(r);
       });
     });
-    child.stdin!.end(o.prompt);
+    void (async () => {
+      try { if (child.pid) await o.onSpawn?.(child.pid); if (!r.stop) child.stdin!.end(o.prompt); }
+      catch { stop('broken', true); }
+    })();
   });
   });
 }
@@ -767,7 +771,7 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
 export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
 export interface CodexJournal extends ProbeJournal {
   /** Optional host capacity permit. Wait before recording an intent or sending a request. */
-  acquireCallSlot?(signal?: AbortSignal): Promise<{ signal?: AbortSignal } | undefined>;
+  acquireCallSlot?(signal?: AbortSignal): Promise<Partial<ModelCallPermit> | undefined>;
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
   /** Persist the bounded private stdout/stderr evidence for this attempt. */
   storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
@@ -803,6 +807,7 @@ export type ContainedCallInput = {
     validationFeedback?: (value:unknown) => string | undefined } | { kind: 'text' };
   imageInput?: ModelImageInput;
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
+  beforeIntent?: () => Promise<void>;
   onEvent?: (event: Record<string, unknown>) => void;
   /** Host activity observer after tool containment; separate from existing diagnostic/cancellation hooks. */
   onActivity?: (event: Record<string, unknown>, intent: ProviderCallIntent) => void;
@@ -959,9 +964,11 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         throw error;
       }
       const executionSignal = permit?.signal && input.signal ? AbortSignal.any([permit.signal, input.signal]) : permit?.signal ?? input.signal;
-      if (executionSignal?.aborted) return cancelledResult();
-      const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
+      let attemptDir: string | undefined;
       try {
+        if (executionSignal?.aborted) return cancelledResult();
+        await input.beforeIntent?.();
+        attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
         const cwd = join(attemptDir, 'cwd'), home = join(attemptDir, 'home');
         await mkdir(cwd, { mode: 0o700 }); await mkdir(home, { mode: 0o700 });
         const attemptHome = codexHome ?? join(attemptDir, 'codex-home');
@@ -985,12 +992,16 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if(input.fileWorkspace){
           if(input.output.kind!=='text' || input.materialTools || persistent)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
           await input.fileWorkspace.prepare(cwd);
+          await input.beforeIntent?.();
+          if (executionSignal?.aborted) return cancelledResult();
           await verifyFilePermissions(c,cwd,home);
         }
 
         if (executionSignal?.aborted) return cancelledResult();
         if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
+        await input.beforeIntent?.();
+        if (executionSignal?.aborted) return cancelledResult();
         await journal.recordIntent(intent); // durable before spawn
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
@@ -1016,6 +1027,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
             release_sha:/^[A-Za-z0-9._-]{1,128}$/.test(process.env.BB_RELEASE_SHA??'')?process.env.BB_RELEASE_SHA!:null,
             overlay_sha256:/^[a-f0-9]{64}$/.test(process.env.BB_EXECUTION_OVERLAY_SHA256??'')?process.env.BB_EXECUTION_OVERLAY_SHA256!:null
           }):undefined,
+          onSpawn: permit?.bindProcess ? pid=>permit.bindProcess!(pid,attemptHome) : undefined,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if(raw.stop==='cancelled')reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
           raw.duration_ms===0&&raw.exit_code===null?'before_spawn':'native',intent.call_id));
@@ -1116,7 +1128,8 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if(attemptResult===null)continue;
         return attemptResult;
       } finally {
-        await rm(attemptDir, { recursive: true, force: true });
+        await permit?.release?.();
+        if (attemptDir) await rm(attemptDir, { recursive: true, force: true });
       }
     }
     return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
