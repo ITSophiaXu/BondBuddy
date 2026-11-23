@@ -12,6 +12,10 @@ import {collectIntegrityWebsite,integritySearchQuery,type IntegrityCollector,typ
 type StoredCapture={metadata:IntegrityCapture;screenshot_key:string;text_key:string};
 type Batch=Omit<BrowserCollection,'captures'>&{captures:StoredCapture[]};
 export type IntegrityBrowserOptions={collector?:IntegrityCollector;model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig};
+/** The exact URL stays in browser evidence; query parameters can contain token-like fields rejected by prompt storage. */
+export function integrityModelMaterial(siteName:string,capture:Pick<IntegrityCapture,'id'|'captured_at'>,subjectName:string,text:string){
+ return {ref:capture.id,text:JSON.stringify({site_name:siteName,captured_at:capture.captured_at,subject:subjectName,text})};
+}
 /** Browser startup/cleanup is site-local. Storage, ownership and lease failures remain fatal. */
 export async function collectIntegritySite(collector:IntegrityCollector,site:IntegritySite,subject:Parameters<IntegrityCollector>[1],signal:AbortSignal):Promise<BrowserCollection>{
  try{return await collector(site,subject,signal);}catch(error){
@@ -87,7 +91,7 @@ export async function officialIntegrityRecord(ctx:StageContext,site:IntegritySit
  const materials:{ref:string;text:string}[]=[];
  for(const c of batch.captures.filter(c=>c.metadata.kind!=='blocker')){
   const bytes=await ctx.blobs.getIfExistsBounded(c.text_key,500000);if(!bytes||digest(bytes)!==c.metadata.text_sha256)throw Error('INPUT_REVISION_CONFLICT');
-  materials.push({ref:c.metadata.id,text:JSON.stringify({url:c.metadata.url,captured_at:c.metadata.captured_at,subject:subject.name,text:bytes.toString('utf8')})});
+  materials.push(integrityModelMaterial(site.name,c.metadata,subject.name,bytes.toString('utf8')));
  }
  const logicalCallId='integrity_browser_'+inputManifestHash({subject:subject.id,site:site.id}).slice(0,24);
  // The immutable batch pins interpretation version, so old checkpoints replay their original schema/prompt.
