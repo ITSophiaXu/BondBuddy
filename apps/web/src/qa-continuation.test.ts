@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_QA_PRICE,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,commerceMetadata,encodeBillingDto,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
+import {PROJECT_QA_PRICE,PROJECT_QA_LIST_PRICE,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,commerceMetadata,encodeBillingDto,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
 import {qaAssetKey,qaSameDraft,qaPreparationFor,qaFollowupFor} from './qa-continuation.js';
 
 const projectId='qa-project',sha='a'.repeat(64),snapshotSha='b'.repeat(64),documentSha='c'.repeat(64),prepareHash='d'.repeat(64),answerHash='e'.repeat(64),evidenceSha='f'.repeat(64);
@@ -27,6 +27,12 @@ const answerRun=(patch:Partial<QaRun>={}):QaRun=>({run_id:'historical-answer',se
 function assertBlocked(run:QaRun,runs:readonly QaRun[]=[preparation()],project=projectId){
   const choice=qaFollowupFor(run,runs,project);assert.ok(choice.error);assert.deepEqual(choice.questions,[]);assert.deepEqual(choice.missingIds,[]);assert.equal(choice.preparation,undefined);
 }
+test('whole-list results use the recognized questions while legacy per-question results keep their original price',()=>{
+ const old=answerRun();assert.equal(qaFollowupFor(old,[preparation()],projectId).error,undefined);
+ const direct=answerRun({manifest:{...old.manifest,preparation_id:null,questions:[],prospectus:{project_id:projectId,version_id:'prospectus-v3',selection_revision:1,filename:'募集书.docx',sequence:3,asset:artifact()},price_version:PROJECT_QA_LIST_PRICE.version,points:String(PROJECT_QA_LIST_PRICE.points)},charged_points:String(PROJECT_QA_LIST_PRICE.points)});
+ const choice=qaFollowupFor(direct,[],projectId);assert.equal(choice.error,undefined);assert.equal(choice.preparation,undefined);assert.deepEqual(choice.questions,questions());
+ assertBlocked({...direct,manifest:{...direct.manifest,points:String(PROJECT_QA_PRICE.points)}},[]);
+});
 
 test('historical and current CNY answer continuations preserve the paid amount instead of reclassifying it as per-question credits',()=>{
  for(const version of [LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION]){
@@ -163,7 +169,7 @@ test('QA follow-up accepts equivalent property ordering and keeps unrelated inpu
 });
 
 test('QA follow-up refuses schema additions and malformed answer, snapshot or material fields',()=>{
-  const base=answerRun(),bad:unknown[]=[null,{...base,owner:'not-public'},{...base,manifest:{...base.manifest,use_knowledge:true}},
+  const base=answerRun(),bad:unknown[]=[null,{...base,owner:'not-public'},{...base,manifest:{...base.manifest,unknown_field:true}},
     {...base,result:{...base.result!,answers:[{...answers()[0],status:'approved'}]}},
     {...base,result:{...base.result!,answers:[{...answers()[0],extra:true}]}},
     {...base,result:{...base.result!,snapshot:{...snapshot(),extra:true}}},

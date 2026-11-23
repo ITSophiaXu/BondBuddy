@@ -1,5 +1,5 @@
 import {int64,parseInt64} from '@bondbuddy/contracts';
-import {OUTCOME_PRICE_VERSION,isOutcomePriceVersion,PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
+import {OUTCOME_PRICE_VERSION,isOutcomePriceVersion,PROJECT_QA_LIST_PRICE,LEGACY_PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 
 export type QaPreparationChoice={preparation?:QaRun;error?:string};
@@ -21,12 +21,12 @@ function validAsset(value:unknown):value is ProjectFileAsset{
     validId(value.pin.artifact_id)&&Number.isSafeInteger(value.pin.artifact_version);
 }
 function validDraft(value:unknown):value is QaDraft{
-  return Value.Check(QaDraftSchema,value)&&(value.preparation_id===null||validId(value.preparation_id))&&value.materials.every(validAsset)&&
+  return Value.Check(QaDraftSchema,value)&&(value.preparation_id===null||validId(value.preparation_id))&&(!value.source||validAsset(value.source))&&value.materials.every(validAsset)&&
     new Set(value.materials.map(qaAssetKey)).size===value.materials.length&&value.questions.every(q=>validId(q.id)&&nonnegativeInteger(q.start)&&nonnegativeInteger(q.end));
 }
 const questionValue=(q:QaQuestion)=>({id:q.id,start:q.start,end:q.end,question:q.question});
 const questionKey=(questions:readonly QaQuestion[])=>JSON.stringify(questions.map(questionValue));
-const draftKey=(draft:QaDraft)=>JSON.stringify({included_followup_of:draft.included_followup_of,preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
+const draftKey=(draft:QaDraft)=>JSON.stringify({included_followup_of:draft.included_followup_of,source:draft.source?qaAssetKey(draft.source):undefined,preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
   materials:draft.materials.map(qaAssetKey),requirements:draft.requirements,use_knowledge:draft.use_knowledge});
 
 /** Compare the complete request meaning, retaining question and material order. */
@@ -82,7 +82,15 @@ export function qaFollowupFor(run:QaRun,runs:readonly QaRun[],projectId:string):
     if(!validRun(run)||run.operation!=='answer'||run.manifest.operation!=='answer')return failure('本轮回答记录不完整，请重新读取后再继续。');
     if(!terminal.has(run.state))return failure('本轮仍在处理中，请结束后再准备下一轮。');
     const input=run.manifest;
-    if(!input.questions.length||int64(input.points)!==(isOutcomePriceVersion(input.price_version)?int64(input.amount_fen):BigInt(input.questions.length)*BigInt(PROJECT_QA_PRICE.points)))return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
+    const direct=input.price_version===PROJECT_QA_LIST_PRICE.version,questions=direct?run.result?.questions??[]:input.questions;
+    if(!questions.length||int64(input.points)!==(direct?BigInt(PROJECT_QA_LIST_PRICE.points):isOutcomePriceVersion(input.price_version)?int64(input.amount_fen):BigInt(input.questions.length)*BigInt(LEGACY_PROJECT_QA_PRICE.points)))return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
+    if(direct){
+      if(!run.result||!questionsMatch(questions,run.result.snapshot)||qaAssetKey(input.source.asset)===qaAssetKey(input.prospectus?.asset??input.source.asset))return failure('本轮结果与原问题清单不一致，请重新读取后再继续。');
+      const ids=new Set(questions.map(q=>q.id)),answers=new Map(run.result.answers.map(a=>[a.question_id,a]));
+      if(answers.size!==run.result.answers.length||run.result.answers.some(a=>!ids.has(a.question_id)))return failure('本轮回答与问题的对应关系不一致，请重新读取后再继续。');
+      const missingIds=questions.filter(q=>!answers.has(q.id)||answers.get(q.id)!.status==='missing'||answers.get(q.id)!.missing_materials.length>0).map(q=>q.id);
+      return {questions:questions.map(questionValue),missingIds};
+    }
     const resolved=qaPreparationFor({preparation_id:input.preparation_id,questions:input.questions,materials:input.materials.map(m=>m.asset),
       requirements:input.requirements,use_knowledge:false},runs,projectId);
     if(!resolved.preparation)return failure(resolved.error??'未找到原问题清单，请重新读取后再继续。');

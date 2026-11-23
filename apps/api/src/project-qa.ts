@@ -2,7 +2,7 @@ import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_LIST_PRICE,LEGACY_PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.js';
@@ -48,6 +48,16 @@ async function validateDraft(db:Db,owner:string,id:string,d:QaDraft,starting=fal
  if(starting){const issue=qaProspectusIssue(prospectus,d.materials,p.manifest.source.asset);if(issue)throw new Problem(422,'INPUT_REQUIRED',issue);}
  return {p,prospectus,materials:d.materials.map(asset=>available.find(m=>inputManifestHash(m.asset)===inputManifestHash(asset))!)};
 }
+async function validateDirectDraft(db:Db,owner:string,id:string,d:QaDraft,starting=false){
+ if(!d.source||d.source.kind!=='material'||d.source.pin.source_project_id!==id)throw new Problem(422,'INPUT_REQUIRED','请先上传本项目的问题清单。');
+ const source=await readProjectFileAsset(db,owner,d.source);
+ if(!['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/pdf'].includes(source.media_type))throw new Problem(422,'VALIDATION_FAILED','请上传 DOCX、DOC 或 PDF 问题清单。');
+ const available=await qaMaterials(db,owner,id),keys=new Set(available.map(m=>inputManifestHash(m.asset))),used=new Set<string>();
+ for(const asset of d.materials){const key=inputManifestHash(asset);if(!keys.has(key)||used.has(key)||key===inputManifestHash(d.source))throw new Problem(422,'VALIDATION_FAILED','材料已变化，或问题清单被选为事实依据，请重新选择。');used.add(key);await readProjectFileAsset(db,owner,asset);}
+ const prospectus=starting?await projectFileSource(db,owner,id):null;
+ if(starting){const issue=qaProspectusIssue(prospectus,d.materials,d.source);if(issue)throw new Problem(422,'INPUT_REQUIRED',issue);}
+ return {source:{filename:source.filename,asset:d.source},prospectus,materials:d.materials.map(asset=>available.find(m=>inputManifestHash(m.asset)===inputManifestHash(asset))!)};
+}
 async function notify(c:PoolClient,owner:string,id:string,type:string,payload:unknown){
  await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
  await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,type,payload]);
@@ -75,12 +85,12 @@ export async function reserveQaCredits(c:PoolClient,owner:string,run:any,input:Q
   ?await assertScopeQuote(c,input.scope_quote_id,owner,run.project_id,'project_qa_answer',inputManifestHash(qaAnswerScope(input)),points):null;
  if(scope&&scope.price_version!==input.price_version)throw conflict('QUOTE_CHANGED','人民币问题报价规则版本已变化。');
  const quote=uid();
- await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[quote,owner,run.id,run.input_hash,input.questions.length,commercial?0:PROJECT_QA_PRICE.points,points,input.price_version,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),scope?inputManifestHash(qaAnswerScope(input)):null]);
+ await c.query('INSERT INTO bb_project_qa_quotes(id,owner_user_id,run_id,input_hash,question_count,unit_points,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[quote,owner,run.id,run.input_hash,input.questions.length,commercial?0:input.price_version===PROJECT_QA_LIST_PRICE.version?PROJECT_QA_LIST_PRICE.points:LEGACY_PROJECT_QA_PRICE.points,points,input.price_version,scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),scope?inputManifestHash(qaAnswerScope(input)):null]);
  if(input.included_followup_of&&points===0)return;
  if(commercial&&points===0){await bindCommerceScopeRun(c,owner,scope!.scope_quote_id,run.id);return;}
  await lockCreditAccount(c,owner);
  const balance=await creditBalanceExact(c,owner);
- if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(input.price_version)?`本轮 ${input.questions.length} 个问题需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；问题与材料已保留，补足后自动继续。`:commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
+ if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',input.price_version===PROJECT_QA_LIST_PRICE.version?`整份问题清单需要 12,000 积分（¥120），当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；文件与材料已保留。`:isAutomaticPriceVersion(input.price_version)?`本轮 ${input.questions.length} 个问题需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；问题与材料已保留，补足后自动继续。`:commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
  const reservation=uid();
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
  await reserveCreditLots(c,owner,reservation,BigInt(points));
@@ -121,7 +131,7 @@ export async function readQa(db:Pool,owner:string,id:string,requested?:string,an
  LEFT JOIN answers a ON a.run_id=q.run_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)
  ORDER BY (q.run_id=$3) DESC NULLS LAST,q.sequence DESC`,[owner,id,requested??null,d?.draft?.preparation_id??null])).rows;
- return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:commercial?{points:0,version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope',scope_lines:[]}:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,...(r.manifest.pricing_mode==='outcome_cny_v1'?{...outcomeMetadata(r.manifest.points,r.manifest.points,1,r.manifest.price_version),scope_quote_id:r.manifest.scope_quote_id,quote_status:'ready' as const,scope_lines:r.manifest.scope_lines??[]}:{}),result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
+ return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:d?.draft?.preparation_id?(commercial?{points:0,version:OUTCOME_PRICE_VERSION,...outcomeMetadata(0),quote_status:'pending_scope',scope_lines:[]}:LEGACY_PROJECT_QA_PRICE):PROJECT_QA_LIST_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(answerSequence&&r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,...(r.manifest.pricing_mode==='outcome_cny_v1'?{...outcomeMetadata(r.manifest.points,r.manifest.points,1,r.manifest.price_version),scope_quote_id:r.manifest.scope_quote_id,quote_status:'ready' as const,scope_lines:r.manifest.scope_lines??[]}:{}),result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
 }
 export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,commercial=false){
  const base='/api/v1/projects/:project_id/qa',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
@@ -132,14 +142,14 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    if(b.source.kind!=='material'||b.source.pin.source_project_id!==pid)throw new Problem(422,'VALIDATION_FAILED','请上传本项目的问题清单。');
    const source=await readProjectFileAsset(c,user,b.source);
    if(!['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/pdf'].includes(source.media_type))throw new Problem(422,'VALIDATION_FAILED','请上传 DOCX、DOC 或 PDF 问题清单。');
-   return createRun(c,user,p,key,hash,{version:'project-qa-v1',operation:'prepare',project_name:p.name,source:{filename:source.filename,asset:b.source},preparation_id:null,questions:[],materials:[],requirements:'',cases:[],price_version:PROJECT_QA_PRICE.version,points:0});
+   return createRun(c,user,p,key,hash,{version:'project-qa-v1',operation:'prepare',project_name:p.name,source:{filename:source.filename,asset:b.source},preparation_id:null,questions:[],materials:[],requirements:'',cases:[],price_version:LEGACY_PROJECT_QA_PRICE.version,points:0});
   });return {run_id};
  });
  app.post(base+'/draft',{schema:{body:qaSchemas.QaDraftRequest,response:{200:qaSchemas.QaWorkspaceResponse}}},async r=>{
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaDraftRequest>;
   await transaction(db(),async c=>{const p=await project(c,user,pid,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
    const old=(await c.query('SELECT revision FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if((old?.revision??0)!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题清单已在其他页面修改，请刷新后核对。');
-   await validateDraft(c,user,pid,b.draft);
+   if(b.draft.source&&!b.draft.preparation_id)await validateDirectDraft(c,user,pid,b.draft);else await validateDraft(c,user,pid,b.draft);
    await c.query('INSERT INTO bb_project_qa_drafts(owner_user_id,project_id,revision,draft) VALUES($1,$2,$3,$4) ON CONFLICT(project_id) DO UPDATE SET revision=EXCLUDED.revision,draft=EXCLUDED.draft',[user,pid,b.expected_revision+1,b.draft]);await notify(c,user,pid,'project.qa_draft_saved',{revision:b.expected_revision+1});
   });return readQa(db(),user,pid,undefined,r.headers[QA_HISTORY_CAPABILITY.header]===QA_HISTORY_CAPABILITY.value,commercial);
 
@@ -150,13 +160,15 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    await project(c,user,pid,true);
    const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];
    if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
-   const d=row.draft as QaDraft,{p:prepared,materials}=await validateDraft(c,user,pid,d,true);
+   const d=row.draft as QaDraft;
+   if(d.source&&!d.preparation_id){await validateDirectDraft(c,user,pid,d,true);return {points:PROJECT_QA_LIST_PRICE.points,price_version:PROJECT_QA_LIST_PRICE.version};}
+   const {p:prepared,materials}=await validateDraft(c,user,pid,d,true);
    if(b.included_followup_of){
     if(!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');
     const priceVersion=await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source);
     return {points:0,price_version:priceVersion,...outcomeMetadata(0,0,1,priceVersion),quote_status:'ready',scope_lines:[]};
    }
-   if(!commercial)return {points:d.questions.length*PROJECT_QA_PRICE.points,price_version:PROJECT_QA_PRICE.version};
+   if(!commercial)return {points:d.questions.length*LEGACY_PROJECT_QA_PRICE.points,price_version:LEGACY_PROJECT_QA_PRICE.version};
    const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
    const scope=await requestScope(c,user,pid,'project_qa_answer',inputManifestHash(snapshot),snapshot);
    return {points:scope.amount_fen,price_version:scope.price_version,...scopePriceMetadata(scope)};
@@ -166,13 +178,19 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
   const user=await owner(r),pid=id(r),b=r.body as Static<typeof qaSchemas.QaAnswerRequest>;
   const run_id=await transaction(db(),async c=>{const p=await project(c,user,pid,true),hash=inputManifestHash({pid,...b}),key='qa-answer:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
    const row=(await c.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,pid])).rows[0];if(!row||row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','问题或材料已变化，请重新确认。');
-   const d=row.draft as QaDraft,{p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true);
+   const d=row.draft as QaDraft;
+   if(d.source&&!d.preparation_id){
+    const {source,materials,prospectus}=await validateDirectDraft(c,user,pid,d,true);
+    if(b.expected_points!==PROJECT_QA_LIST_PRICE.points||b.price_version!==PROJECT_QA_LIST_PRICE.version||b.included_followup_of||b.scope_quote_id)throw conflict('QUOTE_CHANGED','整份问题清单固定价格已变化，请重新确认。');
+    return createRun(c,user,p,key,hash,{version:'project-qa-v1',operation:'answer',project_name:p.name,source,prospectus:prospectus!,preparation_id:null,questions:[],materials,requirements:d.requirements,use_knowledge:d.use_knowledge,cases:[],points:PROJECT_QA_LIST_PRICE.points,price_version:PROJECT_QA_LIST_PRICE.version});
+   }
+   const {p:prepared,materials,prospectus}=await validateDraft(c,user,pid,d,true);
    if(b.included_followup_of&&!commercial)throw conflict('QUOTE_CHANGED','请使用原任务服务入口核实续做范围。');
    const includedVersion=b.included_followup_of?await validateIncludedQaFollowup(c,user,pid,b.included_followup_of,d.questions,d.requirements,prepared.manifest.source):undefined;
    const snapshot=qaAnswerScope({source:prepared.manifest.source,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements});
    const scope=commercial&&!b.included_followup_of?await assertScopeQuote(c,b.scope_quote_id,user,pid,'project_qa_answer',inputManifestHash(snapshot),b.expected_points):null;
-   const points=b.included_followup_of?0:commercial?scope!.amount_fen:d.questions.length*PROJECT_QA_PRICE.points;
-   const priceVersion=commercial?(scope?.price_version??includedVersion):PROJECT_QA_PRICE.version;
+   const points=b.included_followup_of?0:commercial?scope!.amount_fen:d.questions.length*LEGACY_PROJECT_QA_PRICE.points;
+   const priceVersion=commercial?(scope?.price_version??includedVersion):LEGACY_PROJECT_QA_PRICE.version;
    if(points!==b.expected_points||b.price_version!==priceVersion||commercial&&!isOutcomePriceVersion(priceVersion))throw conflict('QUOTE_CHANGED','实际处理范围与费用已变化，请重新确认。');
    const cases:QaInput['cases']=[];if(d.use_knowledge)for(const q of d.questions){for(const item of await qaCaseSearch(c,q.question,3))if(!cases.some(x=>x.id===item.id)&&cases.length<40)cases.push(item);}
    return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:priceVersion!,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0,0,1,includedVersion!),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
