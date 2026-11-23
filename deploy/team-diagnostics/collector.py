@@ -6,6 +6,7 @@ import pathlib
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import time
 
@@ -14,6 +15,72 @@ from common import ENV, canonical, command, digest, identifier, scrub, trusted_f
 
 DOCKER = ['/usr/bin/docker', '--config', '/etc/bondbuddy-diagnostics/docker']
 NODE_CONFIG = pathlib.Path('/etc/bondbuddy/elastic-node.json')
+
+
+def capture_host_resources(db):
+    stat = pathlib.Path('/proc/stat').read_text()
+    fields = stat.splitlines()[0].split()
+    if fields[0] != 'cpu' or len(fields) < 9 or any(not value.isdigit() for value in fields[1:9]):
+        raise ValueError('Invalid host CPU counters')
+    values = [int(value) for value in fields[1:9]]
+    current = {'total': sum(values), 'idle': values[3]+values[4], 'clock': time.monotonic(),
+               'logical_cpus': len(re.findall(r'^cpu\d+\s', stat, re.M))}
+    if not current['logical_cpus']: raise ValueError('Missing host CPU count')
+    previous = archive.checkpoint(db, 'host-cpu-baseline')
+    with db: archive.set_checkpoint(db, 'host-cpu-baseline', current)
+    interval, percent = None, None
+    if previous:
+        interval = current['clock']-previous['clock']
+        total, idle = current['total']-previous['total'], current['idle']-previous['idle']
+        if interval <= 0 or total <= 0 or not 0 <= idle <= total or current['logical_cpus'] != previous['logical_cpus']:
+            raise ValueError('Host CPU counter reset')
+        percent = 100*(total-idle)/total
+    memory = dict(re.findall(r'^(MemTotal|MemAvailable):\s+(\d+)\s+kB$', pathlib.Path('/proc/meminfo').read_text(), re.M))
+    machine_bytes = pathlib.Path('/etc/machine-id').read_bytes()
+    machine_id = machine_bytes.decode('ascii').strip()
+    if not re.fullmatch(r'[a-f0-9]{32}', machine_id): raise ValueError('Host identity unavailable')
+    return {'hostname': socket.gethostname(), 'execution_host_id': digest(machine_bytes),
+            'sampled_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'status': 'sampled' if previous else 'baseline', 'interval_seconds': interval,
+            'cpu_percent': percent, 'logical_cpus': current['logical_cpus'], 'scope': 'collector_host_proc_stat',
+            'memory_total_bytes': int(memory['MemTotal'])*1024, 'memory_available_bytes': int(memory['MemAvailable'])*1024}
+
+
+def attach_worker_metadata(db, config, item):
+    rows = db.execute('SELECT message,stamp FROM records WHERE source=? AND stream=? ORDER BY id DESC LIMIT 20',
+                      (config['node'], item['stream'])).fetchall()
+    for row in rows:
+        try: value = json.loads(row['message'])
+        except (ValueError, TypeError): continue
+        if not isinstance(value, dict) or value.get('kind') not in (
+                'worker_started', 'job_claimed', 'job_stage_started', 'job_execution_finished', 'worker_resources', 'stopped'):
+            continue
+        if not isinstance(value.get('worker_id'), str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', value['worker_id']):
+            continue
+        hostname = value.get('container_hostname')
+        if not isinstance(hostname, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', hostname): continue
+        host_id = value.get('execution_host_id')
+        if host_id is not None and (not isinstance(host_id, str) or not re.fullmatch(r'[a-f0-9]{64}', host_id)): continue
+        identity = {'worker_id': value['worker_id'], 'container_hostname': hostname, 'execution_host_id': host_id,
+                    'observed_at': row['stamp']}
+        server = value.get('server_id')
+        if isinstance(server, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}', server):
+            identity['configured_server_id'] = server
+        if value.get('cloud_provider') in ('azure','tencent','local','other'): identity['cloud_provider'] = value['cloud_provider']
+        item.setdefault('worker_identity', identity)
+        if item['worker_identity']['worker_id'] != value['worker_id']: continue
+        if value.get('kind') == 'worker_resources' and 'resources' not in item:
+            fields = ('interval_seconds','cgroup_cpu_cores','cgroup_cpu_limit_cores','cgroup_memory_bytes',
+                      'cgroup_memory_limit_bytes','cgroup_throttled_seconds','cgroup_oom_count')
+            resources = {key: value.get(key) for key in fields}
+            if (value.get('status') in ('baseline','sampled') and
+                    type(resources['cgroup_memory_bytes']) is int and
+                    all(v is None or type(v) in (int,float) and 0 <= v < float('inf') for v in resources.values()) and
+                    (value['status'] == 'baseline' or resources['interval_seconds'] is not None and
+                     resources['interval_seconds'] > 0 and resources['cgroup_cpu_cores'] is not None)):
+                age = time.time()-datetime.datetime.fromisoformat(row['stamp'].replace('Z','+00:00')).timestamp()
+                item['resources'] = {'sampled_at': row['stamp'], 'stale': age > 120, 'status': value['status'], **resources}
+        if 'worker_identity' in item and 'resources' in item: break
 
 
 def safe_node_config(raw):
@@ -252,12 +319,15 @@ def collect(config, require_synced=False):
             status['retention_days']=config.get('retention_days',180)
             headroom=shutil.disk_usage(directory).free >= config.get('minimum_free_bytes',512*1024*1024)
             if not headroom: status['errors'].append({'source':'storage','code':'INSUFFICIENT_ARCHIVE_HEADROOM'})
+            try: status['host_resources'] = capture_host_resources(db)
+            except (OSError, ValueError, KeyError): status['errors'].append({'source':'host-resources','code':'HOST_RESOURCE_SAMPLE_FAILED'})
             try: status['containers'] = discover(config)
             except Exception: status['errors'].append({'source': 'inventory', 'code': 'INVENTORY_UNAVAILABLE'})
             for item in status['containers']:
                 if not headroom: break
                 try: status['backlog'] |= capture_container(db, config, item)
                 except Exception: status['errors'].append({'source': item['stream'], 'code': 'CONTAINER_CAPTURE_FAILED'})
+                attach_worker_metadata(db, config, item)
                 if item['state'] == 'running':
                     try:
                         item['processes'] = command(DOCKER + ['top', item['stream'], '-eo', 'pid,ppid,etimes,stat,comm'], max_bytes=65536).decode().splitlines()

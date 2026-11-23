@@ -19,6 +19,67 @@ import export as exporter
 STAMP = '2026-11-16T00:00:00.000000001Z'
 
 
+class WorkerResourceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = archive.connect(pathlib.Path(self.tmp.name)/'archive.sqlite3', write=True)
+    def tearDown(self):
+        self.db.close(); self.tmp.cleanup()
+    def test_host_cpu_has_a_baseline_and_reports_actual_host_identity(self):
+        stats = iter(['cpu 10 0 0 90 0 0 0 0 70 0\ncpu0 0\ncpu1 0\n',
+                      'cpu 60 0 0 140 0 0 0 0 70 0\ncpu0 0\ncpu1 0\n'])
+        def read(path):
+            return next(stats) if str(path) == '/proc/stat' else 'MemTotal: 1024 kB\nMemAvailable: 512 kB\n'
+        machine = b'a'*32+b'\n'
+        with mock.patch.object(pathlib.Path, 'read_text', read), mock.patch.object(pathlib.Path,'read_bytes',return_value=machine), \
+                mock.patch.object(collector.time,'monotonic',side_effect=[100,102]), mock.patch.object(collector.socket,'gethostname',return_value='synthetic-vm'):
+            first = collector.capture_host_resources(self.db)
+            second = collector.capture_host_resources(self.db)
+        self.assertEqual(first['status'],'baseline')
+        self.assertIsNone(first['cpu_percent'])
+        self.assertEqual(second['cpu_percent'],50)
+        self.assertEqual(second['interval_seconds'],2)
+        self.assertEqual(second['hostname'],'synthetic-vm')
+        self.assertEqual(second['execution_host_id'],common.digest(machine))
+    def test_cpu_reset_is_not_reported_as_zero(self):
+        archive.set_checkpoint(self.db,'host-cpu-baseline',{'total':10000,'idle':9000,'clock':100,'logical_cpus':2})
+        def read(path):
+            return 'cpu 10 0 0 90 0 0 0 0\ncpu0 0\ncpu1 0\n' if str(path)=='/proc/stat' else ''
+        with mock.patch.object(pathlib.Path,'read_text',read), mock.patch.object(collector.time,'monotonic',return_value=102):
+            with self.assertRaises(ValueError): collector.capture_host_resources(self.db)
+    def test_archived_logs_link_exact_worker_to_server_without_exposing_extra_fields(self):
+        stream='a'*64
+        value={'kind':'worker_resources','worker_id':'authoring_synthetic','container_hostname':'synthetic-container',
+               'server_id':'synthetic-server','execution_host_id':'b'*64,'status':'sampled',
+               'interval_seconds':2,'cgroup_cpu_cores':0.5,'cgroup_memory_bytes':4096,'material_body':'PRIVATE_CONTENT'}
+        archive.record(self.db,'azure',stream,'worker',STAMP,1,json.dumps(value))
+        item={'stream':stream,'name':'synthetic-worker','service':'worker','state':'running'}
+        collector.attach_worker_metadata(self.db,{'node':'azure'},item)
+        self.assertEqual(item['resources']['cgroup_cpu_cores'],0.5)
+        self.assertNotIn('PRIVATE_CONTENT',json.dumps(item))
+        status={'checked_at':time.time(),'containers':[item],'host_resources':{'hostname':'synthetic-vm','cpu_percent':50}}
+        with self.db:self.db.execute('INSERT INTO source_status VALUES(?,?)',('azure',json.dumps(status)))
+        session={'body':{'session_id':'session','run_id':'run','job_id':'job','worker_instance_id':'authoring_synthetic'}}
+        result=broker.execution_assignments({'node':'main'},self.db,[session])
+        self.assertEqual(result[0]['mapping_status'],'matched')
+        self.assertEqual(result[0]['node_id'],'azure')
+        self.assertEqual(result[0]['server']['hostname'],'synthetic-vm')
+        self.assertEqual(result[0]['container_name'],'synthetic-worker')
+        self.assertEqual(broker.execution_assignments({'node':'main'},self.db,[{'body':{'worker_instance_id':None}}])[0]['mapping_status'],'unavailable')
+        with self.db:self.db.execute('INSERT INTO source_status VALUES(?,?)',('other',json.dumps(status)))
+        self.assertEqual(broker.execution_assignments({'node':'main'},self.db,[session])[0]['mapping_status'],'ambiguous')
+    def test_old_process_resources_are_not_attached_to_restarted_worker(self):
+        stream='a'*64
+        old={'kind':'worker_resources','worker_id':'old','container_hostname':'synthetic','status':'sampled',
+             'interval_seconds':2,'cgroup_cpu_cores':0.5,'cgroup_memory_bytes':4096}
+        archive.record(self.db,'azure',stream,'worker',STAMP,1,json.dumps(old))
+        archive.record(self.db,'azure',stream,'worker',STAMP,2,json.dumps({'kind':'worker_started','worker_id':'new','container_hostname':'synthetic'}))
+        item={'stream':stream}
+        collector.attach_worker_metadata(self.db,{'node':'azure'},item)
+        self.assertEqual(item['worker_identity']['worker_id'],'new')
+        self.assertNotIn('resources',item)
+
+
 class ArchiveTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

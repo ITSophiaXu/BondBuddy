@@ -38,6 +38,46 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 
 `execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
 
+## Worker 任务归属与资源日志
+
+每台服务器分别填写私有 env 的 `BB_EXECUTION_NODE_ID`（真实云实例或资源 ID）、
+`BB_EXECUTION_NODE_NAME`（主机名称）、`BB_EXECUTION_CLOUD_PROVIDER`（`azure`、`tencent`、
+`local` 或 `other`）和 `BB_EXECUTION_HOST_ID`（该执行主机 machine-id 的 SHA-256）。
+如另有 `BB_MODEL_EXECUTION_HOST_ID`，同时设置两个 host ID 时必须相同。
+同机容器共享服务器身份，不同服务器不能复制同一个身份。未填写的身份明确记为 null，
+云实例字段的来源标为 deployment_config，不冒充经过云控制面核验的身份。
+
+Worker stdout 新增 `worker_started`、`job_claimed`、`job_stage_started`、
+`job_execution_finished` 和 `worker_resources` JSON 行。任务日志关联
+`owner_user_id`、`job_id`、`run_id`（解析任务使用材料/项目 ID）、
+`worker_id`、`container_hostname`、`server_id` 与本次领取的 `execution_id`。
+Worker 同时将实际 heartbeat worker ID 传入已有 performance trace，
+填充新执行会话的 `worker_instance_id`，诊断端可按 run/job 查询并关联容器/节点。
+结束日志的 `elapsed_ms` 是本次领取后的墙钟耗时，不是提交后的总耗时，也不是 CPU 时间。
+paused、lost、retry 等结果保留原语义，不能当成功。租约 token、模型凭据、材料正文、
+私有 URL 和用户名不进入新增日志；授权诊断端按 owner ID 解析用户名。
+服务器字段仅写内部日志，不加入用户可见的任务事件。
+
+`BB_WORKER_RESOURCE_LOG_ENABLED=1` 默认随 Worker 心跳采样（默认 10 秒）。
+`kernel_cpu_percent` 来自执行内核 `/proc/stat` 的相邻计数，100% 表示所有可见逻辑 CPU
+均忙，idle 包含 iowait，guest 不重复计数；不是云供应商 CPU 指标。
+`cgroup_cpu_cores` 统计 Worker 当前 cgroup，包括其子进程，1 表示占用一个核。
+日志还含 CPU 配额、限流秒数、计入缓存的内存、内存配额、OOM 计数和当前活跃 job 列表。
+同机多个 Worker 的 kernel CPU 是重复的主机指标，不能相加；并发任务的 cgroup CPU
+不能直接归给某一个 job。首条是 baseline，指标不可读取或计数重置会显式记录
+`worker_resource_sample_failed`，不填零、不停止业务任务。
+
+v3 团队采集器同时记录实际操作系统 hostname、machine-id 文件的 SHA-256 和
+主机 `/proc/stat` CPU、内存快照，`status` 返回 `host_resources`。
+Worker stdout 的固定字段进入对应容器的 `worker_identity` 和 `resources`，
+`run RUN_ID` 新增 `execution_assignments`，按 performance session 的准确
+worker ID 匹配容器，再关联采集节点和主机指标，不按任务类型猜服务器。
+缺失或重复身份分别记为 unavailable/ambiguous；过期采集和资源样本明确标注 stale。
+这些指标仍需要两端部署新采集器才会出现；执行节点注册表的
+REGISTRY_UNAVAILABLE 不会由日志自动修复，旧注册表缺口继续保留。
+历史缺失归属不回填，运行中旧镜像也不会自动新增记录；发布后以受控新任务核对
+完整关联及 CPU 样本。本改动不调整任务槽、模型并发、队列领取或租约策略。
+
 ## 私有覆盖、解析放置与独立配置版本（#911）
 
 普通 `deploy-role.sh`、`role-compose.sh` 的重建/探测及上述应用回滚统一读取同一私有 env：

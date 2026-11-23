@@ -4,6 +4,9 @@
 // whose blocker cleared (parsed materials, reconciled provider calls, OCR availability) and can
 // forward #79 logs. SIGTERM/SIGINT stop claiming, drain in-flight work, then release leases so
 // another worker resumes from the durable checkpoint at once. Nothing here trusts a browser.
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+import { executionNodeFromEnv, workerIdentity, WorkerResourceSampler, type ExecutionNode, type WorkerIdentity } from './worker-diagnostics.js';
 import {runUploadConfirmationOnce} from '@bondbuddy/api/upload-confirmation';
 import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
@@ -78,6 +81,8 @@ export type WorkerRuntimeOptions = {
   log?: (event: Record<string, unknown>) => void;
   /** #35 heartbeat row (bb_worker_heartbeats) for readiness and the stale-worker alert. */
   workerId?: string; heartbeatMs?: number;
+  executionNode?: ExecutionNode;
+  resourceLogEnabled?: boolean;
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
   /** M3 discussions use their own leases and never create document runs. */
@@ -105,6 +110,8 @@ export class WorkerRuntime {
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
+  private readonly identity: WorkerIdentity;
+  private readonly resourceSampler = new WorkerResourceSampler();
   private fileAuthoringRecoveryCursor?: string;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
   private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
@@ -115,7 +122,9 @@ export class WorkerRuntime {
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
-      uploadConfirmationEnabled: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+      uploadConfirmationEnabled: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000,
+      executionNode: executionNodeFromEnv(), resourceLogEnabled: false, ...options };
+    this.identity = workerIdentity(this.o.workerId, this.o.executionNode);
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
@@ -142,6 +151,9 @@ export class WorkerRuntime {
   }
 
   start() {
+    this.emit({ kind: 'worker_started', run_kinds: this.o.runKinds, job_kinds: this.o.kinds,
+      general_slots: this.o.concurrency, interactive_slots: this.dedicatedInteractiveSlots,
+      server_identity_complete: this.identity.server_id !== null && this.identity.execution_host_id !== null });
     if(this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='update'||kind==='generation')) this.loops.push(this.formatDiagnosticLoop());
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
@@ -156,7 +168,7 @@ export class WorkerRuntime {
     return this;
   }
 
-  private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
+  private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event, ...this.identity }); }
 
   /** General slots alternate claims; dedicated slots claim only their assigned work. */
   private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false) {
@@ -165,6 +177,14 @@ export class WorkerRuntime {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
+        let context: Record<string, unknown> | undefined;
+        let claimedAt: number | undefined;
+        const recordClaim = (lease: Lease | MaterialParseLease) => {
+          claimedAt = performance.now();
+          context = { execution_id: randomUUID(), job_id: lease.jobId, owner_user_id: lease.owner,
+            ...('runId' in lease ? { run_id: lease.runId } : { project_id: lease.projectId, material_id: lease.materialId }) };
+          this.emit({ slot, kind: 'job_claimed', job_lane: kind, ...context });
+        };
         try {
           if(kind==='run'&&!interactiveOnly&&this.o.runKinds.includes('generation')){
             for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates,advanceWorkpaperBatch])try{await advance(this.o.pool);}
@@ -173,17 +193,23 @@ export class WorkerRuntime {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
               runKinds: this.o.runKinds, interactiveOnly, reviewedContextLoader: this.o.reviewedContextLoader,
+              workerInstanceId: this.o.workerId,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
-              onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
-              onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
+              onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error, ...context }),
+              onStage: stage => this.emit({ slot, kind: 'job_stage_started', stage, ...context }),
+              onLease: lease => { if (lease) { this.runLeases.set(slot, lease); recordClaim(lease); } else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
-              onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
+              onLease: lease => { if (lease) { this.parseLeases.set(slot, lease); recordClaim(lease); } else this.parseLeases.delete(slot); } }) : 'idle';
+          if (context) this.emit({ slot, kind: 'job_execution_finished', outcome,
+            elapsed_ms: performance.now() - claimedAt!, ...context });
           if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
         } catch (error) {
           this.counters.errors++;
-          this.emit({ slot, kind, outcome: 'error', error: error instanceof Error ? error.message.slice(0, 64).replace(/[^A-Za-z0-9_ .:-]/g, '') : 'unknown' });
+          if (context) this.emit({ slot, kind: 'job_execution_finished', outcome: 'error',
+            elapsed_ms: performance.now() - claimedAt!, ...context });
+          this.emit({ slot, kind, outcome: 'error', error: error instanceof Error ? error.message.slice(0, 64).replace(/[^A-Za-z0-9_ .:-]/g, '') : 'unknown', ...context });
         }
       }
       turn++;
@@ -261,6 +287,19 @@ export class WorkerRuntime {
   private async heartbeatLoop() {
     while (!this.stopping) {
       await this.heartbeat();
+      if (this.o.resourceLogEnabled && this.o.log) {
+        try {
+          const resource = await this.resourceSampler.sample();
+          this.emit({ kind: 'worker_resources', ...resource, active_jobs: [
+            ...Array.from(this.runLeases, ([slot, lease]) => ({ slot, job_id: lease.jobId, run_id: lease.runId, owner_user_id: lease.owner })),
+            ...Array.from(this.parseLeases, ([slot, lease]) => ({ slot, job_id: lease.jobId, project_id: lease.projectId, owner_user_id: lease.owner })),
+          ] });
+        } catch (error) {
+          this.emit({ kind: 'worker_resource_sample_failed', error_code: error instanceof Error &&
+            ['CGROUP_V2_UNAVAILABLE', 'INVALID_RESOURCE_COUNTER', 'INVALID_KERNEL_CPU', 'RESOURCE_COUNTER_RESET'].includes(error.message)
+            ? error.message : 'RESOURCE_READ_FAILED' });
+        }
+      }
       await sleep(this.o.heartbeatMs, this.stopSignal.signal);
     }
   }
@@ -382,6 +421,8 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
+    executionNode: executionNodeFromEnv(env),
+    resourceLogEnabled: intEnv(env, 'BB_WORKER_RESOURCE_LOG_ENABLED', 1, 0, 1) === 1,
     ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
     ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: {} } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,

@@ -105,6 +105,28 @@ def sources(config, db):
     return {'items': result, 'coverage': 'Only registered collectors; missing/stale sources are not empty logs'}
 
 
+def execution_assignments(config, db, sessions):
+    inventory = sources(config, db)['items']
+    result = []
+    for session in sessions:
+        body = session['body']
+        worker = body.get('worker_instance_id')
+        matches = [(node, container) for node in inventory for container in (node['status'] or {}).get('containers', [])
+                   if worker and container.get('worker_identity', {}).get('worker_id') == worker]
+        item = {'session_id': body.get('session_id'), 'job_id': body.get('job_id'), 'run_id': body.get('run_id'),
+                'worker_id': worker, 'started_at': body.get('started_at'), 'ended_at': body.get('ended_at'),
+                'mapping_status': 'matched' if len(matches) == 1 else 'ambiguous' if matches else 'unavailable'}
+        if len(matches) == 1:
+            node, container = matches[0]
+            host = (node['status'] or {}).get('host_resources')
+            item.update({'node_id': node['source'], 'server': host, 'container_name': container['name'],
+                         'container_id': container['stream'], 'container_state': container['state'],
+                         'worker_identity': container['worker_identity'], 'container_resources': container.get('resources'),
+                         'collector_stale': node['stale']})
+        result.append(item)
+    return result
+
+
 def read_content(config, options, database):
     reference = database.content_ref(options['kind'], options['id'])
     containers = [v for v in discover(config) if v['service'] == 'api' and v['state'] == 'running']
@@ -161,7 +183,15 @@ def dispatch(config, actor, args, stdin=None):
         for kind in collections:
             if kind in available:
                 pages[kind] = database.page(kind, {key: options['id']}, 50)
-        return {'id': options['id'], 'sections': pages, 'continuation': 'Use db COLLECTION with the same filter and returned next_cursor'}
+        result = {'id': options['id'], 'sections': pages, 'continuation': 'Use db COLLECTION with the same filter and returned next_cursor'}
+        if action == 'run':
+            db = archive.connect(path)
+            try:
+                sessions = pages.get('performance-sessions', {}).get('items', [])
+                result['execution_assignments'] = execution_assignments(config, db, sessions)
+                result['assignment_coverage'] = 'Available performance session page only; missing identities are not inferred'
+            finally: db.close()
+        return result
     db = archive.connect(path)
     try:
         if action == 'logs':

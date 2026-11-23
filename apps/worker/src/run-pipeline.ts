@@ -100,6 +100,7 @@ export type RunPipelineDependencies = {
   produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
   workerInstanceId?:string;
   onLease?: (lease: Lease | null) => void;
+  onStage?: (stage: string, lease: Lease) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
   onUnexpectedError?: (error: { stage: string | null; name: string; message: string; code: string | null }) => void;
@@ -660,6 +661,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (saved && !stage.replay) { await withPerformanceSpan('stage.reuse',{stage:stage.name},span=>{span.end('reused');}); ctx.values.set(stage.name, saved); continue; }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
       await beginRunStage(pool,lease,stage.name);
+      deps.onStage?.(stage.name, lease);
       const outcome = await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
         const value=await stage.run(ctx);
         span.end(value.kind==='fail'?'failed':value.kind==='pause'?'paused':value.kind==='stopped'?'cancelled':'succeeded',
