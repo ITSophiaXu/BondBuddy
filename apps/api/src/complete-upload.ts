@@ -141,6 +141,14 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
       ${receipt?'id=$3 AND version=$4':'upload_id=$3'}`,[user,id,receipt?receipt.material_id:uploadId,...(receipt?[receipt.material_version]:[])])).rows[0];
     if(!m)throw missing();
     await beforeMaterialRead?.(m);
+    if(m.upload_id===uploadId&&u.upload_transport!==DIRECT_UPLOAD_TRANSPORT&&u.received_etag&&blobs.headVersion
+      &&u.object_key===m.object_key&&u.received_sha256?.trim()===m.sha256.trim()&&Number(u.received_bytes)===Number(m.byte_size)){
+      const current=await boundedVersion(blobs,m.object_key);
+      if(current&&current.etag===u.received_etag&&current.byteSize===Number(m.byte_size)){
+        result.proofs[m.object_key]={etag:current.etag,byteSize:current.byteSize,sha256:m.sha256.trim(),trustedIngress:true};
+        return result;
+      }
+    }
     result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m);
     return result;
   }
@@ -150,6 +158,20 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
   const direct=u.upload_transport===DIRECT_UPLOAD_TRANSPORT;
   const version=direct&&blobs.headVersion?await boundedVersion(blobs,u.object_key):null;
   if(direct&&!version)throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+  // The same-origin API already streamed, hashed and inspected these bytes
+  // before storing them. Reuse that ingress proof only for the exact Blob
+  // version it wrote; legacy uploads and changed objects retain the full read.
+  if(!direct&&u.state==='received'&&u.received_etag&&u.received_media_type&&blobs.headVersion
+    &&u.received_sha256?.trim()===b.sha256&&Number(u.received_bytes)===b.byte_size){
+    const stored=await boundedVersion(blobs,u.object_key);
+    if(stored&&stored.etag===u.received_etag&&stored.byteSize===b.byte_size){
+      result.proofs[u.object_key]={etag:stored.etag,byteSize:stored.byteSize,sha256:b.sha256,trustedIngress:true};
+      result.source={objectKey:u.object_key,mediaType:u.received_media_type,signatureAssessment:u.received_signature_assessment??null,excepted:u.received_inspection_excepted===true};
+      const m=(await pool.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,u.received_media_type])).rows[0];
+      if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m);}
+      return result;
+    }
+  }
   const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
   try{
     await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
@@ -162,7 +184,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     result.proofs[u.object_key]=proof;
     result.source={objectKey:u.object_key,mediaType:inspection.mediaType,signatureAssessment:inspection.signatureAssessment,excepted};
     const m=(await pool.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,inspection.mediaType])).rows[0];
-    if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m);}
+    if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m);}
     return result;
   }catch(error){
     const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;

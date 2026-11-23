@@ -34,7 +34,7 @@ import { Value } from '@sinclair/typebox/value';
 import { ReviewRevisionHandlingSchema, reportingWindow, PROJECT_TASK_COUNTS_CAPABILITY } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
+import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -1245,7 +1245,9 @@ export function createServer(settings: Settings = {}) {
         const excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
           ownerUserId:user,projectId:id,role:u.role,byteSize:bytes.byteSize,sha256:bytes.sha256,mediaType:u.declared_media_type
         });
-        if(!excepted)await verifiedMediaFile(bytes.path,bytes.byteSize,u.declared_media_type);
+        const inspection=excepted
+          ? {mediaType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',signatureAssessment:null}
+          : await verifiedMediaFileDetailed(bytes.path,bytes.byteSize,u.declared_media_type);
         if(u.state==='received'){
           if(u.received_sha256?.trim()!==bytes.sha256||Number(u.received_bytes)!==bytes.byteSize)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload receipt is inconsistent');
           const stored=await readBlobToFile(blob(),u.object_key,null,MAX_BYTES).catch(error=>{if(error instanceof Problem)return null;throw error;});
@@ -1258,7 +1260,9 @@ export function createServer(settings: Settings = {}) {
         }
         // The upload row lock is shared with completion and orphan cleanup. Keep it until Blob and DB state agree.
         await putBlobFile(blob(),u.object_key,bytes.path,u.declared_media_type);
-        const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,bytes.sha256,bytes.byteSize]);
+        const version=blob().headVersion?await blob().headVersion!(u.object_key):null;
+        if(version&&(version.byteSize!==bytes.byteSize||!version.etag))throw new Problem(503,'DATA_UNAVAILABLE','Stored upload version differs from received bytes');
+        const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5,received_etag=$6,received_media_type=$7,received_signature_assessment=$8::jsonb,received_inspection_excepted=$9 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,bytes.sha256,bytes.byteSize,version?.etag??null,inspection.mediaType,inspection.signatureAssessment===null?null:JSON.stringify(inspection.signatureAssessment),excepted]);
         if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
         await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.byteSize}]);
         await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_bytes',status:'submitted'});
