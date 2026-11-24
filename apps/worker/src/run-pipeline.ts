@@ -100,6 +100,7 @@ export type RunPipelineDependencies = {
   /** #76 target-period candidate producer call point; absent = unchanged. */
   produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
   workerInstanceId?:string;
+  workerHostId?:string;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -606,7 +607,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const blobs=performanceBlobs(deps.blobs);
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
   const claimStartedAt=new Date();
-  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
+  const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly,
+    workerInstanceId:deps.workerInstanceId,workerHostId:deps.workerHostId });
   const claimEndedAt=new Date();
   deps.onLease?.(lease);
   if (!lease) return 'idle';
@@ -784,7 +786,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     return 'paused';
     };
     return await withPerformanceTrace(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id,runId:run.id,
-      jobId:lease.jobId,traceId:run.id,taskKind:run.task_kind,serviceRole:'worker',workerInstanceId:deps.workerInstanceId},async rootSpan=>{
+      jobId:lease.jobId,traceId:run.id,taskKind:run.task_kind,serviceRole:'worker',workerInstanceId:deps.workerInstanceId,hostId:deps.workerHostId},async rootSpan=>{
       recordPerformanceInterval('worker.claim',{startedAt:claimStartedAt,endedAt:claimEndedAt,clockSource:'wall_clock_observation'});
       if(lease.attempts===1)recordPerformanceInterval('job.queue_wait',
         {startedAt:(run as RunRow & {created_at:string|Date}).created_at,endedAt:claimStartedAt,clockSource:'wall_clock_observation'});

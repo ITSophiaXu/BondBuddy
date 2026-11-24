@@ -117,8 +117,10 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 
 // Run jobs and #79/#16 platform probes share the lease model but are claimed separately, so the
 // run pipeline never picks up a probe and the probe worker never picks up a user run.
-export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean}={}):Promise<Lease|null> {
+export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean; workerInstanceId?:string; workerHostId?:string}={}):Promise<Lease|null> {
   const runKinds = checkedRunKinds(options.runKinds);
+  if (options.workerInstanceId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(options.workerInstanceId)) throw new Error('Invalid worker instance ID');
+  if (options.workerHostId !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(options.workerHostId)) throw new Error('Invalid worker host ID');
   return transaction(pool,async client=>{
     // Lock order is run then job in every transition, including cancellation.
     const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
@@ -141,7 +143,11 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
     }
     const token=uid();
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
-    await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
+    await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed',undefined,'run.state_changed',{
+      ...(options.workerInstanceId?{worker_instance_id:options.workerInstanceId}:{}),
+      ...(options.workerHostId?{worker_host_id:options.workerHostId}:{}),
+      job_id:j.id,attempt_no:String(j.attempts+1),
+    });
     return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }

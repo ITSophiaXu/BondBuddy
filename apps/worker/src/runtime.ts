@@ -7,6 +7,7 @@
 import {runUploadConfirmationOnce} from '@bondbuddy/api/upload-confirmation';
 import {M1_UPLOAD_LIMITS} from '@bondbuddy/contracts';
 import { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
@@ -78,7 +79,7 @@ export type WorkerRuntimeOptions = {
   logSink?: LogSink | null;
   log?: (event: Record<string, unknown>) => void;
   /** #35 heartbeat row (bb_worker_heartbeats) for readiness and the stale-worker alert. */
-  workerId?: string; heartbeatMs?: number;
+  workerId?: string; workerHostId?: string; heartbeatMs?: number;
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
   /** M3 discussions use their own leases and never create document runs. */
@@ -110,8 +111,8 @@ export class WorkerRuntime {
   private stopTask?: Promise<void>;
   private fileAuthoringRecoveryCursor?: string;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates' | 'workerHostId'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates' | 'workerHostId'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
@@ -177,13 +178,13 @@ export class WorkerRuntime {
           }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              runKinds: this.o.runKinds, interactiveOnly, reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds: this.o.runKinds, interactiveOnly, workerInstanceId:this.o.workerId,workerHostId:this.o.workerHostId,reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
               onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
               onLeaseHeartbeat: event => this.emit({ slot, kind: 'run_lease_heartbeat', ...event }),
-              onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
+              onLease: lease => { if (lease) { this.runLeases.set(slot, lease);this.emit({kind:'run_claimed',slot,run_id:lease.runId,job_id:lease.jobId,attempt_no:lease.attempts,worker_instance_id:this.o.workerId,worker_host_id:this.o.workerHostId??null}); } else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
           if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
@@ -351,6 +352,18 @@ function intEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, min: num
   return value;
 }
 
+export function workerHostIdFromEnv(env: NodeJS.ProcessEnv, readEnrollment: (path: string) => string = path => readFileSync(path, 'utf8')): string | undefined {
+  const configured = env.BB_WORKER_HOST_ID;
+  if (configured !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(configured)) throw new Error('Invalid BB_WORKER_HOST_ID');
+  if (!env.BB_EXECUTION_ENROLLMENT_FILE) return configured;
+  let instanceId: unknown;
+  try { instanceId = JSON.parse(readEnrollment(env.BB_EXECUTION_ENROLLMENT_FILE)).context?.identity?.instance_id; }
+  catch { throw new Error('Invalid execution enrollment identity'); }
+  if (typeof instanceId !== 'string' || !/^ins-[A-Za-z0-9]{6,64}$/.test(instanceId)) throw new Error('Invalid execution enrollment identity');
+  if (configured !== undefined && configured !== instanceId) throw new Error('Worker host ID differs from execution enrollment');
+  return instanceId;
+}
+
 /**
  * Production options from the container environment: parse and run pipelines (defaultRunStages()),
  * bounded concurrency and, only when BB_PLATFORM_PROBE_ENABLED=1, the contained Codex adapter for the
@@ -369,6 +382,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
   const group = env.BB_WORKER_GROUP;
   if (group !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(group)) throw new Error('Invalid BB_WORKER_GROUP');
+  const workerHostId=workerHostIdFromEnv(env);
   const ocrEnabled = env.BB_OCR_ENABLED === '1';
   const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions(env)) : undefined;
   let platformProbe: WorkerRuntimeOptions['platformProbe'];
@@ -392,7 +406,8 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
-    ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
+    workerId: group ? `${group}_${defaultWorkerId()}` : defaultWorkerId(),
+    ...(workerHostId ? {workerHostId} : {}),
     ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: {} } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
@@ -432,7 +447,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled, upload_confirmation_slots:options.uploadConfirmationEnabled?options.uploadConfirmationConcurrency:0, upload_confirmation_small_slot:!!options.uploadConfirmationSmallSlot })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, worker_instance_id:options.workerId??null,worker_host_id:options.workerHostId??null,concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled, upload_confirmation_slots:options.uploadConfirmationEnabled?options.uploadConfirmationConcurrency:0, upload_confirmation_small_slot:!!options.uploadConfirmationSmallSlot })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
