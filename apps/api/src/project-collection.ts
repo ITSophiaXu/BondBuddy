@@ -39,6 +39,7 @@ export const collectionTasksSql = `
    AND wb.topic_id=t.id AND t.project_id=r.project_id AND wb.project_id IN(SELECT id FROM members)
  WHERE r.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members)
    AND (t.id IS NULL OR t.surface<>'assistant')
+   AND pqa.operation IS DISTINCT FROM 'prepare'
    AND wb.id IS NULL
  UNION ALL
  -- A batch is one user task, including before its first run and after retries.

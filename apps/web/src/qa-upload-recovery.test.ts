@@ -11,6 +11,17 @@ const base=():QaRecoveryValue=>({revision:8,draft:{preparation_id:'prepare-origi
 const declaration=(name='原补料.doc'):Dto<'UploadCreateRequest'>=>({filename:name,role:'other',media_type:'application/msword',sha256:'a'.repeat(64),byte_size:88});
 const envelope=()=>qaUploadEnvelope('owner','project','supplement',base(),[declaration()]);
 const material=():Dto<'MaterialResponse'>=>({material_id:'saved-original',material_version:3,upload_id:'older-deduplicated-upload',role:'other',filename:'原先的同内容.doc',media_type:'application/msword',sha256:'a'.repeat(64),byte_size:88,state:'persisted',persisted_at:'2026-10-25T00:00:00Z',error:null});
+test('source upload pins the saved list in the draft without creating a preparation request',()=>{
+ const initial:QaRecoveryValue={revision:0,draft:{preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false}};
+ const e=qaUploadEnvelope('owner','project','source',initial,[declaration('问题清单.doc')]);
+ const confirmed=structuredClone(e);confirmed.items[0].material=material();confirmed.items[0].applied=true;
+ const journal=new QaUploadJournal('owner','project',new Store());
+ assert.equal(journal.save(e,null).status,'valid');assert.equal(journal.save(confirmed,e).status,'valid');
+ const next=qaUploadExpected(confirmed);
+ assert.deepEqual(next.draft.source,{kind:'material',pin:{source_project_id:'project',material_id:'saved-original',material_version:3,sha256:'a'.repeat(64)}});
+ assert.equal(next.draft.preparation_id,null);assert.deepEqual(next.draft.questions,[]);assert.deepEqual(next.draft.materials,[]);
+ assert.equal(next.pending,undefined);
+});
 test('QA upload envelopes preserve a large original draft outside the bounded transport context',()=>{
  const value=base();value.draft.questions=Array.from({length:40},(_,i)=>({id:`q${i}`,start:i,end:i,question:'原'.repeat(16000)}));
  const e=qaUploadEnvelope('owner','project','supplement',value,[declaration()]),store=new Store(),journal=new QaUploadJournal('owner','project',store);

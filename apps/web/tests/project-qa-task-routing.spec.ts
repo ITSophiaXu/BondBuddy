@@ -23,8 +23,8 @@ async function setup(page:Page,operation:'prepare'|'answer',status:'paused'|'suc
   });
   await page.goto('/#tasks');await page.locator(`[data-tasks="${projectId}"]`).click();
   const row=page.locator(`[data-run-id="${runId}"]`);
-  await expect(row).toContainText(operation==='prepare'?'识别问题清单':'项目问答');
-  await row.getByRole('link',{name:status==='paused'?/查看任务/:/查看结果/}).click();
+  await expect(row).toContainText(operation==='prepare'?'理解问题清单':'项目问答 · 回填问题清单');
+  await row.getByRole('link',{name:status==='paused'?/查看任务/:operation==='prepare'?/继续准备回答/:/查看结果/}).click();
   return {state,runId};
 }
 
@@ -43,9 +43,16 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
       if(operation==='prepare'&&status==='succeeded'){
         await expect(page.locator('.qa-question-list')).toContainText(state.workspace.draft.questions[0].question);
         await expect(page.locator('#qa-download')).toHaveCount(0);
+      }else if(operation==='prepare'){
+        await expect(page.locator('.qa-preparation-status')).toContainText('理解问题清单');
+        await expect(page.locator('.qa-preparation-status')).toContainText('尚未开始回答');
+        await expect(page.locator('.qa-document')).toContainText('这是旧版任务的问题识别记录');
+        await expect(page.locator('.qa-page progress')).toHaveCount(0);
+        await expect(page.locator('#qa-download')).toHaveCount(0);
       }else{
-        await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'识别问题清单':'回答问题');
+        await expect(page.locator('.qa-run-head')).toContainText('回答问题并写回清单');
         await expect(page.locator('.qa-run-head')).toContainText(status==='paused'?'等待恢复':'已完成');
+        if(status==='succeeded')await expect(page.locator('#qa-download')).toContainText('下载已回答的问题清单');
       }
       await expect(page.getByText('募集书全文更新',{exact:true})).toHaveCount(0);
       expect(workspaceReads(state).every(call=>new URLSearchParams(call.search).get('run_id')===runId)).toBe(true);

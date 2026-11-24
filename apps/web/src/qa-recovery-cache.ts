@@ -1,6 +1,6 @@
 import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
-import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
+import {PROJECT_QA_LIST_PRICE,LEGACY_PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -33,7 +33,7 @@ function copyAsset(asset:ProjectFileAsset):ProjectFileAsset{
     {kind:'artifact',pin:{source_project_id:asset.pin.source_project_id,artifact_id:asset.pin.artifact_id,artifact_version:asset.pin.artifact_version,sha256:asset.pin.sha256}};
 }
 function copyDraft(draft:QaDraft):QaDraft{
-  return {...(draft.included_followup_of?{included_followup_of:draft.included_followup_of}:{}),preparation_id:draft.preparation_id,questions:draft.questions.map(({id,start,end,question})=>({id,start,end,question})),
+  return {...(draft.included_followup_of?{included_followup_of:draft.included_followup_of}:{}),...(draft.source?{source:copyAsset(draft.source)}:{}),preparation_id:draft.preparation_id,questions:draft.questions.map(({id,start,end,question})=>({id,start,end,question})),
     materials:draft.materials.map(copyAsset),requirements:draft.requirements,use_knowledge:draft.use_knowledge};
 }
 function validDraft(value:unknown):value is QaDraft{
@@ -44,6 +44,7 @@ function validDraft(value:unknown):value is QaDraft{
       question.start<=last||question.id!=='q'+question.start||ids.has(question.id))return false;
     last=question.end;ids.add(question.id);
   }
+  if(value.source&&(!validAsset(value.source)||value.source.kind!=='material'))return false;
   if(!value.materials.every(validAsset))return false;
   return new Set(value.materials.map(asset=>JSON.stringify(copyAsset(asset)))).size===value.materials.length;
 }
@@ -52,7 +53,7 @@ function validValue(value:unknown,project:string,allowUndefinedOptional=false):v
   try{return validValueInner(value,project,allowUndefinedOptional);}catch{return false;}
 }
 function validValueInner(value:unknown,project:string,allowUndefinedOptional=false):value is QaRecoveryValue{
-  if(!exact(value,['revision','draft'],['needsKnowledgeChoice','sourceRun','pending'])||!nonnegativeInteger(value.revision)||!validDraft(value.draft))return false;
+  if(!exact(value,['revision','draft'],['needsKnowledgeChoice','sourceRun','pending'])||!nonnegativeInteger(value.revision)||!validDraft(value.draft)||value.draft.source?.pin.source_project_id!==undefined&&value.draft.source.pin.source_project_id!==project)return false;
   if(Object.hasOwn(value,'needsKnowledgeChoice')&&!(allowUndefinedOptional&&value.needsKnowledgeChoice===undefined)&&typeof value.needsKnowledgeChoice!=='boolean')return false;
   if(Object.hasOwn(value,'sourceRun')&&!(allowUndefinedOptional&&value.sourceRun===undefined)&&!validId(value.sourceRun))return false;
   if(!Object.hasOwn(value,'pending')||(allowUndefinedOptional&&value.pending===undefined))return true;
@@ -67,10 +68,15 @@ function validValueInner(value:unknown,project:string,allowUndefinedOptional=fal
       validDraft(pending.request.draft)&&sameDraft(value.draft,pending.request.draft);
   }
   if(pending.kind==='answer'){
-    return Value.Check(billingRecoverySchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
-      value.draft.preparation_id!==null&&value.draft.questions.length>0&&
-      (isOutcomePriceVersion(pending.request.price_version)?pending.request.included_followup_of===value.draft.included_followup_of&&(int64(pending.request.expected_points)===0n&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
-      int64(pending.request.expected_points)===BigInt(value.draft.questions.length)*BigInt(PROJECT_QA_PRICE.points)&&pending.request.price_version===PROJECT_QA_PRICE.version);
+    if(!Value.Check(billingRecoverySchemas.QaAnswerRequest,pending.request)||!validId(pending.request.request_id)||pending.request.expected_revision!==value.revision)return false;
+    const request=pending.request,draft=value.draft;
+    if(request.price_version===PROJECT_QA_LIST_PRICE.version)return !!draft.source&&draft.preparation_id===null&&draft.questions.length===0&&
+      !request.included_followup_of&&!request.scope_quote_id&&int64(request.expected_points)===BigInt(PROJECT_QA_LIST_PRICE.points);
+    if(draft.preparation_id===null||!draft.questions.length)return false;
+    if(isOutcomePriceVersion(request.price_version))return request.included_followup_of===draft.included_followup_of&&
+      (int64(request.expected_points)===0n&&!!draft.included_followup_of||validId(request.scope_quote_id));
+    return request.price_version===LEGACY_PROJECT_QA_PRICE.version&&!request.included_followup_of&&!request.scope_quote_id&&
+      int64(request.expected_points)===BigInt(draft.questions.length)*BigInt(LEGACY_PROJECT_QA_PRICE.points);
   }
   return false;
 }
@@ -84,6 +90,7 @@ function clone(value:QaRecoveryValue):QaRecoveryValue{
     ...(value.sourceRun!==undefined?{sourceRun:value.sourceRun}:{}),...(pending?{pending}:{})};
 }
 function freezeDraft(draft:QaDraft){
+  if(draft.source){Object.freeze(draft.source.pin);Object.freeze(draft.source);}
   for(const question of draft.questions)Object.freeze(question);Object.freeze(draft.questions);
   for(const asset of draft.materials){Object.freeze(asset.pin);Object.freeze(asset);}Object.freeze(draft.materials);Object.freeze(draft);
 }

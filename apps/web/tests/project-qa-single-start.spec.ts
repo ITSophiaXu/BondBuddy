@@ -43,15 +43,22 @@ test('one-click start stops at an uncertain save receipt and resumes only after 
  await page.locator('#qa-start').click();await expect.poll(()=>s.answers.length).toBe(1);expect(s.drafts).toHaveLength(1);expect(s.answers[0].expected_points).toBe(180);
 });
 
-test('new uploaded checklist opens combined preparation after polling, with no paid request',async({page})=>{
+test('new uploaded checklist automatically starts one answer task without a recognition task',async({page})=>{
+ const s=fixture();s.allowUploads=true;s.workspace.draft.materials.push(oldArtifact);await install(page,s);await page.goto('/#qa?project='+projectId);
+ await page.locator('#qa-upload').setInputFiles({name:'合成新清单.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic upload')});
+ await expect.poll(()=>s.answers.length).toBe(1);const run=s.workspace.runs[0];await expect(page).toHaveURL(new RegExp('run='+run.run_id));
+ expect(run.operation).toBe('answer');expect(run.manifest.questions).toEqual([]);expect(s.prepares).toEqual([]);
+ expect(s.drafts).toHaveLength(1);await expect(page.locator('#qa-confirm')).toHaveCount(0);
+ await page.reload();expect(s.answers).toHaveLength(1);expect(s.prepares).toEqual([]);
+ expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
+});
+
+test('upload waits for the required prospectus when it is not selected',async({page})=>{
  const s=fixture();s.allowUploads=true;await install(page,s);await page.goto('/#qa?project='+projectId);
  await page.locator('#qa-upload').setInputFiles({name:'合成新清单.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic upload')});
- await expect.poll(()=>s.prepares.length).toBe(1);const run=s.workspace.runs[0];await expect(page).toHaveURL(new RegExp('run='+run.run_id));
- Object.assign(run,completed(run.manifest,run.run_id,run.sequence));run.result!.snapshot.sha256=run.manifest.source.asset.pin.sha256;
- await expect(page.locator('#qa-start')).toBeEnabled({timeout:10000});await expect(page.locator('.qa-question-list article')).toHaveCount(3);
- await expect(page.locator('#qa-requirements')).toHaveValue('');await expect(page.locator('#qa-use-preparation')).toHaveCount(0);
- expect(s.answers).toEqual([]);expect(s.drafts).toEqual([]);await page.reload();await expect(page.locator('#qa-start')).toBeEnabled();expect(s.prepares).toHaveLength(1);
- expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
+ await expect.poll(()=>s.drafts.length).toBe(1);
+ await expect(page.locator('#project-qa-status')).toContainText('本轮尚未选入项目当前募集说明书');
+ expect(s.answers).toEqual([]);expect(s.prepares).toEqual([]);
 });
 
 test('legacy local knowledge-choice flag no longer blocks an editable round',async({page})=>{
