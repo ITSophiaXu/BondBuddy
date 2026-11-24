@@ -11,6 +11,10 @@ import {collectIntegrityWebsite,integritySearchQuery,type IntegrityCollector,typ
 
 type StoredCapture={metadata:IntegrityCapture;screenshot_key:string;text_key:string};
 type Batch=Omit<BrowserCollection,'captures'>&{captures:StoredCapture[]};
+
+export function integrityPromptCaptureMaterial(capture:{url:string;captured_at:string},siteName:string,subjectName:string,text:string):string{
+ return JSON.stringify({site_name:siteName,captured_at:capture.captured_at,subject:subjectName,text});
+}
 export type IntegrityBrowserOptions={collector?:IntegrityCollector;model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig};
 /** Browser startup/cleanup is site-local. Storage, ownership and lease failures remain fatal. */
 export async function collectIntegritySite(collector:IntegrityCollector,site:IntegritySite,subject:Parameters<IntegrityCollector>[1],signal:AbortSignal):Promise<BrowserCollection>{
@@ -87,7 +91,11 @@ export async function officialIntegrityRecord(ctx:StageContext,site:IntegritySit
  const materials:{ref:string;text:string}[]=[];
  for(const c of batch.captures.filter(c=>c.metadata.kind!=='blocker')){
   const bytes=await ctx.blobs.getIfExistsBounded(c.text_key,500000);if(!bytes||digest(bytes)!==c.metadata.text_sha256)throw Error('INPUT_REVISION_CONFLICT');
-  materials.push({ref:c.metadata.id,text:JSON.stringify({url:c.metadata.url,captured_at:c.metadata.captured_at,subject:subject.name,text:bytes.toString('utf8')})});
+  // The citation URL comes from the saved capture after interpretation. Search URLs can
+  // contain credential-shaped query keys (including an empty token=), which the prompt
+  // snapshot scrubber correctly rejects as ambiguous. The model only needs the capture
+  // reference, site and visible text to interpret the result.
+  materials.push({ref:c.metadata.id,text:integrityPromptCaptureMaterial(c.metadata,site.name,subject.name,bytes.toString('utf8'))});
  }
  const logicalCallId='integrity_browser_'+inputManifestHash({subject:subject.id,site:site.id}).slice(0,24);
  // The immutable batch pins interpretation version, so old checkpoints replay their original schema/prompt.
