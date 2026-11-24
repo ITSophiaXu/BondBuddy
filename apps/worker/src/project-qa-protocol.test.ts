@@ -25,6 +25,26 @@ test('references materialize exact numeric and project text without rewriting mo
  assert.ok(qaHasGroundedCitations(result,e));
 });
 
+test('a span-only reference resolves only to its unique selected nonblank chunk',()=>{
+ const e=evidence(['项目收入 62.75 亿元','另一项目收入 12 亿元','甲'.repeat(5000),'未选入项目事实']);
+ const data=qaModelEvidenceContext(q,e,0);
+ data.materials[0].spans=data.materials[0].spans.filter(tuple=>tuple[0]!=='a0s3c0');
+ const p=qaAnswerOutput(composeContainedPrompt({instructions:referenceInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]}),e);
+ const raw={...answer,evidence_refs:['a0s0','a0s1']},before=structuredClone(raw);
+ const result=p.normalize!(raw);
+ assert.deepEqual(raw,before);
+ assert.ok(Value.Check(QaAnswerSchema,result));
+ assert.deepEqual(result.citations.map(c=>c.span_id),['p0','p1']);
+ assert.ok(qaHasGroundedCitations(result,e));
+ for(const refs of [
+  ['a0s2'], // A 5000-character span has multiple possible chunks.
+  ['a0s3'], // The source exists but was not selected in this prompt.
+  ['a0s999'],
+  ['a0s0','a0s0c0'], // Aliases cannot duplicate the same citation.
+ ])assert.equal(p.normalize!({...answer,evidence_refs:refs}),null);
+ assert.match(p.validationFeedback({...answer,evidence_refs:['a0s2']}),/indexes 0/);
+});
+
 test('unknown, omitted, blank, duplicate and cross-material references fail closed with bounded non-source feedback',()=>{
  const e=evidence(['有效原文','', '未选入原文']),data=qaModelEvidenceContext(q,e,0);data.materials[0].spans.pop();
  const p=qaAnswerOutput(composeContainedPrompt({instructions:referenceInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]}),e);

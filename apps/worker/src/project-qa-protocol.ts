@@ -59,7 +59,29 @@ export function qaAnswerOutput(prompt:string,evidence:QaResult['evidence']){
   }
  }
  const blank=(ref:string)=>known.has(ref)&&!known.get(ref)!.citation.quote.trim();
- const invalidReferences=(refs:string[])=>refs.flatMap((ref,i)=>selected.has(ref)||blank(ref)?[]:[i]);
+ // A model can return the extracted span ID without the chunk suffix. Resolve it
+ // only when the immutable source contains exactly one nonblank chunk and that
+ // chunk was selected in the frozen prompt.
+ // A split span remains ambiguous and must be answered again with an exact ID.
+ const spanChunks=new Map<string,string[]>();
+ for(const [ref,item] of known){
+  if(!item.citation.quote.trim())continue;
+  const span=ref.replace(/c\d+$/,'');
+  const chunks=spanChunks.get(span)??[];chunks.push(ref);spanChunks.set(span,chunks);
+ }
+ const resolveReference=(ref:string)=>{
+  if(selected.has(ref)||blank(ref))return ref;
+  const chunks=spanChunks.get(ref);
+  return chunks?.length===1&&selected.has(chunks[0])?chunks[0]:null;
+ };
+ const resolvedReferences=(refs:string[])=>refs.map(resolveReference);
+ const invalidReferences=(refs:string[])=>{
+  const resolved=resolvedReferences(refs),seenRefs=new Set<string>();
+  return resolved.flatMap((ref,i)=>{
+   if(ref===null||seenRefs.has(ref))return [i];
+   seenRefs.add(ref);return [];
+  });
+ };
  return {schema:QaModelAnswerSchema,
   normalize:(value:unknown):unknown=>{
    if(!Value.Check(QaModelAnswerSchema,value)||invalidReferences(value.evidence_refs).length||replyIssues(value).length)return null;
@@ -67,7 +89,7 @@ export function qaAnswerOutput(prompt:string,evidence:QaResult['evidence']){
    // Empty source positions contribute no evidence. Drop only exact, known
    // blanks; unknown IDs and omitted nonblank text still fail closed. Never
    // turn a blank-only factual answer into an apparently grounded answer.
-   const valid=evidence_refs.filter(ref=>selected.has(ref));
+   const valid=resolvedReferences(evidence_refs).filter((ref):ref is string=>ref!==null&&selected.has(ref));
    if(evidence_refs.length&&!valid.length)return null;
    return {...answer,citations:valid.map(ref=>({...selected.get(ref)!}))};
   },
