@@ -27,7 +27,7 @@ async function setup(page:Page,automatic=false,configure?:(state:any)=>void,buil
   return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
  });
  await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({json:state.catalogue}));
- await page.goto('/'+href({step:'prepare'}));await expect(page.getByRole('heading',{name:'底稿目录与文件模板'})).toBeVisible();if(!builtinHandler)await expect(page.locator('#fg-confirm')).toBeEnabled();return state;
+ await page.goto('/'+href({step:'prepare'}));await expect(page.locator('#fg-template-setup')).toBeHidden();await page.locator('#fg-workpaper-toggle').click();await expect(page.getByRole('heading',{name:'底稿目录与文件模板'})).toBeVisible();if(!builtinHandler)await expect(page.locator('#fg-confirm')).toBeEnabled();return state;
 }
 async function useWord(page:Page,mode:'builtin'|'custom'='builtin'){
  if(!await page.locator('#fg-builtin-all').isVisible())await page.locator('#fg-change-templates').click();
@@ -49,11 +49,21 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await page.locator('#fg-requirements').fill('合成验收要求，保留原 Word 格式');await page.getByRole('button',{name:'保存准备清单'}).click();
  await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('3 份文件 · 13,500 积分');
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');
- await page.getByRole('button',{name:'确认生成 3 份文件'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
+ await page.getByRole('button',{name:'确认生成 3 份文件'}).click();await expect(page).toHaveURL(/step=progress/);expect(state.submissions).toHaveLength(1);
  await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
  await expect(page.locator('.fg-batch')).toContainText('已完成 0 / 1 份');await expect(page.locator('.fg-batch progress')).toHaveAttribute('value','0');
- expect(await page.evaluate(()=>{const history=document.querySelector('.fg-history')!,choices=document.querySelector('#fg-controls')!;return history.getBoundingClientRect().top<choices.getBoundingClientRect().top;})).toBe(true);
+ await expect(page.locator('#fg-controls,.fg-footer,#fg-template-setup')).toHaveCount(0);
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'desktop-synthetic.png'),fullPage:true});
+});
+test('ordinary file templates are chosen in their own row without a global template action',async({page})=>{
+ const state=await setup(page);
+ await page.locator('[data-fg-type="workpaper"]').uncheck();
+ await page.locator('[data-fg-type="annual"]').check();
+ await expect(page.locator('#fg-template-setup')).toBeHidden();
+ await expect(page.locator('#fg-general-builtin')).toHaveCount(0);
+ await page.locator('[data-fg-general-builtin="annual"]').click();
+ await expect(page.locator('[data-fg-general="annual"]')).toHaveValue('builtin-set|annual');
+ expect(state.data.preparation.document_templates.annual).toMatchObject({set_id:'builtin-set',record_id:'annual'});
 });
 for(const width of [1440,390])test(`current dual-card prototype reference ${width}`,async({page})=>{
  await page.setViewportSize({width,height:width===1440?960:844});
@@ -96,7 +106,7 @@ test('custom templates have independent selections, upload actual bytes and surv
  expect(state.data.preparation.catalogue_id).toBe(catalogue.catalogue_id);
  const bytes=Buffer.from('synthetic Word bytes for transport test');await page.locator('#fg-template-upload').setInputFiles({name:'template.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:bytes});
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');await expect(page.locator('#fg-confirm')).toBeEnabled();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');expect(state.imports[0]).toEqual(bytes);expect(state.data.preparation.catalogue_id).toBe(catalogue.catalogue_id);expect(Object.values(state.data.preparation.mappings).every(p=>p.set_id==='uploaded-set')).toBe(true);expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
- await page.reload();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');await expect(page.locator('.fg-template-panel')).toContainText('光大证券底稿目录.xlsx');
+ await page.reload();await expect(page.locator('#fg-template-setup')).toBeHidden();await page.locator('#fg-workpaper-toggle').click();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');await expect(page.locator('.fg-template-panel')).toContainText('光大证券底稿目录.xlsx');
  await page.setViewportSize({width:390,height:844});await expect(page.locator('#fg-confirm')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'mobile-synthetic.png'),fullPage:true});
 });
@@ -139,7 +149,7 @@ test('directory loading failure and cancellation leave upload and retry availabl
 test('lost submission reply is recovered with the same frozen request after reload',async({page})=>{
  const state=await setup(page);await useWord(page);await page.locator('[data-fg-type="workpaper"]').uncheck();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  state.lost=true;await page.getByRole('button',{name:'核对清单与费用'}).click();await page.getByRole('button',{name:'确认生成 1 份文件'}).click();await expect(page.locator('#fg-submit-status')).not.toBeEmpty();
- await page.reload();await page.getByRole('button',{name:'确认上次提交结果'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(2);expect(state.submissions[1]).toEqual(state.submissions[0]);
+ await page.reload();await page.getByRole('button',{name:'确认上次提交结果'}).click();await expect(page).toHaveURL(/step=progress/);await expect(page.locator('.fg-history')).toContainText('本批文件');expect(state.submissions).toHaveLength(2);expect(state.submissions[1]).toEqual(state.submissions[0]);
 });
 test('automatic mixed package uses server tariffs and starts without an amount confirmation',async({page})=>{
  const state=await setup(page,true);
@@ -148,7 +158,7 @@ test('automatic mixed package uses server tariffs and starts without an amount c
  await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await expect(page.locator('.fg-footer')).toContainText('14,881 积分');
  await page.getByRole('button',{name:'生成本批文件',exact:true}).click();
- await expect(page.locator('.fg-status')).toContainText('已提交');
+ await expect(page).toHaveURL(/step=progress/);
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.submissions).toHaveLength(1);
  expect(state.submissions[0]).toMatchObject({expected_points:14881,price_version:AUTOMATIC_PRICE_VERSION,document_quotes:[{document_type:'annual',draft_version:5,scope_quote_id:'scope-annual'}]});
 });
@@ -172,7 +182,7 @@ test('mixed package funding return replays the exact original request without a 
  expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'14881',body:JSON.parse(requests[0])});
  expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);
  await expect.poll(()=>requests.length).toBe(2);await expect.poll(()=>state.submissions.length).toBe(1);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
- await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
+ await expect(page).toHaveURL(/step=progress/);await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  await page.reload();await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  expect(requests).toHaveLength(2);expect(state.submissions).toHaveLength(1);expect(payments).toEqual([]);
 });
@@ -238,7 +248,7 @@ for(const width of [1440,390])test(`old 248-item preparation exposes matching, p
  await page.getByRole('button',{name:'自动匹配模板',exact:true}).click();await expect(page.locator('.fg-match-summary')).toContainText('已匹配 170 / 248 项');
  expect(state.data.preparation.item_ids).toHaveLength(248);expect(state.quotes).toBe(0);
  await expect(page.locator('.fg-match-pages')).toContainText('共 78 项');await page.locator('#fg-next-page').click();await expect(page.locator('.fg-match-pages')).toContainText('第 2 / 4 页');
- await page.reload();await expect(page.locator('.fg-match-summary')).toContainText('已匹配 170 / 248 项');await expect(page.locator('[data-fg-mapping]')).toHaveCount(20);
+ await page.reload();await expect(page.locator('#fg-template-setup')).toBeHidden();await page.locator('#fg-workpaper-toggle').click();await expect(page.locator('.fg-match-summary')).toContainText('已匹配 170 / 248 项');await expect(page.locator('[data-fg-mapping]')).toHaveCount(20);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const evidence=resolve('test-evidence/template-selection');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`unresolved-${width}.png`),fullPage:true});await page.locator('.fg-combination').screenshot({path:resolve(evidence,`matching-summary-${width}.png`)});
  await page.locator('#fg-match-toggle').click();await expect(page.locator('[data-fg-mapping]')).toHaveCount(0);
@@ -260,13 +270,13 @@ for(const width of [1440,390])test(`Guangda templates are the named default and 
  await page.getByRole('button',{name:'预览模板',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('综合核查记录');await page.getByRole('button',{name:'关闭',exact:true}).click();
  const evidence=resolve('test-evidence/template-selection');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`system-default-${width}.png`),fullPage:true});await page.locator('.fg-template-panel').screenshot({path:resolve(evidence,`system-panel-${width}.png`),style:'.fg-footer,.topbar,.skip-link,.ba-dock{visibility:hidden!important}'});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- await page.locator('#fg-confirm').click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);expect(state.quotes).toBe(1);
+ await page.locator('#fg-confirm').click();await expect(page).toHaveURL(/step=progress/);await expect(page.locator('.fg-history')).toContainText('本批文件');expect(state.submissions).toHaveLength(1);expect(state.quotes).toBe(1);
 });
 
 test('legacy direct entry moves to one preparation and preserves its catalogue, selection and requirements',async({page})=>{
  await page.addInitScript(({owner,project})=>localStorage.setItem(`bb-workpapers-v1:${owner}:${project}`,JSON.stringify({catalogue:'builtin-cat',selected:['entry-2'],requirements:'保留旧目录编制要求'})),{owner:ids.owner,project:ids.api});
  const state=await setup(page);await page.goto('/'+href({step:'workpapers'}));await expect(page).toHaveURL(/step=prepare/);
- await expect(page.locator('#fg-requirements')).toHaveValue('保留旧目录编制要求');await expect(page.locator('.fg-match-summary')).toContainText('已选 1 项');
+ await expect(page.locator('#fg-requirements')).toHaveValue('保留旧目录编制要求');await page.locator('#fg-workpaper-toggle').click();await expect(page.locator('.fg-match-summary')).toContainText('已选 1 项');
  await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('光大模板');expect(state.data.preparation.item_ids).toEqual(['entry-2']);expect(state.data.preparation.workpaper_template_mode).toBe('automatic');
 });
 

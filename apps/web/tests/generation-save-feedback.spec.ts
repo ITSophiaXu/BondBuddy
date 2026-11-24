@@ -44,6 +44,7 @@ async function setup(page:Page,active=false){
  if(active)state.data.batches=[{batch_id:'active-poll-batch',created_at:now,points:0,workpapers:null,documents:{batch_id:'active-docs',state:'running',items:[]}}];
  await page.goto('/'+href({step:'prepare'}));
  await expect(page.locator('#fg-confirm')).toBeEnabled();
+ await page.locator('#fg-workpaper-toggle').click();
  await page.getByRole('button',{name:'调整生成范围',exact:true}).click();
  await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  return state;
@@ -100,7 +101,7 @@ test('failed save keeps the local range across refresh and retries without quoti
  await first(page).click();await expect(page.locator('#fg-save-retry')).toBeVisible();
  await expect(first(page)).not.toBeChecked();await page.locator('#fg-confirm').click();
  expect(state.quotes).toEqual([]);expect(state.submissions).toEqual([]);
- await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).toBeChecked();
+ await page.reload();await page.locator('#fg-workpaper-toggle').click();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).toBeChecked();
  failing=false;await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');
  expect(state.data.preparation.item_ids).toEqual(['entry-2']);expect(state.quotes).toEqual([]);
 });
@@ -115,7 +116,7 @@ for(const refresh of [false,true])test(`unknown save result preserves its origin
  await second(page).click();await expect(second(page)).not.toBeChecked();
  if(refresh){
   await page.evaluate(key=>{const cached=JSON.parse(localStorage.getItem(key)!);cached.modeDrafts={custom:{...cached.preparation,requirements:'保留切换模式草稿'}};cached.custom=true;localStorage.setItem(key,JSON.stringify(cached));},`bb-file-generation-v2:${ids.owner}:${ids.api}`);
-  await page.reload();await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).not.toBeChecked();
+  await page.reload();await page.reload();await page.locator('#fg-workpaper-toggle').click();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).not.toBeChecked();
   const cached=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),`bb-file-generation-v2:${ids.owner}:${ids.api}`);expect(cached.modeDrafts.custom.requirements).toBe('保留切换模式草稿');expect(cached.custom).toBe(true);
  }
  await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');
@@ -203,6 +204,14 @@ test('a malformed in-flight cache cannot bypass a newer server revision',async({
  expect(state.saves).toEqual([]);expect(state.quotes).toEqual([]);expect(state.submissions).toEqual([]);
 });
 
+test('progress view remains available when the selected template catalogue cannot be loaded',async({page})=>{
+ await setup(page);
+ await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}}));
+ await page.goto('/'+href({step:'progress'}));
+ await expect(page.locator('.fg-history')).toBeVisible();
+ await expect(page.locator('#fg-controls,.fg-footer,#fg-template-setup')).toHaveCount(0);
+});
+
 test('a conflicting draft without a catalogue is retained without loading defaults',async({page})=>{
  const state=await setup(page);let builtin=0;
  await page.route('**/file-generation/builtin',route=>{builtin++;return route.fulfill({json:fixtureBody(route,{catalogue})});});
@@ -213,14 +222,14 @@ test('a conflicting draft without a catalogue is retained without loading defaul
  const cached=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),`bb-file-generation-v2:${ids.owner}:${ids.api}`);expect(cached.preparation).toEqual(local);
 });
 
-for(const failure of [false,true])test(`a delayed progress reply cannot hide a submitted batch or its confirmation, failure=${failure}`,async({page})=>{
- const state=await setup(page);let release!:()=>void;
- await page.route('**/api/v1/projects/*/file-generation',async route=>{const snapshot=structuredClone(state.data);await new Promise<void>(r=>release=r);return failure?route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}}):route.fulfill({json:fixtureBody(route,snapshot)});});
+for(const failure of [false,true])test(`a delayed preparation refresh cannot hide the submitted batch on its progress page, failure=${failure}`,async({page})=>{
+ const state=await setup(page);let release!:()=>void,reads=0;
+ await page.route('**/api/v1/projects/*/file-generation',async route=>{if(++reads!==1)return route.fallback();const snapshot=structuredClone(state.data);await new Promise<void>(r=>release=r);return failure?route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}}):route.fulfill({json:fixtureBody(route,snapshot)});});
  await page.locator('#fg-refresh').click();await expect.poll(()=>!!release).toBe(true);
- await page.locator('#fg-confirm').click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
- await expect(page.locator('.fg-history article')).toHaveCount(1);const response=page.waitForResponse(r=>r.request().method()==='GET'&&new URL(r.url()).pathname.endsWith('/file-generation'));release();await response;
+ await page.locator('#fg-confirm').click();await expect(page).toHaveURL(/step=progress/);expect(state.submissions).toHaveLength(1);
+ await expect(page.locator('.fg-history article')).toHaveCount(1);release();
  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
- await expect(page.locator('.fg-history article')).toHaveCount(1);await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
+ await expect(page.locator('.fg-history article')).toHaveCount(1);await expect(page.locator('#fg-controls')).toHaveCount(0);expect(state.submissions).toHaveLength(1);
 });
 
 test('a later local-storage failure shows a locked recoverable draft before any save or quote',async({page})=>{
@@ -228,7 +237,7 @@ test('a later local-storage failure shows a locked recoverable draft before any 
  await page.evaluate(key=>{const original=Storage.prototype.setItem;let calls=0;Storage.prototype.setItem=function(k,v){if(k===key&&++calls===2)throw new DOMException('synthetic quota','QuotaExceededError');return original.call(this,k,v);};},`bb-file-generation-v2:${ids.owner}:${ids.api}`);
  await first(page).click();await expect(page.locator('#fg-save-state')).toContainText('无法保存');await expect(page.locator('#fg-reload')).toBeVisible();await expect(page.locator('#fg-controls')).toHaveJSProperty('inert',true);
  expect(state.saves).toEqual([]);expect(state.quotes).toEqual([]);
- await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();
+ await page.reload();await page.locator('#fg-workpaper-toggle').click();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();
  await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');expect(state.data.preparation.item_ids).toEqual(['entry-2']);
 });
 
