@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from 'pg';
+import type { Pool, PoolClient, QueryConfig } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type ReviewContext, type ReviewDraft,
   ReviewAssistantReplyV1Schema, ReviewAssistantReplyV2Schema, isReviewProposalV2,
@@ -16,6 +16,7 @@ import { composeContainedPrompt, loadCodexAdapterConfig, runContainedModelCall, 
   type CodexJournal, type PriorAttempt } from './codex-adapter.js';
 import { getParseSnapshotForMaterialJob } from './parse-evidence-repository.js';
 import type { DocumentParseRecord } from './document-parser.js';
+import type { ModelGatewayRecord } from './model-gateway.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 
 type ReplyVersion='review-assistant-reply-v1'|'review-assistant-reply-v2';
@@ -298,6 +299,19 @@ export class ReviewAssistantJournal implements CodexJournal {
       ||intent.job_id!==lease.id||intent.trace_id!==lease.id||intent.logical_call_id!==this.protocol.logicalCallId
       ||intent.prompt_snapshot_ref!==lease.prompt_snapshot_id||!safeId(intent.call_id)||!Number.isSafeInteger(intent.attempt_no)||intent.attempt_no<1)
       fail('ASSISTANT_ATTEMPT_SCOPE_MISMATCH');
+  }
+  async recordGatewayRequest(intent:ProviderCallIntent,record:ModelGatewayRecord):Promise<void> {
+    this.scope(intent);
+    const response=record.response,usage=response?.usage;
+    await this.options.pool.query({text:`INSERT INTO bb_review_assistant_http_request_usage
+      (attempt_id,seq,owner_user_id,project_id,message_id,model_id,started_at,outcome,upstream_attempted,http_status,
+       upstream_request_id,response_id,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      ON CONFLICT(attempt_id,seq) DO NOTHING`,values:
+      [intent.call_id,record.seq,intent.owner_user_id,intent.project_id,this.options.lease.id,intent.model_id,
+        record.started_at,record.outcome,record.upstream_attempted===true,response?.status??null,response?.upstream_request_id??null,
+        response?.response_id??null,usage?.input_tokens??null,usage?.cached_input_tokens??null,
+        usage?.output_tokens??null,usage?.reasoning_tokens??null,usage?.total_tokens??null],query_timeout:5000} as QueryConfig);
   }
   private async attempt(client:PoolClient,intent:ProviderCallIntent) {
     this.scope(intent);await lockedMessage(client,this.options.lease);

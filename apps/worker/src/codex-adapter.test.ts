@@ -327,7 +327,8 @@ test('authoring deadline is independently configurable and rejects invalid timer
 });
 
 test('enforcement requires an explicit bounded request budget and preserves off/measure configuration', () => {
-  assert.equal(loadCodexAdapterConfig({}).model_gateway, undefined);
+  assert.equal(loadCodexAdapterConfig({}).model_gateway, 'measure');
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_PROVIDER: 'synthetic' }).model_gateway, undefined);
   assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'off' }).model_gateway, undefined);
   assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'measure' }).model_gateway, 'measure');
   for (const budget of [undefined, ''])

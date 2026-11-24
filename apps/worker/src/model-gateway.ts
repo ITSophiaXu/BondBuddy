@@ -91,7 +91,7 @@ export type ModelGatewayResponseShape = {
 };
 export type ModelGatewayRecord = {
   kind: 'request'; v: string; seq: number; started_at: string; duration_ms: number;
-  method: string; path: string; request_bytes: number;
+  method: string; path: string; request_bytes: number; upstream_attempted?: boolean;
   request: ModelGatewayRequestShape | null;
   response: ModelGatewayResponseShape | null;
   outcome: 'completed' | 'client_closed' | 'upstream_error' | 'gateway_rejected';
@@ -569,7 +569,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
   const handle = (req: IncomingMessage, res: ServerResponse) => {
     const t0 = process.hrtime.bigint();
     const record: ModelGatewayRecord = { kind: 'request', v: MODEL_GATEWAY_RECORD_VERSION, seq: ++seq, started_at: new Date().toISOString(), duration_ms: 0,
-      method: safeToken(req.method, 16) ? req.method : 'OTHER', path: safePath(req.url), request_bytes: 0, request: null, response: null,
+      method: safeToken(req.method, 16) ? req.method : 'OTHER', path: safePath(req.url), request_bytes: 0, upstream_attempted: false, request: null, response: null,
       outcome: 'completed', gateway_error: null };
     let meter: ModelGatewayResponseMeter | null = null;
     let done = false;
@@ -636,6 +636,7 @@ export async function startModelGateway(options: ModelGatewayOptions): Promise<M
         }
       }
       const upstreamReq = send(target, { method: req.method, headers: forwardRequestHeaders(req.headers, upstream.host, body.length), agent });
+      record.upstream_attempted = true;
       upstreamRequests.add(upstreamReq);
       upstreamReq.once('close', () => upstreamRequests.delete(upstreamReq));
       upstreamReq.on('response', (ures: IncomingMessage) => {
