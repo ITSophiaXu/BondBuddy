@@ -77,6 +77,15 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
   const m=(await pool.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[owner,projectId,c.result.material_id,c.result.material_version])).rows[0];
   if(!m)throw missing();
   if(!blobs.headVersion){await fullMaterialProof(blobs,m);return {statusCode:200 as const,body:materialDto(m)};}
+  if(m.upload_id===uploadId){
+    const ingress=(await pool.query(`SELECT object_key,received_etag,received_sha256,received_bytes,upload_transport
+      FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='completed'`,[owner,projectId,uploadId])).rows[0];
+    if(ingress?.upload_transport!=='azure_blob'&&ingress?.received_etag&&ingress.object_key===m.object_key
+      &&ingress.received_sha256?.trim()===m.sha256.trim()&&Number(ingress.received_bytes)===Number(m.byte_size)){
+      const current=await boundedVersion(blobs,m.object_key);
+      if(current&&current.etag===ingress.received_etag&&current.byteSize===Number(m.byte_size))return {statusCode:200 as const,body:materialDto(m)};
+    }
+  }
   if(await cachedUploadVersion(pool,blobs,m))return {statusCode:200 as const,body:materialDto(m)};
   // A changed storage version needs a new full read, not HEAD-derived evidence.
   await transaction(pool,async client=>{
@@ -94,9 +103,12 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
 }
 
 /** Claims exactly this event type; log forwarding owns only observability events. */
-export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120):Promise<UploadConfirmationLease|null>{
+export type UploadConfirmationLane='general'|'small';
+export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120,lane:UploadConfirmationLane='general'):Promise<UploadConfirmationLease|null>{
   return transaction(pool,async client=>{
-    const row=(await client.query(`SELECT * FROM bb_outbox WHERE aggregate_type='upload' AND event_type='upload.complete_requested' AND delivered_at IS NULL AND (lease_until IS NULL OR lease_until<=now()) AND (next_attempt_at IS NULL OR next_attempt_at<=now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
+    const row=(await client.query(`SELECT o.* FROM bb_outbox o WHERE o.aggregate_type='upload' AND o.event_type='upload.complete_requested' AND o.delivered_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<=now()) AND (o.next_attempt_at IS NULL OR o.next_attempt_at<=now())
+      ${lane==='small'?"AND EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.byte_size<=16777216)":''}
+      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`)).rows[0];
     if(!row)return null;
     const token=uid();
     await client.query("UPDATE bb_outbox SET lease_token=$2,lease_until=now()+($3::integer*interval '1 second'),delivery_attempts=delivery_attempts+1 WHERE id=$1",[row.id,token,leaseSeconds]);
@@ -154,8 +166,8 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
     return changed?(retry?'retry':'failed'):'lease_lost';
   }
 }
-export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs){
-  const lease=await claimUploadConfirmation(pool);
+export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs,lane:UploadConfirmationLane='general'){
+  const lease=await claimUploadConfirmation(pool,120,lane);
   if(!lease)return 'idle';
   const timer=setInterval(()=>{void pool.query("UPDATE bb_outbox SET lease_until=now()+interval '120 seconds' WHERE id=$1 AND lease_token=$2 AND delivered_at IS NULL AND lease_until>now()",[lease.id,lease.token]).catch(()=>{});},40000);
   try{return await processUploadConfirmation(pool,blobs,lease);}finally{clearInterval(timer);}
