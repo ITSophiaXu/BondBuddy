@@ -199,7 +199,7 @@ services:
       BB_REVIEW_WEB_SEARCH_ENABLED: ${BB_REVIEW_WEB_SEARCH_ENABLED:-0}
       # #994 request gateway: off (default), measure, or enforce. Enforcement requires an explicit
       # measured byte budget; no supplier limit is assumed. The review worker inherits both values.
-      BB_MODEL_GATEWAY_MODE: ${BB_MODEL_GATEWAY_MODE:-off}
+      BB_MODEL_GATEWAY_MODE: ${BB_MODEL_GATEWAY_MODE:-measure}
       BB_MODEL_MAX_REQUEST_BYTES: ${BB_MODEL_MAX_REQUEST_BYTES:-}
       # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
       BB_PLATFORM_PROBE_ENABLED: ${BB_PLATFORM_PROBE_ENABLED:-0}
