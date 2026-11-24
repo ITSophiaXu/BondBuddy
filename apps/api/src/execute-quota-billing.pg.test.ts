@@ -11,7 +11,7 @@ import {digest,transaction,type PrivateBlobs} from './data.js';
 import {trialConfigFromEnv} from './trial-guard.js';
 
 const connection=await isolatedTestDatabase(undefined,'execute-quota-billing');
-test('paid quota retry reserves only one task and never charges a rejected attempt',{skip:!connection},async()=>{
+test('paid task queues at capacity and replays with one credit reservation',{skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection}),owner=`quota-paid-${randomUUID()}`;
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
@@ -47,19 +47,15 @@ test('paid quota retry reserves only one task and never charges a rejected attem
     const occupied=await ready(),target=await ready();
     const first=await send('POST','/api/v1/runs/execute',occupied);assert.equal(first.statusCode,202,first.body);
     const before=await creditBalance(pool,owner);
-    for(let attempt=0;attempt<2;attempt++){
-      const rejected=await send('POST','/api/v1/runs/execute',target);assert.equal(rejected.statusCode,429,rejected.body);
-      assert.equal(rejected.json().code,'TRIAL_QUOTA_EXCEEDED');
-    }
-    assert.deepEqual(await creditBalance(pool,owner),before);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[target.project_id])).rows[0].n,0);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,1);
-    assert.equal((await send('POST',`/api/v1/runs/${first.json().run_id}/cancel`,{reason:'synthetic-capacity-release'})).statusCode,200);
     const concurrent=await Promise.all([send('POST','/api/v1/runs/execute',target),send('POST','/api/v1/runs/execute',target)]);
     concurrent.forEach(r=>assert.equal(r.statusCode,202,r.body));
     const runId=concurrent[0].json().run_id;assert.equal(concurrent[1].json().run_id,runId);
+    assert.equal(concurrent[0].json().state,'queued');
     assert.equal(concurrent[0].json().billing_mode,'fixed_credits');assert.ok(concurrent[0].json().reservation_id);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[runId])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,2);
+    assert.notDeepEqual(await creditBalance(pool,owner),before);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[target.project_id])).rows[0].n,1);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[owner])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[target.project_id])).rows[0].n,1);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE project_id=$1',[target.project_id])).rows[0].n,2);
