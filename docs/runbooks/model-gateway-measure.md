@@ -1,6 +1,8 @@
 # 模型请求测量与预算（Refs #994）
 
-网关统计每次模型 HTTP 请求的实际大小和组成，并在转发前执行字节预算。文件编制路径强制使用 `enforce`，未显式填写预算时采用 2 MiB（2,097,152 B）的本地策略；这不是供应商实测上限。其他调用路径仍由 `BB_MODEL_GATEWAY_MODE` 控制，默认 `off`。记录只包含大小、计数、图片尺寸、状态码、请求编号和用量，不包含客户正文或图片内容。
+网关统计每次模型 HTTP 请求的实际大小和组成，并在转发前执行字节预算。文件编制路径强制使用 `enforce`，未显式填写预算时采用 2 MiB（2,097,152 B）的本地策略；这不是供应商实测上限。其他 DeepSeek 调用路径默认 `measure`，仍可通过 `BB_MODEL_GATEWAY_MODE` 显式覆盖；其他模型默认 `off`。记录只包含大小、计数、状态码、请求编号和用量，不包含客户正文或图片内容。
+
+从迁移 `0172_model_http_request_usage.sql` 起，每条已结束的网关请求另写入 `bb_model_http_request_usage`。记录绑定任务、模型调用和请求序号，使用请求实际开始时间，区分已测量用量与未返回用量。每次模型调用结束后等待这些记录落库；落库失败会输出 `request_persist_failed` 及失败条数，不能把缺失用量记为零。该表不保存正文、鉴权头、请求 URL 参数或供应商原始响应，也不声称计算了实际账单金额。
 
 这是 #994 的部分修复，当前候选同时整合按页读取/OCR 缓存、受限看图与 [#1302](https://github.com/ITSophiaXu/BondBuddy/pull/1302) 的自动工作区恢复核心。限制请求和恢复进度不等于扫描 PDF 已处理完成，也不代表真实 Word 交付通过；没有引入手动重试页面或从原材料重新开始的接口。
 
@@ -15,7 +17,7 @@
 
 | `BB_MODEL_GATEWAY_MODE` | 行为 |
 | --- | --- |
-| `off`（默认） | 保持原来的供应商连接方式，不启动网关。 |
+| `off` | 保持原来的供应商连接方式，不启动网关。 |
 | `measure` | 原样转发并记录请求大小，不使用配置的执行预算；保留既有 256 MiB 请求缓存保护。网关启动失败时允许回退直连，并记录 `event: start_failed`。 |
 | `enforce` | 启动网关并执行显式请求预算。启动失败即停止本次调用，不能回退直连。首次本地拒绝或上游 413 后锁存停止，后续请求不再转发。 |
 
@@ -67,6 +69,23 @@ exec-log ATTEMPT_ID --tail 400
 ```
 
 执行日志末尾的 `[bondbuddy-model-gateway]` 段，第一行是本次调用的汇总，后面每次 HTTP 请求一行。该段最多 512 KiB；请求很多时保留前 10 条和最近的请求，中间用一行 `omitted` 说明省略条数。汇总行始终保留。
+
+**按任务及日期对账。** 逐请求表不受执行日志 512 KiB 截断限制。只读查询按北京时间请求开始日汇总：
+
+```sql
+SELECT u.run_id,p.name AS project_name,count(*) AS observed_requests,
+       count(*) FILTER (WHERE u.upstream_attempted) AS upstream_attempts,
+       count(*) FILTER (WHERE u.input_tokens IS NOT NULL AND u.output_tokens IS NOT NULL) AS measured_requests,
+       sum(u.input_tokens) AS input_tokens,sum(u.cached_input_tokens) AS cached_input_tokens,
+       sum(u.output_tokens) AS output_tokens
+FROM bb_model_http_request_usage u JOIN bb_projects p ON p.id=u.project_id
+WHERE u.started_at >= timestamptz '2026-11-24 00:00:00+08'
+  AND u.started_at < timestamptz '2026-11-25 00:00:00+08'
+  AND u.model_id='deepseek-flash'
+GROUP BY u.run_id,p.name ORDER BY sum(u.input_tokens)+sum(u.output_tokens) DESC NULLS LAST;
+```
+
+`observed_requests` 是网关收到的请求数，包含本地拒绝及上游失败；`upstream_attempts` 是已尝试向供应商发送的次数，也不保证供应商实际收到。复核助手消息使用 `bb_review_assistant_http_request_usage`，可按同一日期和模型查询，再与任务表汇总。与供应商计费请求数比较时须核对缺失用量、网关启动失败、其他 API Key 及时间范围。`response.usage` 是供应商返回的单请求用量，缺失不能推算为零。实际人民币费用仍以 DeepSeek 账单导出为准。
 
 **实时查。** 在 `logs worker` 或 `logs review` 中搜索 `"kind":"model_gateway"`：
 

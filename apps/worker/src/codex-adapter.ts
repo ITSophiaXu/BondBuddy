@@ -25,7 +25,7 @@ import {createModelProcessPerformance,modelChildStarted,modelChildFinished} from
 import {ModelResultStoreFailure} from './durable-probe-journal.js';
 
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
-import { MODEL_GATEWAY_MODES, MODEL_GATEWAY_MAX_REQUEST_BYTES, formatModelGatewayExecLogSection, modelGatewayRequestLog, startModelGateway, type ModelGateway, type ModelGatewayMode, type ModelGatewayTrace } from './model-gateway.js';
+import { MODEL_GATEWAY_MODES, MODEL_GATEWAY_MAX_REQUEST_BYTES, formatModelGatewayExecLogSection, modelGatewayRequestLog, startModelGateway, type ModelGateway, type ModelGatewayMode, type ModelGatewayTrace, type ModelGatewayRecord } from './model-gateway.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 /** Bounded per-attempt stdout/stderr capture, including section markers. */
@@ -222,7 +222,7 @@ export class CodexAdapterError extends Error {
 // the adapter never reads or logs their values.
 export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): CodexAdapterConfig {
   if (env.BB_CODEX_RETAIN_INVALID_OUTPUT && !['0', '1'].includes(env.BB_CODEX_RETAIN_INVALID_OUTPUT)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
-  const gatewayMode = env.BB_MODEL_GATEWAY_MODE || 'off';
+  const gatewayMode = env.BB_MODEL_GATEWAY_MODE || ((env.BB_CODEX_PROVIDER || 'deepseek') === 'deepseek' ? 'measure' : 'off');
   if (!(MODEL_GATEWAY_MODES as readonly string[]).includes(gatewayMode)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const budgetValue = env.BB_MODEL_MAX_REQUEST_BYTES;
   if (budgetValue && !/^[1-9]\d*$/.test(budgetValue)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -492,7 +492,7 @@ function withLoopbackNoProxy(env: Record<string, string>) {
 // bounded stdout/stderr evidence; it is never logged to the process output.
 // Measure/enforce use a per-process loopback gateway (#994). Only enforce blocks
 // requests; its startup failure must never fall back to an unguarded provider route.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void; onBeforeSpawn?: (effectiveTimeoutMs:number,timeoutDeadlineAt:string)=>Promise<void> }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; contextRotation?:boolean; deadlineAt?:string; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void>; trace?: ModelGatewayTrace; gatewayLog?: (line: Record<string, unknown>) => void; onGatewayRecord?: (record: ModelGatewayRecord) => Promise<void>; onBeforeSpawn?: (effectiveTimeoutMs:number,timeoutDeadlineAt:string)=>Promise<void> }): Promise<CodexProcessResult> {
   return withPerformanceSpan('model.exec',{adapter:'codex_exec',model_id:c.model_id,model_provider:c.model_provider},async span=>{
   if(o.deadlineAt!==undefined&&!isFileAuthoringDeadline(o.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
@@ -508,6 +508,9 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const emitGatewayLog = o.gatewayLog ?? writeModelGatewayLog;
   const gatewayLog = (line: Record<string, unknown>) => { try { emitGatewayLog(line); } catch { /* logging cannot change enforcement */ } };
   let gateway: ModelGateway | null = null;
+  let gatewayRecordWrites = Promise.resolve();
+  let gatewayRecordWriteFailures = 0;
+  let gatewayRecordWriteDisabled = false;
   let gatewayFailed = false, payloadRejected = false, payloadTooLarge = true;
   let stopRejectedPayload: (() => void) | null = null;
   if ((c.model_gateway === 'measure' || c.model_gateway === 'enforce') && !o.signal?.aborted) {
@@ -515,7 +518,14 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       gateway = await startModelGateway({ upstreamBaseUrl: c.base_url, proxyEnv: c.proxy_env, mode: c.model_gateway,
         ...(c.model_gateway === 'enforce' ? { maxRequestBytes: c.model_max_request_bytes } : {}),
         onPayloadRejected: event => { payloadRejected = true; payloadTooLarge = event.status === 413; stopRejectedPayload?.(); },
-        onRecord: record => { const line = modelGatewayRequestLog(record, o.trace); if (line) gatewayLog(line); } });
+        onRecord: record => {
+          const line = modelGatewayRequestLog(record, o.trace); if (line) gatewayLog(line);
+          if (o.onGatewayRecord) gatewayRecordWrites = gatewayRecordWrites.then(async () => {
+            if (gatewayRecordWriteDisabled) { gatewayRecordWriteFailures++; return; }
+            try { await o.onGatewayRecord!(record); }
+            catch { gatewayRecordWriteDisabled = true; gatewayRecordWriteFailures++; }
+          });
+        } });
       args = buildCodexArgs({ ...c, base_url: gateway.baseUrl }, o);
       withLoopbackNoProxy(env);
     } catch (error) {
@@ -531,8 +541,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     if (!gateway) return undefined;
     const g = gateway; gateway = null;
     const cleanClose = await g.close().then(() => true, () => false);
+    await gatewayRecordWrites;
     const summary = g.summary();
     gatewayLog({ ...summary, kind: 'model_gateway', event: 'summary', ...(o.trace ?? {}) });
+    if (gatewayRecordWriteFailures) gatewayLog({ kind: 'model_gateway', event: 'request_persist_failed', ...(o.trace ?? {}), count: gatewayRecordWriteFailures });
     const reserve = modelGatewayExecLogReserve(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES);
     const outputLimit = cleanClose ? g.latestOutputLimit() : null;
     return { appendix: reserve ? formatModelGatewayExecLogSection(summary, g.records(), reserve) : undefined,
@@ -771,6 +783,8 @@ export interface CodexJournal extends ProbeJournal {
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
   /** Persist the bounded private stdout/stderr evidence for this attempt. */
   storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
+  /** One content-free row per provider HTTP request, including incomplete calls. */
+  recordGatewayRequest?(intent: ProviderCallIntent, record: ModelGatewayRecord): Promise<void>;
   recordObservation(observation: ProviderCallObservation, options?: { retryable?: boolean }): Promise<void>;
   recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void>;
   recordExecutionConfig?(intent: ProviderCallIntent, evidence: ModelExecutionConfigEvidence): Promise<void>;
@@ -1006,6 +1020,7 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
           {logical_call_id:input.logical_call_id,call_id:intent.call_id,attempt_no:attemptNo},async attemptSpan=>{
         const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
+          onGatewayRecord:journal.recordGatewayRequest?record=>journal.recordGatewayRequest!(intent,record):undefined,
           onBeforeSpawn:journal.recordExecutionConfig?(effective_timeout_ms,timeout_deadline_at)=>journal.recordExecutionConfig!(intent,{
             effective_timeout_ms,timeout_deadline_at,timeout_source:useAuthoringTimeout
               ? c.authoring_timeout_origin_value_ms!==undefined&&c.authoring_timeout_origin_value_ms!==c.authoring_timeout_ms?'injected_config':c.authoring_timeout_origin??'authoring_override'

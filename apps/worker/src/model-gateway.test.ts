@@ -536,8 +536,8 @@ test('exec-log capture reserves room for the appendix and never exceeds its limi
   assert.throws(() => createCodexExecLogCapture(4096, 4096), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });
 
-test('gateway mode is off unless measurement or explicitly budgeted enforcement is selected', () => {
-  assert.equal(loadCodexAdapterConfig({}).model_gateway, undefined);
+test('DeepSeek measures requests by default and explicit modes remain available', () => {
+  assert.equal(loadCodexAdapterConfig({}).model_gateway, 'measure');
   assert.equal('model_gateway' in loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'off' }), false);
   assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'measure' }).model_gateway, 'measure');
   assert.equal(loadCodexAdapterConfig({ BB_MODEL_GATEWAY_MODE: 'enforce', BB_MODEL_MAX_REQUEST_BYTES: '512' }).model_gateway, 'enforce');
@@ -585,8 +585,9 @@ test('runCodexProcess routes the child through the gateway and appends the measu
   const config = await fakeCodexConfig(dir, 'http://127.0.0.1:' + port, { proxy_env: { NO_PROXY: 'postgres' } });
   const logs: Record<string, unknown>[] = [];
   const trace = { run_id: 'run_synthetic', call_id: 'call-synthetic', logical_call_id: 'file-authoring-v1', attempt_no: 1 };
+  const saved: ModelGatewayRecord[] = [];
   const result = await runCodexProcess(config, { prompt: 'synthetic', cwd: dir, codexHome: dir, home: dir, schemaFile: null, ephemeral: true, resumeThreadId: null,
-    captureExecLog: true, trace, gatewayLog: line => logs.push(line) });
+    captureExecLog: true, trace, gatewayLog: line => logs.push(line), onGatewayRecord: async record => { await new Promise(resolve => setTimeout(resolve, 20)); saved.push(record); } });
   assert.equal(result.turn_completed, true);
   assert.match(result.last_message ?? '', /^status 200 bytes \d+$/);
   assert.deepEqual(seen.map(s => s.split(' ')[0] + ' ' + s.split(' ')[1]), ['Bearer ' + KEY], 'the provider received the original credential header');
@@ -605,7 +606,15 @@ test('runCodexProcess routes the child through the gateway and appends the measu
   assert.equal(summaryLog?.kind, 'model_gateway');
   assert.equal(summaryLog?.run_id, 'run_synthetic');
   assert.equal(summaryLog?.requests, 1);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].response?.usage?.total_tokens, 1280);
+  assert.equal(saved[0].response?.upstream_request_id, 'req_process_1');
   assert.ok(!JSON.stringify(logs).includes(KEY));
+  const failedLogs: Record<string, unknown>[] = [];
+  const withLogFailure = await runCodexProcess(config, { prompt: 'synthetic', cwd: dir, codexHome: dir, home: dir, schemaFile: null, ephemeral: true, resumeThreadId: null,
+    gatewayLog: line => failedLogs.push(line), onGatewayRecord: async () => { throw new Error('synthetic persistence failure'); } });
+  assert.equal(withLogFailure.turn_completed, true, 'logging failures must not change provider results');
+  assert.ok(failedLogs.some(line => line.event === 'request_persist_failed' && line.count === 1));
 });
 
 test('a gateway start failure falls back to the direct provider route and is logged', async t => {
