@@ -14,8 +14,12 @@ const syncTime=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',d
 const readingKey=(kind:string,...ids:string[])=>JSON.stringify([kind,...ids]);
 type Reading={key:string;kind:'focus'|'anchor';top:number;root?:string;focusKey?:string};
 type CollectionView={expanded:string[];results:string[];limit:number;tails:[string,ProjectTaskRefreshBoundary][];reading?:Reading};
-// Same-tab preferences only; task/project content and authority always come from the API.
+type CollectionSnapshot={items:ProjectItem[];tasks:Map<string,Dto<'ProjectTasksResponse'>>;taskSynced:Map<string,string>;lastSync:string};
+// Same-tab snapshots are scoped to the signed-in user and cleared on sign-out.
 const collectionViews=new Map<string,CollectionView>();
+const collectionSnapshots=new Map<string,CollectionSnapshot>();
+export function clearProjectBrowserCache(){collectionViews.clear();collectionSnapshots.clear();}
+if(typeof window!=='undefined')window.addEventListener('bondbuddy:project-collection-changed',()=>collectionSnapshots.clear());
 
 export class ProjectBrowser {
   private items:ProjectItem[]=[];private loaded=false;private busy=false;private disposed=false;
@@ -30,21 +34,22 @@ export class ProjectBrowser {
   private syncRendered=false;private syncProblem='';private hadSyncProblem=false;
   private restoring?:CollectionView;private interaction=0;
   private noteInteraction=()=>{this.interaction++;};
-  private refreshOnReturn=()=>{if(this.live()&&document.visibilityState==='visible')void this.load();};
-  private onOnline=()=>{if(this.live()){this.offline=false;this.refreshOnReturn();}};
+  private refreshOnReturn=()=>{if(this.live()&&document.visibilityState==='visible'){if(this.loaded)this.schedule();else void this.load();}};
+  private onOnline=()=>{if(this.live()){this.offline=false;this.refreshOnReturn();this.renderSync();}};
   private onOffline=()=>{if(this.live()){this.offline=true;this.renderSync();}};
   private reviewHistory:ReviewHistory;
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private owner=''){this.reviewHistory=new ReviewHistory(api);}
   private live(){return !this.disposed&&this.current();}
   private viewKey(){return JSON.stringify([this.owner,this.q,this.group,this.archiveView,this.legacyKind]);}
   dispose(){
-    if(this.owner&&this.loaded){collectionViews.set(this.viewKey(),{expanded:[...this.expanded],results:[...this.results],limit:this.limit,reading:this.captureReading(),tails:[...this.tasks].flatMap(([id,data])=>{const tail=data.items.at(-1);return tail?[[id,{run_id:tail.run_id,created_at:tail.created_at}] as [string,ProjectTaskRefreshBoundary]]:[];})});if(collectionViews.size>50)collectionViews.delete(collectionViews.keys().next().value!);}
+    if(this.owner&&this.loaded){collectionViews.set(this.viewKey(),{expanded:[...this.expanded],results:[...this.results],limit:this.limit,reading:this.captureReading(),tails:[...this.tasks].flatMap(([id,data])=>{const tail=data.items.at(-1);return tail?[[id,{run_id:tail.run_id,created_at:tail.created_at}] as [string,ProjectTaskRefreshBoundary]]:[];})});if(this.lastSync)collectionSnapshots.set(this.owner,{items:this.items,tasks:new Map(this.tasks),taskSynced:new Map(this.taskSynced),lastSync:this.lastSync});if(collectionViews.size>50)collectionViews.delete(collectionViews.keys().next().value!);}
     this.disposed=true;this.controller.abort();clearTimeout(this.timer);this.closeMenu();this.reviewHistory.dispose();document.removeEventListener('visibilitychange',this.refreshOnReturn);window.removeEventListener('online',this.onOnline);window.removeEventListener('offline',this.onOffline);
     for(const event of ['pointerdown','keydown','wheel','touchstart'])document.removeEventListener(event,this.noteInteraction);
   }
   async render(){
     const query=new URLSearchParams(location.hash.split('?')[1]);this.q=query.get('q')??'';this.group=query.get('group')??'all';this.archiveView=query.get('archive')??'active';this.legacyKind=query.get('kind')??'';
     this.restoring=this.owner?collectionViews.get(this.viewKey()):undefined;if(this.restoring){this.expanded=new Set(this.restoring.expanded);this.results=new Set(this.restoring.results);this.limit=this.restoring.limit;}
+    const snapshot=this.owner?collectionSnapshots.get(this.owner):undefined;if(snapshot){this.items=snapshot.items;this.tasks=new Map(snapshot.tasks);this.taskSynced=new Map(snapshot.taskSynced);this.lastSync=snapshot.lastSync;this.loaded=true;}
     this.shell(`<div class="page-head"><div><div class="eyebrow">TASKS & RESULTS</div><h1>任务进度与结果</h1><p>查看各项目的任务进度，打开与下载已完成的结果。</p></div><a class="btn primary" href="#/new">${ico('plus')}新建项目</a></div>
       <section class="collection-panel" aria-labelledby="projects-title"><header class="collection-heading"><h2 id="projects-title" class="document-sr-only">项目列表 <span id="project-count" class="collection-count">—</span></h2><div class="collection-toolbar">
       <div class="collection-search">${ico('search')}<input id="project-search" type="search" maxlength="${PROJECT_FIELD_LIMITS.issuer}" placeholder="搜索项目名称或发行人" aria-label="搜索项目名称或发行人" value="${esc(this.q)}"/></div><select id="project-archive" aria-label="项目范围"><option value="active">未归档项目</option><option value="archived">已归档项目</option><option value="all">全部项目</option></select><button class="text-button" id="refresh-projects">刷新状态</button></div></header>
@@ -63,7 +68,8 @@ export class ProjectBrowser {
     document.querySelectorAll<HTMLElement>('[data-group]').forEach(b=>b.addEventListener('click',()=>{this.group=b.dataset.group!;this.filter();}));
     document.addEventListener('visibilitychange',this.refreshOnReturn);window.addEventListener('online',this.onOnline);window.addEventListener('offline',this.onOffline);
     for(const event of ['pointerdown','keydown','wheel','touchstart'])document.addEventListener(event,this.noteInteraction,{passive:true});
-    const interaction=this.interaction;await this.load();if(this.live()&&interaction===this.interaction)this.restoreReading(this.restoring?.reading,false);this.restoring=undefined;
+    const interaction=this.interaction;if(this.loaded){this.paint();document.querySelector('#project-list')!.setAttribute('aria-busy','false');this.renderSync();if(interaction===this.interaction)this.restoreReading(this.restoring?.reading,false);this.restoring=undefined;this.schedule();for(const id of this.expanded)if(!this.tasks.has(id))void this.loadTasks(id,true);return;}
+    await this.load();if(this.live()&&interaction===this.interaction)this.restoreReading(this.restoring?.reading,false);this.restoring=undefined;
   }
   private filter(){
     this.q=document.querySelector<HTMLInputElement>('#project-search')!.value;this.archiveView=document.querySelector<HTMLSelectElement>('#project-archive')!.value;this.limit=30;
