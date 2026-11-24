@@ -4,14 +4,15 @@ import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
 import {uid,type PrivateBlobs} from '@bondbuddy/api/data';
 import {emptyUpdateDetails} from '@bondbuddy/contracts';
-import {claim,pauseRun,remainingRunExecutionMs,RUN_ACTIVE_EXECUTION_LIMIT_MS,resumePausedRun} from '@bondbuddy/api/queue';
+import {claim,checkpointStage,pauseRun,recordPotentialCall,remainingRunExecutionMs,RUN_ACTIVE_EXECUTION_LIMIT_MS,resumePausedRun} from '@bondbuddy/api/queue';
 import {uploadSyntheticAudit,uploadSyntheticReference} from '@bondbuddy/api/test-authoring-source';
-import {runPipelineOnce,type RunStage} from './run-pipeline.js';
+import {runPipelineOnce,wordDeliveryStage,type RunStage} from './run-pipeline.js';
+import {makeWorkerDocxFixture} from './docx-test-fixture.js';
 import {isolatedTestDatabase} from './test-database.js';
 
 const database=await isolatedTestDatabase(undefined,'execution-budget');
 
-test('90-minute execution budget excludes waiting and stops recovered work before model execution',
+test('90-minute execution budget excludes waiting, rejects new calls and permits completed delivery',
   {skip:!database,timeout:60000},async()=>{
     const pool=new Pool({connectionString:database});
     const stored=new Map<string,Buffer>();
@@ -44,11 +45,28 @@ test('90-minute execution budget excludes waiting and stops recovered work befor
       await pool.query('UPDATE bb_jobs SET updated_at=now()-interval \'2 hours\' WHERE id=$1',[first!.jobId]);
       await resumePausedRun(pool,owner,runId,'materials_ready');
       await pool.query('UPDATE bb_jobs SET active_execution_ms=$2 WHERE id=$1',[first!.jobId,RUN_ACTIVE_EXECUTION_LIMIT_MS]);
-      let modelStarted=false;
-      const stage:RunStage={name:'model_generation',run:async()=>{modelStarted=true;return {kind:'fail',code:'DATA_UNAVAILABLE'};}};
+      let modelStageStarted=false;
+      const stage:RunStage={name:'model_generation',run:async ctx=>{
+        modelStageStarted=true;
+        await checkpointStage(ctx.pool,ctx.lease,'completed_model',{saved:true});
+        await recordPotentialCall(ctx.pool,ctx.lease,'new-provider-call',1);
+        return {kind:'fail',code:'DATA_UNAVAILABLE'};
+      }};
       assert.equal(await runPipelineOnce({pool,blobs,stages:[stage]}),'failed');
-      assert.equal(modelStarted,false);
-      const final=(await pool.query('SELECT state,error_code FROM bb_jobs WHERE id=$1',[first!.jobId])).rows[0];
-      assert.deepEqual(final,{state:'failed',error_code:'TASK_EXECUTION_TIME_LIMIT'});
+      assert.equal(modelStageStarted,true);
+      const final=(await pool.query('SELECT state,error_code,checkpoint FROM bb_jobs WHERE id=$1',[first!.jobId])).rows[0];
+      assert.equal(final.state,'failed');
+      assert.equal(final.error_code,'TASK_EXECUTION_TIME_LIMIT');
+      assert.equal(final.checkpoint.stages.completed_model.saved,true);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_model_call_attempts WHERE job_id=$1',[first!.jobId])).rows[0].n,0);
+
+      const next=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});
+      assert.equal(next.statusCode,202,next.body);
+      const savedModel:RunStage={name:'model_generation',run:async()=>({kind:'done',checkpoint:{saved:true},value:{ready:true}})};
+      const word=wordDeliveryStage(async()=>makeWorkerDocxFixture({externalLink:false}));
+      const delivered=await runPipelineOnce({pool,blobs,stages:[savedModel,word],afterStage:async(name,lease)=>{
+        if(name==='model_generation')await pool.query('UPDATE bb_jobs SET active_execution_ms=$2 WHERE id=$1',[lease.jobId,RUN_ACTIVE_EXECUTION_LIMIT_MS]);
+      }});
+      assert.equal(delivered,'succeeded','a saved model result must still reach Word delivery after the budget');
     }finally{await app.close();await pool.end();}
   });
