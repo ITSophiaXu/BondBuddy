@@ -33,6 +33,38 @@ async function fixture(pool:Pool){
 async function run(pool:Pool,f:Awaited<ReturnType<typeof fixture>>){
   return(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'generation',$4,'queued') RETURNING *",[randomUUID(),f.owner,f.project,f.hash])).rows[0];
 }
+async function relockSameInput(pool:Pool,f:Awaited<ReturnType<typeof fixture>>){
+  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,2,$2,1,$3,$4,$5,'[]')",[f.project,f.owner,f.hash,f.manifest,JSON.stringify(f.manifest.materials)]);
+  await pool.query('UPDATE bb_projects SET latest_input_revision=2 WHERE id=$1',[f.project]);
+}
+test('automatic authoring reuses an exact scope across input revisions with distinct executable quotes', {skip:!database},async()=>{
+  const pool=new Pool({connectionString:database});configureAutomaticBilling(pool,true);
+  try{
+    const f=await fixture(pool),first=(await quoteCredits(pool,f.owner,f.project,1,f.hash,true)).quote;
+    await relockSameInput(pool,f);
+    const second=(await quoteCredits(pool,f.owner,f.project,2,f.hash,true)).quote;
+    const repeated=(await quoteCredits(pool,f.owner,f.project,2,f.hash,true)).quote;
+    assert.equal(second.scope_quote_id,first.scope_quote_id);
+    assert.notEqual(second.quote_id,first.quote_id);
+    assert.equal(second.quote_id,repeated.quote_id);
+    assert.equal(second.input_revision,2);
+    assert.equal(second.points,first.points);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_quotes WHERE owner_user_id=$1 AND scope_quote_id=$2',[f.owner,first.scope_quote_id])).rows[0].n,2);
+    await transaction(pool,c=>grantCredits(c,{owner:f.owner,source:'purchase',key:randomUUID(),points:200000,expiresAt:null,actor:'synthetic',reason:'same input relock'}));
+    const current=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,2,$4,$1,'generation',$4,'queued') RETURNING *",[randomUUID(),f.owner,f.project,f.hash])).rows[0];
+    const reserve=(quoteId:string)=>transaction(pool,async c=>reserveCredits(c,f.owner,current,quoteId,{revision:2,manifest:f.manifest},(await c.query('SELECT * FROM bb_projects WHERE id=$1',[f.project])).rows[0],undefined,true));
+    await assert.rejects(reserve(first.quote_id),{code:'QUOTE_CHANGED'});
+    await reserve(second.quote_id);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[current.id])).rows[0].n,1);
+    await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,3,$2,1,$3,$4,$5,'[]')",[f.project,f.owner,f.hash,f.manifest,JSON.stringify(f.manifest.materials)]);
+    await pool.query('UPDATE bb_projects SET latest_input_revision=3 WHERE id=$1',[f.project]);
+    const third=(await quoteCredits(pool,f.owner,f.project,3,f.hash,true)).quote;
+    assert.equal(third.scope_quote_id,first.scope_quote_id);
+    const later=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,3,$4,$1,'generation',$4,'queued') RETURNING *",[randomUUID(),f.owner,f.project,f.hash])).rows[0];
+    await assert.rejects(transaction(pool,async c=>reserveCredits(c,f.owner,later,third.quote_id,{revision:3,manifest:f.manifest},(await c.query('SELECT * FROM bb_projects WHERE id=$1',[f.project])).rows[0],undefined,true)),{code:'IDEMPOTENCY_CONFLICT'});
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_authoring_scope_reservations WHERE owner_user_id=$1 AND scope_quote_id=$2',[f.owner,first.scope_quote_id])).rows[0].n,1);
+  }finally{await pool.end();}
+});
 test('automatic authoring produces an executable locked quote without operator pricing; shortages have no hold', {skip:!database},async()=>{
   const pool=new Pool({connectionString:database});configureAutomaticBilling(pool,true);
   try{
