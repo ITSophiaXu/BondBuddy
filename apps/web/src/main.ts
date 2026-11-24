@@ -2,7 +2,7 @@ import {paymentLoginReturn} from './payment-return-route';
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadProgressHtml,uploadTransfer} from './upload-progress';
-import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
+import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, readBillingTask, type BillingTask} from './billing-task-recovery';
 import { ProjectQaWorkspace } from './project-qa-workspace';
 import { IntegrityWorkspace } from './integrity-workspace';
 import { ReviewEntry } from './review-entry';
@@ -432,7 +432,7 @@ async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
   const legacyDashboard = /^(?:\/)?dashboard(?:\?|$)/.test(raw);
-  const requested = !raw || legacyDashboard ? '/'+(raw.includes('?')?'?'+raw.split('?')[1]:'') : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
+  let requested = !raw || legacyDashboard ? '/'+(raw.includes('?')?'?'+raw.split('?')[1]:'') : raw === 'update' || raw.startsWith('update?') ? '/update'+raw.slice(6) : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
@@ -481,7 +481,7 @@ async function renderRoute() {
   const resumeId=new URLSearchParams(raw.split('?')[1]??'').get('resume_request');
   if(resumeId&&!/^\/?(?:account|billing|payment)(?:[/?]|$)/.test(raw)){
     const returnHash=cleanBillingReturn(location.hash),resumeOwner=identity;
-    try{await resumeBillingTask(resumeOwner,resumeId,returnHash,(path,body,headers)=>api.request('POST',path,body,headers));if(identity!==resumeOwner||token!==epoch)return;history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);document.querySelector('#billing-task-notice')?.remove();}
+    try{const task=await readBillingTask(resumeOwner,resumeId);const resumed=await resumeBillingTask(resumeOwner,resumeId,returnHash,(path,body,headers)=>api.request('POST',path,body,headers));if(identity!==resumeOwner||token!==epoch)return;let destination=returnHash;if(resumed&&task?.path.match(/^\/projects\/[^/]+\/file-generation\/batches$/)&&returnHash.startsWith('#generate?')){const params=new URLSearchParams(returnHash.split('?')[1]);params.set('step','progress');destination='#generate?'+params;}history.replaceState(null,'',location.pathname+location.search+destination);requested=destination.slice(1);currentRoute=requested;document.querySelector('#billing-task-notice')?.remove();}
     catch(error){if(identity!==resumeOwner||token!==epoch)return;if(error instanceof ApiError&&error.code==='CREDITS_INSUFFICIENT'){/* The scoped payment notice remains visible. */}else if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);billingNotice(friendlyError(error,'submit')+' 原请求未受理，材料与输入保留，请在工作区按当前版本开始。');}else billingNotice(friendlyError(error,'submit')+' 原请求和范围保留，可核对原任务提交。',undefined,returnHash+(returnHash.includes('?')?'&':'?')+'resume_request='+encodeURIComponent(resumeId));}
   }
   if (!raw || legacyDashboard) history.replaceState(null,'',location.pathname+location.search+'#tasks'+(raw.includes('?')?'?'+raw.split('?')[1]:''));
