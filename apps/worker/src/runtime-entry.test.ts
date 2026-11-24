@@ -45,6 +45,17 @@ test('production options install the controlled fact producer into the materials
   assert.notEqual(materials.run, original.run, 'the production constructor replaces the factory placeholder');
 });
 
+test('upload confirmation slot count is explicit and bounded', () => {
+  const pool={} as Pool,blobs={} as ReturnType<typeof azureBlobs>;
+  const env={BB_WORKER_JOB_KINDS:'parse',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_CONCURRENCY:'4',
+    BB_UPLOAD_SPOOL_DIR:'/var/lib/bondbuddy/test-upload-slot',BB_UPLOAD_SPOOL_MAX_BYTES:'469762048',
+    BB_PARSE_CACHE_OCR_VERSION:'synthetic-ocr-1',BB_PARSE_CACHE_BASIS_VERSION:'synthetic-basis-1'};
+  const options=workerRuntimeOptionsFromEnv(pool,blobs,env);
+  assert.equal(options.uploadConfirmationConcurrency,4);
+  assert.throws(()=>workerRuntimeOptionsFromEnv(pool,blobs,{...env,BB_UPLOAD_CONFIRMATION_CONCURRENCY:'5'}),/BB_UPLOAD_CONFIRMATION_CONCURRENCY/);
+  assert.throws(()=>workerRuntimeOptionsFromEnv(pool,blobs,{...env,BB_UPLOAD_SPOOL_MAX_BYTES:'134217728'}),/too small/);
+});
+
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
   return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',

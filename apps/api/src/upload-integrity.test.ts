@@ -25,6 +25,11 @@ test('legacy replay establishes evidence only by a full read, then matching stor
   assert.deepEqual(f.calls, ['full-read']); await verifyStoredUpload(f.client, f.blobs, material, true);
   assert.deepEqual(f.calls, ['full-read', 'head']);
 });
+test('trusted ingress does not create a full-read integrity receipt', async () => {
+  const f=fixture();
+  await recordUploadIntegrity(f.client,material,{byteSize:bytes.length,sha256:material.sha256,etag:'v1',trustedIngress:true});
+  assert.equal(f.receipts.length,0);
+});
 test('first content reuse always reads the body even with existing version evidence', async () => {
   const f = fixture(); await verifyStoredUpload(f.client, f.blobs, material, true); f.calls.length = 0;
   await verifyStoredUpload(f.client, f.blobs, material, false); assert.deepEqual(f.calls, ['full-read']);
