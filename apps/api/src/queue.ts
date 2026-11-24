@@ -53,6 +53,18 @@ async function billingContractRecoverable(client:PoolClient,r:any,j:any){
   return false;
 }
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
+export const RUN_ACTIVE_EXECUTION_LIMIT_MS = 90 * 60 * 1000;
+
+/** Remaining execution time for a leased job; queued and paused time never enters the sum. */
+export async function remainingJobExecutionMs(pool:Pool, jobId:string, token:string):Promise<number> {
+  const row=(await pool.query(`SELECT active_execution_ms + CASE WHEN state='running' AND active_started_at IS NOT NULL
+      THEN GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(now(),COALESCE(lease_until,now()))-active_started_at))*1000)::bigint)
+      ELSE 0 END AS used_ms
+    FROM bb_jobs WHERE id=$1 AND lease_token=$2`,[jobId,token])).rows[0];
+  if(!row)throw new Problem(409,'ALREADY_TERMINAL','Worker lease is no longer active');
+  return Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(row.used_ms));
+}
+export const remainingRunExecutionMs=(pool:Pool,lease:Lease)=>remainingJobExecutionMs(pool,lease.jobId,lease.token);
 export type RunKind = typeof TASK_KINDS[number];
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
   if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)

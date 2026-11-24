@@ -29,7 +29,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, remainingRunExecutionMs, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
@@ -611,6 +611,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();
+  let timeLimitReached = false;
+  let budgetTimer: NodeJS.Timeout | undefined;
+  const remainingMs = await remainingRunExecutionMs(pool, lease);
+  const expireBudget = () => { timeLimitReached = true; abort.abort(); };
+  const budgetExpired = async () => {
+    if(timeLimitReached)return true;
+    if(await remainingRunExecutionMs(pool,lease)>0)return false;
+    expireBudget();
+    return true;
+  };
+  if(remainingMs <= 0) expireBudget();
+  else budgetTimer = setTimeout(expireBudget, remainingMs);
   const onOuterAbort = () => abort.abort();
   deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
   // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
@@ -620,7 +632,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     onEvent: event => deps.onLeaseHeartbeat?.({ ...event, run_id: lease.runId, job_id: lease.jobId }),
   });
   let currentStage: string | undefined;
+  const stopAtTimeLimit = async ():Promise<RunPipelineOutcome> => {
+    try { await finish(pool,lease,'failed',{errorCode:'TASK_EXECUTION_TIME_LIMIT',failedStage:currentStage}); return 'failed'; }
+    catch(error) {
+      if(error instanceof Problem && error.code==='CAPABILITY_NOT_READY') {
+        await pauseRun(pool,lease,'provider_reconcile','execution_time_limit_pending_reconcile');
+        return 'paused';
+      }
+      throw error;
+    }
+  };
   try {
+    if(timeLimitReached)return await stopAtTimeLimit();
     const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,r.created_at,
       EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
         WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
@@ -630,6 +653,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
       validateBeforeModelCall: async () => {
+      if(await budgetExpired()) return {kind:'fail',code:'TASK_EXECUTION_TIME_LIMIT'};
       // Synthetic mechanics tests install their own input-lock stage. The production stage
       // always rechecks every binding before a provider intent, including checkpoint replay.
       if (!deps.stages.includes(inputLockStage)) return null;
@@ -652,6 +676,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     } };
     for (const stage of deps.stages) {
       currentStage = stage.name;
+      if(await budgetExpired()) return await stopAtTimeLimit();
       if(run.channel==='non_production_test' && stage.name!=='input_lock'){
         const input=await currentRunInput(pool,run);
         const gate=input
@@ -672,6 +697,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
           {outcome:value.kind,...(value.kind==='fail'?{error_code:value.code}:{})});
         return value;
       });
+      if(await budgetExpired()) return await stopAtTimeLimit();
       if (outcome.kind === 'done') {
         if (!saved) {
           await withPerformanceSpan('stage.checkpoint',{stage:stage.name},()=>checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {}));
@@ -694,6 +720,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       if (outcome.kind === 'stopped') return 'stopped';
       if (outcome.kind === 'qa_deliver') {
+        if(await budgetExpired())return await stopAtTimeLimit();
         const result=await finishM4Qa(pool,lease,outcome.reply);
         return result.state==='succeeded'?'succeeded':'paused';
       }
@@ -776,6 +803,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         ctx.checkpoint.word_delivery_pair = pair;
       }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
+      if(await budgetExpired())return await stopAtTimeLimit();
       const finished=await finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
       return finished.state==='paused'?'paused':run.channel==='non_production_test'?'test_completed':'succeeded';
     }
@@ -800,6 +828,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    if(timeLimitReached) {
+      try { return await stopAtTimeLimit(); }
+      catch(finishError) { if(lost(finishError))return 'lost'; throw finishError; }
+    }
     if (error instanceof TrialLimitProblem) {
       if (error.limit === 'operator_deny') {
         await finish(pool, lease, 'failed', { errorCode: error.code, failedStage: currentStage });
@@ -823,6 +855,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       return 'failed';
     } catch (finishError) { if (lost(finishError)) return 'lost'; throw finishError; }
   } finally {
+    if(budgetTimer)clearTimeout(budgetTimer);
     heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
     deps.onLease?.(null);

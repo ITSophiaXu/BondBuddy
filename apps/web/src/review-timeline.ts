@@ -27,6 +27,7 @@ export function reviewStageLabel(stage:string|null|undefined,state?:Run['state']
 }
 const reasonLabels: Record<string, string> = { user_cancelled: '用户请求停止', user_cancel_requested: '正在停止',
   provider_reconciliation_required: '正在核对先前调用，暂不重复执行', provider_result_pending: '等待先前调用结果',
+  execution_time_limit_pending_reconcile: '累计执行已达 90 分钟，正在核对最后一次模型调用；不会继续执行。',
   material_versions: '材料尚未就绪', capability_not_ready: '处理条件尚未就绪', user_resumed: '任务已恢复',
   review_assembly_requeued: '复用已保存结果，恢复报告整理', word_pair_delivery_requeued:'复用已保存文稿，恢复文档交付',
   model_tokens_per_user_per_day:'今日处理额度已用完，额度恢复后本任务会自动继续。',
@@ -34,6 +35,7 @@ const reasonLabels: Record<string, string> = { user_cancelled: '用户请求停�
   trial_limit_cleared:'处理限制已解除，本任务已恢复排队。',
   provider_call_retrying:'系统已准备重试，当前输入保持不变。' };
 const failureLabels: Record<string, string> = {
+  TASK_EXECUTION_TIME_LIMIT: '本次任务累计执行已达 90 分钟，系统已结束处理；排队和暂停等待时间不计入。',
   DELIVERY_FAILED: '本轮文档交付失败，未取得可核验的成果。请联系支持核对任务结果。',
   WORD_FORMAT_OPERATIONS_MISSING: '本轮编制未保存必需的修订记录，未生成可交付的 Word。请联系支持核对本轮结果。',
   VALIDATION_FAILED: '本轮成果未通过校验，未登记为有效报告。请核对输入后，明确开始下一轮。',
