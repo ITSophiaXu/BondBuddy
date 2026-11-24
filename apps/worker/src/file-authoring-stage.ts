@@ -4,7 +4,7 @@ import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promis
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
-import { checkpointStage,recordFileAuthoringCaptureOutcome } from '@bondbuddy/api/queue';
+import { beginRunStage,checkpointStage,recordFileAuthoringCaptureOutcome } from '@bondbuddy/api/queue';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { isDeepStrictEqual } from 'node:util';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -74,7 +74,7 @@ async function checkedFile(root:string,name:string,max=MAX){
   return readFile(path);
 }
 
-export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>;repair?:SizeRepair;checkpoint?:typeof checkpointStage;capture?:typeof recordFileAuthoringCaptureOutcome}={}):RunStage{
+export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>;repair?:SizeRepair;checkpoint?:typeof checkpointStage;capture?:typeof recordFileAuthoringCaptureOutcome;beginStage?:typeof beginRunStage}={}):RunStage{
   return {name:'model_generation',replay:true,run:async ctx=>{
     const recovery=ctx.lease.checkpoint.word_pair_delivery_recovery as {attempt_no?:number}|undefined;
     if(recovery){
@@ -245,6 +245,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:options.repair?'paged-pdf-authoring-size-repair-host-handoff-v3':controlled?'paged-pdf-authoring-format-host-handoff-v5':'paged-pdf-authoring-host-handoff-v5',fileWorkspace:{completionCheck:true,recovery:!!savedRecovery,get deadlineAt(){return deadlineAt;},prepare,collect,
         onFailure:async(cwd,intent)=>{
           try{
+            await (options.beginStage??beginRunStage)(ctx.pool,ctx.lease,'recovery_capture');
             for(const [path,hash] of originals)if(digest(await checkedFile(cwd,path))!==hash)throw Error('INPUT_REVISION_CONFLICT');
             await saveFileAuthoringRecovery(ctx,cwd,intent,{checkpoint:options.checkpoint,capture:options.capture,deadlineAt});
           }catch(error){
