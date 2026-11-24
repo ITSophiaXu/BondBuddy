@@ -40,7 +40,7 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
   // Freeze the meter immediately; the worker saves its current operation before releasing its lease.
   if(exhausted && !j.credit_pause_requested && !['failed','cancelled','rejected'].includes(next?.state??r.state))
     await c.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[j.id]);
-  const running=(next?.state??r.state)==='running'&&j.state==='running'&&!j.user_pause_requested&&!j.credit_pause_requested&&!exhausted;
+  const running=(next?.state??r.state)==='running'&&j.state==='running'&&j.stage!=='recovery_capture'&&!j.user_pause_requested&&!j.credit_pause_requested&&!exhausted;
   await c.query('UPDATE bb_authoring_progress SET active_ms=$2,work_bps=$3,accrued_points=$4,clock_at=$6,lease_until=$5 WHERE run_id=$1',
     [r.id,active,work,serializeInt64(debit?.charged??amount),running?j.lease_until:null,m.sampled_at]);
 }

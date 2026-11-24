@@ -41,6 +41,43 @@ async function workspace(root: string) {
   return input;
 }
 
+test('large recovery captures files concurrently and publishes only the complete ordered snapshot', async () => {
+  const f = fixture(), root = await mkdtemp(join(tmpdir(), 'bb-file-recovery-concurrent-'));
+  try {
+    await workspace(root);
+    for (let i = 0; i < 80; i++) await writeFile(join(root, 'scratch', `part-${String(i).padStart(3, '0')}.txt`), String(i));
+    const put = f.ctx.blobs.put;
+    let active = 0, peak = 0;
+    f.ctx.blobs.put = async (...args) => {
+      active++; peak = Math.max(peak, active);
+      try { await new Promise(resolve => setTimeout(resolve, 5)); return await put(...args); }
+      finally { active--; }
+    };
+    const snapshot = await saveFileAuthoringRecovery(f.ctx, root, intent, { checkpoint: f.checkpoint });
+    assert.ok(peak > 1 && peak <= 8, `bounded capture concurrency: ${peak}`);
+    assert.equal(f.writes(), 1);
+    assert.equal(snapshot.files.length, 85);
+    const savedPaths=snapshot.files.map(file=>file.path);
+    assert.equal(savedPaths[0],'input.json');
+    assert.equal(savedPaths.at(-1),'output/operations.json');
+    assert.deepEqual(savedPaths.slice(1,-1),[...savedPaths.slice(1,-1)].sort());
+    assert.equal(validFileAuthoringRecovery(snapshot, { owner: 'owner', project: 'project', run: 'run',
+      inputHash: f.ctx.run.input_hash, attempt: intent.call_id, logical: intent.logical_call_id }), true);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('a stalled Blob upload ends capture without publishing a partial recovery point', async () => {
+  const f = fixture(), root = await mkdtemp(join(tmpdir(), 'bb-file-recovery-stalled-'));
+  try {
+    await workspace(root);
+    f.ctx.blobs.put = async () => new Promise<void>(() => {});
+    await assert.rejects(saveFileAuthoringRecovery(f.ctx, root, intent, {
+      checkpoint: f.checkpoint, captureTimeoutMs: 20 }), /AUTHORING_RECOVERY_TIMEOUT/);
+    assert.equal(f.writes(), 0);
+    assert.equal(f.ctx.checkpoint[FILE_AUTHORING_RECOVERY_STAGE], undefined);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('a process restart restores all work bytes and the original revision timestamp only after durable authorization', async () => {
   const f = fixture(), root = await mkdtemp(join(tmpdir(), 'bb-file-recovery-'));
   try {
@@ -152,7 +189,7 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
       model_config_version: 'test', reasoning_effort: null, credential: { kind: 'env' as const, name: 'SYNTHETIC_TOKEN' }, work_root: root,
       timeout_ms: 10000, kill_grace_ms: 100, max_output_bytes: 4096, max_schema_reasks: 0, disabled_features: [], path_env: '' };
     let turns = 0;
-    const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint, model: options => ({ name: 'model_generation', run: async () => {
+    const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint, beginStage:async()=>{}, model: options => ({ name: 'model_generation', run: async () => {
       turns++; const cwd = join(root, `attempt-${turns}`); await mkdir(cwd);
       await options.fileWorkspace!.prepare(cwd);
       assert.equal(typeof options.config,'object');

@@ -30,7 +30,7 @@ const states: Record<RunState, string> = {
   succeeded: '已生成', test_completed: '内部测试工作稿', failed: '任务失败', cancelled: '已取消'
 };
 const stages: Record<string, string> = { input_lock: '核对输入与规则', materials_ready: '读取材料',
-  model_generation: '生成全文内容', provider_call: '正在编制募集书', word_delivery: '正在准备 Word 下载', capability_not_ready: '等待处理条件',
+  model_generation: '生成全文内容', provider_call: '正在编制募集书', recovery_capture: '正在保存恢复点', word_delivery: '正在准备 Word 下载', capability_not_ready: '等待处理条件',
   queued: '任务已提交，正在排队', claimed: '已接单，正在准备材料', completed: '处理完成' };
 
 type PauseStage = (typeof RUN_PAUSE_STAGES)[number];

@@ -126,7 +126,7 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
 /** Snapshot all mutable work, then publish the checkpoint only after Blob readback.
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
-  checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string;
+  checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter; deadlineAt?:string; captureTimeoutMs?:number;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
@@ -135,6 +135,8 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
   if (!Number.isSafeInteger(limits.files) || limits.files < 1 || limits.files > FILE_AUTHORING_RECOVERY_LIMITS.files
     || !Number.isSafeInteger(limits.fileBytes) || limits.fileBytes < 1 || limits.fileBytes > FILE_AUTHORING_RECOVERY_LIMITS.fileBytes
     || !Number.isSafeInteger(limits.totalBytes) || limits.totalBytes < 1 || limits.totalBytes > FILE_AUTHORING_RECOVERY_LIMITS.totalBytes) throw unsafe();
+  const captureTimeoutMs=options.captureTimeoutMs??10*60*1000;
+  if(!Number.isSafeInteger(captureTimeoutMs)||captureTimeoutMs<1||captureTimeoutMs>10*60*1000)throw unsafe();
   const root = resolve(cwd); if (await realpath(root) !== root || !(await lstat(root)).isDirectory()) throw unsafe();
   const paths:string[] = []; let entries = 0,totalBytes=0;
   const walk = async (path: string): Promise<void> => {
@@ -157,21 +159,41 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
   const snapshot: FileAuthoringRecovery = { version: 'file-authoring-recovery-v1', input_hash: ctx.run.input_hash.trim(),
     attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, ...(deadlineAt?{deadline_at:deadlineAt}:{}), files: [] };
   let total = 0;
-  for (const path of paths) {
-    const bytes = await regularBytes(root, path, limits.fileBytes, ctx.signal); total += bytes.length;
-    if(total>limits.totalBytes)throw capacity();
-    if(path==='input.json'&&!bytes.length)throw unsafe();
-    const sha256 = digest(bytes), key = keyFor(ctx, intent.call_id, sha256, path);
-    try{
-      await ctx.blobs.put(key, bytes, 'application/octet-stream');
-      const stored = await ctx.blobs.getIfExistsBounded(key, limits.fileBytes);
-      if (!stored || stored.length !== bytes.length || digest(stored) !== sha256) throw Error('readback_failed');
-    }catch{
-      ctx.signal.throwIfAborted();
-      throw new CaptureError('storage_failed','AUTHORING_OUTPUT_STORE_FAILED');
+  const files: FileAuthoringRecovery['files'] = new Array(paths.length);
+  // Blob round trips dominate large interrupted authoring jobs. Bound concurrency
+  // so a few slow requests cannot make hundreds of independent files serialize.
+  const workers = Math.min(8, paths.length);
+  let next = 0;
+  const captureController=new AbortController();
+  const signal=AbortSignal.any([ctx.signal,captureController.signal]);
+  const timer=setTimeout(()=>captureController.abort(),captureTimeoutMs);
+  const timedOut=new Promise<never>((_,reject)=>signal.addEventListener('abort',()=>reject(
+    captureController.signal.aborted?new CaptureError('capture_failed','AUTHORING_RECOVERY_TIMEOUT'):signal.reason),{once:true}));
+  try { await Promise.race([Promise.all(Array.from({ length: workers }, async () => {
+    while (next < paths.length) {
+      signal.throwIfAborted();
+      const index = next++;
+      const path = paths[index]!;
+      const bytes = await regularBytes(root, path, limits.fileBytes, signal); total += bytes.length;
+      if(total>limits.totalBytes)throw capacity();
+      if(path==='input.json'&&!bytes.length)throw unsafe();
+      const sha256 = digest(bytes), key = keyFor(ctx, intent.call_id, sha256, path);
+      try{
+        signal.throwIfAborted();
+        await ctx.blobs.put(key, bytes, 'application/octet-stream');
+        signal.throwIfAborted();
+        const stored = await ctx.blobs.getIfExistsBounded(key, limits.fileBytes);
+        signal.throwIfAborted();
+        if (!stored || stored.length !== bytes.length || digest(stored) !== sha256) throw Error('readback_failed');
+      }catch{
+        ctx.signal.throwIfAborted();
+        if(captureController.signal.aborted)throw new CaptureError('capture_failed','AUTHORING_RECOVERY_TIMEOUT');
+        throw new CaptureError('storage_failed','AUTHORING_OUTPUT_STORE_FAILED');
+      }
+      files[index] = { path, key, sha256, byte_size: bytes.length };
     }
-    snapshot.files.push({ path, key, sha256, byte_size: bytes.length });
-  }
+  })),timedOut]); } finally { clearTimeout(timer); }
+  snapshot.files = files;
   validate(ctx, snapshot, intent.logical_call_id); ctx.signal.throwIfAborted();
   await (options.checkpoint ?? checkpointStage)(ctx.pool, ctx.lease, FILE_AUTHORING_RECOVERY_STAGE, { ...snapshot }, false);
   ctx.checkpoint[FILE_AUTHORING_RECOVERY_STAGE] = { ...snapshot };
