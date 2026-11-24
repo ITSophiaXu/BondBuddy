@@ -22,7 +22,7 @@ import { ProjectAssistant } from './project-assistant';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
-import { ProjectBrowser } from './project-browser';
+import { ProjectBrowser, clearProjectBrowserCache } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { ProjectConversation } from './project-conversation';
@@ -170,7 +170,7 @@ function clearPrivateState() {
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();uploadRecoveries.clear();uploadJournalErrors.clear();for(const input of uploadReselectInputs.values())input.remove();uploadReselectInputs.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
   document.querySelector('#billing-task-notice')?.remove();
-  identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined;
+  identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined; clearProjectBrowserCache();
 }
 
 function signedOut(message = '') {
