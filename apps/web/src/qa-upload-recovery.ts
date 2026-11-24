@@ -34,11 +34,11 @@ function identity(e:Omit<QaUploadEnvelope,'digest'>|QaUploadEnvelope){return {ve
 function normalize(value:unknown,owner:string,project:string):QaUploadEnvelope|undefined{
  if(!exact(value,['version','owner','project','id','kind','digest','base','handedOff','items'],['prepareRequestId'])||value.version!==1||value.owner!==owner||value.project!==project||
   !validId(value.id)||!['source','supplement'].includes(value.kind as string)||typeof value.digest!=='string'||!/^[a-f0-9]{64}$/.test(value.digest)||typeof value.handedOff!=='boolean'||!Array.isArray(value.items))return;
- const kind=value.kind as QaUploadKind,base=normalizedBase(value.base,owner,project);if(!base||kind==='supplement'&&!base.draft.preparation_id)return;
+ const kind=value.kind as QaUploadKind,base=normalizedBase(value.base,owner,project);if(!base||kind==='supplement'&&!base.draft.preparation_id&&!base.draft.source)return;
  if(kind==='source'?!validId(value.prepareRequestId)||value.items.length!==1:Object.hasOwn(value,'prepareRequestId')||value.handedOff||!value.items.length||value.items.length>50)return;
  const items:QaUploadItem[]=[];let gap=false;
  for(const item of value.items){
-  if(!exact(item,['id','declaration','applied'],['material'])||!validId(item.id)||!declaration(item.declaration,kind)||typeof item.applied!=='boolean'||item.applied&&(!item.material||kind==='source')||gap&&item.applied)return;
+  if(!exact(item,['id','declaration','applied'],['material'])||!validId(item.id)||!declaration(item.declaration,kind)||typeof item.applied!=='boolean'||item.applied&&!item.material||gap&&item.applied)return;
   if(!item.applied)gap=true;let material:Dto<'MaterialResponse'>|undefined;
   try{if(Object.hasOwn(item,'material'))material=validateUploadMaterial(item.declaration,item.material);}catch{return;}
   items.push({id:item.id,declaration:copy(item.declaration),applied:item.applied,...(material?{material}:{})});
@@ -65,7 +65,9 @@ export function qaUploadMaterialMatches(a:Dto<'MaterialResponse'>,b:Dto<'Materia
 }
 export function qaUploadExpected(e:QaUploadEnvelope,include?:number):QaRecoveryValue{
  const base=copy(e.base);for(const [index,item] of e.items.entries())if((item.applied||index===include)&&item.material){
-  const asset=qaUploadAsset(e.project,item.material);if(!base.draft.materials.some(a=>qaAssetKey(a)===qaAssetKey(asset)))base.draft.materials.push(asset);
+  const asset=qaUploadAsset(e.project,item.material);
+  if(e.kind==='source'){base.draft.source=asset;base.draft.preparation_id=null;base.draft.questions=[];delete base.draft.included_followup_of;base.draft.materials=base.draft.materials.filter(a=>qaAssetKey(a)!==qaAssetKey(asset));}
+  else if(!base.draft.materials.some(a=>qaAssetKey(a)===qaAssetKey(asset)))base.draft.materials.push(asset);
  }return base;
 }
 export const qaUploadSame=(a:QaRecoveryValue,b:QaRecoveryValue)=>canonical(a)===canonical(b);

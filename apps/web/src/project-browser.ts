@@ -178,7 +178,7 @@ export class ProjectBrowser {
       <td><div class="collection-actions"><button class="btn ${s?.active?'primary':'secondary'} small" data-tasks="${esc(p.project_id)}" aria-expanded="${opened}" aria-controls="tasks-${esc(p.project_id)}">${ico('clock')}${s?.active?'查看进度':'查看任务'} ${ico('down')}</button>${resultAction}<button class="text-button collection-more" data-work="${esc(p.project_id)}" aria-label="更多操作 · ${esc(p.name)}" aria-haspopup="menu" aria-expanded="false">更多 ${ico('down')}</button></div></td></tr>
       <tr id="tasks-${esc(p.project_id)}" class="collection-task-row" ${opened?'':'hidden'}><td colspan="4"><div class="collection-tasks" data-task-panel="${esc(p.project_id)}">${this.taskPanel(p)}</div></td></tr>`;
   }
-  private hasResult(t:ProjectTask){return t.state==='succeeded'||(t.workpaper_batch?.completed??0)>0;}
+  private hasResult(t:ProjectTask){return t.operation!=='qa_prepare'&&(t.state==='succeeded'||(t.workpaper_batch?.completed??0)>0);}
   private async showResults(id:string){
     this.results.add(id);this.expanded.add(id);this.paint();
     if(!this.tasks.has(id))await this.loadTasks(id,true);

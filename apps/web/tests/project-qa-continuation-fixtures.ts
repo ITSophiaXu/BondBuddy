@@ -1,7 +1,7 @@
 import {fixtureBody,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
-import {PROJECT_QA_PRICE,schemas,type ProjectFileAsset,type QaDraft,type QaInput,type QaQuestion,type QaResult,type QaRun,type QaWorkspace} from '@bondbuddy/contracts';
+import {PROJECT_QA_LIST_PRICE,PROJECT_QA_PRICE,schemas,type ProjectFileAsset,type QaDraft,type QaInput,type QaQuestion,type QaResult,type QaRun,type QaWorkspace} from '@bondbuddy/contracts';
 import {FormatRegistry} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {createHash} from 'node:crypto';
@@ -73,6 +73,7 @@ export const historicalRecords=(state:State)=>structuredClone(state.workspace.ru
 function queued(state:State,body:AnswerRequest|PrepareRequest,operation:'answer'|'prepare'):Accepted{
   const manifest=operation==='answer'?input('answer',state.workspace.draft.questions,state.workspace.draft.materials,state.workspace.draft.requirements):input('prepare');
   if(operation==='prepare')manifest.source={filename:state.uploadMaterial?.filename??'合成问题清单_v2.docx',asset:structuredClone((body as PrepareRequest).source)};
+  if(operation==='answer'&&state.workspace.draft.source){manifest.source={filename:state.uploadMaterial?.filename??'合成问题清单_v2.docx',asset:structuredClone(state.workspace.draft.source)};manifest.preparation_id=null;manifest.price_version=PROJECT_QA_LIST_PRICE.version;manifest.points=PROJECT_QA_LIST_PRICE.points;}
   const sequence=Math.max(0,...state.workspace.runs.map(run=>run.sequence))+1,runId=`synthetic-qa-${operation}-${sequence}`;
   const run:QaRun={run_id:runId,sequence,operation,state:'queued',stage:'queued',created_at:now,manifest,result:null,artifact_id:null,reserved_points:manifest.points,charged_points:0};
   const generic:Dto<'RunResponse'>={run_id:runId,execution_request_id:`qa-${operation}:${body.request_id}`,project_id:projectId,input_revision:100+sequence,input_hash:sha(JSON.stringify(manifest)),channel:'production',test_grant_id:null,
@@ -128,8 +129,8 @@ export async function install(page:Page,state=fixture()){
           const answer=b as AnswerRequest;
           if(state.rejectAnswer){const code=state.rejectAnswer;state.rejectAnswer=undefined;return problem(route,code==='CREDITS_INSUFFICIENT'?402:409,code);}
           if(answer.expected_revision!==state.workspace.revision)return problem(route,409,'INPUT_REVISION_CONFLICT');
-          expect(answer.expected_points).toBe(state.workspace.draft.questions.length*PROJECT_QA_PRICE.points);
-          expect(answer.price_version).toBe(PROJECT_QA_PRICE.version);
+          expect(answer.expected_points).toBe(state.workspace.draft.source?PROJECT_QA_LIST_PRICE.points:state.workspace.draft.questions.length*PROJECT_QA_PRICE.points);
+          expect(answer.price_version).toBe(state.workspace.draft.source?PROJECT_QA_LIST_PRICE.version:PROJECT_QA_PRICE.version);
         }
         const accepted=queued(state,b,operation);state.accepted.set(key,accepted);
         if(drop==='after')return route.abort('connectionreset');
