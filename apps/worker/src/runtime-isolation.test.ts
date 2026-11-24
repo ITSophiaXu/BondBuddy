@@ -7,7 +7,7 @@ import { createServer } from '@bondbuddy/api';
 import { type PrivateBlobs } from '@bondbuddy/api/data';
 import { claim, renew, action, pausedRuns, type RunKind } from '@bondbuddy/api/queue';
 import { readiness, recordWorkerHeartbeat, workerGroupsFromEnv } from '@bondbuddy/api/trial-guard';
-import { WorkerRuntime, workerRuntimeOptionsFromEnv } from './runtime.js';
+import { WorkerRuntime, workerHostIdFromEnv, workerRuntimeOptionsFromEnv } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection = await isolatedTestDatabase('BB_TEST_RUNTIME_DATABASE_URL', 'worker-isolation');
@@ -19,6 +19,15 @@ const waitFor = async (check: () => Promise<boolean>) => {
   }
 };
 const gate = () => { let release!: () => void; const promise = new Promise<void>(r => { release = r; }); return { promise, release }; };
+
+test('worker host identity follows the enrolled Tencent instance', () => {
+  const enrollment = JSON.stringify({ context: { identity: { instance_id: 'ins-abc12345' } } });
+  const read = () => enrollment;
+  assert.equal(workerHostIdFromEnv({ BB_EXECUTION_ENROLLMENT_FILE: '/run/authoring.json' }, read), 'ins-abc12345');
+  assert.equal(workerHostIdFromEnv({ BB_WORKER_HOST_ID: 'azure-execution' }), 'azure-execution');
+  assert.throws(() => workerHostIdFromEnv({ BB_EXECUTION_ENROLLMENT_FILE: '/run/authoring.json', BB_WORKER_HOST_ID: 'other' }, read), /differs/);
+  assert.throws(() => workerHostIdFromEnv({ BB_EXECUTION_ENROLLMENT_FILE: '/run/authoring.json' }, () => '{}'), /Invalid execution enrollment identity/);
+});
 
 test('worker filters reject invalid configuration and isolate review assistants', () => {
   const pool = {} as Pool, blobs = {} as PrivateBlobs;

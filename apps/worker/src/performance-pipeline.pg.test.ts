@@ -22,7 +22,7 @@ test('pipeline records execution/recovery, checkpoint reuse and every delivery t
   await pool.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage) VALUES($1,$2,$3,'update','default','queued','queued')",[job,owner,run]);
   return run;
  };
- const execute=(stages:RunStage[])=>runPipelineOnce({pool,blobs,stages,workerInstanceId:'synthetic-worker',leaseSeconds:30});
+ const execute=(stages:RunStage[])=>runPipelineOnce({pool,blobs,stages,workerInstanceId:'synthetic-worker',workerHostId:'synthetic-host',leaseSeconds:30});
  const rows=async(run:string)=>{await flushPerformanceTraces(pool,5000);return (await pool.query('SELECT * FROM bb_performance_spans WHERE run_id=$1 ORDER BY started_at,sequence',[run])).rows;};
  try{
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'perf_'+randomUUID().slice(0,8)]);
@@ -36,6 +36,11 @@ test('pipeline records execution/recovery, checkpoint reuse and every delivery t
   assert.equal(sessions.length,1);
   const session=sessions[0];
   assert.equal(session.worker_instance_id,'synthetic-worker');
+  const claims=(await pool.query("SELECT payload FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='claimed' ORDER BY seq",[completed])).rows;
+  assert.equal(claims.length,1);
+  assert.equal(claims[0].payload.worker_instance_id,'synthetic-worker');
+  assert.equal(claims[0].payload.worker_host_id,'synthetic-host');
+  assert.equal(claims[0].payload.attempt_no,'1');
   assert.equal(session.closed,true);
   assert.equal(session.generated,delivery.length);
   assert.equal(session.acknowledged,delivery.length);
@@ -52,6 +57,8 @@ test('pipeline records execution/recovery, checkpoint reuse and every delivery t
   assert.equal(checkpoints,1);assert.equal(recovered.filter(row=>row.step_key==='job.queue_wait').length,1);
   assert(recovered.some(row=>row.step_key==='stage.reuse'&&row.status==='reused'));
   assert.deepEqual(recovered.filter(row=>row.step_key==='run.execution').map(row=>row.status).sort(),['interrupted','paused']);
+  const retryClaims=(await pool.query("SELECT payload->>'attempt_no' AS attempt_no,payload->>'worker_instance_id' AS worker_instance_id,payload->>'worker_host_id' AS worker_host_id FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='claimed' ORDER BY seq",[retry])).rows;
+  assert.deepEqual(retryClaims,[{attempt_no:'1',worker_instance_id:'synthetic-worker',worker_host_id:'synthetic-host'},{attempt_no:'2',worker_instance_id:'synthetic-worker',worker_host_id:'synthetic-host'}]);
   assert.equal(new Set(recovered.map(row=>row.run_execution_id)).size,2);
   const failed=await submit();assert.equal(await execute([{name:'input_lock',run:async()=>({kind:'fail',code:'DATA_UNAVAILABLE'})}]),'failed');
   assert((await rows(failed)).some(row=>row.step_key==='run.execution'&&row.status==='failed'));
