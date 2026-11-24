@@ -5,6 +5,7 @@
 // forward #79 logs. SIGTERM/SIGINT stop claiming, drain in-flight work, then release leases so
 // another worker resumes from the durable checkpoint at once. Nothing here trusts a browser.
 import {runUploadConfirmationOnce} from '@bondbuddy/api/upload-confirmation';
+import {M1_UPLOAD_LIMITS} from '@bondbuddy/contracts';
 import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
@@ -83,6 +84,8 @@ export type WorkerRuntimeOptions = {
   /** M3 discussions use their own leases and never create document runs. */
   reviewAssistant?: { config?: CodexAdapterConfig; pollMs?: number };
   uploadConfirmationEnabled?: boolean;
+  uploadConfirmationConcurrency?: number;
+  uploadConfirmationSmallSlot?: boolean;
   stagingRoot?: string;
 };
 
@@ -115,7 +118,7 @@ export class WorkerRuntime {
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
-      uploadConfirmationEnabled: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+      uploadConfirmationEnabled: false, uploadConfirmationConcurrency: 1, uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
@@ -147,7 +150,9 @@ export class WorkerRuntime {
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
     const interactiveStart=this.o.concurrency+this.dedicatedParseSlots;
     for(let slot=interactiveStart;slot<interactiveStart+this.dedicatedInteractiveSlots;slot++)this.loops.push(this.slotLoop(slot,['run'],true));
-    if(this.o.uploadConfirmationEnabled)this.loops.push(this.uploadConfirmationLoop());
+    if(this.o.uploadConfirmationEnabled)
+      for(let slot=0;slot<this.o.uploadConfirmationConcurrency;slot++)this.loops.push(this.uploadConfirmationLoop());
+    if(this.o.uploadConfirmationEnabled&&this.o.uploadConfirmationSmallSlot)this.loops.push(this.uploadConfirmationLoop(true));
     this.loops.push(this.sweepLoop());
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
@@ -177,6 +182,7 @@ export class WorkerRuntime {
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
               onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
+              onLeaseHeartbeat: event => this.emit({ slot, kind: 'run_lease_heartbeat', ...event }),
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
@@ -212,11 +218,11 @@ export class WorkerRuntime {
     }
   }
 
-  /** Explicitly enabled on the pure parser deployment; one independent upload slot. */
-  private async uploadConfirmationLoop(){
+  /** Explicitly enabled on the pure parser deployment; claims use SKIP LOCKED. */
+  private async uploadConfirmationLoop(smallOnly=false){
     while(!this.stopping){
       let outcome='idle';
-      try{outcome=await runUploadConfirmationOnce(this.o.pool,this.o.blobs);}
+      try{outcome=await runUploadConfirmationOnce(this.o.pool,this.o.blobs,smallOnly?'small':'general');}
       catch{this.counters.errors++;outcome='error';}
       if(outcome!=='idle')this.emit({kind:'upload_confirmation',outcome});
       if(outcome==='idle'||outcome==='error')await sleep(this.o.pollMs,this.stopSignal.signal);
@@ -354,6 +360,10 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
   if(env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'&&(!env.BB_UPLOAD_SPOOL_DIR?.startsWith('/')||!Number.isSafeInteger(Number(env.BB_UPLOAD_SPOOL_MAX_BYTES))||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<1))
     throw new Error('Upload confirmation requires an explicit absolute spool path and byte budget');
+  const uploadConfirmationConcurrency=intEnv(env,'BB_UPLOAD_CONFIRMATION_CONCURRENCY',1,1,4);
+  const uploadConfirmationSmallSlot=env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT==='1';
+  if(env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'&&Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<uploadConfirmationConcurrency*M1_UPLOAD_LIMITS.fileBytes+(uploadConfirmationSmallSlot?16*1024*1024:0))
+    throw new Error('BB_UPLOAD_SPOOL_MAX_BYTES is too small for upload confirmation slots');
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
@@ -392,6 +402,8 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     interactiveSlots: intEnv(env, 'BB_WORKER_INTERACTIVE_SLOTS', 1, 0, 4),
     uploadConfirmationEnabled: env.BB_UPLOAD_CONFIRMATION_ENABLED==='1',
+    uploadConfirmationConcurrency,
+    uploadConfirmationSmallSlot,
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
@@ -413,13 +425,14 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const kinds = (process.env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(kind => kind.trim());
   const runKinds=checkedRunKinds(process.env.BB_WORKER_RUN_KINDS?.split(',').map(kind=>kind.trim()) as RunKind[]|undefined);
   const interactiveSlots=kinds.includes('run')&&runKinds.some(kind=>kind==='qa'||kind==='generation')?intEnv(process.env,'BB_WORKER_INTERACTIVE_SLOTS',1,0,4):0;
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: generalSlots + interactiveSlots + (kinds.includes('run') && kinds.includes('parse') ? parseSlots : 0) + 4 });
+  const confirmationSlots=process.env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'?intEnv(process.env,'BB_UPLOAD_CONFIRMATION_CONCURRENCY',1,1,4)+(process.env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT==='1'?1:0):0;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: generalSlots + interactiveSlots + (kinds.includes('run') && kinds.includes('parse') ? parseSlots : 0) + confirmationSlots + 4 });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled, upload_confirmation_slots:options.uploadConfirmationEnabled?options.uploadConfirmationConcurrency:0, upload_confirmation_small_slot:!!options.uploadConfirmationSmallSlot })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

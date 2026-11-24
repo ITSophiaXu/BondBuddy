@@ -163,7 +163,7 @@ export interface PrivateBlobs {
   /** Opens the object as a stream (with its stored length); null when absent. */
   openRead?(key: string, signal?: AbortSignal): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
-export type BlobDigest = { byteSize: number; sha256: string; etag?: string };
+export type BlobDigest = { byteSize: number; sha256: string; etag?: string; trustedIngress?: true };
 const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
 const notFound = (error: unknown) => Boolean(error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'));
 async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {

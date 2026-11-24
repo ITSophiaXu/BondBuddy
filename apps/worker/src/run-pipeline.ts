@@ -1,5 +1,6 @@
 import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
 import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
+import {startLeaseHeartbeat,type LeaseHeartbeatEvent} from './lease-heartbeat.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
@@ -103,6 +104,7 @@ export type RunPipelineDependencies = {
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
   onUnexpectedError?: (error: { stage: string | null; name: string; message: string; code: string | null }) => void;
+  onLeaseHeartbeat?: (event: LeaseHeartbeatEvent & {run_id:string;job_id:string}) => void;
 };
 
 /** Keep diagnostic text to fixed identifiers and known PostgreSQL schema messages. */
@@ -612,7 +614,11 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const onOuterAbort = () => abort.abort();
   deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
   // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
-  const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
+  const heartbeat = startLeaseHeartbeat({
+    leaseMs: leaseSeconds * 1000, claimedAtMs: claimStartedAt.getTime(),
+    renew: () => renew(pool, lease, leaseSeconds), abort: () => abort.abort(),
+    onEvent: event => deps.onLeaseHeartbeat?.({ ...event, run_id: lease.runId, job_id: lease.jobId }),
+  });
   let currentStage: string | undefined;
   try {
     const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,r.created_at,
@@ -817,7 +823,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       return 'failed';
     } catch (finishError) { if (lost(finishError)) return 'lost'; throw finishError; }
   } finally {
-    clearInterval(heartbeat);
+    heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
     deps.onLease?.(null);
   }

@@ -27,16 +27,62 @@ async function fixture(){
   const p=await send('POST','/api/v1/projects',{name:'Synthetic confirmation',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(p.statusCode,201,p.body);
   const id=p.json().project_id;
   await pool.query("UPDATE bb_projects SET update_details=jsonb_build_object('authoring_mode','unified_v1') WHERE id=$1",[id]);
-  const upload=async(bytes:Buffer|undefined=undefined,filename='synthetic.docx')=>{
+  const upload=async(bytes:Buffer|undefined=undefined,filename='synthetic.docx',retainIngressProof=false)=>{
     bytes??=await docxSample();
     const declaration={byte_size:bytes.length,sha256:digest(bytes)};
     const r=await send('POST',`/api/v1/projects/${id}/materials/uploads`,{...declaration,filename,role:'historical',media_type:DOCX});assert.equal(r.statusCode,201,r.body);
     const u=r.json();const put=await send('PUT',u.upload_url,bytes);assert.equal(put.statusCode,204,put.body);
     const row=(await pool.query('SELECT * FROM bb_uploads WHERE id=$1',[u.upload_id])).rows[0];
+    // Existing lease/retry tests exercise the legacy full-read fallback.
+    if(!retainIngressProof)await pool.query('UPDATE bb_uploads SET received_etag=NULL WHERE id=$1',[u.upload_id]);
     return {id:u.upload_id,key:row.object_key,bytes,declaration,path:`/api/v1/projects/${id}/materials/uploads/${u.upload_id}/complete`};
   };
   return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),own:()=>actor=owner,reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
 }
+
+test('same-origin ingress proof completes against the exact Blob version without another body read',options,async()=>{
+ const f=await fixture();try{
+  const u=await f.upload(undefined,'fast.docx',true);
+  const row=(await f.pool.query('SELECT received_etag,received_media_type FROM bb_uploads WHERE id=$1',[u.id])).rows[0];
+  assert.ok(row.received_etag);assert.equal(row.received_media_type,DOCX);
+  let reads=0;const read=f.blobs.readToFile!;
+  f.blobs.readToFile=async(...args)=>{reads++;return read(...args);};
+  assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
+  assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,200);
+  assert.equal(reads,0);
+  const receipts=await f.pool.query('SELECT object_etag FROM bb_upload_integrity_receipts WHERE owner_user_id=$1 AND project_id=$2',[f.owner,f.id]);
+  assert.equal(receipts.rowCount,0,'ingress is not a full-read integrity receipt');
+ }finally{await f.close();}
+});
+
+test('changed Blob version cannot borrow the same-origin ingress proof',options,async()=>{
+ const f=await fixture();try{
+  const u=await f.upload(undefined,'changed.docx',true);
+  await f.blobs.put(u.key,Buffer.alloc(u.bytes.length,0x41),DOCX);
+  let reads=0;const read=f.blobs.readToFile!;
+  f.blobs.readToFile=async(...args)=>{reads++;return read(...args);};
+  assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'failed');
+  assert.ok(reads>0);
+  assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE upload_id=$1',[u.id])).rows[0].n,0);
+ }finally{await f.close();}
+});
+
+test('reserved small lane skips an older large confirmation',options,async()=>{
+ const f=await fixture();try{
+  const largeBytes=await docxSample([],Buffer.from(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${randomBytes(18*1024*1024).toString('base64')}</w:t></w:r></w:p></w:body></w:document>`));
+  assert.ok(largeBytes.length>16*1024*1024);
+  const older=await f.upload(largeBytes,'older.docx');
+  assert.equal((await f.send('POST',older.path,older.declaration,true)).statusCode,202);
+  const smaller=await f.upload(undefined,'smaller.docx');
+  assert.equal((await f.send('POST',smaller.path,smaller.declaration,true)).statusCode,202);
+  const lease=await claimUploadConfirmation(f.pool,120,'small');
+  assert.equal(lease?.uploadId,smaller.id);
+  assert.equal(await claimUploadConfirmation(f.pool,120,'small'),null);
+  assert.equal((await claimUploadConfirmation(f.pool,120,'general'))?.uploadId,older.id);
+ }finally{await f.close();}
+});
 
 test('a slow Blob PUT reports explicit pending bytes without holding the project lock or accepting confirmation',options,async()=>{
  const f=await fixture(),entered=gate(),blocked=gate();let put:ReturnType<typeof f.send>|undefined;
@@ -226,6 +272,9 @@ test('completed requeue waits for the same-object deletion section and refuses d
 test('retry appends canonical B after A is logically deleted and retains A pin until terminal',options,async()=>{
  const f=await fixture();const started=gate(),blocked=gate();let work:Promise<string>|undefined;try{
   const a=await f.upload();const saved=await f.send('POST',a.path,a.declaration);assert.equal(saved.statusCode,200);
+  // Force the legacy canonical body-read path; a current integrity receipt
+  // would correctly make duplicate confirmation use only the ETag.
+  await f.pool.query('DELETE FROM bb_upload_integrity_receipts WHERE material_id=$1',[saved.json().material_id]);
   const duplicate=await f.upload(a.bytes,'duplicate.docx');await f.send('POST',duplicate.path,duplicate.declaration,true);
   const read=f.blobs.readToFile!;let once=true;f.blobs.readToFile=async(...args)=>{const proof=await read(...args);if(args[0]===a.key&&once){once=false;started.release();await blocked.wait;}return proof;};
   work=runUploadConfirmationOnce(f.pool,f.blobs);await started.wait;
