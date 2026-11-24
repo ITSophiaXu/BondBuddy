@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, QueryConfig } from 'pg';
 import {randomUUID} from 'node:crypto';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
 import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
@@ -9,6 +9,7 @@ import type { CodexJournal, ModelExecutionConfigEvidence, ModelResultFailureEvid
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { Problem, transaction, run as getRun } from '@bondbuddy/api/data';
 import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
+import type { ModelGatewayRecord } from './model-gateway.js';
 
 export class ModelResultStoreFailure extends Error {
   constructor(readonly substage:ModelResultFailureEvidence['substage'],readonly error_class:ModelResultFailureEvidence['error_class']) {
@@ -61,6 +62,26 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+
+  async recordGatewayRequest(intent: ProviderCallIntent, record: ModelGatewayRecord): Promise<void> {
+    const { pool, lease } = this.codexInput;
+    if (intent.owner_user_id !== lease.owner || intent.job_id !== lease.jobId || intent.run_id !== lease.runId ||
+      !Number.isSafeInteger(record.seq) || record.seq < 1) throw new Error('MODEL_HTTP_REQUEST_SCOPE_MISMATCH');
+    const response = record.response;
+    const usage = response?.usage;
+    await pool.query({text:`INSERT INTO bb_model_http_request_usage
+      (attempt_id,seq,owner_user_id,project_id,run_id,job_id,model_id,started_at,duration_ms,path,upstream_attempted,outcome,
+       http_status,upstream_request_id,response_id,request_bytes,response_bytes,usage_parse,
+       input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+      ON CONFLICT (attempt_id,seq) DO NOTHING`, values:
+    [intent.call_id,record.seq,intent.owner_user_id,intent.project_id,intent.run_id,intent.job_id,intent.model_id,
+      record.started_at,record.duration_ms,record.path,record.upstream_attempted===true,record.outcome,response?.status ?? null,
+      response?.upstream_request_id ?? null,response?.response_id ?? null,record.request_bytes,
+      response?.bytes ?? null,response?.parse ?? null,usage?.input_tokens ?? null,
+      usage?.cached_input_tokens ?? null,usage?.output_tokens ?? null,usage?.reasoning_tokens ?? null,
+      usage?.total_tokens ?? null],query_timeout:5000} as QueryConfig);
+  }
 
   async recordResultFailure(intent:ProviderCallIntent,evidence:ModelResultFailureEvidence):Promise<void> {
     const {pool,lease}=this.codexInput;
