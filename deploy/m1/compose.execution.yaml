@@ -37,6 +37,7 @@ services:
     extends: {file: compose.yaml, service: worker}
     environment:
       DATABASE_URL: ${BB_EXECUTION_DATABASE_URL:?set a URL with host pg-tunnel and the sole business database}
+      BB_WORKER_HOST_ID: ${BB_WORKER_HOST_ID:?set the verified Azure execution host ID}
       NODE_OPTIONS: --max-old-space-size=768
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
       BB_WORKER_CONCURRENCY: '1'
@@ -49,6 +50,7 @@ services:
     extends: {file: compose.yaml, service: worker-review}
     environment:
       DATABASE_URL: ${BB_EXECUTION_DATABASE_URL:?set a URL with host pg-tunnel and the sole business database}
+      BB_WORKER_HOST_ID: ${BB_WORKER_HOST_ID:?set the verified Azure execution host ID}
       NODE_OPTIONS: --max-old-space-size=768
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
       BB_WORKER_CONCURRENCY: '1'
