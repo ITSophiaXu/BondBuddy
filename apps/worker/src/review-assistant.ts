@@ -6,6 +6,7 @@ import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type Revie
   type ReviewMaterialPin, type ReviewProposal, type ReviewReport, type ReviewEvidenceRef } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { RUN_ACTIVE_EXECUTION_LIMIT_MS } from '@bondbuddy/api/queue';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { emitInternal, internalEvent } from '@bondbuddy/api/observability';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
@@ -422,23 +423,35 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
   if(!lease)return 'idle';
   const controller=new AbortController(),abort=()=>controller.abort();options.signal?.addEventListener('abort',abort,{once:true});
   if(options.signal?.aborted)abort();
+  const active=(await options.pool.query(`SELECT active_execution_ms + CASE WHEN active_started_at IS NULL THEN 0 ELSE
+    GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(now(),COALESCE(lease_until,now()))-active_started_at))*1000)::bigint) END AS used_ms
+    FROM bb_review_messages WHERE id=$1 AND owner_user_id=$2 AND lease_token=$3`,[lease.id,lease.owner_user_id,lease.lease_token])).rows[0];
+  if(!active){options.signal?.removeEventListener('abort',abort);return 'lost';}
+  const budgetMs=Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(active.used_ms));
+  let timeLimitReached=budgetMs===0;
+  const deadlineTimer=budgetMs>0?setTimeout(()=>{timeLimitReached=true;abort();},budgetMs):undefined;
+  if(timeLimitReached)abort();
   let renewing=false;
   const heartbeat=setInterval(()=>{if(renewing)return;renewing=true;void options.pool.query(`UPDATE bb_review_messages
     SET lease_until=now()+make_interval(secs=>$5) WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND lease_token=$4 AND reply_status='running' AND lease_until>now()`,
     [lease.id,lease.owner_user_id,lease.project_id,lease.lease_token,leaseSeconds]).then(result=>{if(!result.rowCount)abort();}).catch(abort).finally(()=>{renewing=false;});},Math.min(15000,leaseSeconds*1000/3));
   heartbeat.unref();
   try {
+    if(timeLimitReached){await finishMessage(options.pool,lease,'failed','TASK_EXECUTION_TIME_LIMIT');return 'failed';}
     const snapshot=reviewAssistantSnapshot(lease),protocol=reviewAssistantProtocol(snapshot),history=await verifyContext(options.pool,lease,snapshot);
     const priorProtocols=(await options.pool.query(`SELECT DISTINCT logical_call_id,result_schema_version FROM bb_review_assistant_attempts
       WHERE message_id=$1 AND owner_user_id=$2 AND project_id=$3`,[lease.id,lease.owner_user_id,lease.project_id])).rows;
     if(priorProtocols.some(old=>old.logical_call_id!==protocol.logicalCallId||old.result_schema_version&&old.result_schema_version!==protocol.resultVersion))fail('ASSISTANT_PROTOCOL_CHANGED');
     const prompt=await promptSnapshot(options.pool,options.blobs,lease,snapshot,history);
+    if(timeLimitReached){await finishMessage(options.pool,lease,'failed','TASK_EXECUTION_TIME_LIMIT');return 'failed';}
     const validate=(value:unknown)=>validReviewAssistantReply(value,snapshot.report,protocol.resultVersion);
     const journal=new ReviewAssistantJournal({pool:options.pool,blobs:options.blobs,lease,validateResult:validate});
     const result=await (options.model??runContainedModelCall)({owner_user_id:lease.owner_user_id,project_id:lease.project_id,
       job_id:lease.id,run_id:lease.id,trace_id:lease.id,logical_call_id:protocol.logicalCallId,prompt_snapshot_ref:prompt.id,prompt:prompt.prompt,
       output:{kind:'json',schema:protocol.schema,validate},result_schema_version:protocol.resultVersion,signal:controller.signal},journal,options.config??loadCodexAdapterConfig());
     await options.afterCall?.();
+    if(timeLimitReached){const status=result.status==='needs_reconcile'?'unknown':'failed';
+      await finishMessage(options.pool,lease,status,'TASK_EXECUTION_TIME_LIMIT');return status;}
     if(result.status==='completed'||result.status==='reused') {
       if(!validate(result.value))fail('ASSISTANT_RESULT_INVALID');
       await finishMessage(options.pool,lease,'completed',null,result.value as AssistantReply);return 'completed';
@@ -448,7 +461,7 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
   } catch(error) {
     if(error instanceof Error&&error.message==='SYNTHETIC_CRASH')throw error;
     if(error instanceof Error&&error.message==='ASSISTANT_LEASE_LOST')return 'lost';
-    const code=error instanceof Problem&&['MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
+    const code=timeLimitReached?'TASK_EXECUTION_TIME_LIMIT':error instanceof Problem&&['MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
       error instanceof Error&&/^(?:ASSISTANT_[A-Z_]+|MODEL_[A-Z_]+)$/.test(error.message)?error.message:'ASSISTANT_PROCESS_INTERRUPTED';
     try {
       const prior=(await options.pool.query('SELECT status FROM bb_review_assistant_attempts WHERE message_id=$1 AND owner_user_id=$2 ORDER BY attempt_no DESC LIMIT 1',[lease.id,lease.owner_user_id])).rows[0];
@@ -457,5 +470,5 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
       const status=prior?.status==='pending_reconcile'?'unknown':'failed';
       await finishMessage(options.pool,lease,status,code);return status;
     } catch {return 'lost';}
-  } finally {clearInterval(heartbeat);options.signal?.removeEventListener('abort',abort);}
+  } finally {clearInterval(heartbeat);if(deadlineTimer)clearTimeout(deadlineTimer);options.signal?.removeEventListener('abort',abort);}
 }

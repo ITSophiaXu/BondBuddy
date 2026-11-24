@@ -3,6 +3,7 @@ import { PDF_QUALITY_STAGE, PDF_QUALITY_VERSION, isPdfQualityJobVersion, readPdf
 import { inspectPdfQuality } from './pdf-quality.js';
 import { ERROR_CODES, type ErrorCode } from '@bondbuddy/contracts';
 import { Problem } from '@bondbuddy/api/data';
+import { remainingJobExecutionMs } from '@bondbuddy/api/queue';
 import {
   claimMaterialParse, completeMaterialParseStage, failMaterialParse, pauseMaterialParse, renewMaterialParse, succeedMaterialParse,
   type MaterialParseLease, type MaterialParseResult,
@@ -127,12 +128,17 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
   dependencies.onLease?.(lease);
   if (!lease) return 'idle';
   const heartbeat = setInterval(() => { void renewMaterialParse(pool, lease, leaseSeconds).catch(() => clearInterval(heartbeat)); }, Math.max(1000, leaseSeconds * 400));
+  const checkExecutionBudget=async()=>{
+    if(await remainingJobExecutionMs(pool,lease.jobId,lease.token)<=0)throw new StageFailure('TASK_EXECUTION_TIME_LIMIT',false);
+  };
   const context = { ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, materialVersion: lease.materialVersion };
   const stage = async (name: 'parse_evidence' | 'historical_profile' | 'ocr_evidence' | typeof PDF_QUALITY_STAGE, value: Record<string, unknown>) => {
+    await checkExecutionBudget();
     await completeMaterialParseStage(pool, lease, name, value);
     await dependencies.afterStage?.(name, lease);
   };
   try {
+    await checkExecutionBudget();
     const material = await activeMaterial(pool, lease);
     const stages = lease.checkpoint.stages ?? {};
     if (isPdfQualityJobVersion(lease.parserVersion)) {
@@ -145,6 +151,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         await stage(PDF_QUALITY_STAGE, {...quality});
       }
       // Completion means the measurement finished, not that the source was parsed or readable.
+      await checkExecutionBudget();
       await succeedMaterialParse(pool, lease, {pdf_quality: readPdfQuality(lease.checkpoint.stages?.[PDF_QUALITY_STAGE])!});
       return 'succeeded';
     }
@@ -237,6 +244,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
     if (needsOcr) {
       const pendingOcr: MaterialParseResult = { outcome: 'pending_ocr', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: ['ocr'] };
       if (!dependencies.ocr || !OCR_MEDIA.includes(material.media_type)) {
+        await checkExecutionBudget();
         await pauseMaterialParse(pool, lease, 'awaiting_ocr', pendingOcr);
         return 'paused';
       }
@@ -255,6 +263,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         }
         catch (error) {
           if (error instanceof Error && error.message === 'OCR_PROCESS_UNAVAILABLE') {
+            await checkExecutionBudget();
             await pauseMaterialParse(pool, lease, 'awaiting_ocr', pendingOcr, 'ocr_unavailable');
             return 'paused';
           }
@@ -283,11 +292,13 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
       }
       // OCR text is evidence to review, never a confirmed fact.
       await produceIssuerObservations();
+      await checkExecutionBudget();
       await succeedMaterialParse(pool, lease, { outcome: 'needs_confirmation', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: [] });
       return 'succeeded';
     }
     const confirmed = parseStatus === 'parsed' && (profile === null || profile.state === 'ready');
     await produceIssuerObservations();
+    await checkExecutionBudget();
     await succeedMaterialParse(pool, lease, { outcome: confirmed ? 'parsed' : 'needs_confirmation', parse_status: parseStatus,
       profile_version: profile?.profile_version ?? null, pending_capabilities: [] });
     return 'succeeded';
