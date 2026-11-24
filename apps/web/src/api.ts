@@ -79,7 +79,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
       ? PROSPECTUS_SELECTION_REQUIRED_MESSAGE
       : '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
     case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
-    case 'TASK_EXECUTION_TIME_LIMIT': return '本次任务累计执行已达 90 分钟，系统已结束处理。排队和暂停等待时间不计入。已保存的材料和阶段结果仍可查看。';
+    case 'TASK_EXECUTION_TIME_LIMIT': return '本次任务累计执行已达 90 分钟，系统未再发起新的模型调用。排队和暂停等待时间不计入；此前已保存的材料和阶段结果仍可查看。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';

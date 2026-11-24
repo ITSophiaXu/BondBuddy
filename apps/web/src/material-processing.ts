@@ -28,7 +28,6 @@ function failureMessage(code: MaterialParseJob['error_code']) {
     case 'MATERIAL_TOO_LARGE': return '文件内容过大，请拆分后重新上传。';
     case 'MATERIAL_FORMAT_UNSUPPORTED': return '暂不支持此文件格式，请转换后重新上传。';
     case 'MATERIAL_PARSE_TIMEOUT': return '文件处理超时，请稍后刷新状态；持续失败时请联系支持。';
-    case 'TASK_EXECUTION_TIME_LIMIT': return '文件累计处理已达 90 分钟，系统已结束处理；排队和暂停等待时间不计入。';
     case 'CAPABILITY_NOT_READY': return '文件处理暂不可用，请稍后刷新状态或联系支持。';
     default: return '文件处理未完成，请稍后刷新状态；持续失败时请联系支持。';
   }
