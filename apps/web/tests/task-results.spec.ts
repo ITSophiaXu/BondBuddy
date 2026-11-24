@@ -6,6 +6,28 @@ import {artifactId,assertFixture,fixture,ids,install,mutations,runId,task} from 
 test.afterEach(({page})=>assertFixture(page));
 const row=(page:import('@playwright/test').Page,id:string)=>page.locator(`[data-project-id="${id}"]`);
 
+test('returning to task progress reuses the loaded list until an explicit refresh',async({page})=>{
+  const state=fixture();await install(page,state);await page.goto('/#tasks');
+  await expect(row(page,ids.a)).toBeVisible();
+  await row(page,ids.a).getByRole('button',{name:'查看进度'}).click();
+  await expect(page.locator(`[data-task-panel="${ids.a}"] [data-run-id]`).first()).toBeVisible();
+  const projectReads=state.projectReads.length,taskReads=state.taskReads.length;
+  await page.evaluate(()=>{location.hash='#/new';});
+  await expect(page.locator('#project-list')).toHaveCount(0);
+  await page.evaluate(()=>{location.hash='#tasks';});
+  await expect(row(page,ids.a)).toBeVisible();
+  await expect(page.locator(`[data-task-panel="${ids.a}"] [data-run-id]`).first()).toBeVisible();
+  expect(state.projectReads).toHaveLength(projectReads);
+  expect(state.taskReads).toHaveLength(taskReads);
+  await page.getByRole('button',{name:'刷新状态',exact:true}).click();
+  await expect.poll(()=>state.projectReads.length).toBe(projectReads+1);
+  await page.evaluate(()=>{location.hash='#/new';});
+  await expect(page.locator('#project-list')).toHaveCount(0);
+  await page.evaluate(()=>{window.dispatchEvent(new Event('bondbuddy:project-collection-changed'));location.hash='#tasks';});
+  await expect.poll(()=>state.projectReads.length).toBe(projectReads+2);
+  expect(mutations(state)).toEqual([]);
+});
+
 test('primary progress and exact result actions are available before expanding, with secondary tools in More',async({page})=>{
   const state=fixture();await install(page,state);await page.goto('/#tasks');
   const a=row(page,ids.a);

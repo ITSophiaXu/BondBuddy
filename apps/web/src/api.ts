@@ -180,6 +180,9 @@ export class ApiClient {
   private controller = new AbortController();
   private refresh: Promise<void> | undefined;
   constructor(private sessionLost: () => void) {}
+  private collectionChanged<T>(request: Promise<T>): Promise<T> {
+    return request.then(value => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('bondbuddy:project-collection-changed')); return value; });
+  }
 
   reset() {
     this.uploadTransports.clear();
@@ -335,10 +338,10 @@ export class ApiClient {
     if (cursor) query.set('cursor', cursor);
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}, signal);
   }
-  archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
+  archiveProject(id: string, archived: boolean) { return this.collectionChanged(this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived })); }
   artifact(id: string, signal?: AbortSignal) { return boundedDownload(signal ?? this.controller.signal, activeSignal => this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, activeSignal)); }
   runAction(id: string, action: 'cancel' | 'resume' | 'pause', signal?: AbortSignal) {
-    return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal);
+    return this.collectionChanged(this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal));
   }
   run(id: string, signal?: AbortSignal) { return this.request<Dto<'RunResponse'>>('GET', `/runs/${encodeURIComponent(id)}`, undefined, {}, signal); }
   inputRevision(id: string, revision: number, signal?: AbortSignal) {
@@ -365,7 +368,7 @@ export class ApiClient {
     return this.request<Dto<'PreflightResponse'>>('POST', `/projects/${encodeURIComponent(id)}/preflight`, input, {}, signal);
   }
   execute(input: Dto<'ExecuteRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'RunResponse'>>('POST', '/runs/execute', input, {}, signal);
+    return this.collectionChanged(this.request<Dto<'RunResponse'>>('POST', '/runs/execute', input, {}, signal));
   }
   runEvents(id: string, after: number, signal?: AbortSignal) {
     return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
@@ -392,7 +395,7 @@ export class ApiClient {
     });
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
-  deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
+  deleteProject(id: string) { return this.collectionChanged(this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`)); }
   async deleteMaterial(id: string, materialId: string) {
     try { await this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
     catch (error) {
@@ -553,7 +556,7 @@ export class ApiClient {
       }
     })();
   }
-  create(input: Dto<'ProjectCreateRequest'>) { return this.request<Dto<'ProjectResponse'>>('POST', '/projects', input); }
+  create(input: Dto<'ProjectCreateRequest'>) { return this.collectionChanged(this.request<Dto<'ProjectResponse'>>('POST', '/projects', input)); }
   patch(id: string, revision: number, input: Dto<'ProjectPatchRequest'>) {
     return this.request<Dto<'ProjectResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}`, input, { 'If-Match': String(revision) });
   }
