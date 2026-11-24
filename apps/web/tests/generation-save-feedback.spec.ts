@@ -11,7 +11,7 @@ type Save={expected_revision:number;preparation:FileGenerationWorkspace['prepara
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 async function setup(page:Page,active=false){
  const transport=await fixture(page);
- const preparation={...emptyFileGenerationPreparation(),workpaper_template_mode:'automatic' as const,catalogue_id:catalogue.catalogue_id,item_ids:['entry-1','entry-2']};
+ const preparation={...emptyFileGenerationPreparation(),document_types:['workpaper' as const],workpaper_template_mode:'automatic' as const,catalogue_id:catalogue.catalogue_id,item_ids:['entry-1','entry-2']};
  const state={data:{revision:1,preparation,sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},pricing:{mode:'automatic',price_version:AUTOMATIC_PRICE_VERSION,workpaper_points:3458,document_points:7965},batches:[]} as FileGenerationWorkspace,saves:[] as Save[],quotes:[] as any[],submissions:[] as any[],transport};
  await page.route('**/api/v1/projects/*/file-generation**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname,body=req.method()==='GET'?undefined:fixtureRequest(req);
@@ -154,7 +154,7 @@ test('document type, year, template and requirements join the latest save snapsh
  const state=await setup(page);let release!:()=>void,calls=0;
  await page.route('**/file-generation/preparation',async route=>{if(++calls===1)await new Promise<void>(r=>release=r);return route.fallback();});
  await first(page).click();await expect.poll(()=>calls).toBe(1);
- await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();
+ await page.locator('[data-fg-type="annual"]').check();
  await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('private|template-annual');
  await page.locator('#fg-requirements').fill('保留合成年度要求');release();
