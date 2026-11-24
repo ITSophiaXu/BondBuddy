@@ -78,6 +78,26 @@ test('a stalled Blob upload ends capture without publishing a partial recovery p
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('one failed upload stops sibling workers before more files start', async () => {
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-file-recovery-stop-siblings-'));
+  try {
+    await workspace(root);
+    for(let i=0;i<30;i++)await writeFile(join(root,'scratch',`part-${i}.txt`),String(i));
+    let started=0,readbacks=0;
+    f.ctx.blobs.put=async()=>{
+      const ordinal=++started;
+      await new Promise(resolve=>setTimeout(resolve,ordinal===1?10:50));
+      if(ordinal===1)throw Error('synthetic storage failure');
+    };
+    f.ctx.blobs.getIfExistsBounded=async()=>{readbacks++;return null;};
+    await assert.rejects(saveFileAuthoringRecovery(f.ctx,root,intent,{checkpoint:f.checkpoint}),/AUTHORING_OUTPUT_STORE_FAILED/);
+    await new Promise(resolve=>setTimeout(resolve,70));
+    assert.ok(started<=8,`started ${started} uploads after failure`);
+    assert.equal(readbacks,0);
+    assert.equal(f.writes(),0);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('a process restart restores all work bytes and the original revision timestamp only after durable authorization', async () => {
   const f = fixture(), root = await mkdtemp(join(tmpdir(), 'bb-file-recovery-'));
   try {
@@ -189,7 +209,10 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
       model_config_version: 'test', reasoning_effort: null, credential: { kind: 'env' as const, name: 'SYNTHETIC_TOKEN' }, work_root: root,
       timeout_ms: 10000, kill_grace_ms: 100, max_output_bytes: 4096, max_schema_reasks: 0, disabled_features: [], path_env: '' };
     let turns = 0;
-    const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint, beginStage:async()=>{}, model: options => ({ name: 'model_generation', run: async () => {
+    const progressStages:string[]=[];
+    const stage = () => fileAuthoringStage({ load: async () => input, config, checkpoint: f.checkpoint,
+      beginStage:async(_pool,_lease,stage)=>{if(stage==='recovery_capture')throw Error('synthetic stage outage');progressStages.push(stage);},
+      model: options => ({ name: 'model_generation', run: async () => {
       turns++; const cwd = join(root, `attempt-${turns}`); await mkdir(cwd);
       await options.fileWorkspace!.prepare(cwd);
       assert.equal(typeof options.config,'object');
@@ -215,6 +238,7 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
       return { kind: 'stopped' };
     } }) });
     assert.equal((await stage().run(f.ctx)).kind, 'stopped');
+    assert.deepEqual(progressStages,['recovery_finalize'],'a stage update outage does not block the durable snapshot');
     const snapshot = (f.ctx.lease.checkpoint.stages as Record<string, unknown>)[FILE_AUTHORING_RECOVERY_STAGE] as FileAuthoringRecovery;
     assert.ok(snapshot.deadline_at);
     f.authorize(snapshot); f.ctx.checkpoint = {};

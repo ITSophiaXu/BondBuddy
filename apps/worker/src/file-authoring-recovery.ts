@@ -166,10 +166,13 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
   let next = 0;
   const captureController=new AbortController();
   const signal=AbortSignal.any([ctx.signal,captureController.signal]);
-  const timer=setTimeout(()=>captureController.abort(),captureTimeoutMs);
-  const timedOut=new Promise<never>((_,reject)=>signal.addEventListener('abort',()=>reject(
-    captureController.signal.aborted?new CaptureError('capture_failed','AUTHORING_RECOVERY_TIMEOUT'):signal.reason),{once:true}));
+  const timer=setTimeout(()=>captureController.abort(new CaptureError('capture_failed','AUTHORING_RECOVERY_TIMEOUT')),captureTimeoutMs);
+  const stopped=new Promise<never>((_,reject)=>{
+    if(signal.aborted)reject(signal.reason);
+    else signal.addEventListener('abort',()=>reject(signal.reason),{once:true});
+  });
   try { await Promise.race([Promise.all(Array.from({ length: workers }, async () => {
+    try {
     while (next < paths.length) {
       signal.throwIfAborted();
       const index = next++;
@@ -187,12 +190,18 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
         if (!stored || stored.length !== bytes.length || digest(stored) !== sha256) throw Error('readback_failed');
       }catch{
         ctx.signal.throwIfAborted();
-        if(captureController.signal.aborted)throw new CaptureError('capture_failed','AUTHORING_RECOVERY_TIMEOUT');
+        if(captureController.signal.aborted)throw captureController.signal.reason;
         throw new CaptureError('storage_failed','AUTHORING_OUTPUT_STORE_FAILED');
       }
       files[index] = { path, key, sha256, byte_size: bytes.length };
     }
-  })),timedOut]); } finally { clearTimeout(timer); }
+    } catch(error) {
+      // Stop siblings before they start another upload. A blocked Blob request
+      // cannot be cancelled by this interface, but no partial manifest is published.
+      captureController.abort(error);
+      throw error;
+    }
+  })),stopped]); } finally { clearTimeout(timer); }
   snapshot.files = files;
   validate(ctx, snapshot, intent.logical_call_id); ctx.signal.throwIfAborted();
   await (options.checkpoint ?? checkpointStage)(ctx.pool, ctx.lease, FILE_AUTHORING_RECOVERY_STAGE, { ...snapshot }, false);
