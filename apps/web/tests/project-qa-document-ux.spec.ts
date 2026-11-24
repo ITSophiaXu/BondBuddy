@@ -57,16 +57,16 @@ for(const width of [1440,390])test(`document QA: upload and delivery at ${width}
   expect(writes(s)).toEqual([]);expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
 });
 
-test('document QA: PDF source upload starts only free preparation',async({page})=>{
+test('document QA: PDF source upload saves the checklist and waits for the required prospectus',async({page})=>{
   const s=fixture();s.allowUploads=true;
   s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};
   await install(page,s);await page.goto(route(null));
   await page.locator('#qa-upload').setInputFiles({name:'合成问题清单.PDF',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 synthetic browser transport fixture')});
-  await expect.poll(()=>s.prepares.length).toBe(1);
+  await expect.poll(()=>s.drafts.length).toBe(1);
   expect(s.uploads[0].media_type).toBe('application/pdf');
-  expect(s.prepares[0].source.pin.sha256).toBe(s.uploads[0].sha256);
-  expect(s.answers).toEqual([]);expect(s.drafts).toEqual([]);
-  await expect(page.locator('.qa-preparation-status')).toContainText('尚未开始回答');
+  expect(s.drafts[0].draft.source?.pin.sha256).toBe(s.uploads[0].sha256);
+  expect(s.answers).toEqual([]);expect(s.prepares).toEqual([]);
+  await expect(page.locator('#project-qa-status')).toContainText('本轮尚未选入项目当前募集说明书');
   await expect(page.locator('.qa-page progress')).toHaveCount(0);
   await expect(page.locator('#qa-download')).toHaveCount(0);
   await expect(page.locator('.qa-missing-list')).toHaveCount(0);

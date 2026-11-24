@@ -46,7 +46,7 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
       }else if(operation==='prepare'){
         await expect(page.locator('.qa-preparation-status')).toContainText('理解问题清单');
         await expect(page.locator('.qa-preparation-status')).toContainText('尚未开始回答');
-        await expect(page.locator('.qa-document')).toContainText('点击“开始回答”才会写回 Word');
+        await expect(page.locator('.qa-document')).toContainText('这是旧版任务的问题识别记录');
         await expect(page.locator('.qa-page progress')).toHaveCount(0);
         await expect(page.locator('#qa-download')).toHaveCount(0);
       }else{
