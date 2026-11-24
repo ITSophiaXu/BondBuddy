@@ -20,6 +20,10 @@
 .qa-upload-compact .qa-upload-copy p{font-size:13px}
 .qa-upload-compact .qa-upload-icon{width:40px;height:40px;border-radius:10px}
 .qa-upload-recovery{flex-basis:100%;text-align:left}
+.qa-preparation-status{flex-basis:100%;padding-top:16px;border-top:1px solid var(--line,#dce2d5);text-align:left;color:var(--muted);font-size:13px}
+.qa-preparation-status h3{margin:0 0 8px;color:var(--ink,#193e32);font-size:15px}
+.qa-preparation-status p{margin:8px 0;line-height:1.6}
+.qa-preparation-status .qa-prepared{width:100%}
 .qa-deliverables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;padding:8px 24px}
 .qa-deliverables>div{display:flex;align-items:start;gap:12px}
 .qa-deliverables svg{width:22px;height:22px;color:#52735e}

@@ -90,8 +90,9 @@ test('qa result next: exact historical questions, supplement and 120-credit conf
   expect(s.drafts).toEqual([{expected_revision:10,draft:{preparation_id:prepareId,questions:[questions[0],questions[2]],materials:[oldMaterial,oldArtifact,material],requirements,use_knowledge:false}}]);
   expect(s.answers[0]).toEqual({request_id:expect.any(String),expected_revision:11,expected_points:2*PROJECT_QA_PRICE.points,price_version:PROJECT_QA_PRICE.version});
   const accepted=[...s.accepted.values()][0],newRun=accepted.run.run_id;await expect(page.locator('#qa-history')).toHaveValue(newRun);await expect(page.locator('.qa-run-head')).toContainText('排队中');await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('#qa-prepare-next')).toHaveCount(0);
-  progress(s,'running');await expect(page.locator('.qa-run-head')).toContainText('处理中',{timeout:7500});expect(s.words.downloads).toEqual([]);expect(s.answers).toHaveLength(1);
-  progress(s,'succeeded');await expect(page.locator('#qa-download')).toBeVisible({timeout:7500});const generated=await exactWord(page,s,newRun),newWord=word(s,newRun);
+  await expect(page.locator('.qa-run-head')).toContainText('等待开始');await expect(page.locator('.qa-page progress')).toHaveCount(0);
+  progress(s,'running');await expect(page.locator('.qa-run-head')).toContainText('处理中',{timeout:7500});await expect(page.locator('.qa-page progress')).toBeVisible();expect(s.words.downloads).toEqual([]);expect(s.answers).toHaveLength(1);
+  progress(s,'succeeded');await expect(page.locator('#qa-download')).toBeVisible({timeout:7500});await expect(page.locator('.qa-page progress')).toHaveCount(0);const generated=await exactWord(page,s,newRun),newWord=word(s,newRun);
   expect(newWord.payload).toContain(accepted.generic.input_hash);expect(newWord.payload).toContain(uploaded.sha256);expect(newWord.payload).toContain(requirements);
   for(const span of snapshot.spans)expect(newWord.payload).toContain(span.text.replaceAll('\n','\\n'));
   expect(JSON.parse(newWord.payload).selected_questions).toEqual([questions[0],questions[2]]);expect(JSON.parse(newWord.payload).original_question_list).toHaveLength(snapshot.spans.length);

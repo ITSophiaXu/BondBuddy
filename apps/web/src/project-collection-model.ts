@@ -3,7 +3,7 @@ export type ProjectItem=Dto<'ProjectListResponse'>['items'][number];
 export type ProjectTask=Dto<'ProjectTasksResponse'>['items'][number];
 export type ProjectFile=Dto<'ProjectFilesResponse'>['items'][number];
 export const taskKinds={update:'更新募集书',review:'复核募集书',generation:'文件生成',qa:'项目问答'};
-export function taskLabel(t:Pick<ProjectTask,'kind'|'operation'>){return t.operation==='workpaper_batch'?'批量生成底稿':t.operation==='workpaper_assessment'?'检查可生成底稿':t.operation==='workpaper_check'?'检查底稿更新影响':t.operation==='qa_prepare'?'识别问题清单':t.operation==='qa_answer'?'项目问答':t.operation==='integrity_check'?'诚信核查':t.operation==='integrity_export'?'导出核查底稿':t.operation==='file_check'?'检查文件一致性':t.operation==='file_patch'?'更新关联文件':taskKinds[t.kind];}
+export function taskLabel(t:Pick<ProjectTask,'kind'|'operation'>){return t.operation==='workpaper_batch'?'批量生成底稿':t.operation==='workpaper_assessment'?'检查可生成底稿':t.operation==='workpaper_check'?'检查底稿更新影响':t.operation==='qa_prepare'?'理解问题清单':t.operation==='qa_answer'?'项目问答 · 回填问题清单':t.operation==='integrity_check'?'诚信核查':t.operation==='integrity_export'?'导出核查底稿':t.operation==='file_check'?'检查文件一致性':t.operation==='file_patch'?'更新关联文件':taskKinds[t.kind];}
 export const activeStates=new Set(['preparing','queued','running','validating','delivering','settlement_pending']);
 export function taskView(t:Pick<ProjectTask,'kind'|'state'|'stage'|'operation'|'workpaper_batch'>){
   const labels:Record<string,string>={preparing:'准备中',queued:'排队中',running:'执行中',awaiting_input:'待补材料',paused:'已暂停',validating:'整理结果',delivering:'准备下载',settlement_pending:'确认结果中',succeeded:'已完成',test_completed:'内部测试稿',failed:'本次未完成',cancelled:'已停止',rejected:'未启动'};
@@ -11,11 +11,27 @@ export function taskView(t:Pick<ProjectTask,'kind'|'state'|'stage'|'operation'|'
   const phases:Record<string,string>={input_lock:'正在准备材料与要求',materials_ready:'正在准备本次材料',word_delivery:'正在准备成果下载',word_delivery_pair:'正在准备成果下载',artifact_registration:'正在保存成果',provider_reconcile:'正在核对执行状态'};
   const unreadableReason=t.operation==='file_patch'&&['failed','rejected'].includes(t.state);
   if((t.operation==='workpaper_assessment'||t.operation==='workpaper_check')&&t.state==='succeeded')details.succeeded='检查结果已保存，可查看';
+  if(t.operation==='qa_prepare'){
+    Object.assign(labels,{preparing:'准备识别',queued:'待识别',running:'识别中',awaiting_input:'待处理',paused:'识别已暂停',validating:'核对问题',delivering:'保存识别结果',settlement_pending:'确认识别结果',succeeded:'已识别',test_completed:'识别测试完成',failed:'识别未完成',cancelled:'识别已停止',rejected:'未开始识别'});
+    details.preparing='正在准备读取问题清单，尚未开始回答';
+    details.queued='等待理解问题清单，尚未开始回答';
+    details.running='正在理解问题清单，尚未开始回答或生成文档';
+    details.awaiting_input='问题识别等待处理，尚未开始回答';
+    details.paused='问题识别已暂停，尚未开始回答';
+    details.validating='正在核对识别的问题，尚未开始回答';
+    details.delivering='正在保存问题识别结果，尚未生成回答文档';
+    details.settlement_pending='正在确认问题识别结果，尚未开始回答';
+    details.succeeded='问题已识别，可确认题目并开始回答';
+    details.test_completed='内部识别测试完成，尚未生成回答文档';
+    details.failed='问题识别未完成，请检查原文件';
+    details.cancelled='问题识别已停止，原文件仍保留';
+    details.rejected='问题识别未开始，请检查原文件';
+  }
   if(t.workpaper_batch?.total!==undefined&&t.workpaper_batch.completed!==undefined){
     details[t.state]=`${t.workpaper_batch.completed} / ${t.workpaper_batch.total} 份完成 · ${details[t.state]}`;
     if(t.state==='failed'&&t.workpaper_batch.completed>0)labels.failed='部分完成';
   }
-  return {label:labels[t.state],detail:unreadableReason?(t.state==='failed'?'本次更新未完成':'本次更新未启动')+'，已保存材料与此前成果保留':(t.state==='running'&&t.stage&&phases[t.stage])||details[t.state],tone:activeStates.has(t.state)?'active':t.state==='succeeded'?'done':'attention',action:unreadableReason?'查看任务':t.state==='succeeded'?'查看结果':activeStates.has(t.state)?'查看进度':['failed','rejected'].includes(t.state)?'查看原因':'查看任务'};
+  return {label:labels[t.state],detail:unreadableReason?(t.state==='failed'?'本次更新未完成':'本次更新未启动')+'，已保存材料与此前成果保留':t.operation==='qa_prepare'?details[t.state]:(t.state==='running'&&t.stage&&phases[t.stage])||details[t.state],tone:activeStates.has(t.state)?'active':t.state==='succeeded'?'done':'attention',action:unreadableReason?'查看任务':t.operation==='qa_prepare'?(t.state==='succeeded'?'继续准备回答':activeStates.has(t.state)?'查看识别状态':['failed','rejected'].includes(t.state)?'查看原因':'查看任务'):t.state==='succeeded'?'查看结果':activeStates.has(t.state)?'查看进度':['failed','rejected'].includes(t.state)?'查看原因':'查看任务'};
 }
 export function taskHref(t:ProjectTask){
   if(t.workpaper_batch)return '#generate?'+new URLSearchParams({from:'projects',project:t.workpaper_batch.project_id,step:'workpapers',view:'results',batch:t.workpaper_batch.batch_id});
