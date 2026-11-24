@@ -14,8 +14,9 @@ const database=await isolatedTestDatabase(undefined,'execution-budget');
 test('90-minute execution budget excludes waiting and stops recovered work before model execution',
   {skip:!database,timeout:60000},async()=>{
     const pool=new Pool({connectionString:database});
-    const blobs:PrivateBlobs={put:async()=>{},get:async()=>Buffer.alloc(0),getIfExists:async()=>null,
-      getIfExistsBounded:async()=>null,exists:async()=>false,delete:async()=>{}};
+    const stored=new Map<string,Buffer>();
+    const blobs:PrivateBlobs={put:async(key,bytes)=>{stored.set(key,bytes);},get:async key=>stored.get(key)!,getIfExists:async key=>stored.get(key)??null,
+      getIfExistsBounded:async key=>stored.get(key)??null,exists:async key=>stored.has(key),delete:async key=>{stored.delete(key);}};
     const owner=`budget-${uid()}`;
     const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
