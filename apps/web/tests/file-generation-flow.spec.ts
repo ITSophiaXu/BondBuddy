@@ -27,6 +27,8 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await expect(page.locator('[data-fg-type="workpaper"]')).not.toBeChecked();
  await expect(page.locator('#fg-workpaper-toggle')).toHaveAttribute('aria-expanded','false');
  await expect(page.locator('#fg-template-setup')).toBeHidden();
+ await page.locator('a[data-flow-step="1"]').click();await expect(page).toHaveURL(/step=source/);
+ await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
  await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeHidden();
  await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeVisible();
  await page.locator('[data-fg-type="workpaper"]').check();
