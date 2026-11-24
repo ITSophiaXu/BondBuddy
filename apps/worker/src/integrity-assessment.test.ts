@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateIntegrityAssessment,integrityInterpretationFeedback} from './integrity-browser-stage.js';
+import {validateIntegrityAssessment,integrityInterpretationFeedback,integrityPromptCaptureMaterial} from './integrity-browser-stage.js';
+import {composeContainedPrompt} from './codex-adapter.js';
+import {scrubSecrets} from '@bondbuddy/api/log-ops';
 const subject={name:'河南合成企业',kind:'company' as const},quote='河南合成企业 被列入被执行人名单，案号（2026）合成执1号。';
 const finding={capture_id:'c',quote,title:'被执行记录',explanation:'记录显示有执行案件，未载明履行情况。',nature:'adverse',subject_match:'company_name'};
 const result={summary:'官网返回记录',findings:[finding]},materials=[{ref:'c',text:quote}];
@@ -25,4 +27,19 @@ test('quote retries identify the exact finding and preserve strict punctuation w
  assert.equal(validateIntegrityAssessment(good,subject,source),true);assert.equal(integrityInterpretationFeedback(good,subject,source),undefined);
  assert.match(integrityInterpretationFeedback({...bad,findings:[{...bad.findings[0],capture_id:'not-a-capture'}]},subject,source)!,/UNKNOWN_CAPTURE findings indexes 0/);
  assert.match(integrityInterpretationFeedback({...good,findings:[{...good.findings[0],subject_match:'company_name'}]},subject,source)!,/UNCONFIRMED_SUBJECT findings indexes 0/);
+});
+
+test('official search URLs with token parameters stay out of interpretation prompts',()=>{
+ const capture={url:'https://so.ndrc.gov.cn/s?siteCode=bm04000007&ssl=1&token=&qt=synthetic',captured_at:'2026-11-24T07:09:19Z'};
+ const visibleText='合成企业搜索结果';
+ const oldPrompt=composeContainedPrompt({instructions:'根据官网截图文字解读结果。',materials:[{ref:'capture-1',text:JSON.stringify({url:capture.url,captured_at:capture.captured_at,subject:'合成企业',text:visibleText})}]});
+ assert.throws(()=>scrubSecrets(oldPrompt),/Diagnostic body rejected/);
+ for(const url of [capture.url,capture.url.replace('token=','token=private-value')]){
+  const material=integrityPromptCaptureMaterial({...capture,url},'国家发展和改革委员会','合成企业',visibleText);
+  const prompt=composeContainedPrompt({instructions:'根据官网截图文字解读结果。',materials:[{ref:'capture-1',text:material}]});
+  assert.doesNotThrow(()=>scrubSecrets(prompt));
+  assert.doesNotMatch(prompt,/token=|private-value|so\.ndrc\.gov\.cn/i);
+  assert.deepEqual(JSON.parse(material),{site_name:'国家发展和改革委员会',captured_at:capture.captured_at,subject:'合成企业',text:visibleText});
+ }
+ assert.match(capture.url,/token=/,'the original capture URL remains available for server-side citation');
 });
