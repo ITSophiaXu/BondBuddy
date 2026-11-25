@@ -6,6 +6,10 @@
 
 输出 output/document.docx 和 output/preparation-note.docx。正文可以含缺项提示，不能用聊天回复替代 Word 文件。
 
+先按模板章节建立一份可继续编辑的工作稿，清理旧项目事实，再按章节核对募集书并逐批填入；不要为了先读完所有材料而一直推迟写入。每完成一组已核对的材料或章节，保存实际工作文件并调用 `bb_continuation.checkpoint` 记录下一步和准确阅读位置。检查点只供续作，不能代替事实核对或成果验收。
+
+若 `selected_template.preview_pdf_path` 存在，使用宿主预先渲染的脱敏 PDF 检查版式。不要在模型文件沙箱内运行 LibreOffice；它的管道错误不能靠重复运行解决。预览不可用时继续使用 Word 结构检查，并在编制说明中标明待核的版式问题。最终成果由宿主另行验证。
+
 完成正文后，建立募集书到成果的引用关联，保存 output/file-links.json，格式：
 {"links":[{"source_span_id":"p12","source_quote":"募集书对应原文","target_span_id":"p9","target_quote":"成果引用原文","field":"发行规模","period":"本期发行","unit":"亿元"}]}
 

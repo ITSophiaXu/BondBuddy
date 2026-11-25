@@ -132,13 +132,24 @@ def locked_input(input_path):
         fail('PATH_UNSAFE')
     raw = regular_bytes(root, absolute)
     data = json_object(raw)
-    if (data.get('version') != 'codex-file-input-v1'
+    if (data.get('version') not in {'codex-file-input-v1', 'm4-file-workspace-v1'}
             or not isinstance(data.get('input_hash'), str) or not HASH.fullmatch(data['input_hash'])):
         fail('INPUT_INVALID')
+    if data['version'] == 'm4-file-workspace-v1':
+        task, output = data.get('task'), data.get('output')
+        if (not isinstance(task, dict) or task.get('kind') not in {'document', 'qa'}
+                or output != ({'document': 'output/document.docx',
+                               'preparation_note': 'output/preparation-note.docx'}
+                              if task['kind'] == 'document' else {'reply': 'output/reply.json'})):
+            fail('INPUT_INVALID')
     return root, data, hashlib.sha256(raw).hexdigest()
 
 
 def output_snapshot(root, data):
+    if data['version'] == 'm4-file-workspace-v1':
+        names = ('document.docx', 'preparation-note.docx') if data['task']['kind'] == 'document' else ('reply.json',)
+        return {'mode': 'm4-' + data['task']['kind'], 'files': {
+            name: fingerprint(root, checked_path(root, 'output/' + name, scope='output')) for name in names}}
     controlled = data.get('format_tools', {}).get('version') == 'controlled-docx-v1'
     names = ['operations.json'] if controlled else ['tracked.docx', 'clean.docx']
     result = {'mode': 'controlled' if controlled else 'direct', 'files': {}}
