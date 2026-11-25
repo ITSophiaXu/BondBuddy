@@ -10,14 +10,15 @@ import { pngSample } from './upload-safety.samples.js';
 
 const PDF = 'application/pdf';
 
-async function sample(kind: 'scan' | 'ocr' | 'electronic' | 'logo' | 'mixed'): Promise<Buffer> {
+async function sample(kind: 'scan' | 'margin-scan' | 'ocr' | 'electronic' | 'logo' | 'chart' | 'mixed'): Promise<Buffer> {
   const document = await PDFDocument.create();
   const image = await document.embedPng(pngSample);
   const first = document.addPage([612, 792]);
   if (kind === 'scan' || kind === 'ocr') first.drawImage(image, { x: 0, y: 0, width: 612, height: 792 });
+  else if (kind === 'margin-scan' || kind === 'chart') first.drawImage(image, { x: 50, y: 80, width: 512, height: 632 });
   else if (kind === 'logo' || kind === 'mixed') first.drawImage(image, { x: 36, y: 700, width: 60, height: 60 });
-  if (kind === 'ocr' || kind === 'electronic' || kind === 'logo' || kind === 'mixed')
-    first.drawText('Electronic document text', { x: 40, y: 600, size: 12 });
+  if (kind === 'ocr' || kind === 'electronic' || kind === 'logo' || kind === 'mixed' || kind === 'chart')
+    first.drawText('Electronic document text with a substantial visible paragraph', { x: 40, y: 600, size: 12 });
   if (kind === 'mixed') {
     const second = document.addPage([612, 792]);
     second.drawImage(image, { x: 0, y: 0, width: 612, height: 792 });
@@ -25,14 +26,14 @@ async function sample(kind: 'scan' | 'ocr' | 'electronic' | 'logo' | 'mixed'): P
   return Buffer.from(await document.save());
 }
 
-for (const kind of ['scan', 'ocr', 'electronic', 'logo', 'mixed'] as const) {
+for (const kind of ['scan', 'margin-scan', 'ocr', 'electronic', 'logo', 'chart', 'mixed'] as const) {
   test(`project material PDF upload gate: ${kind}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bb-scanned-pdf-'));
     const path = join(directory, 'material.pdf');
     const bytes = await sample(kind);
     try {
       await writeFile(path, bytes);
-      if (kind === 'scan' || kind === 'ocr' || kind === 'mixed') {
+      if (kind === 'scan' || kind === 'margin-scan' || kind === 'ocr' || kind === 'mixed') {
         await assert.rejects(inspectMaterialUploadFileDetailed(path, bytes.length, PDF), error =>
           error instanceof UploadSafetyError && error.reason === 'scanned_pdf' && error.status === 422);
       } else {
