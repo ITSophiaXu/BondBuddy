@@ -24,23 +24,33 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await expect(page.locator('#fg-more-types')).toHaveAttribute('aria-expanded','true');
  await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length);
  for(const type of PROJECT_DOCUMENT_CATALOG.map(t=>t.id))await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
- await expect(page.locator('[data-fg-type="workpaper"]')).toBeHidden();
- await expect(page.locator('#fg-workpaper-toggle')).toHaveAttribute('aria-expanded','false');
- await expect(page.locator('#fg-template-setup')).toBeHidden();
+ await expect(page.locator('[data-fg-type="workpaper"],#fg-workpaper-toggle,#fg-template-setup')).toHaveCount(0);
  await expect(page.locator('.fg-history')).toHaveCount(0);
  await page.locator('a[data-flow-step="1"]').click();await expect(page).toHaveURL(/step=source/);
  await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
  await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeHidden();
  await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeVisible();
- await page.locator('#fg-workpaper-toggle').click();
- await expect(page.locator('[data-fg-type="workpaper"]')).toBeVisible();
- await expect(page.locator('#fg-template-setup')).toBeHidden();
- await page.locator('[data-fg-type="workpaper"]').check();
- await expect(page.locator('#fg-workpaper-toggle')).toHaveAttribute('aria-expanded','true');
- await expect(page.locator('.fg-source-card')).toHaveCount(2);
  await capture(page,'file-options-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- await expect(page.locator('#fg-change-templates')).toBeVisible();
- await expect(page.locator('.fg-selected-file strong').filter({hasText:'光大模板'})).toBeVisible();expect(batches(s.state)).toHaveLength(0);
+ expect(batches(s.state)).toHaveLength(0);
+});
+
+test('retired workpaper preparation is cleared while ordinary document choices remain',async({page})=>{
+ await sourceFixture(page,true);
+ const preparation={...emptyFileGenerationPreparation(),document_types:['workpaper' as const],catalogue_id:'old-catalogue',item_ids:['old-item']};
+ let saved:typeof preparation|undefined;
+ await page.route('**/api/v1/projects/*/file-generation',route=>route.fulfill({json:{revision:1,preparation,sets:[],builtin:{name:'内置文件模板',version:'v1',available:false},batches:[]}}));
+ await page.route('**/api/v1/projects/*/file-generation/preparation',async route=>{
+  saved=route.request().postDataJSON().preparation;
+  await route.fulfill({json:{revision:2,preparation:saved}});
+ });
+ await page.goto('/'+href({step:'prepare'}));
+ await expect(page.locator('[data-fg-type="workpaper"],#fg-workpaper-toggle,#fg-template-setup')).toHaveCount(0);
+ await expect(page.locator('[data-fg-type="annual"]')).toBeVisible();
+ await expect(page.locator('.fg-status')).toContainText('已下线');
+ await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
+ await page.getByRole('button',{name:'保存准备清单'}).click();
+ await expect.poll(()=>saved?.document_types).toEqual([]);
+ expect(saved?.catalogue_id).toBeNull();expect(saved?.item_ids).toEqual([]);
 });
 
 for(const existing of [false,true])test(`upload adopts saved source and waits for explicit next, existing=${existing}`,async({page})=>{
