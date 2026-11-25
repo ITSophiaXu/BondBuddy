@@ -53,6 +53,18 @@ async function billingContractRecoverable(client:PoolClient,r:any,j:any){
   return false;
 }
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
+export const RUN_ACTIVE_EXECUTION_LIMIT_MS = 90 * 60 * 1000;
+
+/** Remaining execution time for a leased job; queued and paused time never enters the sum. */
+export async function remainingJobExecutionMs(pool:Pool|PoolClient, jobId:string, token:string):Promise<number> {
+  const row=(await pool.query(`SELECT active_execution_ms + CASE WHEN state='running' AND active_started_at IS NOT NULL
+      THEN GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(clock_timestamp(),COALESCE(lease_until,clock_timestamp()))-active_started_at))*1000)::bigint)
+      ELSE 0 END AS used_ms
+    FROM bb_jobs WHERE id=$1 AND lease_token=$2`,[jobId,token])).rows[0];
+  if(!row)throw new Problem(409,'ALREADY_TERMINAL','Worker lease is no longer active');
+  return Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(row.used_ms));
+}
+export const remainingRunExecutionMs=(pool:Pool,lease:Lease)=>remainingJobExecutionMs(pool,lease.jobId,lease.token);
 export type RunKind = typeof TASK_KINDS[number];
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
   if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
@@ -256,6 +268,10 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
   await guardEvidenceWrite(pool,'call_intent_not_persisted',()=>transaction(pool,async client=>{
     await assertGateOpen(client);
     const {r,j}=await lockedLease(client,lease);
+    // The limit gates a NEW provider attempt only. Completed results, checkpoints and
+    // document delivery remain usable after the 90-minute mark.
+    if(await remainingJobExecutionMs(client,j.id,lease.token)<=0)
+      throw new Problem(409,'TASK_EXECUTION_TIME_LIMIT','Active task execution reached 90 minutes');
     // The first host intent binds this logical call even across ordinary operator
     // retries. A later attempt cannot remove, extend, or replace its deadline.
     const deadlines=Object.values(j.checkpoint?.file_authoring_recovery_captures??{}) as FileAuthoringCapture[];

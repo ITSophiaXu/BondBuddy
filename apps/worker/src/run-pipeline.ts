@@ -802,6 +802,17 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    if(error instanceof Problem && error.code==='TASK_EXECUTION_TIME_LIMIT') {
+      try { await finish(pool,lease,'failed',{errorCode:error.code,failedStage:currentStage}); return 'failed'; }
+      catch(finishError) {
+        if(finishError instanceof Problem && finishError.code==='CAPABILITY_NOT_READY') {
+          await pauseRun(pool,lease,'provider_reconcile','execution_time_limit_pending_reconcile');
+          return 'paused';
+        }
+        if(lost(finishError))return 'lost';
+        throw finishError;
+      }
+    }
     if (error instanceof TrialLimitProblem) {
       if (error.limit === 'operator_deny') {
         await finish(pool, lease, 'failed', { errorCode: error.code, failedStage: currentStage });

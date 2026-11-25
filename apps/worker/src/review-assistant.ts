@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from 'pg';
+import type { Pool, PoolClient, QueryConfig } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type ReviewContext, type ReviewDraft,
   ReviewAssistantReplyV1Schema, ReviewAssistantReplyV2Schema, isReviewProposalV2,
@@ -6,6 +6,7 @@ import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type Revie
   type ReviewMaterialPin, type ReviewProposal, type ReviewReport, type ReviewEvidenceRef } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { RUN_ACTIVE_EXECUTION_LIMIT_MS } from '@bondbuddy/api/queue';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { emitInternal, internalEvent } from '@bondbuddy/api/observability';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
@@ -16,6 +17,7 @@ import { composeContainedPrompt, loadCodexAdapterConfig, runContainedModelCall, 
   type CodexJournal, type PriorAttempt } from './codex-adapter.js';
 import { getParseSnapshotForMaterialJob } from './parse-evidence-repository.js';
 import type { DocumentParseRecord } from './document-parser.js';
+import type { ModelGatewayRecord } from './model-gateway.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
 
 type ReplyVersion='review-assistant-reply-v1'|'review-assistant-reply-v2';
@@ -299,6 +301,19 @@ export class ReviewAssistantJournal implements CodexJournal {
       ||intent.prompt_snapshot_ref!==lease.prompt_snapshot_id||!safeId(intent.call_id)||!Number.isSafeInteger(intent.attempt_no)||intent.attempt_no<1)
       fail('ASSISTANT_ATTEMPT_SCOPE_MISMATCH');
   }
+  async recordGatewayRequest(intent:ProviderCallIntent,record:ModelGatewayRecord):Promise<void> {
+    this.scope(intent);
+    const response=record.response,usage=response?.usage;
+    await this.options.pool.query({text:`INSERT INTO bb_review_assistant_http_request_usage
+      (attempt_id,seq,owner_user_id,project_id,message_id,model_id,started_at,outcome,upstream_attempted,http_status,
+       upstream_request_id,response_id,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      ON CONFLICT(attempt_id,seq) DO NOTHING`,values:
+      [intent.call_id,record.seq,intent.owner_user_id,intent.project_id,this.options.lease.id,intent.model_id,
+        record.started_at,record.outcome,record.upstream_attempted===true,response?.status??null,response?.upstream_request_id??null,
+        response?.response_id??null,usage?.input_tokens??null,usage?.cached_input_tokens??null,
+        usage?.output_tokens??null,usage?.reasoning_tokens??null,usage?.total_tokens??null],query_timeout:5000} as QueryConfig);
+  }
   private async attempt(client:PoolClient,intent:ProviderCallIntent) {
     this.scope(intent);await lockedMessage(client,this.options.lease);
     const row=(await client.query('SELECT * FROM bb_review_assistant_attempts WHERE id=$1 AND message_id=$2 AND owner_user_id=$3 AND project_id=$4 FOR UPDATE',
@@ -314,6 +329,11 @@ export class ReviewAssistantJournal implements CodexJournal {
     await guardEvidenceWrite(this.options.pool,'assistant_call_intent_not_persisted',()=>transaction(this.options.pool,async client=>{
       await assertGateOpen(client);
       await lockedMessage(client,this.options.lease);
+      const active=(await client.query(`SELECT active_execution_ms + CASE WHEN active_started_at IS NULL THEN 0 ELSE
+        GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(clock_timestamp(),COALESCE(lease_until,clock_timestamp()))-active_started_at))*1000)::bigint)
+        END AS used_ms FROM bb_review_messages WHERE id=$1`,[this.options.lease.id])).rows[0];
+      if(Number(active.used_ms)>=RUN_ACTIVE_EXECUTION_LIMIT_MS)
+        throw new Problem(409,'TASK_EXECUTION_TIME_LIMIT','Active task execution reached 90 minutes');
       await assertModelCallAllowed(client,trialGuardConfig(),intent.owner_user_id);
       if((await client.query('SELECT 1 FROM bb_review_assistant_attempts WHERE message_id=$1 AND logical_call_id<>$2 LIMIT 1',
         [this.options.lease.id,this.protocol.logicalCallId])).rowCount)fail('ASSISTANT_PROTOCOL_CHANGED');
@@ -448,7 +468,7 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
   } catch(error) {
     if(error instanceof Error&&error.message==='SYNTHETIC_CRASH')throw error;
     if(error instanceof Error&&error.message==='ASSISTANT_LEASE_LOST')return 'lost';
-    const code=error instanceof Problem&&['MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
+    const code=error instanceof Problem&&['TASK_EXECUTION_TIME_LIMIT','MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
       error instanceof Error&&/^(?:ASSISTANT_[A-Z_]+|MODEL_[A-Z_]+)$/.test(error.message)?error.message:'ASSISTANT_PROCESS_INTERRUPTED';
     try {
       const prior=(await options.pool.query('SELECT status FROM bb_review_assistant_attempts WHERE message_id=$1 AND owner_user_id=$2 ORDER BY attempt_no DESC LIMIT 1',[lease.id,lease.owner_user_id])).rows[0];

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { Pool } from 'pg';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
+import { RUN_ACTIVE_EXECUTION_LIMIT_MS } from '@bondbuddy/api/queue';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { isReviewProposalV2, type ReviewContext, type ReviewDraft, type ReviewReport } from '@bondbuddy/contracts';
@@ -136,6 +137,25 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
   const deny=async(owner:string)=>{await pool.query(`INSERT INTO bb_trial_overrides(id,user_id,effect,reason_code,actor_id)
     VALUES($1,$2,'deny','synthetic_assistant_guard','synthetic-operator')`,[randomUUID(),owner]);};
   try {
+    await t.test('90-minute limit rejects only a new assistant model attempt',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue();
+      await pool.query('UPDATE bb_review_messages SET active_execution_ms=$2 WHERE id=$1',[m.id,RUN_ACTIVE_EXECUTION_LIMIT_MS]);
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+      assert.equal((await f.row(m.id)).error,'TASK_EXECUTION_TIME_LIMIT');
+      assert.equal(await f.attempt(m.id),undefined);
+      assert.equal(await f.sends(),0);
+    });
+
+    await t.test('a valid assistant answer returned after 90 minutes is accepted',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue();
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(),afterCall:async()=>{
+        await pool.query('UPDATE bb_review_messages SET active_execution_ms=$2 WHERE id=$1',[m.id,RUN_ACTIVE_EXECUTION_LIMIT_MS]);
+      }}),'completed');
+      assert.equal((await f.row(m.id)).error,null);
+      assert.equal((await f.replies(m.id))[0].content,plainReply.content);
+      assert.equal(await f.sends(),1);
+    });
+
     await t.test('closed evidence gate, operator kill switch and account deny prevent new sends without fabricated usage',async ctx=>{
       for(const gate of ['evidence','kill','deny'] as const) {
         const f=await fixture(ctx),m=await f.queue();
