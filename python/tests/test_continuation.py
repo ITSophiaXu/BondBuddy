@@ -69,6 +69,33 @@ class ContinuationTests(unittest.TestCase):
         self.assertEqual(result['output_snapshot']['files']['operations.json']['operation_count'], 0)
         self.assertEqual(result['input_sha256'], digest(self.input.read_bytes()))
 
+    def test_m4_document_checkpoint_tracks_actual_word_outputs(self):
+        self.data = {'version': 'm4-file-workspace-v1', 'input_hash': 'a' * 64,
+                     'task': {'kind': 'document'},
+                     'output': {'document': 'output/document.docx',
+                                'preparation_note': 'output/preparation-note.docx'}}
+        self.input.write_bytes(encoded(self.data))
+        self.progress['phase'] = 'analyze'
+        first = self.checkpoint()
+        self.assertEqual(first['status'], 'current')
+        self.assertEqual(first['output_snapshot']['mode'], 'm4-document')
+        self.assertEqual(first['output_snapshot']['files']['document.docx']['state'], 'missing')
+        (self.root / 'output/document.docx').write_bytes(b'SYNTHETIC_DOCX')
+        changed = status(self.input)
+        self.assertEqual(changed['status'], 'stale')
+        self.assertEqual(changed['output_snapshot']['files']['document.docx']['state'], 'present')
+        self.assertEqual(self.checkpoint()['status'], 'current')
+
+    def test_m4_qa_checkpoint_and_wrong_output_contract(self):
+        self.data = {'version': 'm4-file-workspace-v1', 'input_hash': 'a' * 64,
+                     'task': {'kind': 'qa'}, 'output': {'reply': 'output/reply.json'}}
+        self.input.write_bytes(encoded(self.data))
+        self.assertEqual(self.checkpoint()['output_snapshot']['mode'], 'm4-qa')
+        self.data['output'] = {'document': 'output/document.docx'}
+        self.input.write_bytes(encoded(self.data))
+        with self.assertRaisesRegex(ValueError, 'INPUT_INVALID'):
+            status(self.input)
+
     def test_operations_changes_stale_notes_but_preserves_next_step(self):
         self.checkpoint()
         self.log['operations'].append({'id': 'synthetic_1', 'kind': 'replace_text'})

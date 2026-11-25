@@ -97,6 +97,10 @@ for(const sharedSource of [false,true])test(`selected Word is copied with tables
   if(sharedSource){manifest.input.source_material=pin;manifest.input.materials=[pin];f.input.materials=f.input.materials.filter(file=>file.pin.material_id===pin.material_id);}
   const originals=await prepareM4Files(f.ctx,f.input,loadM4RuntimeSkill('m4-workpaper'),f.directory),data=JSON.parse(await readFile(join(f.directory,'input.json'),'utf8'));
   assert.equal(data.selected_template.template_version,3);assert.equal(digest(await readFile(join(f.directory,data.selected_template.original_path))),pin.sha256);
+  if(data.selected_template.preview_pdf_path){
+    assert.equal((await readFile(join(f.directory,data.selected_template.preview_pdf_path))).subarray(0,5).toString(),'%PDF-');
+    assert.ok(originals.has(data.selected_template.preview_pdf_path));
+  }else assert.ok(['renderer_unavailable','render_failed'].includes(data.selected_template.preview_status));
   assert.equal(data.authorized_sources.some((s:{id:string})=>s.id===pin.material_id),sharedSource,'template facts are evidence only when explicitly selected as the source');
   await runFile(python,['-B','-c',`from docx import Document\nfrom docx.shared import Cm\nimport sys\nd=Document(sys.argv[1]);assert len(d.tables)==1;assert len(d.tables[0].rows)==2;assert abs(d.sections[0].left_margin-Cm(2.7))<1000;assert d.sections[0].header.paragraphs[0].text=='Synthetic header';d.tables[0].cell(1,1).text='新值';d.save(sys.argv[1])`,join(f.directory,data.selected_template.working_copy_path)],{cwd:root,timeout:30000});
   await verifyM4Originals(f.directory,originals);assert.equal(digest(f.store.get('template')!),pin.sha256);
@@ -121,6 +125,9 @@ test(`M4 ${market}/${documentType} single CLI file task receives knowledge/requi
       assert.deepEqual(input.requirements,['不要生成签署页','重点说明偿债安排，保留财务表格']);assert.equal(input.knowledge.market,market);
       assert.equal(input.knowledge.document_type,documentType);
       assert.equal(await readFile(join(f.directory,input.knowledge.path),'utf8'),manifest.knowledge!.content);
+      assert.equal(input.task.knowledge.sha256,manifest.knowledge!.sha256);
+      assert.equal(input.task.knowledge.content,undefined);
+      assert.equal(input.task.knowledge.template?.docx_base64,undefined);
       assert.equal(input.skill.id,documentType==='private_summary'?'m4-private-summary':`m4-${documentType}`);
       await outputWords(f.directory);
       return {kind:'done',value:await options.fileWorkspace.collect(f.directory,{call_id:'synthetic-call'} as never,{text:'Synthetic final text'})};

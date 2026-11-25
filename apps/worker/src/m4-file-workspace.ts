@@ -25,7 +25,9 @@ const helpers = [['python/bondbuddy_m4_render_template.py','render_template.py']
 export async function m4ToolHashes() {
   const entries=await Promise.all([...helpers, ['python/bondbuddy_file_authoring/effective_source.py','effective_source.py'] as const,
     ['python/bondbuddy_file_authoring/check.py','accepted_docx_check.py'] as const,
-    ['python/bondbuddy_m4_preview.py','artifact_preview.py'] as const].map(async ([path,name])=>[name,digest(await readFile(join(root,path)))]));
+    ['python/bondbuddy_m4_preview.py','artifact_preview.py'] as const,
+    ['python/bondbuddy_template_preview.py','template_preview.py'] as const,
+    ['python/bondbuddy_template_redaction.py','template_redaction.py'] as const].map(async ([path,name])=>[name,digest(await readFile(join(root,path)))]));
   return Object.fromEntries(entries) as Record<string,string>;
 }
 export function m4AuthorizedSources(input:M4WorkerInput) {
@@ -112,8 +114,36 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     await copyFile(join(cwd,chosen.effective_path),join(cwd,working_copy_path));
     await chmod(join(cwd,working_copy_path),0o600);
     selected_template={...input.manifest.input.template,original_path:chosen.path,effective_path:chosen.effective_path,working_copy_path};
+    // LibreOffice needs named pipes which the model's file sandbox may reject.
+    // Render the de-identified template once on the worker host instead.
+    const preview_path='scratch/template-preview.pdf';
+    try {
+      await withPerformanceSpan('workspace.template_preview',{},()=>runFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+        ['-B','-m','bondbuddy_template_preview',join(cwd,working_copy_path),join(cwd,preview_path)],
+        {cwd:root,env:{...process.env,PYTHONPATH:join(root,'python'),PYTHONDONTWRITEBYTECODE:'1'},
+          signal:ctx.signal,timeout:60000,maxBuffer:8192}));
+      originals.set(preview_path,digest(await checkedM4File(cwd,preview_path,16*1024*1024)));
+      selected_template={...selected_template,preview_pdf_path:preview_path};
+    } catch (error) {
+      if (ctx.signal.aborted) throw error;
+      // Only a fixed diagnostic code enters the workspace; subprocess output and
+      // source paths must never become model context or a public progress event.
+      const stderr=String((error as {stderr?:unknown})?.stderr??'');
+      selected_template={...selected_template,preview_status:stderr.includes('TEMPLATE_RENDERER_UNAVAILABLE')
+        ?'renderer_unavailable':'render_failed'};
+    }
   }
-  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task: input.manifest,knowledge,selected_template,
+  // The trusted manifest pins full knowledge bytes, including a base64 Word
+  // template. The model already receives those as separate bounded files;
+  // embedding them again in input.json makes every continuation reread a large
+  // duplicate and can exhaust the provider request budget.
+  const task = input.manifest.kind==='document'&&input.manifest.knowledge
+    ? {...input.manifest,knowledge:{...input.manifest.knowledge,content:undefined,
+      template:input.manifest.knowledge.template
+        ?{id:input.manifest.knowledge.template.id,version:input.manifest.knowledge.template.version,
+          sha256:input.manifest.knowledge.template.sha256}:undefined}}
+    :input.manifest;
+  const data = {version: 'm4-file-workspace-v1', input_hash: ctx.run.input_hash.trim(), task,knowledge,selected_template,
     requirements: input.manifest.kind === 'document' ? [...input.manifest.input.requirements.map(r => r.text),
       ...(input.manifest.input.supplemental_requirements?.trim() ? [input.manifest.input.supplemental_requirements.trim()] : [])] : [],
     materials: material, artifacts, authorized_sources:m4AuthorizedSources(input), skill: {id: skill.id, version: skill.version, sha256: skill.sha256},

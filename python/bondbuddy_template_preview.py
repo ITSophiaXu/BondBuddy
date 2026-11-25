@@ -1,5 +1,5 @@
 """Render only an allowlisted, de-identified derivative, never the original."""
-import argparse,os,shutil,subprocess,tempfile
+import argparse,os,shutil,subprocess,sys,tempfile
 from pathlib import Path
 from bondbuddy_template_redaction import sanitize_docx,assert_safe_preview
 
@@ -22,4 +22,9 @@ def render(source:Path,destination:Path):
         with destination.open('wb') as f:writer.write(f)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('destination',type=Path);args=p.parse_args();render(args.source,args.destination)
+    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('destination',type=Path);args=p.parse_args()
+    try:render(args.source,args.destination)
+    except Exception as error:
+        print('TEMPLATE_RENDERER_UNAVAILABLE' if str(error)=='TEMPLATE_RENDERER_UNAVAILABLE'
+              else 'TEMPLATE_PREVIEW_FAILED',file=sys.stderr)
+        raise SystemExit(1)

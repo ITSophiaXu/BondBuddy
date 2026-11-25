@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas, type ReviewAction } from '@bondbuddy/contracts';
 import { createReviewActionObserver } from './review-action-progress.js';
-import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, FILE_AUTHORING_COMPACT_PROMPT, FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, loadCodexAdapterConfig, modelCancellationDiagnostic, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { assertCodexConfig, buildCodexArgs, classifyCodexResult, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, FILE_AUTHORING_COMPACT_PROMPT, FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_WORKSPACE_COMPACT_PROMPT, FILE_WORKSPACE_CONTINUATION_INSTRUCTIONS, loadCodexAdapterConfig, modelCancellationDiagnostic, normalizeCodexOutputSchema, normalizeCodexUsage, runCodexProcess, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 import {ModelResultStoreFailure} from './durable-probe-journal.js';
@@ -476,7 +476,7 @@ test('file authoring and recovery retain the same 128k compaction headroom with 
   const config = loadCodexAdapterConfig({});
   for (const recovery of [false, true]) {
     const args = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true,
-      resumeThreadId: null, fileAuthoring: true, fileRecovery: recovery });
+      resumeThreadId: null, fileAuthoring: true, fileRecovery: recovery, fileCompletion: true });
     assert.ok(args.some((value, index) => value === 'view_image' && args[index - 1] === '--disable'));
     assert.ok(!args.some((value, index) => value === 'view_image' && args[index - 1] === '--enable'));
     assert.ok(args.includes('mcp_servers.bb_images.enabled_tools=["view_image"]'));
@@ -491,6 +491,11 @@ test('file authoring and recovery retain the same 128k compaction headroom with 
     assert.ok(args.includes(`compact_prompt=${JSON.stringify(FILE_AUTHORING_COMPACT_PROMPT)}`));
     assert.ok(args.includes('--ephemeral'));
   }
+  const m4 = buildCodexArgs(config, { cwd: '/synthetic/m4-workspace', schemaFile: null, ephemeral: true,
+    resumeThreadId: null, fileAuthoring: true });
+  assert.ok(m4.includes(`developer_instructions=${JSON.stringify(FILE_WORKSPACE_CONTINUATION_INSTRUCTIONS)}`));
+  assert.ok(m4.includes(`compact_prompt=${JSON.stringify(FILE_WORKSPACE_COMPACT_PROMPT)}`));
+  assert.ok(!m4.includes(`developer_instructions=${JSON.stringify(FILE_AUTHORING_CONTINUATION_INSTRUCTIONS)}`));
   const ordinary = buildCodexArgs(config, { cwd: '/synthetic/workspace', schemaFile: null, ephemeral: true, resumeThreadId: null });
   assert.ok(!ordinary.some(arg => /^(developer_instructions|compact_prompt)=/.test(arg)), 'non-file calls retain their own instruction policy');
   for (const text of [FILE_AUTHORING_CONTINUATION_INSTRUCTIONS, FILE_AUTHORING_COMPACT_PROMPT]) {
