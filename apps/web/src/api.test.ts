@@ -61,7 +61,7 @@ test('an active source-project run has a safe business message distinct from dra
   assert.match(friendlyError(error),/同一来源项目已有任务正在执行/);assert.match(friendlyError(error),/草稿保留/);assert.doesNotMatch(friendlyError(error),/其他页面|worker|provider|Synthetic/);
   assert.match(friendlyError(new ApiError(409,'INPUT_REVISION_CONFLICT')),/其他页面修改/);
 });
-import { uploadErrorMessage } from './upload-error.js';
+import { uploadErrorMessage, uploadNeedsReplacement } from './upload-error.js';
 
 test('start limits describe the recovery action without trusting server prose', () => {
   for (const [limit, expected] of [
@@ -114,6 +114,16 @@ test('public inspection detail is carried from Error.field_errors to the upload 
   assert.match(uploadErrorMessage(error), /保留原文件/);
   assert.match(uploadErrorMessage(error), /错误编号：synthetic-upload-1/);
   assert.doesNotMatch(uploadErrorMessage(error), /文件.*损坏|重新导出/);
+});
+
+test('scanned PDF upload asks for an electronic replacement', () => {
+  const error = parseApiError(422, {
+    code: 'MATERIAL_UNREADABLE', retryable: false, correlation_id: 'synthetic-scan',
+    field_errors: [{ field: 'material_upload', code: 'scanned_pdf', message: 'opaque' }],
+  });
+  assert.match(uploadErrorMessage(error), /图片扫描件/);
+  assert.match(uploadErrorMessage(error), /电子版 PDF 或 Word/);
+  assert.equal(uploadNeedsReplacement(error), true);
 });
 
 test('timeout is a temporary inspection failure; missing and untrusted details never imply corruption', () => {

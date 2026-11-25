@@ -1,9 +1,10 @@
 import { stat } from 'node:fs/promises';
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, type UploadMediaType } from '@bondbuddy/contracts';
 import { UploadSafetyError, type UploadInspectionResult } from './upload-safety.js';
+import { assertElectronicPdf } from './scanned-pdf-upload.js';
 
-// Project uploads are opaque originals. The API never opens document content;
-// the explicit Codex task handles reading, OCR and content interpretation.
+// Project uploads retain their original bytes. PDF admission checks only page
+// image coverage; the explicit Codex task handles reading and interpretation.
 function declaration(byteSize: number, mediaType: string): UploadInspectionResult {
   if (!Number.isSafeInteger(byteSize) || byteSize < 1 || byteSize > M1_UPLOAD_LIMITS.fileBytes)
     throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material exceeds the upload size limit', 'size_limit');
@@ -25,5 +26,6 @@ export async function inspectMaterialUploadFileDetailed(path: string, byteSize: 
   const file = await stat(path);
   if (!file.isFile() || file.size !== byteSize)
     throw new UploadSafetyError(422, 'MATERIAL_CONTENT_MISMATCH', 'Stored file size differs from the upload', 'content_mismatch');
+  if (mediaType === 'application/pdf') await assertElectronicPdf(path);
   return result;
 }

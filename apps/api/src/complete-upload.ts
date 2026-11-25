@@ -161,7 +161,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
   // The same-origin API already streamed, hashed and inspected these bytes
   // before storing them. Reuse that ingress proof only for the exact Blob
   // version it wrote; legacy uploads and changed objects retain the full read.
-  if(!direct&&u.state==='received'&&u.received_etag&&u.received_media_type&&blobs.headVersion
+  if(!direct&&u.declared_media_type!=='application/pdf'&&u.state==='received'&&u.received_etag&&u.received_media_type&&blobs.headVersion
     &&u.received_sha256?.trim()===b.sha256&&Number(u.received_bytes)===b.byte_size){
     const stored=await boundedVersion(blobs,u.object_key);
     if(stored&&stored.etag===u.received_etag&&stored.byteSize===b.byte_size){
