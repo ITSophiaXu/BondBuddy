@@ -377,8 +377,11 @@ function fileAuthoringDeliveryAttempt(options:DeliveryOptions,round:number):RunS
         const saved=await ctx.blobs.getIfExistsBounded(key,FORMAT_JSON_MAX);
         if(!saved||digest(saved)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
         const repair=await fileAuthoringStage({load:options.load,directRepair:{previous:value,feedback:{key,sha256,byte_size:feedback.length}}}).run(ctx);
+        if(repair.kind==='fail')return {kind:'fail',code:'DIRECT_FINANCIAL_MISMATCH',
+          checkpoint:{...draft,repair_error:repair.code}};
         if(repair.kind!=='done')return repair;
-        if(!validFileResult(repair.value,ctx)||!validDirectInputs(repair.value,ctx))return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
+        if(!validFileResult(repair.value,ctx)||!validDirectInputs(repair.value,ctx))return {kind:'fail',
+          code:'DIRECT_FINANCIAL_MISMATCH',checkpoint:{...draft,repair_error:'WORD_QUALITY_REJECTED'}};
         candidate=repair.value;
         await (options.checkpoint??checkpointStage)(ctx.pool,ctx.lease,'direct_financial_repair_v1',candidate,false);
         ctx.checkpoint.direct_financial_repair_v1=candidate;
