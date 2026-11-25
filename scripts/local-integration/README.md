@@ -107,7 +107,7 @@ node scripts/local-integration/status.mjs
 
 2026-10-12 的依赖构建记录：由于本地网络对 npm/files.pythonhosted.org 的 TLS 握手失败，Python 包经清华 PyPI 镜像获取，逐包对照官方 PyPI 发布的 SHA256。没有关闭 TLS 校验。Linux 镜像包含固定版本 Tesseract 与中文/英文/方向检测数据、Python 文档依赖和冻结的产品编译结果；详细依赖版本保存在镜像 `/opt/venv/install-report.json`。M3/M4 共 10 份运行资源通过产品 manifest/hash 校验；当时的固定镜像为 `sha256:bf8a9d10635a910532912abf1579f152bb4e1bdd8c25eb02587d344c92634487`，不代表已包含本次升级。
 
-模型认证从已有 `gh auth token --hostname github.com` 获取，经本机已配置的 `https://api.enterprise.githubcopilot.com` 直接认证。它与生产的 OAuth 交换 helper 不同，替换仅存在于本地镜像。令牌存于 `%LOCALAPPDATA%/BondBuddy/local-integration-20261012/model-token`，只允许当前用户和 SYSTEM 读取；不进入 OneDrive、仓库、镜像层或日志。worker 启动时刷新该文件，以只读方式挂载到容器。没有继承或访问生产数据库/存储。
+模型认证从已有 `gh auth token --hostname github.com --user yingx_microsoft` 获取，不改变 GitHub CLI 的全局活动账号。可用 `BB_LOCAL_COPILOT_GITHUB_USER` 为其他本地测试账号覆写该用户名。它经本机已配置的 `https://api.enterprise.githubcopilot.com` 直接认证，与生产的 OAuth 交换 helper 不同。令牌存于 `%LOCALAPPDATA%/BondBuddy/local-integration-<instance>/model-token`，只允许当前用户和 SYSTEM 读取；不进入 OneDrive、仓库、镜像层或日志。worker 启动时刷新该文件，以只读方式挂载到容器。没有继承或访问生产数据库/存储。
 
 容器保持非 root、只读根目录、cap-drop ALL、no-new-privileges、固定 seccomp、独立暂存卷与进程/内存限额。Docker Desktop 不提供 AppArmor。CLI 0.154 会在应用 deny mask 后挂载新 procfs；本地 seccomp 额外禁止 bundled bwrap 的 proc 挂载标志 `14`，使 CLI 走官方 no-proc 分支并保留 `/proc` 拒绝规则。规则只收紧生产 seccomp，不启用 privileged/unconfined，不修改产品沙箱检查或官方二进制。实际正反向检查验证输入可读、scratch/output 可写，输入及任务根不可写，邻目录、凭据、`/proc/1/environ`、`/proc/self/environ` 和 mountinfo 不可读，命令网络被拒绝。
 

@@ -52,7 +52,7 @@ export const codexNoLookupReconciler: ProviderCallReconciler = { name: 'codex_no
 
 export type WorkerRuntimeOptions = {
   pool: Pool; blobs: PrivateBlobs;
-  concurrency?: number; parseSlots?: number; interactiveSlots?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
+  concurrency?: number; directUpdateSlots?: number; parseSlots?: number; interactiveSlots?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   /** Private scheduling filter; task kinds come from the shared contract. */
   runKinds?: readonly RunKind[];
@@ -115,7 +115,7 @@ export class WorkerRuntime {
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates' | 'workerHostId'>;
 
   constructor(options: WorkerRuntimeOptions) {
-    this.o = { concurrency: 2, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
+    this.o = { concurrency: 2, directUpdateSlots: 0, parseSlots: 1, interactiveSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runKinds: checkedRunKinds(),
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
@@ -132,6 +132,8 @@ export class WorkerRuntime {
         ? createMaterialsReadyStage(options.factCandidateProducer) : stage);
     }
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
+    if (!Number.isInteger(this.o.directUpdateSlots) || this.o.directUpdateSlots < 0 || this.o.directUpdateSlots > this.o.concurrency ||
+      (this.o.runKinds.includes('update_direct') !== (this.o.directUpdateSlots > 0))) throw new Error('Invalid direct update slots');
     if (!Number.isInteger(this.o.interactiveSlots) || this.o.interactiveSlots < 0 || this.o.interactiveSlots > 4) throw new Error('Invalid worker interactive slots');
     if (!Number.isInteger(this.o.parseSlots) || this.o.parseSlots < 0 || this.o.parseSlots > 4) throw new Error('Invalid worker parse slots');
   }
@@ -147,7 +149,14 @@ export class WorkerRuntime {
 
   start() {
     if(this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='update'||kind==='generation')) this.loops.push(this.formatDiagnosticLoop());
-    for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
+    const ordinaryRunKinds=this.o.runKinds.filter(kind=>kind!=='update_direct');
+    for (let slot = 0; slot < this.o.concurrency; slot++) {
+      if(slot<this.o.directUpdateSlots)this.loops.push(this.slotLoop(slot,['run'],false,['update_direct']));
+      else {
+        const kinds=ordinaryRunKinds.length?this.o.kinds:this.o.kinds.filter(kind=>kind==='parse');
+        if(kinds.length)this.loops.push(this.slotLoop(slot,kinds,false,ordinaryRunKinds));
+      }
+    }
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
     const interactiveStart=this.o.concurrency+this.dedicatedParseSlots;
     for(let slot=interactiveStart;slot<interactiveStart+this.dedicatedInteractiveSlots;slot++)this.loops.push(this.slotLoop(slot,['run'],true));
@@ -165,20 +174,20 @@ export class WorkerRuntime {
   private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
 
   /** General slots alternate claims; dedicated slots claim only their assigned work. */
-  private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false) {
+  private async slotLoop(slot: number, kinds: readonly ('run' | 'parse')[] = this.o.kinds, interactiveOnly=false,runKinds:readonly RunKind[]=this.o.runKinds) {
     let turn = slot;
     while (!this.stopping) {
       let worked = false;
       for (let i = 0; i < kinds.length && !this.stopping && !worked; i++) {
         const kind = kinds[(turn + i) % kinds.length];
         try {
-          if(kind==='run'&&!interactiveOnly&&this.o.runKinds.includes('generation')){
+          if(kind==='run'&&!interactiveOnly&&runKinds.includes('generation')){
             for(const advance of [advanceProjectFileBatch,advanceProjectFileUpdates,advanceWorkpaperBatch])try{await advance(this.o.pool);}
             catch(error){this.emit({slot,kind:'file_batch',outcome:'scheduler_error',message:error instanceof Error?error.message:'Unknown error'});}
           }
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
-              runKinds: this.o.runKinds, interactiveOnly, workerInstanceId:this.o.workerId,workerHostId:this.o.workerHostId,reviewedContextLoader: this.o.reviewedContextLoader,
+              runKinds, interactiveOnly, workerInstanceId:this.o.workerId,workerHostId:this.o.workerHostId,reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
               produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
@@ -261,7 +270,7 @@ export class WorkerRuntime {
   private readonly startedAt = new Date();
   /** Upserts this process's heartbeat; a failed write only counts as an error (readiness will show it stale). */
   async heartbeat(stopped = false) {
-    try { await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
+    try { await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, runKinds: this.o.runKinds, concurrency: this.o.concurrency + this.dedicatedParseSlots + this.dedicatedInteractiveSlots, stopped }); }
     catch { this.counters.errors++; }
   }
 
@@ -419,7 +428,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     uploadConfirmationEnabled: env.BB_UPLOAD_CONFIRMATION_ENABLED==='1',
     uploadConfirmationConcurrency,
     uploadConfirmationSmallSlot,
-    concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
+    concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), directUpdateSlots:intEnv(env,'BB_WORKER_DIRECT_UPDATE_SLOTS',runKinds.includes('update_direct')?1:0,0,16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
     parse: { issuerIdentityProducer: createIssuerIdentityProducer(pool), material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),

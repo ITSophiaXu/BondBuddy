@@ -4,6 +4,7 @@ import {azureBlobs} from '../../apps/api/dist/data.js';
 const database=new URL(process.env.DATABASE_URL);
 const instance=process.env.BB_LOCAL_INSTANCE||'20261012';
 const allowed=instance==='20261012'?{db:'55438',path:'/bb_integration_20261012',blob:'10018'}:
+  instance==='direct-20261125'?{db:'15453',path:'/bb_integration_direct_20261125',blob:'10033'}:
   instance==='qa-20261021'?{db:'15447',path:'/bb_integration_qa_20261021',blob:'10027'}:
   instance==='integrity-20261021'?{db:'15445',path:'/bb_integration_integrity_20261021',blob:'10025'}:
   instance==='files-20261021'?{db:'15444',path:'/bb_integration_files_20261021',blob:'10024'}:

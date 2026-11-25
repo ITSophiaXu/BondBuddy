@@ -17,7 +17,7 @@ files.push('deploy/m1/codex-copilot-file-authoring-model-catalog.json');
 for(const name of ['contracts','domain','rule-pack-registry','rule-applicability-context'])files.push(`packages/${name}/dist`,`packages/${name}/package.json`);
 for(const name of ['api','worker'])files.push(`apps/${name}/dist`,`apps/${name}/package.json`);
 if(!process.argv.includes('--reuse-snapshot')){
- const packed=spawnSync('C:/Program Files/Git/usr/bin/tar.exe',['--force-local','-cf',archive.replaceAll('\\','/'),'--exclude=node_modules/@bondbuddy','--exclude=.env*','--exclude=__pycache__',...files],{cwd:repo,encoding:'utf8',windowsHide:true});
+ const packed=spawnSync('C:/Program Files/Git/usr/bin/tar.exe',['--force-local','--dereference','-cf',archive.replaceAll('\\','/'),'--exclude=node_modules/@bondbuddy','--exclude=.env*','--exclude=__pycache__',...files],{cwd:repo,encoding:'utf8',windowsHide:true});
  if(packed.status!==0)throw Error(packed.stderr||packed.error?.message);
 }
 // Include the immutable runtime skills used by review and material authoring.

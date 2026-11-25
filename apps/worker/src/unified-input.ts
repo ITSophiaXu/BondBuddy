@@ -94,6 +94,8 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   const format=m.authoring.format_policy;
   if(Object.hasOwn(m.authoring,'format_policy')){
     if(!Value.Check(SourceFormatPolicySchema,format))return fail;
+    if(format.version==='direct-docx-v1' && (m.authoring.direct_rule_list_version!=='direct-docx-rules-v1'||m.authoring.knowledge.length!==0))return fail;
+    if(format.version!=='direct-docx-v1' && Object.hasOwn(m.authoring,'direct_rule_list_version'))return fail;
     if(format.template?.kind==='artifact'){
       const {kind,...pin}=format.template;
       if(!m.authoring.previous_output || inputManifestHash(pin)!==inputManifestHash(m.authoring.previous_output))return fail;
@@ -156,7 +158,8 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
         && pin.material_version === ref.material_version && pin.sha256 === ref.material_sha256)))) return fail;
   // Source metadata is optional context. The worker resolves gaps from the uploaded
   // material and labels uncertainty; an unfilled relationship is never a same-issuer assertion.
-  if (!revision && !result && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
+  if (!revision && !result && format?.version!=='direct-docx-v1' && !m.authoring.knowledge.length)
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;
   // Finding revisions have their own verified report/source path, not the file-authoring none path.

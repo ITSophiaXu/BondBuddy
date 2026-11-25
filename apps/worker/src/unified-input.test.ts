@@ -22,3 +22,23 @@ test('optional absent and partial source context does not gate an uploaded-sourc
     assert.deepEqual(await unifiedInputGate(pool,run,{...input,input_hash:'0'.repeat(64)}),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
   }
 });
+
+test('direct DOCX input uses the pinned rule list without the legacy knowledge gate',async()=>{
+  const pin={material_id:'source',material_version:1,role:'historical',sha256:digest('synthetic source')};
+  const template={kind:'material' as const,material_id:pin.material_id,material_version:pin.material_version,sha256:pin.sha256};
+  const m:UnifiedManifest={issuer_name:'合成目标',market:'sse',offering:'private',materials:[pin],
+    update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',format_template:{material_id:pin.material_id,material_version:pin.material_version,sha256:pin.sha256},
+      target_reporting_periods:reportingWindow('sse','private','2025-06-30')},
+    authoring:{version:'unified_v1',source_prospectuses:[{...pin,issuer_name:null,relation:'same_issuer',market:'sse',offering:'private',reporting_periods:[],status:'user_asserted'}],
+      requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval',direct_rule_list_version:'direct-docx-rules-v1',
+      format_policy:{version:'direct-docx-v1',mode:'preserve_docx',selection:'explicit',template}}};
+  const hash=inputManifestHash(m),input={manifest:m,input_hash:hash,draft_revision:1,material_versions:[pin],rule_pack_version:null,template_version:null} as InputRevisionRow;
+  const run={input_hash:hash,owner_user_id:'owner',project_id:'project'} as RunRow;
+  const pool={query:async()=>({rows:[{...pin,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}]})} as unknown as Pool;
+  assert.equal(await unifiedInputGate(pool,run,input),null);
+  const old=structuredClone(m);old.authoring.format_policy={version:'source-format-v1',mode:'preserve_docx',selection:'explicit',template};
+  delete old.authoring.direct_rule_list_version;
+  const oldHash=inputManifestHash(old);
+  assert.deepEqual(await unifiedInputGate(pool,{...run,input_hash:oldHash},{...input,manifest:old,input_hash:oldHash}),
+    {kind:'pause',stage:'capability_not_ready',reason:'authoring_knowledge_required'});
+});

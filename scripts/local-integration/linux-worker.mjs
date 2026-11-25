@@ -30,6 +30,8 @@ export function containerStatus(){
   return {id:c.Id,running:c.State.Running,image:c.Image,launchId:c.Config.Labels['com.bondbuddy.launch-id']};
 }
 export function workerArgs(config){
+  const directSlots=process.env.BB_LOCAL_DIRECT_UPDATE_SLOTS??'1';
+  if(instance==='direct-20261125'&&!['1','2'].includes(directSlots))throw Error('Local direct update slots must be 1 or 2');
   // CLI 0.154 mounts fresh procfs after applying deny masks. Docker Desktop has
   // no AppArmor; deny the bundled bwrap proc mount flags (NOSUID|NODEV|NOEXEC).
   // Its official no-proc fallback then preserves the existing /proc deny mask.
@@ -45,7 +47,10 @@ export function workerArgs(config){
     AZURE_STORAGE_CONNECTION_STRING:blobConnection.replace('127.0.0.1','host.docker.internal'),
     BB_RUN_RUNTIME_ENABLED:'1',BB_PAID_AUTHORING_ENABLED:'1',BB_PAID_REVIEW_ENABLED:'1',
     BB_DEPLOYMENT_TIER:'local',BB_TRIAL_GUARD:'off',BB_WORKER_GROUP:'local-integration-linux',
-    BB_WORKER_CONCURRENCY:'1',BB_WORKER_PARSE_SLOTS:'1',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',
+    ...(instance==='direct-20261125'?{BB_WORKER_RUN_KINDS:'update,review,generation,qa,update_direct',BB_WORKER_DIRECT_UPDATE_SLOTS:directSlots,
+      BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_CONCURRENCY:'1',BB_UPLOAD_SPOOL_DIR:'/tmp/bb-upload-confirmation',
+      BB_UPLOAD_SPOOL_MAX_BYTES:String(100*1024*1024)}:{}),
+    BB_WORKER_CONCURRENCY:instance==='direct-20261125'?'2':'1',BB_WORKER_PARSE_SLOTS:'1',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',
     BB_PARSE_CACHE_BASIS_VERSION:'local-linux-v1',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',
     BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_CODEX_AUTH_MODE:'copilot_enterprise',
     BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_MODEL:'gpt-6-sol',
@@ -55,7 +60,7 @@ export function workerArgs(config){
     BB_PYTHON:'/opt/venv/bin/python',BB_REPO_ROOT:'/app'};
   return ['--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
     '--security-opt',`seccomp=${seccomp}`,
-    '--memory','2g','--cpus','2','--pids-limit','256','--tmpfs','/tmp:rw,nosuid,nodev,size=512m,mode=1777',
+    '--memory',instance==='direct-20261125'?'8g':'2g','--cpus',instance==='direct-20261125'?'4':'2','--pids-limit','256','--tmpfs','/tmp:rw,nosuid,nodev,size=512m,mode=1777',
     '--mount',`type=volume,source=${volume},target=/var/lib/bondbuddy/parse-staging`,
     '--mount',`type=bind,source=${config.credentialFile},target=/run/secrets/bb-copilot-oauth,readonly`,
     ...Object.entries(env).flatMap(([k,v])=>['-e',`${k}=${v}`])];
@@ -64,7 +69,9 @@ export function refreshLocalCredential(){
   // Store outside OneDrive and every repository; stdout from gh never enters logs.
   const dir=join(process.env.LOCALAPPDATA,`BondBuddy/local-integration-${instance}`);mkdirSync(dir,{recursive:true});
   const credentialFile=join(dir,'model-token');
-  const r=spawnSync('gh',['auth','token','--hostname','github.com'],{encoding:'utf8',windowsHide:true});
+  const modelUser=process.env.BB_LOCAL_COPILOT_GITHUB_USER?.trim()||'yingx_microsoft';
+  if(!/^[A-Za-z0-9_-]{1,39}$/.test(modelUser))throw Error('Invalid local Copilot GitHub account');
+  const r=spawnSync('gh',['auth','token','--hostname','github.com','--user',modelUser],{encoding:'utf8',windowsHide:true});
   if(r.status!==0||!r.stdout.trim()||/\s/.test(r.stdout.trim()))throw Error('Existing GitHub model credential unavailable');
   const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',
     '$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; & icacls.exe $env:BB_LOCAL_CREDENTIAL_DIR /inheritance:r /grant:r "*${sid}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" | Out-Null; if($LASTEXITCODE -ne 0){exit 1}'],

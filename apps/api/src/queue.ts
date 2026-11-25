@@ -65,9 +65,10 @@ export async function remainingJobExecutionMs(pool:Pool|PoolClient, jobId:string
   return Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(row.used_ms));
 }
 export const remainingRunExecutionMs=(pool:Pool,lease:Lease)=>remainingJobExecutionMs(pool,lease.jobId,lease.token);
-export type RunKind = typeof TASK_KINDS[number];
+/** Internal job kind. It is intentionally absent from the public task-kind contract. */
+export type RunKind = typeof TASK_KINDS[number] | 'update_direct';
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
-  if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
+  if (!kinds.length || kinds.some(kind => ![...TASK_KINDS,'update_direct'].includes(kind)) || new Set(kinds).size !== kinds.length)
     throw new Error('Invalid worker run kinds');
   return [...kinds];
 }
@@ -122,8 +123,9 @@ async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) 
   return !!q.rowCount;
 }
 
-export async function enqueue(client:PoolClient, r:any, subtype='default') {
-  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)",[uid(),r.owner_user_id,r.id,r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null]);
+export async function enqueue(client:PoolClient, r:any, subtype='default', jobType?:RunKind) {
+  if(jobType==='update_direct' && r.task_kind!=='update')throw new Error('Direct DOCX job requires an update run');
+  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)",[uid(),r.owner_user_id,r.id,jobType??r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null]);
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
 }
 
