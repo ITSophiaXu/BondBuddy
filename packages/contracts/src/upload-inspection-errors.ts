@@ -10,6 +10,7 @@ export const UPLOAD_INSPECTION_PUBLIC_REASONS = [
   'unsupported_content',
   'file_size_mismatch',
   'structure_invalid',
+  'scanned_pdf',
 ] as const;
 
 export type UploadInspectionPublicReason = typeof UPLOAD_INSPECTION_PUBLIC_REASONS[number];

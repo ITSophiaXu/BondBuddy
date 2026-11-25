@@ -11,21 +11,23 @@ import { Pool } from 'pg';
 import { azureBlobs, digest, verifiedMedia, verifiedMediaFileDetailed } from './data.js';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { pdfWidgetSample } from './upload-safety.samples.js';
+import { pdfSample, pdfWidgetSample } from './upload-safety.samples.js';
 
 const root = fileURLToPath(new URL('../../../tests/samples/2026-09-25/', import.meta.url));
 const connection = await isolatedTestDatabase();
 const storage = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 
-test('every supported project material is stored opaquely without content parsing', async () => {
+test('non-PDF originals remain opaque while PDFs must be readable', async () => {
   const directory=await mkdtemp(join(tmpdir(),'bb-original-'));
   try {
     const bytes=Buffer.from('opaque original: no document structure, \x00 /JavaScript /Sig =FORMULA()');
     const path=join(directory,'original'); await writeFile(path,bytes);
     for (const media of M1_UPLOAD_MIME_TYPES) {
       assert.equal(await verifiedMedia(bytes,media),media);
-      assert.deepEqual(await verifiedMediaFileDetailed(path,bytes.length,media),{mediaType:media,signatureAssessment:null});
+      if(media==='application/pdf')
+        await assert.rejects(verifiedMediaFileDetailed(path,bytes.length,media),(e:any)=>e.code==='MATERIAL_UNREADABLE');
+      else assert.deepEqual(await verifiedMediaFileDetailed(path,bytes.length,media),{mediaType:media,signatureAssessment:null});
     }
     assert.deepEqual(await readFile(path),bytes);
     await assert.rejects(verifiedMedia(Buffer.alloc(0),'application/pdf'),(e:any)=>e.uploadReason==='size_limit');
@@ -35,14 +37,14 @@ test('every supported project material is stored opaquely without content parsin
   } finally { await rm(directory,{recursive:true,force:true}); }
 });
 
-test('both authorized qx audit originals retain their exact bytes and need no signature profile', async () => {
+test('legacy qx PDF originals are checked without changing their bytes', async () => {
   const manifest=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
   const files=manifest.cases.find((c:any)=>c.case_id==='qx-202606').files.filter((f:any)=>['qx-202606-02','qx-202606-03'].includes(f.file_id));
   assert.equal(files.length,2);
   for (const entry of files) {
     const path=join(root,entry.path),bytes=await readFile(path);
     assert.equal(bytes.length,entry.bytes);assert.equal(digest(bytes),entry.sha256);
-    assert.deepEqual(await verifiedMediaFileDetailed(path,bytes.length,'application/pdf'),{mediaType:'application/pdf',signatureAssessment:null});
+    await assert.rejects(verifiedMediaFileDetailed(path,bytes.length,'application/pdf'),(e:any)=>e.uploadReason==='scanned_pdf');
     assert.equal(digest(await readFile(path)),entry.sha256);
   }
 });
@@ -63,10 +65,7 @@ test('raw material public upload preserves bytes, ownership, idempotency and old
       assert.equal(r.statusCode,201,r.body);return r.json();
     };
     const complete=(session:any,bytes:Buffer)=>send('POST',`/api/v1/projects/${project}/materials/uploads/${session.upload_id}/complete`,{byte_size:bytes.length,sha256:digest(bytes)});
-    const files:Array<[Buffer,string,string]>=M1_UPLOAD_MIME_TYPES.map((media,i)=>[Buffer.from(`opaque original ${i}: \x00 /Sig /JavaScript`),media,`original.${['docx','pdf','xlsx','csv','txt','png','jpg','doc'][i]}`]);
-    const manifest=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
-    for(const entry of manifest.cases.find((c:any)=>c.case_id==='qx-202606').files.filter((f:any)=>['qx-202606-02','qx-202606-03'].includes(f.file_id)))
-      files.push([await readFile(join(root,entry.path)),'application/pdf',`${entry.file_id}.pdf`]);
+    const files:Array<[Buffer,string,string]>=M1_UPLOAD_MIME_TYPES.map((media,i)=>[media==='application/pdf'?pdfSample():Buffer.from(`opaque original ${i}: \x00 /Sig /JavaScript`),media,`original.${['docx','pdf','xlsx','csv','txt','png','jpg','doc'][i]}`]);
     for(const [bytes,media,name] of files) {
       const session=await begin(bytes,media,name);
       owner='another-owner';assert.equal((await send('PUT',session.upload_url,bytes)).statusCode,404);owner=originalOwner;
