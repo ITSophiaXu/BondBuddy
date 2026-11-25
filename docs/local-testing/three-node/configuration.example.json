@@ -1,0 +1,94 @@
+{
+  "x-simulated-nodes": {
+    "a": { "slice": "bbdemoa.slice", "cpus": 4, "memoryGiB": 16 },
+    "b": { "slice": "bbdemob.slice", "cpus": 2, "memoryGiB": 4 },
+    "c": { "slice": "bbdemoc.slice", "cpus": 2, "memoryGiB": 4 }
+  },
+  "services": {
+    "postgres": { "cgroup_parent": "bbdemoa.slice", "restart": "no" },
+    "azurite": { "cgroup_parent": "bbdemoa.slice", "restart": "no" },
+    "migrate": { "cgroup_parent": "bbdemoa.slice", "restart": "no" },
+    "local-state-init": { "cgroup_parent": "bbdemoa.slice", "restart": "no" },
+    "api": {
+      "cgroup_parent": "bbdemoa.slice",
+      "restart": "no",
+      "environment": {
+        "BB_TRIAL_ACTIVE_RUNS_PER_USER": "12",
+        "BB_TRIAL_GLOBAL_ACTIVE_RUNS": "12",
+        "BB_STORAGE_PURGE_ENABLED": "false",
+        "BB_WECHAT_PAY_ENABLED": "0",
+        "BB_ALIPAY_PAY_ENABLED": "0"
+      }
+    },
+    "worker": {
+      "cgroup_parent": "bbdemoa.slice",
+      "restart": "no",
+      "environment": {
+        "BB_WORKER_CONCURRENCY": "2",
+        "BB_WORKER_INTERACTIVE_SLOTS": "0",
+        "BB_WORKER_PARSE_SLOTS": "0",
+        "BB_MODEL_CALL_CONCURRENCY": "4"
+      },
+      "deploy": {
+        "resources": { "limits": { "cpus": "4", "memory": "6G" } }
+      }
+    },
+    "worker-b": {
+      "extends": { "file": "${BB_SIMULATION_BASE:?render the local base config first}", "service": "worker" },
+      "cgroup_parent": "bbdemob.slice",
+      "restart": "no",
+      "environment": {
+        "BB_WORKER_CONCURRENCY": "2",
+        "BB_WORKER_INTERACTIVE_SLOTS": "0",
+        "BB_WORKER_PARSE_SLOTS": "0",
+        "BB_MODEL_CALL_CONCURRENCY": "4"
+      },
+      "deploy": {
+        "resources": { "limits": { "cpus": "2", "memory": "4G" } }
+      }
+    },
+    "worker-c": {
+      "extends": { "file": "${BB_SIMULATION_BASE:?render the local base config first}", "service": "worker" },
+      "cgroup_parent": "bbdemoc.slice",
+      "restart": "no",
+      "environment": {
+        "BB_WORKER_CONCURRENCY": "2",
+        "BB_WORKER_INTERACTIVE_SLOTS": "0",
+        "BB_WORKER_PARSE_SLOTS": "0",
+        "BB_MODEL_CALL_CONCURRENCY": "4"
+      },
+      "deploy": {
+        "resources": { "limits": { "cpus": "2", "memory": "4G" } }
+      }
+    },
+    "worker-review": {
+      "cgroup_parent": "bbdemoa.slice",
+      "restart": "no",
+      "environment": {
+        "BB_WORKER_CONCURRENCY": "1",
+        "BB_MODEL_CALL_CONCURRENCY": "4"
+      },
+      "deploy": {
+        "resources": { "limits": { "cpus": "2", "memory": "2G" } }
+      }
+    },
+    "worker-parse": {
+      "cgroup_parent": "bbdemoa.slice",
+      "restart": "no",
+      "environment": {
+        "BB_WORKER_CONCURRENCY": "1",
+        "BB_MODEL_CALL_CONCURRENCY": "4"
+      },
+      "deploy": {
+        "resources": { "limits": { "cpus": "2", "memory": "1G" } }
+      }
+    },
+    "ops": {
+      "cgroup_parent": "bbdemoa.slice",
+      "restart": "no",
+      "environment": { "BB_STORAGE_PURGE_ENABLED": "false", "BB_OPS_PROVIDER_BALANCE": "off" }
+    },
+    "egress": { "cgroup_parent": "bbdemoa.slice", "restart": "no" },
+    "web": { "cgroup_parent": "bbdemoa.slice", "restart": "no" }
+  }
+}
