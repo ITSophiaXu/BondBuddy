@@ -24,7 +24,7 @@ export const FileGenerationPreparationSchema=obj({
   requirements:Type.String({maxLength:12000}),target_year:Type.String({pattern:'^$|^20[0-9]{2}$'}),
 });
 export type FileGenerationPreparation=Static<typeof FileGenerationPreparationSchema>;
-export const emptyFileGenerationPreparation=():FileGenerationPreparation=>({document_types:['workpaper'],catalogue_id:null,template_set_id:null,item_ids:[],mappings:{},document_templates:{},materials:[],requirements:'',target_year:''});
+export const emptyFileGenerationPreparation=():FileGenerationPreparation=>({document_types:[],catalogue_id:null,template_set_id:null,item_ids:[],mappings:{},document_templates:{},materials:[],requirements:'',target_year:''});
 export const FilePreparationSaveSchema=obj({expected_revision:Type.Integer({minimum:0}),preparation:FileGenerationPreparationSchema});
 export const FileGenerationSubmitSchema=obj({request_id:id,expected_revision:Type.Integer({minimum:1}),source_version_id:id,source_selection_revision:Type.Integer({minimum:0}),expected_points:Type.Integer({minimum:0}),price_version:id,document_quotes:Type.Optional(Type.Array(obj({document_type:M4DocumentTypeSchema,draft_version:Type.Integer({minimum:1}),scope_quote_id:id}),{maxItems:20}))});
 export type FileGenerationSubmit=Static<typeof FileGenerationSubmitSchema>;

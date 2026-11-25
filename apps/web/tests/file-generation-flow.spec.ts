@@ -21,20 +21,26 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await mode(page,'upload').check();await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');expect(s.selections).toHaveLength(0);
  await expect(mode(page,'upload')).toBeFocused();await mode(page,'upload').press('ArrowRight');await expect(mode(page,'project')).toBeChecked();
  await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');
- await expect(page.locator('.fg-types')).toHaveCount(1);
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(1);
- await expect(page.locator('#fg-more-types')).toHaveAttribute('aria-expanded','false');
- await page.locator('#fg-more-types').click();
  await expect(page.locator('#fg-more-types')).toHaveAttribute('aria-expanded','true');
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
- for(const type of ['workpaper',...PROJECT_DOCUMENT_CATALOG.map(t=>t.id)])await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
- await page.locator('#fg-more-types').click();
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(1);
+ await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length);
+ for(const type of PROJECT_DOCUMENT_CATALOG.map(t=>t.id))await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
+ await expect(page.locator('[data-fg-type="workpaper"]')).toBeHidden();
+ await expect(page.locator('#fg-workpaper-toggle')).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('#fg-template-setup')).toBeHidden();
+ await expect(page.locator('.fg-history')).toHaveCount(0);
+ await page.locator('a[data-flow-step="1"]').click();await expect(page).toHaveURL(/step=source/);
+ await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
+ await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeHidden();
+ await page.locator('#fg-more-types').click();await expect(page.locator('#fg-other-types')).toBeVisible();
+ await page.locator('#fg-workpaper-toggle').click();
+ await expect(page.locator('[data-fg-type="workpaper"]')).toBeVisible();
+ await expect(page.locator('#fg-template-setup')).toBeHidden();
+ await page.locator('[data-fg-type="workpaper"]').check();
+ await expect(page.locator('#fg-workpaper-toggle')).toHaveAttribute('aria-expanded','true');
  await expect(page.locator('.fg-source-card')).toHaveCount(2);
  await capture(page,'file-options-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await expect(page.locator('#fg-change-templates')).toBeVisible();
  await expect(page.locator('.fg-selected-file strong').filter({hasText:'光大模板'})).toBeVisible();expect(batches(s.state)).toHaveLength(0);
- await page.locator('a[data-flow-step="1"]').click();await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
 });
 
 for(const existing of [false,true])test(`upload adopts saved source and waits for explicit next, existing=${existing}`,async({page})=>{
