@@ -35,9 +35,8 @@ export function registerWorkpaperAssessments(app:FastifyInstance,db:()=>Pool,own
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':'+key]);
    const old=(await c.query('SELECT id,request_hash FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
    if(old){if(old.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','此判断请求已使用。');return old.id;}
-   // New workpaper batches generate directly. This retired preparation route
-   // remains available only for exact historical requests and result reads.
-   if(automaticBillingEnabled(c))throw new Problem(409,'BILLING_NOT_READY','独立底稿可生成性检查已停止新建。请选择底稿后直接生成；已生成文件的一致性检查从文件列表发起。');
+   // Preserve exact historical retries, but do not admit a new assessment.
+   throw new Problem(410,'VALIDATION_FAILED','尽职调查底稿包已下线，不能新建可生成性判断。');
    if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
    await assertCanonicalBusinessRunIdle(c,user,p);
    const cat=(await c.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,b.catalogue_id])).rows[0];
