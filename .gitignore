@@ -8,6 +8,7 @@ dist/
 dist-test/
 work/
 docs/*
+!docs/active-task-execution-limit.md
 !docs/BUG-REPORTING.md
 !docs/testing/
 docs/testing/*

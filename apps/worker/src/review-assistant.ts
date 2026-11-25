@@ -6,6 +6,7 @@ import { ReviewContextSchema, ReviewDraftInputSchema, isReviewReport, type Revie
   type ReviewMaterialPin, type ReviewProposal, type ReviewReport, type ReviewEvidenceRef } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { RUN_ACTIVE_EXECUTION_LIMIT_MS } from '@bondbuddy/api/queue';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { emitInternal, internalEvent } from '@bondbuddy/api/observability';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
@@ -328,6 +329,11 @@ export class ReviewAssistantJournal implements CodexJournal {
     await guardEvidenceWrite(this.options.pool,'assistant_call_intent_not_persisted',()=>transaction(this.options.pool,async client=>{
       await assertGateOpen(client);
       await lockedMessage(client,this.options.lease);
+      const active=(await client.query(`SELECT active_execution_ms + CASE WHEN active_started_at IS NULL THEN 0 ELSE
+        GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(clock_timestamp(),COALESCE(lease_until,clock_timestamp()))-active_started_at))*1000)::bigint)
+        END AS used_ms FROM bb_review_messages WHERE id=$1`,[this.options.lease.id])).rows[0];
+      if(Number(active.used_ms)>=RUN_ACTIVE_EXECUTION_LIMIT_MS)
+        throw new Problem(409,'TASK_EXECUTION_TIME_LIMIT','Active task execution reached 90 minutes');
       await assertModelCallAllowed(client,trialGuardConfig(),intent.owner_user_id);
       if((await client.query('SELECT 1 FROM bb_review_assistant_attempts WHERE message_id=$1 AND logical_call_id<>$2 LIMIT 1',
         [this.options.lease.id,this.protocol.logicalCallId])).rowCount)fail('ASSISTANT_PROTOCOL_CHANGED');
@@ -462,7 +468,7 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
   } catch(error) {
     if(error instanceof Error&&error.message==='SYNTHETIC_CRASH')throw error;
     if(error instanceof Error&&error.message==='ASSISTANT_LEASE_LOST')return 'lost';
-    const code=error instanceof Problem&&['MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
+    const code=error instanceof Problem&&['TASK_EXECUTION_TIME_LIMIT','MODEL_CALLS_SUSPENDED','TRIAL_ACCESS_DENIED','TRIAL_QUOTA_EXCEEDED','DATA_UNAVAILABLE'].includes(error.code)?error.code:
       error instanceof Error&&/^(?:ASSISTANT_[A-Z_]+|MODEL_[A-Z_]+)$/.test(error.message)?error.message:'ASSISTANT_PROCESS_INTERRUPTED';
     try {
       const prior=(await options.pool.query('SELECT status FROM bb_review_assistant_attempts WHERE message_id=$1 AND owner_user_id=$2 ORDER BY attempt_no DESC LIMIT 1',[lease.id,lease.owner_user_id])).rows[0];
