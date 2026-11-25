@@ -29,7 +29,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, remainingRunExecutionMs, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
@@ -566,6 +566,7 @@ export function codexModelStage(options: {
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
+        remainingExecutionMs:()=>remainingRunExecutionMs(pool,lease),
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
@@ -581,6 +582,8 @@ export function codexModelStage(options: {
       const job = (await pool.query('SELECT state,lease_token FROM bb_jobs WHERE id=$1', [lease.jobId])).rows[0];
       if (job?.state !== 'running' || job.lease_token !== lease.token) return { kind: 'stopped' };
       if (result.status === 'needs_reconcile') return { kind: 'pause', stage: 'provider_reconcile', reason: 'provider_result_pending' };
+      if(result.error_code==='MODEL_TIMEOUT' && await remainingRunExecutionMs(pool,lease)===0)
+        return {kind:'fail',code:'TASK_EXECUTION_TIME_LIMIT'};
       return { kind: 'fail', code: result.error_code ?? 'MODEL_TURN_FAILED' };
     },
   };

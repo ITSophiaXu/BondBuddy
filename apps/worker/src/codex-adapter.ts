@@ -227,6 +227,9 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
   const budgetValue = env.BB_MODEL_MAX_REQUEST_BYTES;
   if (budgetValue && !/^[1-9]\d*$/.test(budgetValue)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const requestBudget = budgetValue ? Number(budgetValue) : undefined;
+  const configuredAuthoringTimeoutMs=Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 5400000);
+  if(!Number.isSafeInteger(configuredAuthoringTimeoutMs)||configuredAuthoringTimeoutMs<=0||configuredAuthoringTimeoutMs>2147483647)
+    throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const commandMode = env.BB_CODEX_AUTH_MODE === 'copilot_enterprise';
   if (env.BB_CODEX_AUTH_MODE && !commandMode) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (commandMode && (env.BB_CODEX_AUTH_FILE || env.BB_CODEX_CREDENTIAL_ENV)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -246,9 +249,9 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     timeout_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
     timeout_origin: env.BB_CODEX_TIMEOUT_MS ? 'environment' : 'default',
     timeout_origin_value_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
-    authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
+    authoring_timeout_ms: Math.min(configuredAuthoringTimeoutMs,5400000),
     authoring_timeout_origin: env.BB_CODEX_AUTHORING_TIMEOUT_MS ? 'environment' : 'default',
-    authoring_timeout_origin_value_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
+    authoring_timeout_origin_value_ms: configuredAuthoringTimeoutMs,
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
     exec_log_max_bytes: Number(env.BB_CODEX_EXEC_LOG_MAX_BYTES ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES),
@@ -795,7 +798,7 @@ export interface CodexJournal extends ProbeJournal {
 
 export type ModelExecutionConfigEvidence = {
   effective_timeout_ms:number; timeout_deadline_at:string;
-  timeout_source:'default'|'environment'|'injected_config'|'authoring_override';
+  timeout_source:'default'|'environment'|'injected_config'|'authoring_override'|'deadline_cap';
   timeout_branch:'ordinary'|'authoring'|'file_authoring';
   model_config_version:string; loaded_adapter_sha256:string; selected_config_sha256:string;
   release_sha:string|null; overlay_sha256:string|null;
@@ -817,6 +820,8 @@ export type ContainedCallInput = {
     validationFeedback?: (value:unknown) => string | undefined } | { kind: 'text' };
   imageInput?: ModelImageInput;
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
+  /** Durable active execution budget, read after capacity and host preparation. */
+  remainingExecutionMs?: () => Promise<number>;
   onEvent?: (event: Record<string, unknown>) => void;
   /** Host activity observer after tool containment; separate from existing diagnostic/cancellation hooks. */
   onActivity?: (event: Record<string, unknown>, intent: ProviderCallIntent) => void;
@@ -1005,9 +1010,12 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         if (executionSignal?.aborted) return cancelledResult();
         if(input.fileWorkspace?.deadlineAt!==undefined&&!isFileAuthoringDeadline(input.fileWorkspace.deadlineAt))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
         if(input.fileWorkspace?.deadlineAt!==undefined&&Date.parse(input.fileWorkspace.deadlineAt)<=Date.now())throw Error('AUTHORING_CONTEXT_DEADLINE_EXCEEDED');
-        await journal.recordIntent(intent); // durable before spawn
-        // A normal authoring turn can take 20-30 minutes. Its deadline is independent
-        // of short model probes; silence while reasoning is not evidence of a hang.
+        const remainingExecutionMs=await input.remainingExecutionMs?.();
+        const executionDeadlineAt=remainingExecutionMs===undefined?undefined:
+          new Date(Date.now()+Math.max(0,Math.floor(remainingExecutionMs))).toISOString();
+        await journal.recordIntent(intent); // durable before spawn; also rejects an exhausted budget
+        // The authoring cap is independent of short probes, but the remaining
+        // active task budget can stop this already-running process sooner.
         // Lease loss and cancellation still abort the same process immediately.
         const useAuthoringTimeout=!!(input.materialTools||input.fileWorkspace||input.reviewTools)&&c.authoring_timeout_ms!==undefined;
         const executionConfig=useAuthoringTimeout?{...c,timeout_ms:c.authoring_timeout_ms!}:c;
@@ -1018,11 +1026,15 @@ async function containedModelCall(input: ContainedCallInput, journal: CodexJourn
         const loadedAdapterSha256=createHash('sha256').update(await readFile(fileURLToPath(import.meta.url))).digest('hex');
         const attemptResult=await withPerformanceSpan<ContainedCallResult|null>('model.attempt',
           {logical_call_id:input.logical_call_id,call_id:intent.call_id,attempt_no:attemptNo},async attemptSpan=>{
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:input.fileWorkspace?.deadlineAt, signal: executionSignal, onEvent: input.onEvent, captureExecLog: true,
+        const processDeadlineAt=executionDeadlineAt&&input.fileWorkspace?.deadlineAt
+          ?new Date(Math.min(Date.parse(executionDeadlineAt),Date.parse(input.fileWorkspace.deadlineAt))).toISOString()
+          :executionDeadlineAt??input.fileWorkspace?.deadlineAt;
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, contextRotation:!!input.fileWorkspace?.onFailure&&/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(input.logical_call_id), deadlineAt:processDeadlineAt, signal: executionSignal, onEvent: input.onEvent, captureExecLog: true,
           trace: { run_id: intent.run_id, call_id: intent.call_id, logical_call_id: intent.logical_call_id, attempt_no: intent.attempt_no },
           onGatewayRecord:journal.recordGatewayRequest?record=>journal.recordGatewayRequest!(intent,record):undefined,
           onBeforeSpawn:journal.recordExecutionConfig?(effective_timeout_ms,timeout_deadline_at)=>journal.recordExecutionConfig!(intent,{
-            effective_timeout_ms,timeout_deadline_at,timeout_source:useAuthoringTimeout
+            effective_timeout_ms,timeout_deadline_at,timeout_source:processDeadlineAt&&effective_timeout_ms<executionConfig.timeout_ms
+              ?'deadline_cap':useAuthoringTimeout
               ? c.authoring_timeout_origin_value_ms!==undefined&&c.authoring_timeout_origin_value_ms!==c.authoring_timeout_ms?'injected_config':c.authoring_timeout_origin??'authoring_override'
               : c.timeout_origin_value_ms!==undefined&&c.timeout_origin_value_ms!==c.timeout_ms?'injected_config':c.timeout_origin??'injected_config',
             timeout_branch:input.fileWorkspace?'file_authoring':useAuthoringTimeout?'authoring':'ordinary',
