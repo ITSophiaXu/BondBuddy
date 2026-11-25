@@ -1,0 +1,6 @@
+samples/
+*.docx
+*.xlsx
+*.pdf
+!tests/fixtures/*.docx
+__pycache__/
