@@ -79,15 +79,23 @@ def xlsx_facts(materials, issuer):
             continue
         sheets = defaultdict(dict)
         for record in material.get('records', []):
-            if record.get('locator_type') != 'xlsx_cell' or record.get('uncertainty') or record.get('formatting', {}).get('sheet_state') != 'visible':
+            if record.get('locator_type') != 'xlsx_cell' or record.get('formatting', {}).get('sheet_state') != 'visible':
                 continue
+            uncertainty = record.get('uncertainty') or []
+            formatting = record.get('formatting') or {}
+            if uncertainty:
+                if uncertainty != ['formula_cached_result_unverified'] or formatting.get('cached_formula_result') is None:
+                    continue
+                displayed = str(formatting['cached_formula_result'])
+            else:
+                displayed = str(record.get('literal_quote', ''))
             locator = record.get('locator') or {}
             match = CELL.fullmatch(str(locator.get('cell', '')))
             if match:
                 column = 0
                 for letter in match.group(1):
                     column = column * 26 + ord(letter) - 64
-                sheets[str(locator.get('sheet', ''))][(int(match.group(2)), column)] = str(record.get('literal_quote', ''))
+                sheets[str(locator.get('sheet', ''))][(int(match.group(2)), column)] = displayed
         for title, grid in sheets.items():
             head = ' '.join(value for (row, _), value in grid.items() if row <= 20)
             if issuer not in head:
@@ -96,11 +104,20 @@ def xlsx_facts(materials, issuer):
             if not scope or not unit:
                 continue
             current_period = next((period(value) for (row, _), value in grid.items() if row <= 4 and period(value)), None)
+            # A report date above the header is context, not a value column.
+            # In particular, the second column of these workbooks is 行次; treating
+            # its date cell as a value column would compare row numbers as money.
+            header_row = next((row for (row, col), value in sorted(grid.items())
+                               if row <= 6 and col <= 3 and re.sub(r'\s', '', value).startswith('项目')), None)
+            if header_row is None:
+                continue
             columns = {}
             for (row, col), value in grid.items():
-                if row <= 6 and (found := period(value)):
+                if row != header_row or col <= 2:
+                    continue
+                if found := period(value):
                     columns[col] = found
-                elif row <= 6 and current_period and value.strip() in ('期末余额', '本期金额'):
+                elif current_period and value.strip() in ('期末余额', '本期金额'):
                     columns[col] = current_period
             for (row, col), label in grid.items():
                 key = metric(label) if col <= 3 else None

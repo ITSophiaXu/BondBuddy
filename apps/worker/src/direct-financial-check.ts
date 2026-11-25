@@ -40,6 +40,8 @@ export async function verifyDirectFinancial(ctx:StageContext,clean:Buffer):Promi
             sha256:material.pin.sha256,authorized_local_path:path},options:{}},
         {pythonExecutable:process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',repoRoot:repo,timeoutMs:300000}));
         if(parsed.status==='failed'||!parsed.records.length)throw Error('DIRECT_FINANCIAL_SOURCE_PARSE_FAILED');
+        if(parsed.warnings.some(w=>w.code==='XLSX_FORMULA_CACHE_UNVERIFIED'))
+          sourceUnchecked.push(`financial_source_formula_cache_unverified:${material.pin.material_id}`);
         materials.push({material_id:material.pin.material_id,role:material.pin.role,media_type:xlsx,records:parsed.records});
       }catch(error){
         if(ctx.signal.aborted)throw error;

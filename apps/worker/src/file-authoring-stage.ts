@@ -30,6 +30,13 @@ export type FileAuthoringResult={version:'codex-file-word-v1';input_hash:string;
 type DirectRepair={previous:FileAuthoringResult;feedback:FileRef};
 const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md','operations.json','template-manifest.json','input.json','source-original.pdf'] as const;
 const requiredFiles=['tracked.docx','clean.docx'] as const;
+export function directAuthoringSummary(delivery:string):string[]{
+  // The host creates the actual clean file after the model returns. Keep the
+  // model's self-check and unresolved items, not claims about its scratch copy.
+  const sections=delivery.split(/(?=^##\s+)/m).filter(part=>
+    /^##\s+[^\r\n]*(?:自查|待人工确认|签发前须核实)/.test(part));
+  return sections.length?[sections.join('\n\n').slice(0,12000)]:['模型的一轮自查记录已保存；清洁版及检查状态以宿主交付结果为准。'];
+}
 function prefix(ctx:StageContext){return `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/`;}
 function validPair(r:FileAuthoringResult,ctx:StageContext){
   return requiredFiles.every(name=>{
@@ -257,7 +264,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         ...(direct?{format_policy:input.manifest.authoring.format_policy,format_execution:'direct-docx-v1',rule_list_version:DIRECT_DOCX_RULE_LIST_VERSION,instruction_bytes:taskInstructions.length}:{}),
         baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf',
         source_sha256:source?.pin.sha256??null,effective_baseline_sha256:files['baseline.docx']?.sha256??null,
-        authoring_summary:delivery?[delivery.slice(0,12000)]:[],
+        authoring_summary:direct?directAuthoringSummary(delivery):delivery?[delivery.slice(0,12000)]:[],
         source_issuer:source?.pin.role==='project_output'?input.manifest.issuer_name:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id)?.issuer_name??null}};
     };
     const config=options.config??loadCodexAdapterConfig();

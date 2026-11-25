@@ -71,6 +71,24 @@ class DirectFinancialTests(unittest.TestCase):
         self.assertEqual(report['status'], 'not_checked')
         self.assertIn('financial_source_format_unchecked:notes-1', report['unchecked'])
 
+    def test_report_date_does_not_turn_line_numbers_into_amounts(self):
+        cells = {'A1': '合并资产负债表', 'A3': '编制单位：任丘市建设投资集团有限公司',
+                 'B3': '2025年9月30日', 'E3': '金额单位：人民币元',
+                 'A4': '项目', 'B4': '行次', 'D4': '期末余额',
+                 'A5': '资产总计', 'B5': '74', 'D5': '100.00'}
+        records = [{'locator_type': 'xlsx_cell', 'locator': {'sheet': '01合并资产负债表', 'cell': cell},
+                    'literal_quote': '=source!A1' if cell in ('A3', 'D5') else value,
+                    'uncertainty': ['formula_cached_result_unverified'] if cell in ('A3', 'D5') else [],
+                    'formatting': {'sheet_state': 'visible', **({'cached_formula_result': value}
+                                  if cell in ('A3', 'D5') else {})}}
+                   for cell, value in cells.items()]
+        facts = financial.xlsx_facts([{'role': 'audit', 'media_type':
+                                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                      'material_id': 'sample', 'records': records}], self.data['issuer_name'])
+        values = facts[('consolidated', '2025-09', 'assets')]
+        self.assertEqual(len(values), 1)
+        self.assertEqual(values[0][0], Decimal('100.00'))
+
 
 if __name__ == '__main__':
     unittest.main()
