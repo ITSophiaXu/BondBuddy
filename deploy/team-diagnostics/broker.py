@@ -11,7 +11,7 @@ import datetime
 
 import archive
 from collector import DOCKER, discover
-from common import audit, canonical, command, digest, identifier, scrub, trusted_file
+from common import DiagnosticFailure, audit, canonical, command, digest, identifier, scrub, trusted_file
 from database import Database, SPECS
 
 HELP = '''BondBuddy read-only diagnostics v3
@@ -22,6 +22,7 @@ HELP = '''BondBuddy read-only diagnostics v3
   db sessions [--time known|unknown] [--limit 100] [--cursor CURSOR]
   runs [STATE] [--cursor CURSOR] / run RUN_ID / attempt ATTEMPT_ID
   content prompt|result|exec ID --reason CODE [--offset 0] [--length 262144]
+  content result ID --file operations.json --reason CODE [--offset 0] [--length 262144]
   exec-log ATTEMPT_ID --reason CODE [--offset 0] [--length 262144]
   processes [SERVICE]
 All retained collected logs are pageable. sources reports stale/missing collectors.
@@ -58,9 +59,12 @@ def parse(args):
         if action == 'content': parser.add_argument('kind', choices=['prompt', 'result', 'exec'])
         parser.add_argument('id', type=identifier)
         parser.add_argument('--reason', required=True, type=identifier)
+        parser.add_argument('--file', choices=['operations.json'])
         parser.add_argument('--offset', type=int, default=0)
         parser.add_argument('--length', type=int, default=262144)
         result = vars(parser.parse_args(args[1:]))
+        if result.get('file') is not None and (action != 'content' or result.get('kind') != 'result'):
+            raise ValueError('File selection is only allowed for content result')
         if result['offset'] < 0 or result['offset'] > 64*1024*1024 or not 1 <= result['length'] <= 1024*1024:
             raise ValueError('Invalid content page bounds')
         return {'action': 'content', 'kind': 'exec', **result}
@@ -112,16 +116,47 @@ def sources(config, db):
 
 def read_content(config, options, database):
     reference = database.content_ref(options['kind'], options['id'])
+    selected = options.get('file')
+    if selected is not None:
+        if options['kind'] != 'result' or selected != 'operations.json':
+            raise ValueError('File selection is only allowed for content result')
+        reference = {**reference, 'file': selected}
     containers = [v for v in discover(config) if v['service'] == 'api' and v['state'] == 'running']
     if len(containers) != 1: raise RuntimeError('A unique active API container is required for private content reads')
     helper = trusted_file(pathlib.Path(__file__).parent / 'read-content.mjs').read_bytes()
-    raw = command(DOCKER + ['exec', '-i', containers[0]['stream'], 'node', '--input-type=module', '-', canonical(reference)],
-                  timeout=45, input_bytes=helper, max_bytes=21*1024*1024)
-    clean = scrub(raw.decode('utf-8')).encode()
+    try:
+        raw = command(DOCKER + ['exec', '-i', containers[0]['stream'], 'node', '--input-type=module', '-', canonical(reference)],
+                      timeout=135 if options['kind'] == 'exec' else 45, input_bytes=helper, max_bytes=21*1024*1024)
+    except DiagnosticFailure as error:
+        # Only this trusted exec helper's fixed deadline exit can be classified;
+        # preserve all other categories and never expose arbitrary stderr.
+        if options['kind'] == 'exec' and error.details == {'stage': 'container_read', 'code': 'COMMAND_EXIT', 'exit_status': 3}:
+            raise DiagnosticFailure('container_read', 'CONTENT_READ_TIMEOUT', 3) from None
+        raise
+    file_evidence = {}
+    if selected is not None:
+        try:
+            payload = json.loads(raw.decode('utf-8'))
+            if not isinstance(payload, dict) or payload.get('verified_parent_sha256') != reference['sha256'].strip() or not isinstance(payload.get('verified_child_sha256'), str) or not re.fullmatch('[a-f0-9]{64}', payload['verified_child_sha256']):
+                raise ValueError('Invalid verified file envelope')
+            child_size = payload.get('verified_child_byte_size')
+            if type(child_size) is not int or not 1 <= child_size <= 1024*1024 or not isinstance(payload.get('redacted_content_base64'), str):
+                raise ValueError('Invalid verified file envelope')
+            content = base64.b64decode(payload['redacted_content_base64'], validate=True)
+            if len(content) > 2*1024*1024:
+                raise ValueError('Invalid verified file envelope')
+            file_evidence = {'file': selected, 'verified_parent_sha256': payload['verified_parent_sha256'],
+                             'verified_child_sha256': payload['verified_child_sha256'], 'verified_child_byte_size': child_size}
+        except (ValueError, TypeError, UnicodeError) as error:
+            raise ValueError('Invalid verified file envelope') from error
+    else:
+        content = raw
+    clean = scrub(content.decode('utf-8')).encode()
     offset, length = options['offset'], options['length']
     if offset > len(clean): raise ValueError('Content offset exceeds redacted byte length')
     part = clean[offset:offset+length]
-    return {'kind': options['kind'], 'id': options['id'], 'verified_source_sha256': reference['sha256'].strip(),
+    return {'kind': options['kind'], 'id': options['id'], 'verified_source_sha256': file_evidence.get('verified_child_sha256', reference['sha256'].strip()),
+            **file_evidence,
             'capture_truncated': reference.get('capture_truncated', False),
             'redacted_sha256': digest(clean), 'byte_length': len(clean), 'offset': offset,
             'next_offset': offset+len(part) if offset+len(part) < len(clean) else None,

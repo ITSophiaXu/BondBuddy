@@ -29,6 +29,7 @@ db attempts --run RUN_ID --cursor RETURNED_CURSOR
 db errors --job JOB_ID
 content prompt SNAPSHOT_ID --reason incident_1460
 content result RESULT_REF_ID --reason incident_1460
+content result RESULT_REF_ID --file operations.json --reason incident_1460
 exec-log ATTEMPT_ID --reason incident_1460
 processes authoring
 ```
@@ -41,15 +42,22 @@ processes authoring
 
 新内容接口以JSON/base64返回脱敏后的UTF-8字节；不沿用v2的直接 `--all` 文本输出，避免单次大响应丢失尾部。`--since`、`--until`、`--tail`保留，`--tail`选择最近N条并仍可分页。归档通常在采集后约15秒可查询；实时跟踪使用重复分页读取，v2的 `--follow` 容器直连不再开放。
 
+`content result ID --file operations.json` 仅从已授权且完整校验的父 result 读取固定文件描述符，再校验子文件的 owner/project/run/attempt 精确存储路径、SHA256、登记字节数、ETag 和 UTF-8 JSON；子文件上限为1MiB，不接受其他文件名或任意路径。返回的 `verified_parent_sha256` 与 `verified_child_sha256` 分别表示父、子原始字节，`verified_source_sha256` 表示所选子文件，`redacted_sha256` 表示脱敏后分页字节。
+
+每页仍完整读取并校验来源对象。exec 的 helper/broker/本地导出期限为120/135/180秒；operations 为35/45/90秒，其他内容为35/45/60秒。只有 exec helper 实际触发期限时返回固定 `CONTENT_READ_TIMEOUT`，其他错误沿用安全分类。导出支持前置参数、`--file=operations.json` 和标准 `--` 的多页查询；完整导出拒绝预填 cursor/offset（含等号形式），失败保留 `.partial`。
+
 一次导出全部匹配记录，在开发电脑执行；无需服务器写权限：
 
 ```sh
 python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "logs authoring --from 2026-11-01T00:00:00Z" --output authoring.jsonl
 python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "db attempts --run RUN_ID" --output attempts.jsonl
 python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "content exec ATTEMPT_ID --reason incident_1460" --output execution.log
+python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "content result RESULT_REF_ID --file operations.json --reason incident_1460" --output operations.json
 ```
 
 导出先写 `.partial`，全部页成功且内容哈希一致后才生成目标文件；失败保留 partial，不声称完成，不覆盖已有文件。SSH配置应指定个人key和经管理员核对的 `UserKnownHostsFile`；必须保留严格主机密钥校验。
+
+本轮读取修复的准确测试、原集成基线失败、未部署状态及安装/恢复步骤见[读取修复验证与交接](READER-RECOVERY-20261125.md)；下方历史 `VALIDATION.md` 不代表本轮已部署或生产验收。
 
 ## 统一发布步骤
 
@@ -82,8 +90,11 @@ python3 export.py --target bondbuddy-logs --ssh-config ./ssh_config --query "con
 ## 验证
 
 ```sh
-python3 -B -m unittest -v test_diagnostics
+python3 -B -m unittest -v test_diagnostics test_content_deadline test_export_deadline test_operations_broker test_operations_export_deadline
+node --experimental-vm-modules --test test-read-content-deadline.mjs test-operations-helper.mjs
 node test-integration.mjs
+node test-reader-integration.mjs
+node test-operations-integration.mjs
 docker build -f Dockerfile.test -t bondbuddy-diagnostics-ssh-test .
 docker run --rm --network none bondbuddy-diagnostics-ssh-test
 ```
