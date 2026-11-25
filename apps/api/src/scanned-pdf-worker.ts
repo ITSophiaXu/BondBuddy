@@ -4,6 +4,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 type PdfPage = {
   view: number[];
   getOperatorList(): Promise<{ fnArray: number[]; argsArray: unknown[][] }>;
+  getTextContent(): Promise<{ items: Array<{ str?: string }> }>;
   cleanup(): void;
 };
 type PdfDocument = { numPages: number; getPage(page: number): Promise<PdfPage> };
@@ -46,11 +47,18 @@ async function check(path: string): Promise<boolean> {
     for (let number = 1; number <= document.numPages; number++) {
       const page = await document.getPage(number);
       try {
-        const [operators] = await Promise.all([page.getOperatorList()]);
+        const operators = await page.getOperatorList();
         const area = Math.abs((page.view[2]! - page.view[0]!) * (page.view[3]! - page.view[1]!));
         const coverage = area > 0 ? scannedPageImageCoverage(operators, pdfjs.OPS as Record<string, number>, area) : 0;
         // A page-sized raster remains a scan even when OCR adds a text layer.
         if (coverage >= 0.8) return true;
+        if (coverage >= 0.65) {
+          const text = await page.getTextContent();
+          const chars = text.items.reduce((count, item) => count + (item.str?.trim().length ?? 0), 0);
+          const invisibleText = operators.fnArray.some((op, index) =>
+            op === pdfjs.OPS.setTextRenderingMode && operators.argsArray[index]?.[0] === 3);
+          if (chars < 30 || invisibleText) return true;
+        }
       } finally { page.cleanup(); }
     }
     return false;
