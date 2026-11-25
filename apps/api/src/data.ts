@@ -50,10 +50,10 @@ export function publicProblem(error: Problem, correlationId: string) {
       : isUploadInspectionPublicReason(error.uploadReason) ? error.uploadReason : 'structure_invalid'
     : undefined;
   return {
-    code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
+    code: error.code, message: inspection === 'scanned_pdf' ? 'Scanned PDF is not accepted; upload an electronic document' : inspection ? 'Material inspection was not completed' : error.message,
     retryable: error.status === 503 || error.uploadBytesPending === true || inspection === 'inspection_queue_timeout' ||
       inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
-    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: inspection === 'scanned_pdf' ? 'Upload an electronic document instead of a scanned PDF' : 'File inspection was not completed' }]
       : error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.uploadBytesPending
         ? [UPLOAD_BYTES_PENDING_FIELD_ERROR]
       : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
@@ -349,7 +349,7 @@ export async function verifiedMedia(bytes: Buffer, declared: string): Promise<st
     throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
   }
 }
-/** Validate the upload declaration and stored size without reading document content. */
+/** Validate the upload declaration and stored size; PDFs also get a scan check. */
 export async function verifiedMediaFile(path: string, byteSize: number, declared: string): Promise<string> {
   try {
     return await inspectMaterialUploadFile(path, byteSize, declared);

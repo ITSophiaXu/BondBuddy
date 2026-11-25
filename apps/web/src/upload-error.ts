@@ -7,7 +7,7 @@ export function uploadNeedsReplacement(error: unknown): boolean {
   if (error instanceof InvalidUploadFileError) return true;
   if (!(error instanceof ApiError)) return false;
   return ['MATERIAL_FORMAT_UNSUPPORTED','MATERIAL_CONTENT_MISMATCH','MATERIAL_ENCRYPTED'].includes(error.code)
-    || error.code === 'MATERIAL_UNREADABLE' && ['size_limit','encrypted_content','content_mismatch','unsupported_content','structure_invalid','external_link_invalid'].includes(String(error.details.uploadReason));
+    || error.code === 'MATERIAL_UNREADABLE' && ['size_limit','encrypted_content','content_mismatch','unsupported_content','structure_invalid','external_link_invalid','scanned_pdf'].includes(String(error.details.uploadReason));
 }
 
 export function uploadErrorMessage(error: unknown): string {
@@ -15,6 +15,8 @@ export function uploadErrorMessage(error: unknown): string {
   const reference = errorReference(error);
   if (error.code === 'MATERIAL_UNREADABLE') {
     switch (error.details.uploadReason) {
+      case 'scanned_pdf':
+        return `此 PDF 为图片扫描件，无法用于材料处理。请上传可选择、复制文字的电子版 PDF 或 Word 文件；财务表格请上传电子版 Excel。${reference}`;
       case 'external_link_invalid':
         return `文件含系统目前无法核验的外部工作簿引用，尚未保存。请保留原文件并联系支持。${reference}`;
       case 'inspection_queue_timeout':
