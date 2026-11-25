@@ -320,7 +320,8 @@ test('authoring permits only fixed run-local material tools; default adapter sti
 test('authoring deadline is independently configurable and rejects invalid timers', () => {
   const defaults = loadCodexAdapterConfig({ BB_CODEX_TIMEOUT_MS: '600000' });
   assert.equal(defaults.timeout_ms, 600000);
-  assert.equal(defaults.authoring_timeout_ms, 18000000);
+  assert.equal(defaults.authoring_timeout_ms, 5400000);
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: '18000000' }).authoring_timeout_ms, 5400000);
   assert.equal(loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: '3600000' }).authoring_timeout_ms, 3600000);
   for (const value of ['0', '-1', 'abc', '1.5', '2147483648'])
     assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: value }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
@@ -402,6 +403,39 @@ test('authoring survives the short-call deadline but remains bounded and cancell
       assert.ok(cancelled.attempts[0].duration_ms < 2500);
       assert.equal(cancelled.attempts[0].usage.status, 'unknown');
     } finally { clearTimeout(timer); }
+  } finally { await cleanup(); }
+});
+
+test('active execution budget interrupts an already running authoring call', async () => {
+  const { config, cleanup } = await setup({timeout_ms:200,authoring_timeout_ms:5000,kill_grace_ms:100});
+  try {
+    const journal=new MemoryCodexJournal();
+    const started=Date.now();
+    const result=await runContainedModelCall(call('SCENARIO:hang',{
+      materialTools:{materials:[]},remainingExecutionMs:async()=>400
+    }),journal,config);
+    assert.equal(result.error_code,'MODEL_TIMEOUT');
+    assert.equal(result.attempts.length,1);
+    assert.ok(Date.now()-started<2500,'the five-second authoring timeout must not control this attempt');
+    assert.ok(journal.executionConfigs[0].effective_timeout_ms<=400);
+    assert.equal(journal.executionConfigs[0].timeout_source,'deadline_cap');
+  } finally { await cleanup(); }
+});
+
+test('completed model results remain reusable after the active budget is spent', async () => {
+  const {config,cleanup}=await setup();
+  try {
+    const journal=new MemoryCodexJournal();
+    const input=call('SCENARIO:structured');
+    const first=await runContainedModelCall(input,journal,config);
+    assert.equal(first.status,'completed');
+    journal.prior={call_id:first.attempts[0].call_id,attempt_no:1,status:'completed',observed:true};
+    journal.readCompleted=async()=>({value:first.value,result_sha256:first.attempts[0].result_sha256!});
+    const replay=await runContainedModelCall({...input,remainingExecutionMs:async()=>{
+      throw Error('replay must not consume execution budget');
+    }},journal,config);
+    assert.equal(replay.status,'reused');
+    assert.equal(journal.intents.length,1);
   } finally { await cleanup(); }
 });
 
