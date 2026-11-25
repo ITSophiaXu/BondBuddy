@@ -296,6 +296,9 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     if(attemptNo!==Number(sequence.rows[0].last_attempt)+1)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider attempt numbers must increase monotonically');
     await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)",[attemptId,lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null,r.channel]);
     if(metadata.fileAuthoringRecoveryCapture===true){
+      // Reopen the active meter only when the next authorized model send starts.
+      // A prior timed-out attempt may have left the job in recovery_capture.
+      await client.query("UPDATE bb_jobs SET stage='provider_call',updated_at=now() WHERE id=$1",[j.id]);
       const capture:FileAuthoringCapture={version:FILE_AUTHORING_CAPTURE_VERSION,owner_user_id:lease.owner,project_id:r.project_id,run_id:r.id,job_id:j.id,
         input_revision:Number(r.input_revision),input_hash:String(r.input_hash).trim(),attempt_id:attemptId,logical_call_id:logicalCallId,
         prepared_at:new Date().toISOString(),state:'prepared',failure_code:null,
