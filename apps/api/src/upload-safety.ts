@@ -6,7 +6,7 @@ export type UploadSafetyCode = Extract<ErrorCode, `MATERIAL_${string}` | 'DATA_U
 export const UPLOAD_REJECTION_REASONS = [
   'size_limit', 'inspection_queue_timeout', 'inspection_timeout', 'inspection_worker_failed',
   'archive_entry_limit', 'archive_expanded_limit', 'archive_ratio', 'xml_part_limit',
-  'structure_invalid', 'unsupported_content', 'content_mismatch', 'encrypted_content'
+  'structure_invalid', 'unsupported_content', 'content_mismatch', 'encrypted_content', 'scanned_pdf'
 ] as const;
 export type UploadRejectionReason = typeof UPLOAD_REJECTION_REASONS[number];
 export const UPLOAD_STRUCTURE_DETAILS = [

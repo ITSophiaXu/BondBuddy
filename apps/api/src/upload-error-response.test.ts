@@ -36,3 +36,13 @@ test('inspection service failure is retryable without claiming damage; non-uploa
   assert.equal(queue.field_errors[0]?.code, 'inspection_queue_timeout');
   assert.equal(queue.message, 'Material inspection was not completed');
 });
+
+test('scanned PDF is a non-retryable replacement request', () => {
+  const response = publicProblem(new Problem(422, 'MATERIAL_UNREADABLE',
+    'Scanned PDF is not accepted', 'scanned_pdf'), 'synthetic-scan');
+  assert.equal(Value.Check(schemas.Error, response), true);
+  assert.equal(response.retryable, false);
+  assert.deepEqual(response.field_errors, [{
+    field: 'material_upload', code: 'scanned_pdf', message: 'Upload an electronic document instead of a scanned PDF',
+  }]);
+});
