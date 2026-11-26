@@ -361,7 +361,7 @@ function fileAuthoringDeliveryAttempt(options:DeliveryOptions,round:number):RunS
       try{assessed=await evaluate(candidate);}
       catch(error){
         if(ctx.signal.aborted)throw error;
-        if(error instanceof Error && /WORD_(NO_REVISIONS|REJECT_MISMATCH|ACCEPT_MISMATCH|FILE_INVALID|PACKAGE_INVALID|XML_UNSAFE)/.test(error.message))
+        if(error instanceof Error && /WORD_(NO_REVISIONS|REJECT_MISMATCH|ACCEPT_MISMATCH|BASELINE_REVISION_UNSUPPORTED|REVISION_UNSUPPORTED|REVISION_INVALID|FILE_INVALID|PACKAGE_INVALID|XML_UNSAFE)/.test(error.message))
           return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
         throw error;
       }
