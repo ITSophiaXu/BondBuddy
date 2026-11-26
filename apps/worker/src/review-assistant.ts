@@ -455,16 +455,27 @@ export async function runReviewAssistantOnce(options:{pool:Pool;blobs:PrivateBlo
     const prompt=await promptSnapshot(options.pool,options.blobs,lease,snapshot,history);
     const validate=(value:unknown)=>validReviewAssistantReply(value,snapshot.report,protocol.resultVersion);
     const journal=new ReviewAssistantJournal({pool:options.pool,blobs:options.blobs,lease,validateResult:validate});
+    const remainingExecutionMs=async()=>{
+      const row=(await options.pool.query(`SELECT active_execution_ms + CASE WHEN active_started_at IS NULL THEN 0 ELSE
+        GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (LEAST(clock_timestamp(),COALESCE(lease_until,clock_timestamp()))-active_started_at))*1000)::bigint)
+        END AS used_ms FROM bb_review_messages WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND lease_token=$4`,
+        [lease.id,lease.owner_user_id,lease.project_id,lease.lease_token])).rows[0];
+      if(!row)throw Error('ASSISTANT_LEASE_LOST');
+      return Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(row.used_ms));
+    };
     const result=await (options.model??runContainedModelCall)({owner_user_id:lease.owner_user_id,project_id:lease.project_id,
       job_id:lease.id,run_id:lease.id,trace_id:lease.id,logical_call_id:protocol.logicalCallId,prompt_snapshot_ref:prompt.id,prompt:prompt.prompt,
-      output:{kind:'json',schema:protocol.schema,validate},result_schema_version:protocol.resultVersion,signal:controller.signal},journal,options.config??loadCodexAdapterConfig());
+      output:{kind:'json',schema:protocol.schema,validate},result_schema_version:protocol.resultVersion,signal:controller.signal,
+      remainingExecutionMs},journal,options.config??loadCodexAdapterConfig());
     await options.afterCall?.();
     if(result.status==='completed'||result.status==='reused') {
       if(!validate(result.value))fail('ASSISTANT_RESULT_INVALID');
       await finishMessage(options.pool,lease,'completed',null,result.value as AssistantReply);return 'completed';
     }
     const status=result.status==='needs_reconcile'?'unknown':'failed';
-    await finishMessage(options.pool,lease,status,result.error_code??'MODEL_TURN_FAILED');return status;
+    const error=result.error_code==='MODEL_TIMEOUT'&&await remainingExecutionMs()===0
+      ?'TASK_EXECUTION_TIME_LIMIT':result.error_code??'MODEL_TURN_FAILED';
+    await finishMessage(options.pool,lease,status,error);return status;
   } catch(error) {
     if(error instanceof Error&&error.message==='SYNTHETIC_CRASH')throw error;
     if(error instanceof Error&&error.message==='ASSISTANT_LEASE_LOST')return 'lost';
