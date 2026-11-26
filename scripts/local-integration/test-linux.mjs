@@ -7,7 +7,7 @@ const docker='C:/Program Files/Docker/Docker/resources/bin/docker.exe';
 const archive=join(runtime,'linux-test-snapshot.tar');
 // Pack on the host once; importing one tar is much faster than copying thousands of
 // files across Docker Desktop's Windows mount and preserves the frozen test inputs.
-const packed=spawnSync('C:/Program Files/Git/usr/bin/tar.exe',['--force-local','-cf',archive.replaceAll('\\','/'),'--exclude=node_modules/@bondbuddy',
+const packed=spawnSync('C:/Program Files/Git/usr/bin/tar.exe',['--force-local','--dereference','-cf',archive.replaceAll('\\','/'),'--exclude=node_modules/@bondbuddy',
   'apps','packages','knowledge','python','product-prototype','db','package.json','node_modules','scripts/local-integration'],
   {cwd:repo,encoding:'utf8',windowsHide:true});
 if(packed.status!==0)throw new Error(packed.stderr||JSON.stringify({status:packed.status,signal:packed.signal,error:packed.error?.message}));

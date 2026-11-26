@@ -5,6 +5,8 @@ import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 export type UnifiedAuthoringInput = {
   /** Absent on existing input revisions: those runs retain their original authoring path. */
   format_policy?: SourceFormatPolicy;
+  /** Present only for direct DOCX editing; selected and pinned by the API. */
+  direct_rule_list_version?: 'direct-docx-rules-v1';
   /** Server-checked absence/exclusion decision, immutable with this input. */
   none_baseline?: import('./none-baseline.js').NoneBaselineSnapshot;
   edit_baseline?: {market:typeof MARKETS[number];offering:typeof OFFERINGS[number];reporting_periods:TargetReportingPeriod[]};
@@ -89,6 +91,8 @@ const formatArtifact = Type.Object({ kind: Type.Literal('artifact'), artifact_id
   version: Type.Integer({ minimum: 1 }), sha256: Type.String({ pattern: '^[a-f0-9]{64}$' }),
   run_id: Type.String({ minLength: 1, maxLength: 128 }), input_revision: Type.Integer({ minimum: 1 }) }, { additionalProperties: false });
 export const SourceFormatPolicySchema = Type.Union([
+  Type.Object({ version: Type.Literal('direct-docx-v1'), mode: Type.Literal('preserve_docx'), template: formatMaterial,
+    selection: Type.Literal('explicit') }, { additionalProperties: false }),
   Type.Object({ version: Type.Literal('source-format-v1'), mode: Type.Union([Type.Literal('preserve_docx'), Type.Literal('reconstruct_pdf')]),
     template: formatMaterial, selection: Type.Union([Type.Literal('explicit'), Type.Literal('automatic'), Type.Literal('review_source')]) }, { additionalProperties: false }),
   Type.Object({ version: Type.Literal('source-format-v1'), mode: Type.Literal('preserve_docx'), template: formatArtifact,

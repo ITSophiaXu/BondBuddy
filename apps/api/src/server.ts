@@ -80,6 +80,7 @@ import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatc
 import { classifyPreflightReadiness } from './preflight-readiness.js';
 import { assertAuditPdfQuality } from './audit-pdf-quality.js';
 import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
+import {directDocxEligible,directDocxFlagged,directDocxWorkerAvailable,enableDirectDocx} from './direct-docx-admission.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -925,6 +926,9 @@ export function createServer(settings: Settings = {}) {
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
         if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
         inheritPreviousOutputFormat(authoring);
+        if(directDocxFlagged(process.env,user,id) && directDocxEligible({kind:p.kind,market:p.market,offering:p.offering,
+          issuerName:p.issuer_name,authoring,materials:formatMaterials}) && await directDocxWorkerAvailable(client,process.env))
+          enableDirectDocx(authoring);
         try {
           const snapshot=await lockNoneBaseline(client,{owner:user,projectId:id},p.kind,resolved,authoring,b.first_draft_confirmation,new Date().toISOString());
           if(snapshot)authoring.none_baseline=snapshot;
@@ -1500,6 +1504,9 @@ export function createServer(settings: Settings = {}) {
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+      const directPolicy=input.rows[0].manifest?.authoring?.format_policy?.version==='direct-docx-v1';
+      if(directPolicy && !await directDocxWorkerAvailable(client,process.env))
+        throw new Problem(503,'CAPABILITY_NOT_READY','直接编辑 worker 暂不可用。请刷新输入以使用当前可用流程。');
       if(paidReview&&currentProject.kind==='review')throw new Problem(409,'QUOTE_REQUIRED','请从复核项目确认本次报价后执行。');
       const lockedKind=input.rows[0].manifest?.kind;
       if(lockedKind!==currentProject.kind)
@@ -1540,7 +1547,7 @@ export function createServer(settings: Settings = {}) {
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
-        await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default');
+        await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default',directPolicy?'update_direct':undefined);
         return runDto({...q.rows[0],state:'queued',stage:'queued',event_cursor:1,updated_at:new Date()});
       }
       await client.query("UPDATE bb_runs SET event_cursor=1 WHERE id=$1",[runId]);
@@ -1598,6 +1605,40 @@ export function createServer(settings: Settings = {}) {
     if(!queueEnabled)throw unavailable();
     return queueAction(db(),user,id,kind,request.id);
   });
+  async function directWorkDraft(user:string,runId:string){
+    const row=(await db().query(`SELECT r.project_id,r.state,r.channel,r.input_hash,j.job_type,
+      j.checkpoint#>'{stages,word_delivery}' AS delivery_result,
+      j.checkpoint#>'{stages,direct_work_draft_v1}' AS repair_draft
+      FROM bb_runs r JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
+      WHERE r.owner_user_id=$1 AND r.id=$2`,[user,runId])).rows[0];
+    const result=row?.delivery_result?.version==='direct-docx-result-v1'?row.delivery_result:row?.repair_draft;
+    if(!row||row.state!=='failed'||row.channel!=='production'||row.job_type!=='update_direct'||
+      result?.version!=='direct-docx-result-v1'||result?.input_hash!==String(row.input_hash).trim()||!result?.tracked)
+      throw missing();
+    const ref=result.tracked as {key?:unknown;sha256?:unknown;byte_size?:unknown};
+    const prefix=`owners/${user}/projects/${row.project_id}/runs/${runId}/file-authoring/`;
+    if(typeof ref.key!=='string'||!ref.key.startsWith(prefix)||ref.key.includes('..')||
+      typeof ref.sha256!=='string'||!/^[a-f0-9]{64}$/.test(ref.sha256)||
+      !Number.isSafeInteger(ref.byte_size)||Number(ref.byte_size)<1||Number(ref.byte_size)>100*1024*1024)throw missing();
+    return {projectId:String(row.project_id),result:result as Record<string,unknown>,ref:ref as {key:string;sha256:string;byte_size:number}};
+  }
+  app.get('/api/v1/runs/:run_id/work-draft',async request=>{
+    const user=await owner(request),runId=param(request,'run_id');
+    const item=await directWorkDraft(user,runId);
+    return {run_id:runId,status:'work_draft',page_check:item.result.page_check,financial_check:item.result.financial_check,
+      format_diagnostic:item.result.format_diagnostic,download_url:`/api/v1/runs/${runId}/work-draft/download`};
+  });
+  app.get('/api/v1/runs/:run_id/work-draft/download',async(request,reply)=>{
+    const user=await owner(request),runId=param(request,'run_id');
+    const item=await directWorkDraft(user,runId);
+    if(!blobs)throw unavailable();
+    const bytes=await blobs.getIfExistsBounded(item.ref.key,100*1024*1024);
+    if(!bytes||bytes.length!==item.ref.byte_size||digest(bytes)!==item.ref.sha256)throw new Problem(503,'DATA_UNAVAILABLE','工作稿暂不可读取');
+    const reason=(item.result.page_check as {status?:string}|undefined)?.status==='mismatch'?'页数超出阈值':'财务勾稽不一致';
+    await transaction(db(),client=>recordOperation(client,{owner:user,projectId:item.projectId,runId,requestId:request.id,traceId:runId,kind:'artifact_download',status:'submitted'}));
+    return reply.header('content-type','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('cache-control','private, no-store').header('content-disposition',contentDisposition(`BondBuddy-募集书更新工作稿-${reason}.docx`)).send(bytes);
+  });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,r.project_id,COALESCE(e.byte_size,pdf_e.byte_size) AS delivery_evidence_byte_size,${artifactNameColumns('a')} FROM bb_artifact_versions a
@@ -1613,6 +1654,7 @@ export function createServer(settings: Settings = {}) {
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
     const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
+    const directChecks=pair?.direct_checks as {page_check:unknown;financial_check:unknown}|undefined;
     if (pair?.revision_handling && (!Value.Check(ReviewRevisionHandlingSchema,pair.revision_handling) || pair.review_passed !== false)) throw new Problem(503,'DATA_UNAVAILABLE','Revision handling snapshot is invalid');
     const variant=pair?.revision_artifact_id===a.id?'revision':pair?.clean_artifact_id===a.id?'clean':pair?.baseline_artifact_id===a.id?'baseline':null;
     const wordDelivery=variant ? {variant,revision_artifact_id:pair!.revision_artifact_id,clean_artifact_id:pair!.clean_artifact_id,
@@ -1622,6 +1664,7 @@ export function createServer(settings: Settings = {}) {
       replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
       pending_review:pair!.pending_review,
       ...(pair!.delivery_policy==='generated_pair_v1' ? {delivery_policy:'generated_pair_v1',content_review:'not_performed'} : {}),
+      ...(directChecks ? {direct_checks:{page_check:directChecks.page_check,financial_check:directChecks.financial_check}} : {}),
       ...(pair!.revision_handling ? {revision_handling:pair!.revision_handling,review_passed:false} : {}),
       ...(pair!.baseline_kind ? {baseline_kind:pair!.baseline_kind, source_issuer:pair!.source_issuer ?? null, authoring_summary:pair!.authoring_summary ?? []} : {})} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);

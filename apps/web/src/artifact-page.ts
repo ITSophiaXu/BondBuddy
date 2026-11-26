@@ -54,6 +54,7 @@ export class ArtifactPage {
 
   private show(artifact: Artifact, run: Dto<'RunResponse'>, project: Dto<'ProjectResponse'>, generation: number) {
     const delivery = artifact.word_delivery;
+    const directChecks=delivery?.direct_checks;
     const pending = delivery ? Math.max(delivery.pending_review_count ?? 0, delivery.pending_review.length) : 0;
     const generatedPair = delivery?.delivery_policy === 'generated_pair_v1';
     const files = delivery
@@ -73,6 +74,7 @@ export class ArtifactPage {
       </section>
       <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>${generatedPair ? '修订版和清洁版已生成，可以下载。' : '文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。'}</p>
+        ${directChecks?`<div class="artifact-review"><h3>本次检查状态</h3><p>页数：原稿 ${directChecks.page_check.baseline_pages} 页，成稿 ${directChecks.page_check.result_pages} 页，检查通过。</p><p>财务勾稽：${directChecks.financial_check.status==='passed'?'已完整核对且一致':directChecks.financial_check.status==='not_checked'?'部分项目未核对':'存在不一致'}；已比较 ${directChecks.financial_check.compared} 项。</p>${directChecks.financial_check.unchecked.length?`<p>未核对：${esc(directChecks.financial_check.unchecked.join('、'))}</p>`:''}</div>`:''}
         ${delivery ? `<p>${delivery.baseline_kind === 'none' ? '本次为首次编制，没有历史修订对照。' : delivery.replacements !== null && delivery.columns !== null ? `本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。` : ''}</p>${delivery.source_issuer ? `<p>${delivery.baseline_kind === 'project_output' ? '对照本项目上一版成果，发行人：' : '对照原稿企业：'}${esc(delivery.source_issuer)}${delivery.baseline_kind === 'reconstructed_pdf' ? '；原稿来自 PDF，请核对转换后的排版。' : ''}</p>` : ''}
           ${generatedPair ? '' : `
           <div class="artifact-review" aria-labelledby="artifact-review-title"><h3 id="artifact-review-title">待人工确认（${pending} 项）</h3>

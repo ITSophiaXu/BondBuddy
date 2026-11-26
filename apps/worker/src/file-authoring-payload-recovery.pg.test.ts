@@ -430,6 +430,11 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
     if(localFailure==='MODEL_TIMEOUT'){
       const deadline=new Date(Date.now()+3600_000).toISOString(),balanceBefore=await creditBalanceExact(pool,owner);
       const rotatingPaid=await fixture({paid:true,error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
+      await pool.query("UPDATE bb_jobs SET job_type='update_direct' WHERE id=$1",[rotatingPaid.lease.jobId]);
+      assert.ok((await fileAuthoringPayloadRecoveryCandidates(pool,20,['update_direct']))
+        .some(candidate=>candidate.job_id===rotatingPaid.lease.jobId));
+      assert.equal((await fileAuthoringPayloadRecoveryCandidates(pool,20,['update']))
+        .some(candidate=>candidate.job_id===rotatingPaid.lease.jobId),false);
       const held=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows[0];
       assert.equal(held.state,'held');
       const usageRows=async(attempt:string)=>(await pool.query('SELECT * FROM bb_call_usage WHERE attempt_id=$1',[attempt])).rows;
@@ -452,7 +457,7 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
         attempt_id:rotatingPaid.attempt,logical_call_id:rotatingPaid.logical,decision:'retry_unknown_usage',recovery_state:'queued',deadline_at:deadline});
       assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[rotatingPaid.lease.runId])).rows,[held],
         'normal rotation does not release, replace, reset or charge the original reservation');
-      const lease=await claim(pool,300);assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
+      const lease=await claim(pool,300,{runKinds:['update_direct']});assert.ok(lease);assert.equal(lease.runId,rotatingPaid.lease.runId);
       const next=await observe(lease,rotatingPaid.project,rotatingPaid.inputHash,2,{error:'MODEL_CONTEXT_ROTATION_REQUIRED',capture:'saved',deadline});
       const nextUsageBefore=await usageRows(next.attempt),nextEvidenceBefore=await evidenceRows(next.attempt);
       assert.equal(nextUsageBefore.length,1);assert.equal(nextUsageBefore[0].call_status,'pending_reconcile');

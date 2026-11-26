@@ -548,12 +548,15 @@ export class ProjectExecution {
       document.body.append(dialog); this.creditDialog = dialog; dialog.showModal();
     }
     const executionProgressHost = this.host.querySelector<HTMLElement>('#execution-progress')!;
+    const directQualityFailed=run?.state==='failed'&&this.events.some(event=>
+      ['WORD_PAGE_COUNT_MISMATCH','DIRECT_FINANCIAL_MISMATCH'].includes(event.payload.error_code??''));
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
     executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a></div>` : ''}
+      ${directQualityFailed?'<div class="execution-summary"><strong>本轮检查未通过，未作为正式成果交付，积分已退回。</strong><p>可查看具体检查项并下载标明问题的修订工作稿。</p><button class="button secondary" type="button" id="show-direct-work-draft">查看工作稿与检查结果</button><div id="direct-work-draft-detail" role="status"></div></div>':''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
@@ -564,6 +567,16 @@ export class ProjectExecution {
     if (creditDetails) creditDetails.open = creditDetailsOpen;
     if (creditSummaryFocused) executionProgressHost.querySelector<HTMLElement>('.authoring-credit-meter summary')?.focus({preventScroll:true});
     else if (focusedId) executionProgressHost.querySelector<HTMLElement>('#'+CSS.escape(focusedId))?.focus({preventScroll:true});
+    this.host.querySelector('#show-direct-work-draft')?.addEventListener('click',()=>{
+      const target=this.host.querySelector<HTMLElement>('#direct-work-draft-detail');
+      if(!target||!run)return;
+      target.textContent='正在读取检查结果…';
+      void this.api.request<{page_check:{status:string;baseline_pages:number;result_pages:number};financial_check:{status:string;compared:number;issues:{code:string}[];unchecked:string[]};download_url:string}>(
+        'GET',`/runs/${encodeURIComponent(run.run_id)}/work-draft`,undefined,{},this.controller.signal).then(result=>{
+          if(!target.isConnected)return;
+          target.innerHTML=`<p>页数：原稿 ${result.page_check.baseline_pages} 页，成稿 ${result.page_check.result_pages} 页；${result.page_check.status==='mismatch'?'超出阈值':'通过'}。</p><p>财务勾稽：${result.financial_check.status==='mismatch'?'存在确定性不一致':result.financial_check.status==='not_checked'?'部分项目未核对':'已核对且一致'}；已比较 ${result.financial_check.compared} 项。</p>${result.financial_check.issues.length?`<p>不一致项目：${esc(result.financial_check.issues.map(issue=>issue.code).join('、'))}</p>`:''}${result.financial_check.unchecked.length?`<p>未核对：${esc(result.financial_check.unchecked.join('、'))}</p>`:''}<a class="button secondary" href="${esc(result.download_url)}">下载修订工作稿</a>`;
+        }).catch(error=>{if(target.isConnected)target.textContent=friendlyError(error,'download');});
+    });
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume'],['pause-run','pause']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }

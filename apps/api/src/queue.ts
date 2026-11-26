@@ -65,9 +65,10 @@ export async function remainingJobExecutionMs(pool:Pool|PoolClient, jobId:string
   return Math.max(0,RUN_ACTIVE_EXECUTION_LIMIT_MS-Number(row.used_ms));
 }
 export const remainingRunExecutionMs=(pool:Pool,lease:Lease)=>remainingJobExecutionMs(pool,lease.jobId,lease.token);
-export type RunKind = typeof TASK_KINDS[number];
+/** Internal job kind. It is intentionally absent from the public task-kind contract. */
+export type RunKind = typeof TASK_KINDS[number] | 'update_direct';
 export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind[] {
-  if (!kinds.length || kinds.some(kind => !(TASK_KINDS as readonly string[]).includes(kind)) || new Set(kinds).size !== kinds.length)
+  if (!kinds.length || kinds.some(kind => ![...TASK_KINDS,'update_direct'].includes(kind)) || new Set(kinds).size !== kinds.length)
     throw new Error('Invalid worker run kinds');
   return [...kinds];
 }
@@ -122,8 +123,9 @@ async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) 
   return !!q.rowCount;
 }
 
-export async function enqueue(client:PoolClient, r:any, subtype='default') {
-  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)",[uid(),r.owner_user_id,r.id,r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null]);
+export async function enqueue(client:PoolClient, r:any, subtype='default', jobType?:RunKind) {
+  if(jobType==='update_direct' && r.task_kind!=='update')throw new Error('Direct DOCX job requires an update run');
+  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,'queued','queued',$6,$7)",[uid(),r.owner_user_id,r.id,jobType??r.task_kind,subtype,r.channel ?? 'production',r.test_grant_id ?? null]);
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
 }
 
@@ -951,7 +953,8 @@ export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid recovery batch size');
   const q=await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
     WHERE j.state='paused' AND j.stage='provider_reconcile' AND r.state='paused' AND r.stage='provider_reconcile'
-    AND r.task_kind='update' AND ($2::text[] IS NULL OR r.task_kind=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
+    AND r.task_kind='update' AND j.job_type IN ('update','update_direct')
+    AND ($2::text[] IS NULL OR j.job_type=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
     AND EXISTS(SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=j.id AND a.owner_user_id=j.owner_user_id AND a.status='pending_reconcile'
       AND t.error_code=ANY($4::text[])
@@ -1177,7 +1180,7 @@ async function fileAuthoringRetryEvidence(client:PoolClient,r:any,j:any,a:any) {
 function fileAuthoringJobMatchesInput(r:any,j:any):boolean {
   // Run-backed jobs bind input through run_id; the optional copied fields also
   // serve parse/preflight jobs and are normally null for an authoring enqueue.
-  return j.job_type==='update'&&j.owner_user_id===r.owner_user_id&&j.run_id===r.id&&
+  return ['update','update_direct'].includes(j.job_type)&&j.owner_user_id===r.owner_user_id&&j.run_id===r.id&&
     (j.project_id==null||j.project_id===r.project_id)&&(j.input_revision==null||j.input_revision===r.input_revision)&&
     (j.input_hash==null||String(j.input_hash).trim()===String(r.input_hash).trim());
 }

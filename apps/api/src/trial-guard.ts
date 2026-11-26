@@ -168,10 +168,10 @@ export async function reportTrialRejection(pool: Pool, error: unknown, userId: s
 // ---- worker heartbeat ----------------------------------------------------------------
 
 export function defaultWorkerId() { return `${hostname().replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64)}-${process.pid}-${uid().slice(0, 8)}`; }
-export async function recordWorkerHeartbeat(pool: Pool, input: { workerId: string; startedAt: Date; kinds: readonly ('run' | 'parse')[]; concurrency: number; stopped?: boolean }) {
-  await pool.query(`INSERT INTO bb_worker_heartbeats(worker_id,started_at,last_seen_at,kinds,concurrency,stopped_at) VALUES($1,$2,now(),$3,$4,CASE WHEN $5 THEN now() END)
-    ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=now(),kinds=EXCLUDED.kinds,concurrency=EXCLUDED.concurrency,stopped_at=EXCLUDED.stopped_at`,
-  [input.workerId, input.startedAt, [...input.kinds], input.concurrency, !!input.stopped]);
+export async function recordWorkerHeartbeat(pool: Pool, input: { workerId: string; startedAt: Date; kinds: readonly ('run' | 'parse')[]; runKinds?: readonly string[]; concurrency: number; stopped?: boolean }) {
+  await pool.query(`INSERT INTO bb_worker_heartbeats(worker_id,started_at,last_seen_at,kinds,run_kinds,concurrency,stopped_at) VALUES($1,$2,now(),$3,$4,$5,CASE WHEN $6 THEN now() END)
+    ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=now(),kinds=EXCLUDED.kinds,run_kinds=EXCLUDED.run_kinds,concurrency=EXCLUDED.concurrency,stopped_at=EXCLUDED.stopped_at`,
+  [input.workerId, input.startedAt, [...input.kinds], [...(input.runKinds??[])], input.concurrency, !!input.stopped]);
 }
 export function workerGroupsFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
   if (env.BB_READY_WORKER_GROUPS === undefined) return [];
@@ -237,6 +237,11 @@ export async function checkTrialHealth(pool: Pool, config: TrialConfig, t: Trial
   const backlog = (await pool.query("SELECT EXTRACT(EPOCH FROM now()-min(updated_at))::int age, count(*)::int n FROM bb_jobs WHERE state='queued'")).rows[0];
   if (backlog.age !== null && Number(backlog.age) > t.queueBacklogMaxAgeSeconds) {
     await raiseAlert(pool, { kind: 'queue_backlog_stale', severity: 'warning', scope: 'jobs', detail: { oldest_age_seconds: Number(backlog.age), queued: backlog.n, threshold_seconds: t.queueBacklogMaxAgeSeconds } });
+    fired.push('queue_backlog_stale');
+  }
+  const directBacklog=(await pool.query("SELECT EXTRACT(EPOCH FROM now()-min(created_at))::int age,count(*)::int n FROM bb_jobs WHERE job_type='update_direct' AND state='queued'")).rows[0];
+  if(directBacklog.age!==null && Number(directBacklog.age)>t.queueBacklogMaxAgeSeconds){
+    await raiseAlert(pool,{kind:'queue_backlog_stale',severity:'warning',scope:'update_direct',detail:{oldest_age_seconds:Number(directBacklog.age),queued:directBacklog.n,threshold_seconds:t.queueBacklogMaxAgeSeconds}});
     fired.push('queue_backlog_stale');
   }
   const window = (await pool.query("SELECT count(*) FILTER (WHERE state='failed')::int failed, count(*)::int finished FROM bb_jobs WHERE state IN ('succeeded','failed') AND updated_at>=now()-make_interval(secs=>$1)", [t.errorWindowSeconds])).rows[0];

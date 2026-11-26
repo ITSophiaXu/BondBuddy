@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
-import { editingSource, fileAuthoringStage, fileAuthoringDeliveryStage, type FileAuthoringResult } from './file-authoring-stage.js';
+import { directAuthoringSummary, editingSource, fileAuthoringStage, fileAuthoringDeliveryStage, type FileAuthoringResult } from './file-authoring-stage.js';
 import { runFormatPython, type FormatDiagnostic } from './file-authoring-format.js';
 import { verifyWordQuality } from './file-authoring-quality.js';
 import { diagnoseFormat, validFormatDiagnostic } from './word-format-diagnostic.js';
@@ -17,6 +17,13 @@ import type { StageContext } from './run-pipeline.js';
 import { FILE_AUTHORING_HOST_RENDER_HANDOFF, FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES, FILE_AUTHORING_OUTPUT_LIMIT_RETRY } from './file-authoring-instructions.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
+test('direct result keeps the model self-check but omits scratch clean-file claims',()=>{
+  const raw='## 交付文件\nclean.docx SHA256: wrong\n## 一轮自查\n49项通过，2项待核\n## 清洁稿另行生成\nclean.docx 不是宿主文件\n## 签发前须核实和补齐\n发行条款待确认';
+  const summary=directAuthoringSummary(raw).join('\n');
+  assert.match(summary,/49项通过/);
+  assert.match(summary,/发行条款待确认/);
+  assert.doesNotMatch(summary,/clean\.docx|SHA256|不是宿主文件/);
+});
 function fixture(controlled = true, sourceText = '截至2024年净资产100万元。') {
   const source = makeWorkerDocxFixture({ externalLink: false, text: sourceText });
   const pin = { material_id: 'source', material_version: 1, sha256: digest(source), role: 'historical' };

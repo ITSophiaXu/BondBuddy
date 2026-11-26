@@ -1317,6 +1317,23 @@ function bindMaterialWorkspace(projectId: string) {
     input.value = '';
   });
   host.addEventListener('click', event => {
+    // The recommended source radio is already checked. Clicking it must still
+    // turn the recommendation into an explicit user choice for the pilot.
+    const selectedTemplate=(event.target as HTMLElement).closest<HTMLInputElement>('[data-format-template]');
+    if(selectedTemplate?.checked && !selectedTemplate.disabled && draft && !draft.fields.update_details.format_template &&
+      !projectExecution?.inheritsResultFormat && (!projectExecution || projectExecution.materialsEditable)) {
+      const source=selectedTemplate.closest<HTMLElement>('[data-source-material]');
+      const material=source && confirmedMaterials(projectId).find(m=>m.material_id===source.dataset.sourceMaterial &&
+        m.material_version===Number(source.dataset.sourceMaterialVersion) && m.sha256===source.dataset.sourceSha256);
+      const context=sourceFormatContext(projectId);
+      if(material && context && !formatTemplateLocked(material,context)) {
+        const details={...draft.fields.update_details,format_template:formatTemplatePin(material)};
+        draft.edit({update_details:details});
+        retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!,details);
+        updateMaterialWorkspace(projectId);
+        return;
+      }
+    }
     const resetTemplate = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-format-template-auto]');
     if (resetTemplate) {
       if (!draft || resetTemplate.disabled || projectExecution?.inheritsResultFormat || projectExecution && !projectExecution.materialsEditable) return;
