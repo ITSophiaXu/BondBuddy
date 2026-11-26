@@ -76,6 +76,7 @@ if(row.state==='succeeded'){
     await page.getByLabel('用户名',{exact:true}).fill(account.username);
     await page.getByLabel('密码',{exact:true}).fill(account.password);
     await page.getByRole('button',{name:'登录',exact:true}).click();
+    await expect(page.getByRole('link',{name:'任务进度与结果',exact:true})).toBeVisible();
     const response=await context.request.get(`/api/v1/runs/${runId}/work-draft`);
     summary.workDraftStatus=response.status();
     if(response.ok()){
