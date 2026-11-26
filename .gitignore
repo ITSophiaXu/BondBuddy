@@ -106,6 +106,7 @@ docs/acceptance/reporting-period-hints-20261105/*
 # Split-deployment documentation and synthetic configuration examples.
 !docs/runbooks/
 docs/runbooks/*
+!docs/runbooks/cos-migration-plan.md
 !docs/runbooks/m1-split-deployment.md
 !docs/runbooks/model-gateway-measure.md
 !deploy/m1/.env.main.example
