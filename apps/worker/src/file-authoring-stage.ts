@@ -203,7 +203,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         await writeFile(join(cwd,'quality-feedback.json'),feedback,{mode:0o400});
         originals.set('quality-feedback.json',digest(feedback));
         const previous=await readAuthoringFile(ctx,options.directRepair.previous.files['tracked.docx'],MAX);
-        await writeFile(join(cwd,'output','tracked.docx'),previous,{mode:0o600});
+        if(!savedRecovery)await writeFile(join(cwd,'output','tracked.docx'),previous,{mode:0o600});
       }
       if(savedRecovery)await restoreFileAuthoringWork(ctx,cwd,savedRecovery);
     };
