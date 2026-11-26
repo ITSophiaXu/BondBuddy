@@ -1,6 +1,9 @@
 import unittest
 from decimal import Decimal
+from tempfile import TemporaryDirectory
+from pathlib import Path
 from unittest.mock import patch
+from docx import Document
 
 from bondbuddy_file_authoring import direct_financial as financial
 
@@ -88,6 +91,30 @@ class DirectFinancialTests(unittest.TestCase):
         values = facts[('consolidated', '2025-09', 'assets')]
         self.assertEqual(len(values), 1)
         self.assertEqual(values[0][0], Decimal('100.00'))
+
+    def test_grouped_amount_ratio_header_is_unchecked(self):
+        document = Document()
+        document.add_paragraph('任丘市建设投资集团有限公司 合并资产负债表 单位：万元')
+        simple = document.add_table(rows=2, cols=2)
+        simple.rows[0].cells[0].text = '项目'
+        simple.rows[0].cells[1].text = '2022年末'
+        simple.rows[1].cells[0].text = '资产总计'
+        simple.rows[1].cells[1].text = '6,055,602.15'
+        grouped = document.add_table(rows=3, cols=5)
+        for cell, value in zip(grouped.rows[0].cells, ['项目', '2022年末', '', '2021年末', '']):
+            cell.text = value
+        for cell, value in zip(grouped.rows[1].cells, ['', '金额', '占比', '金额', '占比']):
+            cell.text = value
+        for cell, value in zip(grouped.rows[2].cells, ['资产总计', '6,055,602.15', '100.00', '5,851,462.91', '100.00']):
+            cell.text = value
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'sample.docx'
+            document.save(path)
+            facts, _, unchecked = financial.docx_facts(path, self.data['issuer_name'])
+        self.assertEqual(len(facts[('consolidated', '2022-12', 'assets')]), 1)
+        self.assertEqual(facts[('consolidated', '2022-12', 'assets')][0][0], Decimal('60556021500.00'))
+        self.assertNotIn(('consolidated', '2021-12', 'assets'), facts)
+        self.assertIn('grouped_amount_ratio_header_unchecked', unchecked)
 
 
 if __name__ == '__main__':

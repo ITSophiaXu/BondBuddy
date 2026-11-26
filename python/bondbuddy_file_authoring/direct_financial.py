@@ -140,6 +140,7 @@ def docx_facts(path, issuer):
     all_text = text(body)
     facts = defaultdict(list)
     citations = defaultdict(list)
+    unchecked = []
     if issuer not in all_text:
         return facts, citations, ['target_issuer_unconfirmed']
     preceding = []
@@ -159,6 +160,12 @@ def docx_facts(path, issuer):
                         citations[(scope, report_period, key)].append(parsed)
         elif child.tag == Q('tbl'):
             rows = [[text(cell) for cell in row.findall(Q('tc'))] for row in child.findall(Q('tr'))]
+            # A year spanning "金额/占比" subcolumns cannot be mapped by the
+            # physical cell index. Comparing those cells would treat a ratio as
+            # money or attach the next year's amount to the previous year.
+            if any(re.search(r'占比|比例|比重|%', value) for row in rows[:2] for value in row):
+                unchecked.append('grouped_amount_ratio_header_unchecked')
+                continue
             caption = ' '.join(preceding[-5:]) + ' ' + ' '.join(' '.join(row) for row in rows[:3])
             scope, unit = context(caption)
             if not scope or not unit:
@@ -176,7 +183,7 @@ def docx_facts(path, issuer):
                     parsed = amount(row[col], unit) if col < len(row) else None
                     if parsed is not None:
                         facts[(scope, report_period, key)].append(parsed)
-    return facts, citations, []
+    return facts, citations, unchecked
 
 
 def verify(path, data):
