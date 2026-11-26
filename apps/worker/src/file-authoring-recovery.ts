@@ -18,7 +18,7 @@ export type FileAuthoringRecovery = {
 type Limits = { files: number; fileBytes: number; totalBytes: number };
 const id = /^[A-Za-z0-9_-]{1,128}$/;
 const hash = /^[a-f0-9]{64}$/;
-const logical = /^file-authoring-(?:v1|size-repair-[1-9][0-9]*)$/;
+const logical = /^file-authoring-(?:v1|size-repair-[1-9][0-9]*|direct-financial-repair-v1)$/;
 class CaptureError extends Error {
   constructor(readonly captureFailure:FileAuthoringCaptureFailure,message:string){super(message);}
 }

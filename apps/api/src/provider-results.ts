@@ -343,24 +343,24 @@ export async function recordProviderCallObservation(
     // unknown usage intact while the worker checks its bounded recovery policy.
     const payloadRejected=observation.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && observation.usage.status==='unknown' && candidateCount===0;
     const payloadRecovery=observation.outcome==='failed' && payloadRejected && r.task_kind==='update'
-      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(observation.logical_call_id);
     // An explicit supplier output exhaustion and a local byte cap are distinct,
     // but neither proves the whole CLI attempt's usage. The recovery sweep
     // separately verifies termination and the latest saved workspace.
     const providerOutputLimit=observation.error_code==='MODEL_PROVIDER_OUTPUT_LIMIT' && observation.finish_reason==='max_output_tokens';
     const outputLimitRecovery=observation.outcome==='pending_reconcile' && (observation.error_code==='MODEL_OUTPUT_TOO_LARGE' || providerOutputLimit)
       && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
-      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(observation.logical_call_id);
     const timeoutRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_TIMEOUT'
       && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
-      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(observation.logical_call_id);
     const contextRotation=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_CONTEXT_ROTATION_REQUIRED'
       && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
-      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(observation.logical_call_id);
     const deadlineCapture=job.checkpoint?.file_authoring_recovery_captures?.[a.id];
     const deadlineExpiredBeforeSend=observation.outcome==='confirmed_not_sent' && observation.error_code==='MODEL_TIMEOUT'
       && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
-      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id)
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(observation.logical_call_id)
       && deadlineCapture?.version===FILE_AUTHORING_CAPTURE_VERSION && deadlineCapture.attempt_id===a.id
       && deadlineCapture.logical_call_id===observation.logical_call_id && deadlineCapture.run_id===r.id
       && deadlineCapture.job_id===job.id && deadlineCapture.owner_user_id===r.owner_user_id

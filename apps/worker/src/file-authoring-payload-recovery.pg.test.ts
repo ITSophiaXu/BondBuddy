@@ -203,6 +203,11 @@ test(localFailure===providerOutputLimit?'#1604: provider output exhaustion only 
       assert.match((await latestEvent(sizedLease.runId))?.reason??'',/^file_authoring_output_limit_/,'do not replace a known output-limit cause with generic reconciliation');
       await assertBlocked(stale,'a previous attempt’s snapshot does not recover the current incomplete execution',2);
 
+      const directRepair=await fixture({...recoverable,logical:'file-authoring-direct-financial-repair-v1'});
+      assert.equal(await directRepair.recover(),true,'direct financial repair can persist intent and resume its saved workspace');
+      assert.equal((await cp(directRepair.lease.jobId)).stages.file_authoring_recovery.logical_call_id,directRepair.logical);
+      await end(directRepair.lease.runId);
+
       const uncaptured=await fixture({...recoverable,capture:undefined,deadline:undefined,snapshot:'none'});
       await sweep();
       assert.equal((await latestEvent(uncaptured.lease.runId))?.error_code,providerOutputLimit,'no capture still preserves the known cause after the sweep');

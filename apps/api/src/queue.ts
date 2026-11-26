@@ -259,7 +259,7 @@ export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Rec
 export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{callId?:string;modelId?:string;promptSnapshotId?:string;fileAuthoringRecoveryCapture?:boolean;fileAuthoringDeadlineAt?:string}={}) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(logicalCallId)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   const attemptId=metadata.callId??uid();
-  if(metadata.fileAuthoringRecoveryCapture===true&&!/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(logicalCallId))
+  if(metadata.fileAuthoringRecoveryCapture===true&&!/^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(logicalCallId))
     throw new Problem(422,'VALIDATION_FAILED','Invalid file recovery capture identity');
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(attemptId))throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   if(metadata.fileAuthoringDeadlineAt!==undefined&&(!metadata.fileAuthoringRecoveryCapture||!isFileAuthoringDeadline(metadata.fileAuthoringDeadlineAt)))
@@ -1030,7 +1030,7 @@ export async function recordProviderReconcileUnknown(
         !['prepared','saved'].includes(j.checkpoint?.file_authoring_recovery_captures?.[a.id]?.state))));
     const [attempt]=attempts;
     const knownOutputLimit=!inactive&&r.task_kind==='update'&&attempts.length===1&&attempt.adapter==='codex_exec'&&attempt.adapter_version==='codex-file-authoring-2'&&
-      /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(attempt.logical_call_id)&&isTerminatedProviderOutputLimit(attempt)&&
+      /^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(attempt.logical_call_id)&&isTerminatedProviderOutputLimit(attempt)&&
       attempt.observed_failure&&!attempt.conflicting&&!attempt.has_result;
     const fail=inactive||unrecoverable||transition.exhausted;
     if(fail)transition.state.exhausted=true;
@@ -1202,7 +1202,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
     if(unresolved.rows.length!==1)return false;
     const a=unresolved.rows[0];
-    if(a.status!=='pending_reconcile' || !/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id) ||
+    if(a.status!=='pending_reconcile' || !/^file-authoring-(?:v1|size-repair-[1-9]\d*|direct-financial-repair-v1)$/.test(a.logical_call_id) ||
       a.adapter!=='codex_exec' || a.adapter_version!=='codex-file-authoring-2' ||
       a.observed_usage!=='unknown' || a.conflicting_measurements>0 ||
       !fileAuthoringRecoveryErrors.includes(a.error_code) ||
