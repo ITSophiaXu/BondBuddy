@@ -24,11 +24,14 @@ export function environment(){
   const accountFile=join(runtime,'test-accounts.json');
   const directPilot=instance==='direct-20261125'&&existsSync(accountFile)
     ? JSON.parse(readFileSync(accountFile,'utf8')).accounts?.find(account=>account.username==='integration_user')?.owner:null;
+  const directSlots=instance==='direct-20261125'?process.env.BB_LOCAL_DIRECT_UPDATE_SLOTS??'1':null;
+  if(directSlots!==null&&!['1','2'].includes(directSlots))throw Error('Local direct update slots must be 1 or 2');
   return {...e,BB_LOCAL_INSTANCE:instance,NODE_ENV:'development',DATABASE_URL:databaseURL,AZURE_STORAGE_CONNECTION_STRING:blobConnection,
     HOST:'127.0.0.1',PORT:String(ports.api),BB_ALLOWED_ORIGIN:baseURL,BB_TERMS_VERSION:terms,
     BB_API_PROXY_TARGET:`http://127.0.0.1:${ports.api}`,BB_RUN_RUNTIME_ENABLED:'1',BB_PAID_AUTHORING_ENABLED:'1',BB_PAID_REVIEW_ENABLED:'1',
     BB_DEPLOYMENT_TIER:'local',BB_TRIAL_GUARD:'off',BB_WORKER_GROUP:'local-integration',BB_WORKER_CONCURRENCY:'1',BB_WORKER_PARSE_SLOTS:'1',
     ...(directPilot?{BB_DIRECT_DOCX_ENABLED:'1',BB_DIRECT_DOCX_ALLOW_USERS:directPilot,BB_DIRECT_DOCX_WORKER_GROUP:'local-integration-linux'}:{}),
+    ...(directSlots?{BB_LOCAL_DIRECT_UPDATE_SLOTS:directSlots}:{}),
     BB_PARSE_CACHE_OCR_VERSION:'local-ocr-disabled-v1',BB_PARSE_CACHE_BASIS_VERSION:'local-native-v1',
     BB_REPO_ROOT:repo,BB_PYTHON:join(process.env.USERPROFILE,'/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'),
     BB_PYTHON_BIN:join(process.env.USERPROFILE,'/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'),
