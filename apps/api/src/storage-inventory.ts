@@ -196,6 +196,7 @@ async function deleteLegacySnapshot(pool: Pool, blobs: PrivateBlobs, item: Item,
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
+    if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure') throw new Error('Only Azure storage inventory CLI is implemented');
     if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING required');
     const policy = inventoryPolicyFromEnv();
     if (process.argv[2] === 'delete') policy.deleteEnabled = true;

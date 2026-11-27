@@ -8,6 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import type { LogRecord } from './log-ops.js';
+import { storageProviderFromEnv } from './storage-provider.js';
 
 const keyPattern = /^[a-f0-9]{64}$/;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -168,6 +169,7 @@ async function archive(pool: Pool, container: ContainerClient, sink: string, seg
 }
 
 export async function writeArchivedNdjson(path: string, sink: string, records: LogRecord[], maxBytes: number, localBudget: number) {
+  if (storageProviderFromEnv() === 'cos') throw new Error('COS log archive writer is not yet implemented');
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1024 || !Number.isSafeInteger(localBudget) || localBudget < maxBytes * 2)
     throw new Error('Invalid archive size budget');
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(sink) || records.some(r => !keyPattern.test(r.delivery_key) ||

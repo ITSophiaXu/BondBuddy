@@ -362,6 +362,7 @@ async function main() {
     process.stdout.write('Storage lifecycle purge disabled; no objects changed\n');
     return;
   }
+  if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure') throw new StorageLifecycleConfigurationError('Only Azure storage purge CLI is implemented');
   if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) {
     throw new StorageLifecycleConfigurationError('Enabled storage purge requires DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING');
   }

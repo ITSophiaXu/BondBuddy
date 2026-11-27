@@ -7,6 +7,7 @@ import { backupContainers, downloadFile, hashFile } from './backup-stream.mjs';
 
 const [mode, root] = process.argv.slice(2);
 if (!['export', 'import'].includes(mode) || !root) throw new Error('usage: blob-snapshot.mjs export|import <dir>');
+if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure') throw new Error('Only Azure object snapshot is implemented');
 if (!process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('AZURE_STORAGE_CONNECTION_STRING required');
 const service = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
 const BACKUPS = process.env.BB_BACKUP_CONTAINER || 'bb-backups';

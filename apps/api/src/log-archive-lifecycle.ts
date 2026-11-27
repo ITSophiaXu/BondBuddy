@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 import { Pool, type PoolClient } from 'pg';
 import { pathToFileURL } from 'node:url';
+import { storageProviderFromEnv } from './storage-provider.js';
 
 const DAY = 86_400_000;
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -101,6 +102,7 @@ export async function releaseArchiveLegalHold(pool: Pool, holdId: string, actorI
 
 /** Runs only when archive mode is enabled. One transaction locks each segment through Blob I/O. */
 export async function runArchiveLifecycle(pool: Pool, connectionString: string, containerName: string, policy: ArchivePolicy) {
+  if (storageProviderFromEnv() === 'cos') throw new Error('COS archive lifecycle is not yet implemented');
   if (!Number.isInteger(policy.retentionDays) || policy.retentionDays < 30 || policy.retentionDays > 3650) throw new Error('Invalid archive retention');
   const now = policy.now?.() ?? new Date(), batch = policy.batchSize ?? 100;
   if (!Number.isInteger(batch) || batch < 1 || batch > 1000) throw new Error('Invalid archive batch size');

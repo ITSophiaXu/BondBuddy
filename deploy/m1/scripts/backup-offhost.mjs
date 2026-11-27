@@ -11,6 +11,7 @@ const MANIFEST = 'offhost-manifest.json';
 const idPattern = /^\d{8}T\d{6}Z-[A-Za-z0-9._-]{1,64}$/;
 const [mode, a, b] = process.argv.slice(2);
 if (!['upload', 'download'].includes(mode) || !a || !b) throw new Error('usage: backup-offhost.mjs upload <dir> <backup-id> | download <backup-id> <dir>');
+if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure') throw new Error('Only Azure off-host backup is implemented');
 if (!process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('AZURE_STORAGE_CONNECTION_STRING required');
 const id = mode === 'upload' ? b : a, root = mode === 'upload' ? a : b;
 if (!idPattern.test(id)) throw new Error(`invalid backup id ${id}`);
