@@ -34,7 +34,8 @@ import { Value } from '@sinclair/typebox/value';
 import { ReviewRevisionHandlingSchema, reportingWindow, PROJECT_TASK_COUNTS_CAPABILITY } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
+import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
+import { privateBlobsFromEnv } from './storage-provider.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -172,7 +173,7 @@ export function createServer(settings: Settings = {}) {
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
-  const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
+  const blobs = settings.blobs ?? privateBlobsFromEnv(process.env);
   // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
   app.setErrorHandler(async (error, request, reply) => {

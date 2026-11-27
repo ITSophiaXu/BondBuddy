@@ -40,6 +40,8 @@
 
 初步适配器使用 `cos-nodejs-sdk-v5` 3.0.0。该版 SDK 已不支持路径式访问；本地协议测试采用 SDK 的虚拟主机请求格式。SDK 的 `DeleteObjectParams` 未声明 `If-Match` 条件删除，适配器目前不提供 `deleteIfMatch`，依赖它的清理流程会拒绝启用。此处是代码接口检查，不替代真实 COS 服务对条件请求的验证。直传签名也尚未实现或验证。
 
+开发进度：API 和主 worker 入口已接入 `BB_STORAGE_PROVIDER=azure|cos` 的显式选择；默认仍为 Azure。COS 模式要求 `BB_COS_SECRET_ID`、`BB_COS_SECRET_KEY`、`BB_COS_BUCKET`、`BB_COS_REGION` 同时存在，缺项即拒绝启动，不回退 Azure；`BB_DIRECT_BLOB_UPLOADS=1` 也拒绝启动。运维调度器的归档和备份尚未适配，在 COS 模式下明确拒绝启动。因此这只是主对象链路的开发切片，当前 Compose、归档、备份、恢复和清理仍不能用于完整 COS 切换，不能部署为 COS 生产配置。配置值属于私密环境文件，不提交凭据。
+
 ## 保留与安全对照
 
 | Azure 现状 | COS 目标 | 验证 |

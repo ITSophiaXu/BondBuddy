@@ -55,6 +55,7 @@ test('env wiring: sink file enables forwarding; purge needs blob; backfill is op
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_ARCHIVE_RETENTION_DAYS: '29' }, () => noBlobs), /30 to 3650/);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_SINK_MAX_BYTES: String(65 * 1024 * 1024) }, () => noBlobs), /64 MiB/);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_STORAGE_PURGE_ENABLED: 'true', BB_STORAGE_MATERIAL_RETENTION_DAYS: '7', BB_STORAGE_ORPHAN_GRACE_HOURS: '24' }), /AZURE_STORAGE_CONNECTION_STRING/);
+  assert.throws(() => tasksFromEnv(pool, { ...base, BB_STORAGE_PROVIDER: 'cos', AZURE_STORAGE_CONNECTION_STRING: 'synthetic' }), /COS operations scheduler requires archive and backup migration/);
 });
 
 test('two scheduler instances execute each due task exactly once', { skip: !connection }, async () => {

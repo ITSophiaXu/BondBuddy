@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import type { OpsScheduledTask } from '@bondbuddy/contracts';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
+import { storageProviderFromEnv } from '@bondbuddy/api/storage-provider';
 import { raiseAlert, tripEvidenceGate } from '@bondbuddy/api/evidence-gate';
 import { checkLogHealth, forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, logArchiveOptionsFromEnv, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
 import { archivePolicyFromEnv, runArchiveLifecycle } from '@bondbuddy/api/log-archive-lifecycle';
@@ -113,6 +114,8 @@ const off = (value: string | undefined) => ['0', 'false', 'off', 'no'].includes(
 
 export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string, container?: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer,
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
+  if (storageProviderFromEnv(env) === 'cos')
+    throw new Error('COS operations scheduler requires archive and backup migration before it can start');
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
   if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.BB_CODEX_AUTH_MODE !== 'copilot_enterprise' && env.BB_CODEX_PROVIDER !== 'copilot_enterprise' && env.DEEPSEEK_API_KEY) {
