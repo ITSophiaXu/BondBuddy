@@ -45,7 +45,8 @@ services:
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
-    deploy: {resources: {limits: {cpus: '0.75', memory: 2G}}}
+    # Two authoring capacity pools on the execution host; SKIP LOCKED keeps claims disjoint.
+    deploy: {replicas: 2, resources: {limits: {cpus: '0.75', memory: 2G}}}
   worker-review:
     extends: {file: compose.yaml, service: worker-review}
     environment:

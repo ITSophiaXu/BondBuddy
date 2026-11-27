@@ -191,6 +191,27 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(download.statusCode, 200); assert.equal(sha(download.rawPayload), sha(docx));
     assert.equal((await send('POST', `/api/v1/runs/${runId}/cancel`, { reason: 'late' })).statusCode, 409, 'complete then cancel keeps one final state');
 
+    // 2b. A delivery-only retry reuses the already promoted Word bytes. The model stage
+    // replays its durable result; a regenerating word stage would fail the scenario.
+    const pReuse = await project('delivery-reuse');
+    const reuseRun = (await execute(pReuse)).json().run_id as string;
+    await assert.rejects(runPipelineOnce({ pool, blobs, stages: stages(), afterStage: async stage => {
+      if (stage === 'word_promoted') throw new Error('SYNTHETIC_CRASH');
+    } }), /SYNTHETIC_CRASH/);
+    const reuseRow = await runRow(reuseRun);
+    assert.ok(reuseRow.checkpoint.word_delivery_reuse_v1, 'promoted delivery recorded for reuse');
+    await expire(reuseRow.job_id);
+    const regeneratingWord: RunStage = { name: 'word_delivery', run: async () => { throw new Error('REGENERATION_NOT_ALLOWED'); } };
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: [syntheticInputLockStage, materialsReadyStage, model(), regeneratingWord] }), 'succeeded');
+    const reuseDone = await runRow(reuseRun);
+    assert.equal(reuseDone.state, 'succeeded');
+    assert.deepEqual(await attempts(reuseDone.job_id), [[1, 'completed']], 'delivery retry never replays the CLI call');
+    const reusedArtifact = await send('GET', `/api/v1/artifacts/${reuseDone.artifact_id}`);
+    assert.equal(reusedArtifact.statusCode, 200, reusedArtifact.body);
+    const reusedDownload = await send('GET', reusedArtifact.json().download_url);
+    assert.equal(reusedDownload.statusCode, 200);
+    assert.equal(sha(reusedDownload.rawPayload), sha(docx), 'reused artifact keeps the original bytes');
+
     // 3. SSE of persisted run events: resumable by Last-Event-ID, owner-checked, ends at terminal.
     const full = await send('GET', `/api/v1/runs/${runId}/stream`);
     assert.equal(full.statusCode, 200); assert.match(String(full.headers['content-type']), /text\/event-stream/);

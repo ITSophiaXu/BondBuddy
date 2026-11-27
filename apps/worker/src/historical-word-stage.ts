@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
 import { reviewFileDeliveryStage } from './review-file-stage.js';
 import { reviewWordDeliveryStage } from './review-word-stage.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import { REVIEW_REVISION_CLI_METHOD, reviewRevisionCliDeliveryStage } from './review-revision-cli-stage.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -69,7 +70,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
       writeFile(original, bytes, { mode: 0o600 }),
       writeFile(request, JSON.stringify({ ...plan, _delivery_date: new Date(run.rows[0].created_at).toISOString().replace(/\.\d{3}Z$/, 'Z') }), { mode: 0o600 }),
     ]);
-    const python = process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3';
+    const python = resolvePythonExecutable();
     const executed = await runFile(python, ['-m', 'bondbuddy_word_delivery', original, request, tracked, clean, baseline], {
       cwd: repo, env: { ...process.env, PYTHONPATH: resolve(repo, 'python') }, timeout: 300_000,
       maxBuffer: 1024 * 1024, signal: ctx.signal,

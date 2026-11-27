@@ -10,6 +10,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import {validM4Knowledge} from '@bondbuddy/api/m4-knowledge';
 import type { StageContext } from './run-pipeline.js';
 import type { M4WorkerInput } from './m4-input.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import type { loadM4RuntimeSkill } from './m4-runtime-skills.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -65,7 +66,7 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
   const effective = async (path: string, index: string) => {
     if (!path.endsWith('.docx')) return path;
     const accepted = `materials/${index}-effective.docx`;
-    try{await withPerformanceSpan('material.effective_source',{},()=>runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+    try{await withPerformanceSpan('material.effective_source',{},()=>runFile(resolvePythonExecutable(),
       ['-m', 'bondbuddy_file_authoring.effective_source', join(cwd, path), join(cwd, accepted)],
       {cwd: root, env: {...process.env, PYTHONPATH: join(root, 'python'), PYTHONDONTWRITEBYTECODE: '1'}, timeout: 120000, signal: ctx.signal, maxBuffer: 8192}));}
     catch{throw Error('M4_MATERIAL_UNREADABLE');}
@@ -136,7 +137,7 @@ export async function verifyM4Calculation(ctx:StageContext,cwd:string) {
   let request:Buffer;
   try { request=await checkedM4File(join(cwd,'output'),'calculation-request.json',1024*1024); }
   catch (error) { if ((error as NodeJS.ErrnoException).code==='ENOENT') return null; throw error; }
-  await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+  await runFile(resolvePythonExecutable(),
     ['-B','-m','bondbuddy_m4_finance_tool','--workspace',cwd,'--input',join(cwd,'output/calculation-request.json'),
       '--output',join(cwd,'scratch/host-calculation.json')],
     {cwd:root,env:{...process.env,PYTHONPATH:join(root,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:30000,maxBuffer:8192});
@@ -153,7 +154,7 @@ export async function m4ArtifactPreview(ctx:StageContext,bytes:Buffer):Promise<s
   return withPerformanceSpan('document.preview_render',{input_bytes:bytes.length},async span=>{
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-m4-preview-'));
   if(!directory.startsWith(base+(process.platform==='win32'?'\\':'/')))throw Error('M4_OUTPUT_UNSAFE');
-  const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
+  const python=resolvePythonExecutable();
   const opts={cwd:root,env:{...process.env,PYTHONPATH:join(root,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:30000,maxBuffer:1024*1024};
   try {
     await writeFile(join(directory,'actual.docx'),bytes,{mode:0o600});

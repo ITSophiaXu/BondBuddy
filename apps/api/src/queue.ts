@@ -581,10 +581,57 @@ export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer
   return withPerformanceSpan('artifact.register',{},()=>persistAvailableWord(pool,lease,inspection,identity));
 }
 
+/** Immutable, owner-scoped pointer to an already promoted delivery artifact. */
+export type ReusableDeliveryRef={artifactId:string;artifactVersion:number;objectKey:string;sha256:string;byteSize:number};
+
+/**
+ * Re-read a previously promoted Word/PDF artifact instead of regenerating it.
+ * The artifact row must still be owned by this run, passed inspection and be
+ * available; the private Blob readback must match the recorded hash and size.
+ * A revoked or missing artifact is reported unavailable so the caller can fall
+ * back to generation, never silently delivered.
+ */
+export async function loadReusableDeliveryArtifact(pool:Pool,lease:Lease,blobs:PrivateBlobs,ref:ReusableDeliveryRef):Promise<
+  {status:'available';artifactId:string;artifactVersion:number;bytes:Buffer} |
+  {status:'unavailable';failureCode:'WORD_DELIVERY_UNAVAILABLE'}> {
+  const unavailable={status:'unavailable' as const,failureCode:'WORD_DELIVERY_UNAVAILABLE' as const};
+  if(!/^[a-f0-9]{64}$/.test(ref.sha256)||!Number.isSafeInteger(ref.byteSize)||ref.byteSize<1||
+    !Number.isSafeInteger(ref.artifactVersion)||ref.artifactVersion<1||
+    !ref.objectKey.startsWith(`users/${lease.owner}/runs/${lease.runId}/artifacts/`))return unavailable;
+  const expectedMediaType=ref.objectKey.endsWith('.pdf')?'application/pdf':WORD_MEDIA_TYPE;
+  const maxBytes=expectedMediaType==='application/pdf'?100*1024*1024:DOCX_LIMITS.archiveBytes;
+  if(ref.byteSize>maxBytes)return unavailable;
+  const row=(await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    return (await client.query(`SELECT id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status
+      FROM bb_artifact_versions WHERE id=$1 AND version=$2 AND owner_user_id=$3 AND run_id=$4`,
+      [ref.artifactId,ref.artifactVersion,lease.owner,lease.runId])).rows[0];
+  }));
+  if(!row||row.id!==ref.artifactId||Number(row.version)!==ref.artifactVersion||
+    row.owner_user_id!==lease.owner||row.run_id!==lease.runId||row.media_type!==expectedMediaType||
+    row.quality_status!=='passed'||!['available','test_only'].includes(row.delivery_status)||
+    String(row.sha256).trim()!==ref.sha256||row.object_key!==ref.objectKey)return unavailable;
+  let bytes:Buffer|null;
+  try { bytes=await blobs.getIfExistsBounded(ref.objectKey,maxBytes); }
+  catch { return unavailable; }
+  if(!bytes||bytes.length!==ref.byteSize||digest(bytes)!==ref.sha256)return unavailable;
+  return {status:'available',artifactId:row.id as string,artifactVersion:Number(row.version),bytes};
+}
+
+/** Durable pointer to the already promoted delivery set, saved under the active lease. */
+export async function saveWordDeliveryReuse(pool:Pool,lease:Lease,descriptor:Record<string,unknown>):Promise<void> {
+  await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{word_delivery_reuse_v1}',$2::jsonb,true),updated_at=now()
+      WHERE id=$1 AND owner_user_id=$4 AND state='running' AND lease_token=$3`,
+      [lease.jobId,JSON.stringify(descriptor),lease.token,lease.owner]);
+  });
+}
+
 /** PDF comments are source overlays checked by the trusted Python writer, not Word candidates. */
 export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffer,blobs:PrivateBlobs):Promise<
-  {status:'available';artifactId:string;artifactVersion:number} | {status:'unavailable';failureCode:'WORD_DELIVERY_UNAVAILABLE'}> {
-  const unavailable = {status:'unavailable' as const,failureCode:'WORD_DELIVERY_UNAVAILABLE' as const};
+  {status:'available';artifactId:string;artifactVersion:number;objectKey:string;sha256:string;byteSize:number} | {status:'unavailable';artifactId:string;artifactVersion:number;failureCode:'WORD_DELIVERY_UNAVAILABLE'}> {
+  const unavailable = {status:'unavailable' as const,artifactId:'',artifactVersion:0,failureCode:'WORD_DELIVERY_UNAVAILABLE' as const};
   if(bytes.length < 8 || bytes.length > 100*1024*1024 || bytes.subarray(0,5).toString() !== '%PDF-')return unavailable;
   const sha=digest(bytes),artifactId=`review-pdf-${digest(`${lease.owner}\n${lease.runId}\n${sha}`)}`;
   const key=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.pdf`;
@@ -619,7 +666,7 @@ export async function promoteReviewPdfArtifact(pool:Pool,lease:Lease,bytes:Buffe
     if(a.owner_user_id!==lease.owner || a.run_id!==lease.runId || a.sha256.trim()!==sha || a.object_key!==key || a.media_type!=='application/pdf' || a.quality_status!=='passed' || a.delivery_status!==status || a.review_pdf_delivery_evidence_id!==evidenceId)
       throw new Problem(409,'IDEMPOTENCY_CONFLICT','PDF annotation identity changed');
   });
-  return {status:'available',artifactId,artifactVersion:1};
+  return {status:'available',artifactId,artifactVersion:1,objectKey:key,sha256:sha,byteSize:bytes.length};
 }
 
 async function revokeWordArtifactAfterReadbackFailure(pool:Pool,lease:Lease,artifact:any,deliveryCode:'blob_missing'|'blob_too_large'|'blob_read_failed'|'blob_hash_mismatch',readback?:{sha256:string;byteSize:number}) {

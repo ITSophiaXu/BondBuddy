@@ -4,6 +4,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { open, rm } from 'node:fs/promises';
 import { once } from 'node:events';
 import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDiagnostic } from './parser-diagnostics.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
@@ -582,7 +583,7 @@ export async function runDocumentParserToFile(request:DocumentParseRequest,recor
   const repoRoot=options.repoRoot??process.cwd();
   const privatePaths=[request.material.authorized_local_path,resolve(request.material.authorized_local_path,'..'),repoRoot];
   const serialized=JSON.stringify(request);
-  const child=spawn(options.pythonExecutable??'python3',['-m','bondbuddy_document_parser','--stream'],{
+  const child=spawn(resolvePythonExecutable(options.pythonExecutable),['-m','bondbuddy_document_parser','--stream'],{
     cwd:repoRoot,env:{...process.env,PYTHONPATH:resolve(repoRoot,'python'),PYTHONIOENCODING:'utf-8'},stdio:['pipe','pipe','pipe'],
   });
   const stderr:Buffer[]=[];
@@ -722,7 +723,7 @@ export async function runDocumentParser(request:DocumentParseRequest, options:{
     let output:InvokeOutput;
     try {
       output=await (options.invoke??invokePython)(serialized,{
-        pythonExecutable:options.pythonExecutable??'python3',
+        pythonExecutable:resolvePythonExecutable(options.pythonExecutable),
         repoRoot:options.repoRoot??process.cwd(),
         timeoutMs,
         maxOutputBytes,

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Pool } from 'pg';
 import type { LibraryErrorCode } from '@bondbuddy/contracts';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
+import { resolvePythonExecutable } from './python-executable.js';
 import {
   checkpointLibraryJob, claimLibraryJob, classifyLibraryVersion, failLibraryJob, ingestLibraryVersion, markLibraryVersionFailed, markLibraryVersionParsed,
   readLibraryVersionBytes, recordSyncItem, renewLibraryJob, startSyncRun, succeedLibraryJob,
@@ -58,7 +59,7 @@ export const conservativeClassifier: LibraryClassifier = ({ title, market }) => 
   };
 };
 
-const defaultParser: LibraryParser = (request, hooks) => runDocumentParser(request, { pythonExecutable: process.env.BB_PYTHON ?? 'python3', repoRoot: process.env.BB_REPO_ROOT ?? process.cwd(), onDiagnostic: hooks?.onDiagnostic });
+const defaultParser: LibraryParser = (request, hooks) => runDocumentParser(request, { pythonExecutable: resolvePythonExecutable(), repoRoot: process.env.BB_REPO_ROOT ?? process.cwd(), onDiagnostic: hooks?.onDiagnostic });
 
 class StageError extends Error { constructor(public code: LibraryErrorCode, public retryable: boolean) { super(code); } }
 

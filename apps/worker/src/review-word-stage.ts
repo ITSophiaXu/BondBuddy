@@ -9,6 +9,7 @@ import { digest, transaction } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage, recordReviewAction } from '@bondbuddy/api/queue';
 import type { RunStage, StageContext } from './run-pipeline.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const runFile = promisify(execFile), repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 /** Shares the project lock with adoption/execution so a cancelled old writer cannot change the catalog behind a new acceptance. */
@@ -74,7 +75,7 @@ export function reviewWordDeliveryStage(): RunStage {
       const request = resolve(directory, 'request.json'), reportPath = resolve(directory, 'report.docx'), commentsPath = resolve(directory, 'comments.docx');
       await writeFile(request, JSON.stringify({ report }), { mode: 0o600 });
       await progress('started');actionStarted=true;
-      const result = await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3', ['-m', 'bondbuddy_word_delivery.review', request, docx ? resolve(directory, 'source.docx') : '-', reportPath, commentsPath],
+      const result = await runFile(resolvePythonExecutable(), ['-m', 'bondbuddy_word_delivery.review', request, docx ? resolve(directory, 'source.docx') : '-', reportPath, commentsPath],
         { cwd: repo, env: { ...process.env, PYTHONPATH: resolve(repo, 'python') }, timeout: 300000, maxBuffer: 4 * 1024 * 1024, signal: ctx.signal });
       const summary = JSON.parse(result.stdout.trim());
       const bytes = await readFile(reportPath), comments = docx ? await readFile(commentsPath) : null;

@@ -8,8 +8,9 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails, type ReviewFinding, type ReviewRevisionPin } from '@bondbuddy/contracts';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
-const python = process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3';
+const python = resolvePythonExecutable();
 const execute = promisify(execFile);
 
 /** Synthetic documents and fake model control; the actual Python tool and collector run. */

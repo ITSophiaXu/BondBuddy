@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const run = promisify(execFile);
 const repositoryRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
@@ -17,7 +18,7 @@ export async function markTestWord(bytes:Buffer, uncovered:TestUncoveredItem[]):
     const source=join(directory,'source.docx'),manifest=join(directory,'uncovered.json'),target=join(directory,'marked.docx');
     await writeFile(source,bytes,{mode:0o600});
     await writeFile(manifest,JSON.stringify(uncovered),{mode:0o600});
-    await run(process.env.BB_PYTHON_BIN ?? 'python3',[
+    await run(resolvePythonExecutable(),[
       '-m','bondbuddy_word_delivery.test_marking',source,manifest,target
     ],{cwd:repositoryRoot,timeout:120_000,maxBuffer:64*1024,env:{...process.env,PYTHONPATH:join(repositoryRoot,'python')}});
     return await readFile(target);

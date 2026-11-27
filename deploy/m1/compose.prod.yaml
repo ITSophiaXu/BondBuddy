@@ -1,14 +1,14 @@
 # Production profile for openclaw-vm: 2 vCPU, 16 GiB RAM (verified 2026-10-04).
 # Keep bounded CPU/memory per process and reserve a slot for each workload. Use with:
 #   docker compose -f compose.yaml -f compose.prod.yaml ...   (scripts do this when BB_PROFILE=prod)
-# Worker limits: authoring 2 GiB + review 2 GiB + parsing 1 GiB; ops 384 MiB.
+# Worker limits: two authoring replicas x 2 GiB + review 2 GiB + parsing 1 GiB; ops 384 MiB.
 # (migrate 128M runs to completion before api/worker start). No Azurite: Blob is Azure via env,
 # reached through the egress allow-list proxy, so BB_EGRESS_ALLOW must include the Blob host.
 services:
   postgres:
     image: postgres:16-alpine
-    # API 10 + three worker pools of 5 + ops 2, with maintenance/readiness headroom.
-    command: ['postgres', '-c', 'shared_buffers=32MB', '-c', 'max_connections=40', '-c', 'work_mem=2MB', '-c', 'maintenance_work_mem=32MB', '-c', 'effective_cache_size=128MB']
+    # API 10 + four worker pools of 5 (two authoring replicas) + ops 2, with headroom.
+    command: ['postgres', '-c', 'shared_buffers=32MB', '-c', 'max_connections=45', '-c', 'work_mem=2MB', '-c', 'maintenance_work_mem=32MB', '-c', 'effective_cache_size=128MB']
     deploy: {resources: {limits: {cpus: '0.75', memory: 256M}}}
   migrate:
     environment: {NODE_OPTIONS: --max-old-space-size=96}
@@ -32,7 +32,8 @@ services:
       BB_WORKER_CONCURRENCY: '1'
       NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
       no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
-    deploy: {resources: {limits: {cpus: '0.75', memory: 2G}}}
+    # Two independent capacity pools claim different jobs via FOR UPDATE SKIP LOCKED.
+    deploy: {replicas: 2, resources: {limits: {cpus: '0.75', memory: 2G}}}
   worker-review:
     environment:
       NODE_OPTIONS: --max-old-space-size=768

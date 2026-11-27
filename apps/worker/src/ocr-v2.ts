@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { resolvePythonExecutable } from './python-executable.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -37,7 +38,7 @@ async function python(request: Probe | Invocation, options: OcrV2RunnerOptions):
   return new Promise((resolveResult, reject) => {
     const detached = process.platform !== 'win32';
     const root = options.repoRoot ?? process.cwd();
-    const child = spawn(options.pythonExecutable ?? process.env.BB_PYTHON ?? 'python3', ['-m', 'bondbuddy_ocr'], {
+    const child = spawn(resolvePythonExecutable(options.pythonExecutable), ['-m', 'bondbuddy_ocr'], {
       cwd: root, env: { ...process.env, PYTHONPATH: resolve(root, 'python') },
       detached, stdio: ['pipe', 'pipe', 'pipe']
     });

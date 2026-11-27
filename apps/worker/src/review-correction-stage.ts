@@ -9,6 +9,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { reviewEditor } from '@bondbuddy/api/review-editor';
 import type { StageContext, StageOutcome } from './run-pipeline.js';
 import type { ReviewFileInput,ReviewFileResult } from './review-file-stage.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile),MAX=100*1024*1024;
 /** Same queue and input gate, deterministic file conversion only. Never invokes an adapter. */
@@ -26,7 +27,7 @@ export async function correctionFiles(ctx:StageContext,input:ReviewFileInput,mar
     await writeFile(path,original,{mode:0o600});
     await writeFile(join(directory,'request.json'),JSON.stringify({pin,filename:source.filename,...(editor?{editor:editor.snapshot,decisions:saved!.decisions}:{markdown:markdown?.toString('utf8')??''})}),{mode:0o600});
     const options={cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:300000,signal:ctx.signal,maxBuffer:1024*1024};
-    const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
+    const python=resolvePythonExecutable();
     await runFile(python,['-m','bondbuddy_file_authoring.review_corrections',path,join(directory,'request.json'),directory],options);
     const snapshot=JSON.parse(await readFile(join(directory,'editor.json'),'utf8')),hash=inputManifestHash(snapshot);
     if(snapshot.version!=='review-editor-v1'||snapshot.source_sha256!==pin.sha256)throw Error('INPUT_REVISION_CONFLICT');

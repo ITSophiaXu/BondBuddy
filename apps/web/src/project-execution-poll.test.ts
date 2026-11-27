@@ -5,11 +5,15 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
 // Exercise the controller's real polling path without mounting unrelated DOM/CSS modules.
-function controller(api: unknown, delivered: () => void) {
+function load():Record<string,any> {
   const source=readFileSync(new URL('../src/project-execution.ts',import.meta.url),'utf8');
   const exports:Record<string,any>={};
   runInNewContext(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,
     {exports,require:()=>({}),AbortController,URLSearchParams,location:{hash:''},setTimeout,clearTimeout});
+  return exports;
+}
+function controller(api: unknown, delivered: () => void) {
+  const exports=load();
   const execution=new exports.ProjectExecution(api,{project:{project_id:'synthetic'}},{},undefined,undefined,'',delivered);
   execution.render=()=>{};execution.loadCharge=async()=>{};
   return execution;
@@ -38,4 +42,14 @@ test('a superseded polling response cannot refresh history for a different run',
   release(succeeded);await poll;
   assert.equal(delivered,1);assert.equal(execution.run.run_id,'run-2');
   execution.dispose();
+});
+
+test('terminal failure exposes the persisted error code and an actionable reason',()=>{
+  const {executionEventReason,readinessMessage}=load();
+  assert.equal(executionEventReason({reason:'processor_failed',error_code:'MODEL_PROVIDER_AUTH_FAILED'}),'MODEL_PROVIDER_AUTH_FAILED');
+  assert.match(readinessMessage('MODEL_PROVIDER_AUTH_FAILED','model_generation','failed'),/凭证/);
+  assert.match(readinessMessage('MODEL_PROVIDER_AUTH_FAILED','model_generation','failed'),/MODEL_PROVIDER_AUTH_FAILED/);
+  assert.match(readinessMessage('MODEL_SPAWN_FAILED','model_generation','failed'),/Codex/);
+  assert.match(readinessMessage('DATA_UNAVAILABLE','model_generation','failed'),/DATA_UNAVAILABLE/);
+  assert.match(readinessMessage('CAPABILITY_NOT_READY','model_generation','failed'),/沙箱|Python/);
 });

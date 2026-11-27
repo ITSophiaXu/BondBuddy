@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 export const FORMAT_JSON_MAX = 32 * 1024 * 1024;
@@ -33,7 +34,7 @@ export async function readFormatFile(root: string, name: string, max = WORD_FILE
 
 /** Always import the installed host package, never Python from a model workspace. */
 export async function runFormatPython(args: string[], signal?: AbortSignal) {
-  return promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+  return promisify(execFile)(resolvePythonExecutable(),
     ['-B', '-s', '-m', 'bondbuddy_file_authoring.fixed_edit', ...args],
     { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
       timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });

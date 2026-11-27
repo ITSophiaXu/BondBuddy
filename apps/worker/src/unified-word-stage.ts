@@ -10,6 +10,7 @@ import type { RunStage } from './run-pipeline.js';
 import { executableRevisionFinding, ReviewRevisionHandlingSchema } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const runFile = promisify(execFile);
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -50,7 +51,7 @@ export function unifiedWordDeliveryStage(): RunStage {
         ...(revision ? {revision_handling:plan.revision_handling,revision_allowed_record_ids:[...allowed!]} : {}) };
       await writeFile(resolve(directory, 'request.json'), JSON.stringify(request), { mode: 0o600 });
       const paths = ['tracked.docx', 'clean.docx', 'baseline.docx'].map(file => resolve(directory, file));
-      const result = await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+      const result = await runFile(resolvePythonExecutable(),
         ['-m', 'bondbuddy_word_delivery.unified', resolve(directory, 'request.json'), source ? resolve(directory, 'source') : '-', ...paths],
         { cwd: repo, env: { ...process.env, PYTHONPATH: resolve(repo, 'python') }, timeout: 300000, maxBuffer: 4 * 1024 * 1024, signal: ctx.signal });
       const summary = JSON.parse(result.stdout.trim());

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import { FORMAT_JSON_MAX } from './file-authoring-format.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 export type WordQualityReport = {
@@ -50,7 +51,7 @@ export async function verifyWordQuality(input: WordQualityInput): Promise<WordQu
     let stdout: string;
     let rejected = false;
     try {
-      ({ stdout } = await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+      ({ stdout } = await promisify(execFile)(resolvePythonExecutable(),
         ['-B', '-s', '-m', 'bondbuddy_file_authoring.quality', '--input', join(root, 'input.json')],
         { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
           timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal: input.signal }));
