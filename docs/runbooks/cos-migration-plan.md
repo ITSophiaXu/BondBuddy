@@ -42,7 +42,9 @@
 
 开发进度：API 和主 worker 入口已接入 `BB_STORAGE_PROVIDER=azure|cos` 的显式选择；默认仍为 Azure。COS 模式要求 `BB_COS_SECRET_ID`、`BB_COS_SECRET_KEY`、`BB_COS_BUCKET`、`BB_COS_REGION` 同时存在，缺项即拒绝启动，不回退 Azure；`BB_DIRECT_BLOB_UPLOADS=1` 也拒绝启动。运维调度器的归档和备份尚未适配，在 COS 模式下明确拒绝启动。因此这只是主对象链路的开发切片，当前 Compose、归档、备份、恢复和清理仍不能用于完整 COS 切换，不能部署为 COS 生产配置。配置值属于私密环境文件，不提交凭据。
 
-安全边界补充：现有 Azure 专用的日志归档、保留处理、离机备份、对象快照、清理及盘点入口在 COS 模式下拒绝运行，防止配置切换后仍无意读写 Azure。这些拒绝检查不是 COS 功能实现；必须在对应能力迁移并验证后逐项替换。
+安全边界补充：仍只支持 Azure 的日志归档、保留处理、清理及盘点入口在 COS 模式下拒绝运行，防止配置切换后仍无意读写 Azure。这些拒绝检查不是 COS 功能实现；必须在对应能力迁移并验证后逐项替换。
+
+离机备份上传/下载和应用对象快照导出/导入已有 COS 代码路径：主对象使用 `BB_COS_BUCKET`，离机备份必须另设 `BB_COS_BACKUP_BUCKET`，可使用独立的 `BB_COS_BACKUP_SECRET_ID`/`BB_COS_BACKUP_SECRET_KEY` 身份和 `BB_COS_BACKUP_REGION`。备份文件与恢复对象都做读回 SHA-256 校验；本地协议服务上的合成闭环已通过。COS 保留清理、日志归档及恢复演练仍未完成，Compose 也仍固定要求 Azure 配置，因此不能把这部分测试当作上线门槛已过。真实 COS 测试桶的私有权限、版本控制、加密、对象锁及费用尚未验证。
 
 ## 保留与安全对照
 
