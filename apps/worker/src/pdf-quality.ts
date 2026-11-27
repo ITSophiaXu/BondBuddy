@@ -2,13 +2,15 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { PDF_QUALITY_VERSION, pdfQualitySamplePages, readPdfQuality, type PdfQuality } from '@bondbuddy/contracts';
+import { resolvePythonExecutable } from './python-executable.js';
 
 /** No model call. The private file was already owner-authorized and hash-verified. */
 export function inspectPdfQuality(path: string, options: {pythonExecutable?: string; repoRoot?: string; timeoutMs?: number} = {}): Promise<PdfQuality> {
   return new Promise(resolveResult => {
     const result: PdfQuality = {version: PDF_QUALITY_VERSION, status: 'unavailable', page_count: null, checked_pages: 0, sampled_pages: [], blocking_pages: [], low_resolution_pages: []};
     const root = options.repoRoot ?? process.cwd();
-    const child = spawn(options.pythonExecutable ?? 'python3', ['-m', 'bondbuddy_pdf_quality', path], {
+    const python = resolvePythonExecutable(options.pythonExecutable);
+    const child = spawn(python, ['-m', 'bondbuddy_pdf_quality', path], {
       cwd: root, env: {...process.env, PYTHONPATH: resolve(root, 'python'), PYTHONIOENCODING: 'utf-8'}, stdio: ['ignore', 'pipe', 'ignore'],
     });
     let completed = false, invalid = false, bytes = 0, settled = false;

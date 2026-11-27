@@ -18,7 +18,7 @@ import { isProjectFileInput,projectFileInputGate } from './project-file-input.js
 import { unifiedInputGate } from './unified-input.js';
 import { isReviewInput, reviewInputGate, reviewMaterialsReady } from './review-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
-import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
+import { ERROR_CODES, MODEL_ADAPTER_ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, type PrivateBlobs } from '@bondbuddy/api/data';
 import { registerM4Artifacts,settleM4Metering,type M4ArtifactRegistration } from '@bondbuddy/api/m4-workspace';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
@@ -29,7 +29,7 @@ import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/ap
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, remainingRunExecutionMs, upgradeStageCheckpoint, type Lease, type RunKind } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish as persistRunFinish,finishM4Qa, loadReusableDeliveryArtifact, pauseRun, promoteWordArtifact, promoteReviewPdfArtifact, recordReviewAction, releaseLease, renew, remainingRunExecutionMs, saveWordDeliveryReuse, upgradeStageCheckpoint, type Lease, type ReusableDeliveryRef, type RunKind } from '@bondbuddy/api/queue';
 import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal, type ContainedCallInput, type ContainedCallResult } from './codex-adapter.js';
 import { beginRunStage, pauseAtCheckpoint, recordAuthoringActivity } from '@bondbuddy/api/queue';
@@ -48,6 +48,8 @@ import { markTestWord } from './test-word-marking.js';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 import type { ApprovedGenerationIssuerBinding } from './no-history-model-stage.js';
 import type { ProduceTargetPeriodCandidateSnapshotRequest } from './target-period-candidate-snapshot-producer.js';
+
+const SAFE_RUN_FAIL_CODES: readonly string[] = [...ERROR_CODES, ...MODEL_ADAPTER_ERROR_CODES];
 
 /**
  * Trusted #33 pinned generation issuer binding loader. The production runtime builds the
@@ -79,7 +81,9 @@ export type StageOutcome =
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string; checkpoint?: Record<string, unknown> }
   | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments' | 'report'; bytes: Buffer; mediaType?:'application/pdf' }[];
-      namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
+      namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy;
+      /** Bytes were read back from already promoted artifacts; never re-apply test marking or promotion. */
+      reusedDelivery?: boolean }
   | {kind:'qa_deliver';reply:M4AssistantReply}
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
   | { kind: 'stopped' };
@@ -114,10 +118,17 @@ export function safeRunError(error: unknown, stage: string | undefined) {
   const name = typeof object.name === 'string' && ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AggregateError', 'Problem'].includes(object.name)
     ? object.name : 'UnknownError';
   const knownSqlStates = ['42P01', '42703', '23514', '23505', '23503', '40001', '40P01', '08006', '53300', '57P01'];
-  const code = typeof object.code === 'string' && ((ERROR_CODES as readonly string[]).includes(object.code) || knownSqlStates.includes(object.code))
-    ? object.code : null;
   const raw = typeof object.message === 'string' ? object.message : '';
-  const message = raw === 'Invalid pause' || (ERROR_CODES as readonly string[]).includes(raw) ||
+  // Host helpers throw safe, fixed identifiers. Preserve them as the terminal failure code
+  // instead of collapsing every unexpected error into DATA_UNAVAILABLE.
+  const inferred = /AUTHORING_FILE_SANDBOX_UNAVAILABLE/.test(raw) ? 'CAPABILITY_NOT_READY'
+    : /AUTHORING_CONTEXT_DEADLINE_EXCEEDED|MODEL_TIMEOUT/.test(raw) ? 'MODEL_TIMEOUT'
+    : /INPUT_REVISION_CONFLICT/.test(raw) ? 'INPUT_REVISION_CONFLICT'
+    : /M4_MATERIAL_UNREADABLE|MATERIAL_UNREADABLE/.test(raw) ? 'MATERIAL_UNREADABLE'
+    : /^Command failed:/.test(raw) ? 'CAPABILITY_NOT_READY' : null;
+  const code = typeof object.code === 'string' && (SAFE_RUN_FAIL_CODES.includes(object.code) || knownSqlStates.includes(object.code))
+    ? object.code : inferred;
+  const message = raw === 'Invalid pause' || SAFE_RUN_FAIL_CODES.includes(raw) ||
     /^(?:relation|column) "[a-z_][a-z0-9_]*" does not exist$/.test(raw) ? raw : 'redacted';
   return { stage: stage ?? null, name, message, code };
 }
@@ -604,6 +615,59 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
     : installed[name] ?? notImplemented(name));
 }
 
+const WORD_DELIVERY_REUSE_KEY='word_delivery_reuse_v1';
+type WordDeliveryReuseDescriptor={
+  stage:string;inputHash:string;policy:string|null;marked:boolean;summary:Record<string,unknown>|null;
+  revision:ReusableDeliveryRef;clean:ReusableDeliveryRef|null;baseline:ReusableDeliveryRef|null;
+  attachments:{kind:'comments'|'report';mediaType?:'application/pdf';ref:ReusableDeliveryRef}[];
+  named:{kind:'preparation_note';filename:string;previewContent?:string;ref:ReusableDeliveryRef}[];
+};
+type ReusedArtifact={artifactId:string;artifactVersion:number};
+const deliveryRef=(p:{artifactId:string;artifactVersion:number;objectKey:string;sha256:string;byteSize:number}):ReusableDeliveryRef=>
+  ({artifactId:p.artifactId,artifactVersion:p.artifactVersion,objectKey:p.objectKey,sha256:p.sha256,byteSize:p.byteSize});
+function reusableDelivery(value:unknown,stage:string,inputHash:string,channel:string|undefined):WordDeliveryReuseDescriptor|null {
+  if(!value||typeof value!=='object')return null;
+  const d=value as Partial<WordDeliveryReuseDescriptor>;
+  if(d.stage!==stage||d.inputHash!==inputHash||d.marked!==(channel==='non_production_test')||
+    (d.policy!==null&&d.policy!==undefined&&!['generated_pair_v1','generated_review_v1'].includes(d.policy))||
+    !d.revision||typeof d.revision!=='object'||!Array.isArray(d.attachments)||!Array.isArray(d.named)||
+    !d.attachments.every(a=>a&&typeof a==='object'&&a.ref&&typeof a.ref==='object')||
+    !d.named.every(n=>n&&typeof n==='object'&&n.ref&&typeof n.ref==='object'))return null;
+  return d as WordDeliveryReuseDescriptor;
+}
+async function rebuildWordDelivery(ctx:StageContext,d:WordDeliveryReuseDescriptor):Promise<{outcome:StageOutcome;artifacts:Map<string,ReusedArtifact>}|null> {
+  const artifacts=new Map<string,ReusedArtifact>();
+  const load=async(ref:ReusableDeliveryRef)=>{
+    const loaded=await loadReusableDeliveryArtifact(ctx.pool,ctx.lease,ctx.blobs,ref);
+    if(loaded.status!=='available')return null;
+    artifacts.set(ref.artifactId,{artifactId:loaded.artifactId,artifactVersion:loaded.artifactVersion});
+    return loaded;
+  };
+  const revision=await load(d.revision);
+  if(!revision)return null;
+  const clean=d.clean?await load(d.clean):null;
+  if(d.clean&&!clean)return null;
+  const baseline=d.baseline?await load(d.baseline):null;
+  if(d.baseline&&!baseline)return null;
+  const attachments:{kind:'comments'|'report';bytes:Buffer;mediaType?:'application/pdf'}[]=[];
+  for(const attachment of d.attachments){
+    const loaded=await load(attachment.ref);
+    if(!loaded)return null;
+    attachments.push({kind:attachment.kind,bytes:loaded.bytes,...(attachment.mediaType?{mediaType:attachment.mediaType}:{})});
+  }
+  const namedArtifacts:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[]=[];
+  for(const named of d.named){
+    const loaded=await load(named.ref);
+    if(!loaded)return null;
+    namedArtifacts.push({kind:named.kind,filename:named.filename,bytes:loaded.bytes,...(named.previewContent?{previewContent:named.previewContent}:{})});
+  }
+  return {artifacts,outcome:{kind:'deliver',reusedDelivery:true,bytes:revision.bytes,
+    ...(clean?{cleanBytes:clean.bytes}:{}),...(baseline?{baselineBytes:baseline.bytes}:{}),
+    ...(attachments.length?{attachments}:{}),...(namedArtifacts.length?{namedArtifacts}:{}),
+    ...(d.summary?{wordSummary:d.summary}:{}),
+    ...(d.policy?{deliveryPolicy:d.policy as import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy}:{})}};
+}
+
 /** Claims one run job and executes its remaining stages. Returns what happened to the durable job. */
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
   const { pool } = deps;
@@ -632,6 +696,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2`, [lease.runId, lease.owner])).rows[0] as RunRow;
     const execute=async():Promise<RunPipelineOutcome>=>{
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
+    const savedDelivery = lease.checkpoint[WORD_DELIVERY_REUSE_KEY];
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
       validateBeforeModelCall: async () => {
@@ -671,12 +736,22 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (saved && !stage.replay) { await withPerformanceSpan('stage.reuse',{stage:stage.name},span=>{span.end('reused');}); ctx.values.set(stage.name, saved); continue; }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
       await beginRunStage(pool,lease,stage.name);
-      const outcome = await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
+      const reusable = reusableDelivery(savedDelivery,stage.name,String(run.input_hash).trim(),run.channel);
+      const rebuilt = reusable
+        ? await withPerformanceSpan('stage.delivery_reuse',{stage:stage.name},async span=>{
+            const value=await rebuildWordDelivery(ctx,reusable);
+            span.end(value?'reused':'failed');
+            return value;
+          })
+        : null;
+      let reusedArtifacts:Map<string,ReusedArtifact>|undefined;
+      const outcome = rebuilt?.outcome ?? await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
         const value=await stage.run(ctx);
         span.end(value.kind==='fail'?'failed':value.kind==='pause'?'paused':value.kind==='stopped'?'cancelled':'succeeded',
           {outcome:value.kind,...(value.kind==='fail'?{error_code:value.code}:{})});
         return value;
       });
+      reusedArtifacts=rebuilt?.artifacts;
       if (outcome.kind === 'done') {
         if (!saved) {
           await withPerformanceSpan('stage.checkpoint',{stage:stage.name},()=>checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {}));
@@ -715,45 +790,72 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
-      const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
+      const wordBytes=(bytes:Buffer)=>outcome.reusedDelivery?Promise.resolve(bytes)
+        :run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
+      type Promotion={status:'available'|'unavailable'|'rejected';artifactId:string;artifactVersion:number;failureCode?:string;objectKey?:string;sha256?:string;byteSize?:number};
+      const fromReuse=(ref:ReusableDeliveryRef|undefined):Promotion=>{
+        const hit=ref&&reusedArtifacts?.get(ref.artifactId);
+        return hit?{status:'available',...hit}:{status:'unavailable',artifactId:'',artifactVersion:0,failureCode:'WORD_DELIVERY_UNAVAILABLE'};
+      };
+      const asRef=(p:Promotion):ReusableDeliveryRef=>({artifactId:p.artifactId,artifactVersion:p.artifactVersion,objectKey:p.objectKey!,sha256:p.sha256!,byteSize:p.byteSize!});
+      let baselineRef:ReusableDeliveryRef|undefined,cleanRef:ReusableDeliveryRef|undefined,deliveredRef:ReusableDeliveryRef|undefined;
+      const attachmentRefs:WordDeliveryReuseDescriptor['attachments']=[];
+      const namedRefs:WordDeliveryReuseDescriptor['named']=[];
       if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
         const baselineBytes=await wordBytes(outcome.baselineBytes);
-        const baseline = await withArtifactPromotionPerformance({artifact_kind:'baseline',input_bytes:baselineBytes.length},()=>promoteWordArtifact(pool, lease, baselineBytes, blobs));
+        const baseline:Promotion=outcome.reusedDelivery?fromReuse(reusable?.baseline??undefined)
+          : await withArtifactPromotionPerformance({artifact_kind:'baseline',input_bytes:baselineBytes.length},()=>promoteWordArtifact(pool, lease, baselineBytes, blobs));
         if (baseline.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: baseline.failureCode, failedStage: stage.name });
           return 'failed';
         }
         baselineArtifactId = baseline.artifactId;
+        if(!outcome.reusedDelivery)baselineRef=asRef(baseline);
         reviewArtifacts.push({ id: baseline.artifactId, version: baseline.artifactVersion, kind: 'baseline' });
       }
       if (outcome.cleanBytes) {
         const cleanBytes=await wordBytes(outcome.cleanBytes);
-        const clean = await withArtifactPromotionPerformance({artifact_kind:'clean',input_bytes:cleanBytes.length},()=>promoteWordArtifact(pool, lease, cleanBytes, blobs, outcome.deliveryPolicy));
+        const clean:Promotion=outcome.reusedDelivery?fromReuse(reusable?.clean??undefined)
+          : await withArtifactPromotionPerformance({artifact_kind:'clean',input_bytes:cleanBytes.length},()=>promoteWordArtifact(pool, lease, cleanBytes, blobs, outcome.deliveryPolicy));
         if (clean.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: clean.failureCode, failedStage: stage.name });
           return 'failed';
         }
         cleanArtifactId = clean.artifactId;
+        if(!outcome.reusedDelivery)cleanRef=asRef(clean);
         reviewArtifacts.push({ id: clean.artifactId, version: clean.artifactVersion, kind: 'clean' });
       }
-      for (const attachment of outcome.attachments ?? []) {
-        const extra = await withArtifactPromotionPerformance({artifact_kind:attachment.kind,input_bytes:attachment.bytes.length},async()=>attachment.mediaType === 'application/pdf'
-          ? await promoteReviewPdfArtifact(pool, lease, attachment.bytes, blobs)
-          : await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy));
+      for (const [index,attachment] of (outcome.attachments ?? []).entries()) {
+        const ref=outcome.reusedDelivery?reusable?.attachments[index]?.ref:undefined;
+        const extra:Promotion=outcome.reusedDelivery?fromReuse(ref)
+          : await withArtifactPromotionPerformance({artifact_kind:attachment.kind,input_bytes:attachment.bytes.length},async()=>attachment.mediaType === 'application/pdf'
+            ? await promoteReviewPdfArtifact(pool, lease, attachment.bytes, blobs)
+            : await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy));
         if (extra.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: extra.failureCode, failedStage: stage.name }); return 'failed'; }
+        if(!outcome.reusedDelivery)attachmentRefs.push({kind:attachment.kind,...(attachment.mediaType?{mediaType:attachment.mediaType}:{}),ref:asRef(extra)});
         reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
-      for (const extra of outcome.namedArtifacts??[]) {
+      for (const [index,extra] of (outcome.namedArtifacts??[]).entries()) {
+        const ref=outcome.reusedDelivery?reusable?.named[index]?.ref:undefined;
         const extraBytes=await wordBytes(extra.bytes);
-        const promoted=await withArtifactPromotionPerformance({artifact_kind:extra.kind,input_bytes:extraBytes.length},()=>promoteWordArtifact(pool,lease,extraBytes,blobs,outcome.deliveryPolicy));
+        const promoted:Promotion=outcome.reusedDelivery?fromReuse(ref)
+          : await withArtifactPromotionPerformance({artifact_kind:extra.kind,input_bytes:extraBytes.length},()=>promoteWordArtifact(pool,lease,extraBytes,blobs,outcome.deliveryPolicy));
         if (promoted.status!=='available') {await finish(pool,lease,'failed',{errorCode:promoted.failureCode,failedStage:stage.name});return 'failed';}
+        if(!outcome.reusedDelivery)namedRefs.push({kind:extra.kind,filename:extra.filename,...(extra.previewContent?{previewContent:extra.previewContent}:{}),ref:asRef(promoted)});
         m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:extra.bytes.length,
           ...(extra.previewContent?{preview_content:extra.previewContent}:{})});
       }
       const deliveredBytes=await wordBytes(outcome.bytes);
-      const delivered = await withArtifactPromotionPerformance({artifact_kind:'document',input_bytes:deliveredBytes.length},()=>promoteWordArtifact(pool, lease, deliveredBytes, blobs, outcome.deliveryPolicy));
-      await deps.afterStage?.('word_promoted', lease);
+      const delivered:Promotion=outcome.reusedDelivery?fromReuse(reusable?.revision??undefined)
+        : await withArtifactPromotionPerformance({artifact_kind:'document',input_bytes:deliveredBytes.length},()=>promoteWordArtifact(pool, lease, deliveredBytes, blobs, outcome.deliveryPolicy));
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
+      if(!outcome.reusedDelivery)deliveredRef=asRef(delivered);
+      if(!outcome.reusedDelivery&&!savedDelivery&&deliveredRef){
+        await saveWordDeliveryReuse(pool,lease,{stage:stage.name,inputHash:String(run.input_hash).trim(),
+          policy:outcome.deliveryPolicy??null,marked:run.channel==='non_production_test',summary:outcome.wordSummary??null,
+          revision:deliveredRef,clean:cleanRef??null,baseline:baselineRef??null,attachments:attachmentRefs,named:namedRefs});
+      }
+      await deps.afterStage?.('word_promoted', lease);
       if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document') {
         m4Artifacts.push({kind:'document',artifact_id:delivered.artifactId,artifact_version:delivered.artifactVersion,filename:'document.docx',byte_size:outcome.bytes.length,
           ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
@@ -828,14 +930,16 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
       return 'paused';
     }
-    deps.onUnexpectedError?.(safeRunError(error, currentStage));
+    const safe = safeRunError(error, currentStage);
+    deps.onUnexpectedError?.(safe);
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
       if (lease.attempts < maxAttempts) {
         await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
         return 'retry';
       }
-      await finish(pool, lease, 'failed', { errorCode: 'DATA_UNAVAILABLE', failedStage: currentStage });
+      const errorCode = safe.code && SAFE_RUN_FAIL_CODES.includes(safe.code) ? safe.code : 'DATA_UNAVAILABLE';
+      await finish(pool, lease, 'failed', { errorCode, failedStage: currentStage });
       return 'failed';
     } catch (finishError) { if (lost(finishError)) return 'lost'; throw finishError; }
   } finally {

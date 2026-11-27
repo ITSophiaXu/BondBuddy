@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-test('effective production compose reserves three separate, contained worker processes', () => {
+test('effective production compose reserves three contained worker services with two authoring replicas', () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const value = execFileSync('docker', ['compose', '--project-directory', root, '--env-file', `${root}.env.example`,
     '-f', `${root}compose.yaml`, '-f', `${root}compose.prod.yaml`, 'config', '--format', 'json'], {
@@ -20,6 +20,9 @@ test('effective production compose reserves three separate, contained worker pro
   assert.equal(workers[1].environment.BB_WORKER_RUN_KINDS, 'review');
   assert.deepEqual(workers.map(w => w.environment.BB_WORKER_INTERACTIVE_SLOTS), ['1', '0', '0']);
   assert.equal(new Set(workers.map(w => w.volumes.find(v => v.target.includes('parse-staging')).source)).size, 3);
+  assert.equal(workers[0].deploy.replicas, 2, 'two authoring workers claim from the same queue');
+  assert.equal(workers[1].deploy.replicas, 1, 'review stays a separate capacity pool');
+  assert.equal(workers[2].deploy.replicas, 1, 'parse stays a separate capacity pool');
   for (const w of workers) {
     assert.equal(w.environment.BB_WORKER_CONCURRENCY, '1');
     assert.equal(w.environment.BB_WORKER_PARSE_SLOTS, '0');

@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 import { azureBlobs, digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { authorizeOcrMaterial, storeOcr, validateOcrResponse, type OcrContext } from '@bondbuddy/api/ocr';
 import type { OcrEngineResponse } from '@bondbuddy/contracts';
+import { resolvePythonExecutable } from './python-executable.js';
 
 export type OcrInput = OcrContext & { maxPages?:number; language?:'chi_sim+eng'|'eng' };
 export type OcrRunnerOptions = { pythonExecutable?:string; repoRoot?:string; timeoutMs?:number };
@@ -39,7 +40,7 @@ export async function extractOcr(pool:Pool, blobs:PrivateBlobs, input:OcrInput, 
     const root=options.repoRoot??process.cwd();
     const output=await new Promise<string>((resolveOutput,reject)=>{
       const detached=process.platform!=='win32';
-      const child=spawn(options.pythonExecutable??process.env.BB_PYTHON??'python3',['-m','bondbuddy_ocr'],{
+      const child=spawn(resolvePythonExecutable(options.pythonExecutable),['-m','bondbuddy_ocr'],{
         cwd:root,env:{...process.env,PYTHONPATH:resolve(root,'python')},stdio:['pipe','pipe','pipe'],detached});
       const chunks:Buffer[]=[];let length=0,settled=false,stderrBytes=0;
       const stop=(code:string)=>{if(settled)return;settled=true;clearTimeout(timer);

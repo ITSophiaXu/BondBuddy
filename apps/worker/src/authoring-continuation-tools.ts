@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
+import { resolvePythonExecutable } from './python-executable.js';
 
 export const CONTINUATION_MAX_BYTES = 6 * 1024;
 export const CONTINUATION_PROGRESS_MAX_BYTES = 4 * 1024;
@@ -62,7 +63,7 @@ export async function readAuthoringContinuation(root:string, progress?:Record<st
   if(progress!==undefined)validateProgressBytes(progress);
   const payload=progress===undefined?undefined:JSON.stringify(progress);
   if(payload!==undefined&&Buffer.byteLength(payload)>CONTINUATION_PROGRESS_MAX_BYTES)throw Error('CONTINUATION_LIMIT');
-  const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
+  const python=resolvePythonExecutable();
   const args=['-B','-s','-m','bondbuddy_file_authoring.continuation',progress===undefined?'status':'save','--input',resolve(root,'input.json'),...(progress===undefined?[]:['--progress','-'])];
   const text=await new Promise<string>((done,reject)=>{
     const child=spawn(python,args,{cwd:repo,windowsHide:true,stdio:['pipe','pipe','pipe'],env:{PATH:process.env.PATH??'',PYTHONPATH:resolve(repo,'python'),PYTHONIOENCODING:'utf-8',PYTHONDONTWRITEBYTECODE:'1',LANG:'C.UTF-8'}});

@@ -1,0 +1,94 @@
+# Local worker pool used by WindowsStart.ps1 and WSLStart.sh.
+# API, upload confirmation, ops scheduler and Vite stay on the host; durable jobs are claimed by
+# Linux containers built from deploy/m1/Dockerfile so authoring has the production Codex sandbox
+# (/opt/codex, bundled bwrap, OCR runtime) instead of failing with CAPABILITY_NOT_READY.
+# Layer this on top of deploy/local/compose.yaml: workers reach postgres/azurite by service name.
+services:
+  worker-authoring:
+    # Built by the startup scripts from a filtered context: the repository root .dockerignore
+    # targets the legacy Cowork image and would exclude all M1 sources.
+    image: bondbuddy-local-worker:local
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment: &worker-env
+      DATABASE_URL: postgresql://bondbuddy_local@postgres:5432/bondbuddy_local
+      AZURE_STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;'
+      BB_TERMS_VERSION: ${BB_TERMS_VERSION:-synthetic-web-test-v1}
+      BB_RUN_RUNTIME_ENABLED: '1'
+      BB_READY_WORKER_GROUPS: authoring,review,parse
+      BB_WORKER_POLL_MS: '500'
+      BB_WORKER_DRAIN_MS: '20000'
+      BB_UPLOAD_CONFIRMATION_ENABLED: '0'
+      BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:-local-ocr-v1}
+      BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:-local-basis-v1}
+      BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
+      BB_WORKER_JOB_KINDS: run
+      BB_WORKER_RUN_KINDS: update,generation,qa
+      BB_WORKER_GROUP: authoring
+      BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_INTERACTIVE_SLOTS: '1'
+      BB_WORKER_PARSE_SLOTS: '0'
+      BB_PLATFORM_PROBE_ENABLED: '0'
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      BB_CODEX_AUTH_MODE: ${BB_CODEX_AUTH_MODE:-}
+      BB_CODEX_PROVIDER: ${BB_CODEX_PROVIDER:-deepseek}
+      BB_CODEX_MODEL: ${BB_CODEX_MODEL:-deepseek-flash}
+      BB_CODEX_BASE_URL: ${BB_CODEX_BASE_URL:-https://api.deepseek.com}
+      BB_CODEX_CONFIG_VERSION: ${BB_CODEX_CONFIG_VERSION:-codex-deepseek-flash-20260925}
+      BB_CODEX_WORK_ROOT: /tmp/bb-codex
+      BB_CODEX_TIMEOUT_MS: ${BB_CODEX_TIMEOUT_MS:-600000}
+      BB_CODEX_AUTHORING_TIMEOUT_MS: ${BB_CODEX_AUTHORING_TIMEOUT_MS:-18000000}
+      BB_COPILOT_OAUTH_FILE: /dev/null
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      https_proxy: ${https_proxy:-}
+      NO_PROXY: ${BB_LOCAL_NO_PROXY:-postgres,azurite,localhost,127.0.0.1,host.docker.internal}
+      no_proxy: ${BB_LOCAL_NO_PROXY:-postgres,azurite,localhost,127.0.0.1,host.docker.internal}
+    security_opt:
+      - 'no-new-privileges=true'
+      - 'seccomp=../m1/security/codex-seccomp.json'
+    volumes:
+      - parsestaging:/var/lib/bondbuddy/parse-staging
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-review:
+    image: bondbuddy-local-worker:local
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      <<: *worker-env
+      BB_WORKER_RUN_KINDS: review
+      BB_WORKER_GROUP: review
+      BB_WORKER_CONCURRENCY: ${BB_REVIEW_WORKER_CONCURRENCY:-1}
+      BB_WORKER_INTERACTIVE_SLOTS: '0'
+    security_opt:
+      - 'no-new-privileges=true'
+      - 'seccomp=../m1/security/codex-seccomp.json'
+    volumes:
+      - reviewstaging:/var/lib/bondbuddy/parse-staging
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-parse:
+    image: bondbuddy-local-worker:local
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      <<: *worker-env
+      BB_WORKER_JOB_KINDS: parse
+      BB_WORKER_RUN_KINDS: update,generation,qa,review
+      BB_WORKER_GROUP: parse
+      BB_WORKER_CONCURRENCY: ${BB_PARSE_WORKER_CONCURRENCY:-1}
+      BB_WORKER_INTERACTIVE_SLOTS: '0'
+    security_opt:
+      - 'no-new-privileges=true'
+      - 'seccomp=../m1/security/codex-seccomp.json'
+    volumes:
+      - materialstaging:/var/lib/bondbuddy/parse-staging
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  parsestaging:
+  reviewstaging:
+  materialstaging:

@@ -10,6 +10,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import type { DocumentParseRecord } from './document-parser.js';
 import type { StageContext, StageOutcome, RunRow, InputRevisionRow } from './run-pipeline.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import type { Pool } from 'pg';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -248,7 +249,7 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
       const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const parsed = await runDocumentParser({schema_version:'document-parse-request-v1',request_id:ctx.run.id,
         material:{material_id:prior.artifact_id,material_version:prior.version,media_type:mediaType,sha256:prior.sha256,authorized_local_path:path},options:{}},
-      {pythonExecutable:process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',repoRoot:resolve(fileURLToPath(import.meta.url),'../../../..')});
+      {pythonExecutable:resolvePythonExecutable(),repoRoot:resolve(fileURLToPath(import.meta.url),'../../../..')});
       if (parsed.status === 'failed' || !parsed.records.length) throw new UnifiedInputPending('authoring_previous_output_unreadable');
       materials.push({pin:{material_id:prior.artifact_id,material_version:prior.version,sha256:prior.sha256,role:'project_output'},filename:'本项目上一版清洁稿',mediaType,objectKey:stored.object_key,records:parsed.records});
     } finally { await rm(directory,{recursive:true,force:true}); }

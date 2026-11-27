@@ -6,6 +6,7 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolvePythonExecutable } from './python-executable.js';
 
 export const AUTHORING_IMAGE_TOOLS = ['view_image'] as const;
 export const AUTHORING_IMAGE_MAX_BYTES = 128 * 1024;
@@ -99,7 +100,7 @@ async function readImage(rootPath:string,path:string) {
   } finally {await file.close();}
 }
 export async function renderAuthoringImage(bytes:Buffer,crop?:[number,number,number,number]):Promise<Preview> {
-  const command=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
+  const command=resolvePythonExecutable();
   return new Promise((resolveResult,reject)=>{
     const child=spawn(command,['-I','-B',helper,...(crop?[JSON.stringify(crop)]:[])],{
       cwd:resolve(helper,'..'),env:{PATH:process.env.PATH??'',...(process.env.SystemRoot?{SystemRoot:process.env.SystemRoot}:{}),

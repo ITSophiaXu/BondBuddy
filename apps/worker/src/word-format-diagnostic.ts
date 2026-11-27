@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import type { Pool, PoolClient } from 'pg';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { FORMAT_JSON_MAX, WORD_FILE_MAX, readFormatFile, type FormatDiagnostic, type FormatFileRef } from './file-authoring-format.js';
+import { resolvePythonExecutable } from './python-executable.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 type Candidate = { id: string; run_id: string; owner_user_id: string; project_id: string; input_hash: string; project_deleted_at?: Date | null; diagnostic: FormatDiagnostic };
@@ -71,7 +72,7 @@ export async function diagnoseFormat(row: Candidate, blobs: PrivateBlobs, signal
     await writeFile(join(root, 'input.json'), JSON.stringify({ input_hash: row.input_hash.trim(),
       baseline_path: 'materials/baseline.docx', baseline_sha256: row.diagnostic.files.baseline.sha256,
       revision_author: row.diagnostic.revision_author, revision_date: row.diagnostic.revision_date }));
-    await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+    await promisify(execFile)(resolvePythonExecutable(),
       ['-B', '-s', '-m', 'bondbuddy_file_authoring.format_diff', '--baseline', join(root, 'materials/baseline.docx'),
         '--tracked', join(root, 'tracked.docx'), '--author', row.diagnostic.revision_author,
         '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'), '--output', join(root, 'report.json')],

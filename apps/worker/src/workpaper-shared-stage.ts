@@ -10,6 +10,7 @@ import {loadWorkpaperTemplate,publishWorkpaperItemResult,pauseSharedWorkpaperBat
 import {projectFilesRoot,projectFilePython} from './project-file-tools.js';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {loadCodexAdapterConfig,CodexOutputValidationError,type CodexAdapterConfig} from './codex-adapter.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import {loadM4RuntimeSkill} from './m4-runtime-skills.js';
 import {m4ModelGate} from './m4-method.js';
 import {m4ActionObserver,recordM4Progress} from './m4-action-progress.js';
@@ -24,7 +25,7 @@ const MAX_SNAPSHOT=64*1024*1024;
 type SharedSource={version:'workpaper-source-v1';source:ProjectFileText;tables:unknown[];images:{id:string;name:string;sha256:string;data?:string;key?:string;page?:number}[]};
 const hash=(v:unknown)=>inputManifestHash(v);
 async function python(ctx:StageContext,args:string[]){
-  return promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+  return promisify(execFile)(resolvePythonExecutable(),
     ['-B',join(projectFilesRoot,'python/bondbuddy_workpaper_batch.py'),...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384});
 }

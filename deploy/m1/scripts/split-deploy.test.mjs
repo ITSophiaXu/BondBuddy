@@ -28,6 +28,9 @@ test('roles have disjoint local services; internal execution containers use only
   assert.equal(s.depends_on.postgres,undefined); assert.equal(s.depends_on.migrate,undefined);
   assert.equal(new URL(s.environment.DATABASE_URL).hostname,'pg-tunnel'); assert.equal(s.environment.BB_WORKER_CONCURRENCY,'1');
  }
+ assert.equal(execution.services.worker.deploy.replicas,2,'execution host runs two authoring capacity pools');
+ assert.equal(execution.services['worker-review'].deploy.replicas,1);
+ assert.equal(execution.services['worker-parse'].deploy.replicas,1);
  assert.equal(execution.networks.backend.internal,true);
  assert.deepEqual(Object.keys(execution.services['pg-tunnel'].networks).sort(),['backend','edge']);
  assert.equal(execution.services.worker.environment.BB_INTEGRITY_EGRESS_PROXY_URL,'http://integrity-beijing-tunnel:3129');

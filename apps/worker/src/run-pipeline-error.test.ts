@@ -20,3 +20,12 @@ test('unexpected run errors retain diagnostic identifiers without logging input 
     stage: 'model_generation', name: 'UnknownError', message: 'redacted', code: null,
   });
 });
+
+test('host-helper failures map to a public terminal reason', () => {
+  assert.equal(safeRunError(new Error('Command failed: python3 -m bondbuddy_file_authoring.fixed_edit'), 'model_generation').code,
+    'CAPABILITY_NOT_READY');
+  assert.equal(safeRunError(new Error('AUTHORING_FILE_SANDBOX_UNAVAILABLE'), 'model_generation').code, 'CAPABILITY_NOT_READY');
+  assert.equal(safeRunError(new Error('INPUT_REVISION_CONFLICT'), 'model_generation').code, 'INPUT_REVISION_CONFLICT');
+  assert.equal(safeRunError(Object.assign(new Error('sensitive'), { code: 'MODEL_ADAPTER_CONFIG_INVALID' }), 'model_generation').code,
+    'MODEL_ADAPTER_CONFIG_INVALID');
+});

@@ -10,6 +10,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import { executableRevisionFinding, isReviewRevisionPin, ReviewRevisionHandlingSchema, type ReviewRevisionPin, type ReviewRevisionHandling } from '@bondbuddy/contracts';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput, UnifiedInputPending } from './unified-input.js';
 import { loadM3RuntimeSkill } from './m3-runtime-skills.js';
@@ -191,7 +192,7 @@ export function reviewRevisionCliStage(options: {
           const data = JSON.parse(lockedInputBytes!.toString('utf8'));
           await copyFile(join(cwd, data.source.path), join(checkDir, data.source.path));
           await writeFile(join(checkDir, 'scratch/proposal.json'), proposal);
-          await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+          await promisify(execFile)(resolvePythonExecutable(),
             ['-B', join(repo, 'python/bondbuddy_word_delivery/revision_cli.py'), 'scratch/proposal.json', '--workspace', checkDir],
             { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' }, timeout: 300000, maxBuffer: MAX_JSON, signal: ctx.signal });
           const bytes = new Map<string, Buffer>();

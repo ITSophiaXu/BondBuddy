@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { chmod, lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { resolvePythonExecutable } from './python-executable.js';
 import { fileURLToPath } from 'node:url';
 import type { StageContext } from './run-pipeline.js';
 import type { TargetFactsSnapshot } from './no-history-model-stage.js';
@@ -264,7 +265,7 @@ export async function renderNoHistoryDraft(
           (typeof process.getuid === 'function' && directoryStat.uid !== process.getuid())))) {
       throw new Error('NO_HISTORY_WORD_STAGE_DIRECTORY_UNSAFE');
     }
-    const python = process.env.BONDBUDDY_NO_HISTORY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3';
+    const python = resolvePythonExecutable(process.env.BONDBUDDY_NO_HISTORY_WORD_PYTHON);
     const stdout = await runRenderer(python, directory, request, ctx.signal, timeoutMs);
     const summary = parseSummary(stdout);
     const claimCount = Array.isArray(draft.fact_claims) ? draft.fact_claims.length : -1;

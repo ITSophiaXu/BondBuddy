@@ -10,6 +10,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { isReviewInput, reviewInputGate, type ReviewManifest } from './review-input.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import { resolvePythonExecutable } from './python-executable.js';
 import { correctionFiles, correctionExport } from './review-correction-stage.js';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -141,7 +142,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           const exportDir=await mkdtemp(join(cwd,'..','review-report-text-'));
           try{
             await writeFile(join(exportDir,'report.docx'),word,{mode:0o600});
-            await runFile(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
+            await runFile(resolvePythonExecutable(),
               ['-m','bondbuddy_file_authoring.review_report_text',join(exportDir,'report.docx'),join(exportDir,'report.md')],
               {cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')},timeout:120000,signal:ctx.signal,maxBuffer:1024*1024});
             reportText=await checkedFile(exportDir,'report.md',TEXT_MAX);
@@ -162,7 +163,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           await writeFile(join(exportDir, 'returned-report.txt'), text, { mode: 0o600 });
           // A deterministic local export, never a second model call or a JSON/schema re-ask.
           try {
-            await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+            await runFile(resolvePythonExecutable(),
               [join(helpers, 'report_from_text.py'), join(exportDir, 'returned-report.txt'), join(exportDir, 'returned-report.docx')],
               { timeout: 120000, signal: ctx.signal, maxBuffer: 1024 * 1024 });
             word = await checkedFile(exportDir, 'returned-report.docx');
@@ -193,7 +194,7 @@ export function reviewFileStage(options: { model?: typeof codexModelStage; load?
           await writeFile(join(exportDir, reportName), reportText ?? word);
           await writeFile(join(exportDir, 'request.json'), JSON.stringify({ pin: sourcePin, filename: source.filename,
             created_at: new Date().toISOString() }));
-          await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
+          await runFile(resolvePythonExecutable(),
             ['-m', 'bondbuddy_file_authoring.annotate_review', join(exportDir, `source${suffix}`), join(exportDir, 'request.json'), join(exportDir, reportName), exportDir],
             { cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'python') }, timeout: 300000, signal: ctx.signal, maxBuffer: 1024 * 1024 });
           for (const name of ['report.md', 'report.docx', `comments${suffix}`, 'annotations.json']) await retain(name, await checkedFile(exportDir, name, /\.(docx|pdf)$/.test(name) ? MAX : TEXT_MAX));

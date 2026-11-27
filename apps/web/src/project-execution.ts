@@ -7,7 +7,7 @@ import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
-import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
+import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion, type ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -42,6 +42,29 @@ const runtimeMessages: Partial<Record<RuntimeReason, string>> = {
   model_tokens_per_user_per_day: '今日试用额度已用完，额度恢复后自动继续。',
   kill_switch: '更新服务暂时停用，服务恢复后自动继续。',
   trial_limit_cleared: '试用限制已解除，任务继续处理。'
+};
+const withErrorCode = (message: string, code: string) => `${message}（错误码：${code}）`;
+const modelFailureMessages: Partial<Record<ModelAdapterErrorCode, string>> = {
+  MODEL_ADAPTER_CONFIG_INVALID: '编制服务配置无效，尚未发起模型调用。请核对服务端模型配置后联系支持。',
+  MODEL_SPAWN_FAILED: '编制程序无法启动，尚未发起模型调用。请核对运行环境的 Codex/模型适配器后联系支持。',
+  MODEL_PROVIDER_AUTH_FAILED: '编制服务凭证无效或未提供，本次任务已停止。请配置有效的模型凭证后保存新输入重新编制；材料已保留。',
+  MODEL_PROVIDER_BALANCE_EXHAUSTED: '编制服务账户余额不足，本次任务已停止。请核对供应商账户后联系支持；材料已保留。',
+  MODEL_PROVIDER_RATE_LIMITED: '编制服务触发供应商限流，本次任务已停止。请稍后保存新输入重新编制；材料已保留。',
+  MODEL_PROVIDER_REQUEST_REJECTED: '供应商拒绝本次编制请求，请核对模型/协议配置后联系支持；材料已保留。',
+  MODEL_PROVIDER_PAYLOAD_TOO_LARGE: '本次编制请求超过供应商大小限制，请精简材料或联系支持；材料已保留。',
+  MODEL_PROVIDER_OUTPUT_LIMIT: '编制服务单步输出达到上限，本轮未能完成。请核对任务记录后联系支持；材料已保留。',
+  MODEL_OUTPUT_TOO_LARGE: '编制服务返回内容超过限制，本轮未能完成。请核对任务记录后联系支持；材料已保留。',
+  MODEL_TIMEOUT: '编制服务响应超时，本轮未能完成。请在服务恢复后保存新输入重新编制；已保存材料和进度不会丢失。',
+  MODEL_STREAM_BROKEN: '编制服务响应中断，本轮未能完成。已保存材料和进度会保留，请联系支持核对。',
+  MODEL_TURN_FAILED: '编制服务本轮调用失败，本轮未能完成。已保存材料和进度会保留，请联系支持核对。',
+  MODEL_PROCESS_EXIT_NONZERO: '编制进程异常退出，本轮未能完成。已保存材料和进度会保留，请联系支持核对。',
+  MODEL_TOOL_ATTEMPT_BLOCKED: '编制模型尝试执行未授权操作，任务已安全停止。请联系支持核对，无需重新上传材料。',
+  MODEL_OUTPUT_SCHEMA_INVALID: '编制服务返回结果不符合约定格式，任务已停止。请联系支持核对，无需重新上传材料。',
+  MODEL_RESULT_STORE_FAILED: '编制结果未能保存，任务已停止。已保存的材料仍保留，请联系支持核对。',
+  MODEL_CONTEXT_ROTATION_REQUIRED: '编制上下文达到上限，本轮未能完成。请通过任务页核对恢复条件后联系支持。',
+  MODEL_USAGE_PENDING: '上一次模型调用的用量尚未确认，为避免重复调用已停止。请联系支持核对后继续。',
+  MODEL_PRIOR_ATTEMPT_UNRESOLVED: '存在未核实的先前调用，为避免重复执行已停止。请联系支持核对。',
+  MODEL_CANCELLED: '编制调用已取消，本轮未能完成。如需继续请保存新输入后重新开始。'
 };
 
 function automaticPauseMessage(run: Dto<'RunResponse'> | undefined) {
@@ -84,8 +107,10 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
-  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
-    ? payload.error_code : payload?.reason ?? payload?.error_code;
+  // A terminal failure carries reason='processor_failed' plus the real error code.
+  // Surface the code so the readiness panel can explain why this run stopped.
+  if (payload?.reason === 'processor_failed' && payload?.error_code) return payload.error_code;
+  return payload?.reason ?? payload?.error_code;
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string, runState?: string): string {
@@ -108,6 +133,16 @@ export function readinessMessage(reason: string, lastProcessingStage?: string, r
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
   if (reason === 'authoring_material_unreadable') return '有材料无法读取，请先停止本次任务并点击“继续修改”，替换文件后重新编制。';
   if (reason === 'authoring_no_verified_changes') return '本轮未形成有依据的正文修改，尚未交付新成果。请核对本次材料和更新要求。';
+  const modelFailure = modelFailureMessages[reason as ModelAdapterErrorCode];
+  if (modelFailure) return withErrorCode(modelFailure, reason);
+  if (reason === 'WORD_QUALITY_REJECTED') return withErrorCode('生成的 Word 未通过质量检查，本轮未交付。已保存材料会保留，请联系支持核对检查记录。', reason);
+  if (reason === 'WORD_DELIVERY_UNAVAILABLE') return withErrorCode('已生成的 Word 文件当前不可获取，本轮未交付。材料仍保留，请联系支持核对存储状态。', reason);
+  if (reason === 'CAPABILITY_NOT_READY' && runState === 'failed') return withErrorCode('编制所需的文件沙箱或本地处理工具未就绪，本轮已停止。Windows 原生 worker 不能运行生产使用的 Linux Codex 文件沙箱；请在 Linux 容器/WSL 中运行 worker，或核对 Python 环境和依赖后重新开始。已保存材料会保留。', reason);
+  if (reason === 'DATA_UNAVAILABLE') return withErrorCode('服务端数据暂不可用，本轮未能继续。已保存材料会保留，请稍后重新检查或联系支持。', reason);
+  if (reason === 'VALIDATION_FAILED') return withErrorCode('本轮生成结果未通过服务端校验，任务已停止。已保存材料会保留，请联系支持核对。', reason);
+  if (reason === 'INPUT_REVISION_CONFLICT') return withErrorCode('本次输入在任务执行期间发生变化，已安全停止。请重新读取项目状态后按当前材料继续。', reason);
+  if (reason === 'TASK_EXECUTION_TIME_LIMIT') return withErrorCode('本轮累计执行时间已达上限，任务已停止。已完成步骤会保留，请联系支持核对后续处理。', reason);
+  if (reason === 'DELIVERY_FAILED') return withErrorCode('成果交付校验失败，本轮未标记为成功。材料和已完成步骤仍保留，请联系支持核对。', reason);
   if (runtimeMessage(reason)) return runtimeMessage(reason)!;
   if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
   if (reason.startsWith('rule_pack:') || reason.startsWith('rule_applicability_')) return '适用规则的处理条件尚未就绪，请联系支持核对。';
@@ -126,7 +161,7 @@ export function readinessMessage(reason: string, lastProcessingStage?: string, r
   if (reason.includes('provider_reconcil')) return '正在核对先前模型调用，暂不重复调用。';
   if (reason.includes('capability_not_ready')) return '所需处理能力尚未就绪。';
   if (reason === 'user_cancelled') return '用户已取消任务。';
-  return '本次处理未能继续，具体原因尚未确认。已保存材料会保留，请联系支持核对。';
+  return withErrorCode('本次处理未能继续，具体原因尚未确认。已保存材料会保留，请联系支持核对。', reason);
 }
 
 /** Stable across tabs/reloads; a new input revision is required for an intentional new run. */
