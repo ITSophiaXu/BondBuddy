@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { Pool, type PoolClient } from 'pg';
-import { azureBlobs, uid, type PrivateBlobs } from './data.js';
+import { uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
+import { privateBlobsFromEnv, storageProviderFromEnv } from './storage-provider.js';
 
 export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/', 'owners/'] as const;
 export type InventoryKind = 'snapshot' | 'upload' | 'file_template' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'file_authoring' | 'format_report' | 'unrecognized';
@@ -196,14 +197,16 @@ async function deleteLegacySnapshot(pool: Pool, blobs: PrivateBlobs, item: Item,
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure') throw new Error('Only Azure storage inventory CLI is implemented');
-    if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING required');
+    if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     const policy = inventoryPolicyFromEnv();
     if (process.argv[2] === 'delete') policy.deleteEnabled = true;
     else if (process.argv[2] === undefined || process.argv[2] === 'scan') policy.deleteEnabled = false;
     else throw new Error('usage: storage-inventory scan|delete');
     if (policy.deleteEnabled && process.env.BB_STORAGE_INVENTORY_DELETE !== 'true') throw new Error('Deletion requires BB_STORAGE_INVENTORY_DELETE=true');
-    process.stdout.write(`${JSON.stringify(await runStorageInventory(pool, azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING), policy))}\n`);
+    if (policy.deleteEnabled && storageProviderFromEnv() === 'cos') throw new Error('COS storage inventory deletion requires conditional delete support');
+    const blobs = privateBlobsFromEnv();
+    if (!blobs) throw new Error('Private object storage required');
+    process.stdout.write(`${JSON.stringify(await runStorageInventory(pool, blobs, policy))}\n`);
   } catch (error) { process.stderr.write(`storage-inventory failed: ${error instanceof Error ? error.message : 'unknown'}\n`); process.exitCode = 1; }
   finally { await pool.end(); }
 }
