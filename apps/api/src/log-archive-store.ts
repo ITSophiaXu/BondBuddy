@@ -62,13 +62,16 @@ export function archiveStoreFromEnv(env: NodeJS.ProcessEnv = process.env, cosCli
   const object = (key: string) => ({ Bucket: bucket, Region: region, Key: key });
   const put = async (key: string, body: Buffer | Readable, length: number, sha256: string, segmentId: string) => {
     await client.putObject({ ...object(key), Body: body, ContentLength: length, ContentType: 'application/x-ndjson',
-      Headers: { 'If-None-Match': '*' }, 'x-cos-meta-sha256': sha256, 'x-cos-meta-segmentid': segmentId });
+      Headers: { 'x-cos-forbid-overwrite': 'true' }, 'x-cos-meta-sha256': sha256, 'x-cos-meta-segmentid': segmentId });
   };
   return {
     async ready() {
       await client.headBucket({ Bucket: bucket, Region: region });
       const acl = await client.getBucketAcl({ Bucket: bucket, Region: region });
       if (acl.ACL !== 'private') throw new Error('Log archive bucket must be private');
+      const versioning = await client.getBucketVersioning({ Bucket: bucket, Region: region });
+      if (versioning.VersioningConfiguration?.Status)
+        throw new Error('COS create-only archive upload requires bucket versioning disabled');
     },
     async read(key) {
       try {

@@ -1,0 +1,45 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:HeadBucket",
+        "name/cos:GetBucketACL",
+        "name/cos:GetBucket",
+        "name/cos:GetBucketVersioning",
+        "name/cos:GetBucketObjectVersions",
+        "name/cos:PutObject",
+        "name/cos:HeadObject",
+        "name/cos:GetObject",
+        "name/cos:DeleteObject",
+        "name/cos:InitiateMultipartUpload",
+        "name/cos:ListMultipartUploads",
+        "name/cos:ListParts",
+        "name/cos:UploadPart",
+        "name/cos:CompleteMultipartUpload",
+        "name/cos:AbortMultipartUpload"
+      ],
+      "resource": [
+        "qcs::cos:ap-beijing:uid/1257052376:bb-cos-migration-app-test-1257052376/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:HeadBucket",
+        "name/cos:GetBucketACL",
+        "name/cos:GetBucket",
+        "name/cos:GetBucketVersioning",
+        "name/cos:GetBucketObjectVersions",
+        "name/cos:PutObject",
+        "name/cos:HeadObject",
+        "name/cos:GetObject",
+        "name/cos:DeleteObject"
+      ],
+      "resource": [
+        "qcs::cos:ap-beijing:uid/1257052376:bb-cos-migration-backup-test-1257052376/*"
+      ]
+    }
+  ]
+}

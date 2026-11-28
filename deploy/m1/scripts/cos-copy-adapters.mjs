@@ -32,7 +32,12 @@ export function cosMigrationTarget({ secretId, secretKey, bucket, region, client
   const object = key => ({ Bucket: bucket, Region: region, Key: key });
   return {
     bucket,
-    async ready() { await client.headBucket({ Bucket: bucket, Region: region }); },
+    async ready() {
+      await client.headBucket({ Bucket: bucket, Region: region });
+      const versioning = await client.getBucketVersioning({ Bucket: bucket, Region: region });
+      if (versioning.VersioningConfiguration?.Status)
+        throw new Error('COS create-only migration upload requires bucket versioning disabled');
+    },
     async head(key) {
       try {
         const result = await client.headObject(object(key));
@@ -44,7 +49,7 @@ export function cosMigrationTarget({ secretId, secretKey, bucket, region, client
     },
     async put(key, body, bytes, contentType, options = {}) {
       await client.putObject({ ...object(key), Body: body, ContentLength: bytes, ContentType: contentType,
-        ...(options.createOnly ? { Headers: { 'If-None-Match': '*' } } : {}) });
+        ...(options.createOnly ? { Headers: { 'x-cos-forbid-overwrite': 'true' } } : {}) });
     },
     async open(key) {
       const state = await this.head(key);

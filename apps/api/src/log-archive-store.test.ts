@@ -22,8 +22,8 @@ test('COS archive store checks private bucket, conditional write and pinned read
     async putObject(params: Record<string, unknown>) {
       uploads.push(params);
       const key = String(params.Key);
-      assert.deepEqual(params.Headers, { 'If-None-Match': '*' });
-      if (saved.has(key)) throw { statusCode: 412, code: 'PreconditionFailed' };
+      assert.deepEqual(params.Headers, { 'x-cos-forbid-overwrite': 'true' });
+      if (saved.has(key)) throw { statusCode: 409, code: 'FileAlreadyExists' };
       const parts: Buffer[] = [];
       for await (const chunk of params.Body as AsyncIterable<Buffer>) parts.push(Buffer.from(chunk));
       const body = Buffer.concat(parts);
@@ -60,13 +60,16 @@ test('COS archive store checks private bucket, conditional write and pinned read
   acl = 'public-read';
   await assert.rejects(store.ready(), /must be private/);
   acl = 'private';
+  versioned = true;
+  await assert.rejects(store.ready(), /requires bucket versioning disabled/);
+  versioned = false;
   const body = Buffer.from('{"synthetic":true}\n');
   assert.equal(await store.read('log-archive/synthetic/missing.ndjson'), null);
   await store.uploadStreamIfAbsent('log-archive/synthetic/one.ndjson', Readable.from([body]), body.length, sha(body), 'synthetic-segment');
   assert.deepEqual(await store.read('log-archive/synthetic/one.ndjson'), body);
   assert.equal(uploads[0]?.['x-cos-meta-sha256'], sha(body));
   await assert.rejects(store.uploadDataIfAbsent('log-archive/synthetic/one.ndjson', body, sha(body), 'synthetic-segment'),
-    error => (error as { statusCode: number }).statusCode === 412);
+    error => (error as { statusCode: number }).statusCode === 409);
   await store.remove('log-archive/synthetic/one.ndjson');
   assert.equal(await store.read('log-archive/synthetic/one.ndjson'), null);
   assert.equal(deleted.at(-1)?.VersionId, undefined);

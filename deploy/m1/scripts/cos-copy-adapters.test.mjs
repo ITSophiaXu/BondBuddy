@@ -11,15 +11,19 @@ test('real COS SDK sends create-only PUT and pinned read to local protocol fixtu
   const data = new Map();
   const seen = [];
   const server = createServer(async (request, response) => {
-    const key = decodeURIComponent(new URL(request.url || '/', `http://${request.headers.host}`).pathname.slice(1));
+    const url = new URL(request.url || '/', `http://${request.headers.host}`);
+    const key = decodeURIComponent(url.pathname.slice(1));
+    if (request.method === 'GET' && url.searchParams.has('versioning')) {
+      response.writeHead(200, { 'Content-Type': 'application/xml' }); response.end('<VersioningConfiguration/>'); return;
+    }
     if (!key && request.method === 'HEAD') { response.writeHead(200); response.end(); return; }
     if (request.method === 'HEAD') {
       const body = data.get(key);
       response.writeHead(body ? 200 : 404, body ? { ETag: '"fixture-v1"', 'Content-Length': body.length } : {}); response.end(); return;
     }
     if (request.method === 'PUT') {
-      seen.push({ method: 'PUT', condition: request.headers['if-none-match'] });
-      if (request.headers['if-none-match'] !== '*' || data.has(key)) { response.writeHead(412); response.end(); return; }
+      seen.push({ method: 'PUT', condition: request.headers['x-cos-forbid-overwrite'] });
+      if (request.headers['x-cos-forbid-overwrite'] !== 'true' || data.has(key)) { response.writeHead(409); response.end(); return; }
       const chunks = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
       data.set(key, Buffer.concat(chunks)); response.writeHead(200, { ETag: '"fixture-v1"' }); response.end(); return;
     }
@@ -43,6 +47,16 @@ test('real COS SDK sends create-only PUT and pinned read to local protocol fixtu
     const record = await copyCurrentObject({ source, target, entry });
     assert.equal(record.status, 'copied');
     assert.equal(data.get(entry.key).toString(), 'synthetic copy');
-    assert.deepEqual(seen, [{ method: 'PUT', condition: '*' }, { method: 'GET', condition: '"fixture-v1"' }]);
+    assert.deepEqual(seen, [{ method: 'PUT', condition: 'true' }, { method: 'GET', condition: '"fixture-v1"' }]);
   } finally { server.close(); await once(server, 'close'); }
+});
+
+test('create-only migration refuses a versioned target bucket', async () => {
+  const client = {
+    async headBucket() { return {}; },
+    async getBucketVersioning() { return { VersioningConfiguration: { Status: 'Enabled' } }; },
+  };
+  const target = cosMigrationTarget({ secretId: 'synthetic-id', secretKey: 'synthetic-key',
+    bucket: 'app-123', region: 'ap-beijing', client });
+  await assert.rejects(target.ready(), /requires bucket versioning disabled/);
 });

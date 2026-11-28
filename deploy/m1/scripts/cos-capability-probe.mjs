@@ -21,24 +21,22 @@ try {
     const versioning = await client.getBucketVersioning({ Bucket: bucket, Region: region });
     result.versioning = versioning.VersioningConfiguration?.Status || 'disabled';
   } catch (error) { result.versioning = `error:${error?.code || error?.statusCode || 'unknown'}`; }
+  if (result.versioning !== 'disabled') throw new Error('Probe requires versioning disabled for create-only PUT');
   await client.putObject({ ...object, Body: Buffer.from('first'), ContentLength: 5,
-    Headers: { 'If-None-Match': '*' } });
+    Headers: { 'x-cos-forbid-overwrite': 'true' } });
+  const range = await client.getObject({ ...object, Range: 'bytes=0-2' });
+  result.rangeRead = range.statusCode === 206 && range.Body.equals(Buffer.from('fir')) ? 'supported' : 'failed';
   let duplicateRejected = false;
   try { await client.putObject({ ...object, Body: Buffer.from('second'), ContentLength: 6,
-    Headers: { 'If-None-Match': '*' } }); }
-  catch (error) { duplicateRejected = error?.statusCode === 412; if (!duplicateRejected) throw error; }
+    Headers: { 'x-cos-forbid-overwrite': 'true' } }); }
+  catch (error) { duplicateRejected = error?.statusCode === 409 && error?.code === 'FileAlreadyExists'; if (!duplicateRejected) throw error; }
   const body = (await client.getObject(object)).Body;
   result.conditionalPut = duplicateRejected && body.equals(Buffer.from('first')) ? 'supported' : 'unsupported';
-  const range = await client.getObject({ ...object, Range: 'bytes=0-2' });
-  result.rangeRead = range.Body.equals(Buffer.from('fir')) ? 'supported' : 'failed';
-  const etag = (await client.headObject(object)).ETag;
   let staleRejected = false;
   try { await client.deleteObject({ ...object, Headers: { 'If-Match': '"stale-etag"' } }); }
   catch (error) { staleRejected = error?.statusCode === 412; if (!staleRejected) throw error; }
-  const exists = await client.headObject(object).then(() => true, error => {
-    if (error?.statusCode === 404) return false;
-    throw error;
-  });
+  const listed = await client.getBucket({ Bucket: bucket, Region: region, Prefix: key, MaxKeys: 10 });
+  const exists = (listed.Contents || []).some(item => item.Key === key);
   result.conditionalDelete = staleRejected && exists ? 'supported' : 'unsupported';
 } catch (error) { failure = error; }
 finally {
@@ -56,10 +54,8 @@ finally {
         throw new Error('Probe versions remain after cleanup');
     } else {
       await client.deleteObject(object);
-      const remains = await client.headObject(object).then(() => true, error => {
-        if (error?.statusCode === 404) return false;
-        throw error;
-      });
+      const current = await client.getBucket({ Bucket: bucket, Region: region, Prefix: key, MaxKeys: 10 });
+      const remains = (current.Contents || []).some(item => item.Key === key);
       if (remains) throw new Error('Probe object remains after cleanup');
       const after = await client.listObjectVersions({ Bucket: bucket, Region: region, Prefix: key, MaxKeys: '1000' });
       if ([...(after.Versions || []), ...(after.DeleteMarkers || [])].some(item => item.Key === key))
@@ -72,6 +68,6 @@ finally {
   }
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
-if (failure || result.conditionalPut !== 'supported' || result.conditionalDelete !== 'supported' ||
+if (failure || result.conditionalPut !== 'supported' || result.conditionalDelete === 'unknown' ||
     result.rangeRead !== 'supported' || result.cleanup !== 'verified')
   process.exitCode = 1;
