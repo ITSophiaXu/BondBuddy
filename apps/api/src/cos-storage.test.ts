@@ -40,6 +40,7 @@ class FakeCos {
     return Readable.from([Buffer.from(value.bytes)]);
   }
   async deleteObject(input: { Key: string }) { this.objects.delete(input.Key); return {}; }
+  async getBucketVersioning() { return { VersioningConfiguration: {} }; }
   async getBucket(input: { Prefix: string; Marker?: string; MaxKeys: number }) {
     const keys = [...this.objects.keys()].filter(key => key.startsWith(input.Prefix) && (!input.Marker || key > input.Marker)).sort();
     const selected = keys.slice(0, input.MaxKeys);

@@ -5,17 +5,26 @@ import { pathToFileURL } from 'node:url';
 import COS from 'cos-nodejs-sdk-v5';
 import pg from 'pg';
 
-const referencesSql = `
+export const referencesSql = `
   SELECT 'upload' kind, object_key key FROM bb_uploads WHERE state <> 'purged'
   UNION ALL SELECT 'material', m.object_key FROM bb_material_versions m
     WHERE NOT EXISTS (SELECT 1 FROM bb_storage_tombstones t WHERE t.object_key=m.object_key AND t.state='purged')
-  UNION ALL SELECT 'snapshot', object_key FROM bb_snapshot_refs WHERE object_key IS NOT NULL
+  UNION ALL SELECT 'snapshot', s.object_key FROM bb_snapshot_refs s
+    WHERE NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t WHERE t.object_key=s.object_key)
   UNION ALL SELECT 'artifact', object_key FROM bb_artifact_versions WHERE object_key IS NOT NULL
   UNION ALL SELECT 'parse_cache', object_key FROM bb_parse_cache WHERE object_key IS NOT NULL
   UNION ALL SELECT 'ocr_result', result_key FROM bb_ocr_snapshots WHERE result_key IS NOT NULL
   UNION ALL SELECT 'ocr_checkpoint', checkpoint_key FROM bb_ocr_v2_pages WHERE checkpoint_key IS NOT NULL
   UNION ALL SELECT 'ocr_page', image_key FROM bb_ocr_v2_pages WHERE image_key IS NOT NULL
-  UNION ALL SELECT 'provider_result', result_ref FROM bb_provider_result_refs WHERE result_ref IS NOT NULL
+  UNION ALL SELECT 'provider_result', p.result_ref FROM bb_provider_result_refs p
+    WHERE NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t WHERE t.object_key=p.result_ref)
+  UNION ALL SELECT 'review_assistant_result', result_ref FROM bb_review_assistant_attempts WHERE result_ref IS NOT NULL
+  UNION ALL SELECT 'review_pdf_evidence', object_key FROM bb_review_pdf_delivery_evidence
+  UNION ALL SELECT 'upload_integrity_receipt', object_key FROM bb_upload_integrity_receipts
+  UNION ALL SELECT 'upload_confirmation', object_key FROM bb_upload_confirmations
+  UNION ALL SELECT 'upload_confirmation_canonical', canonical_object_key FROM bb_upload_confirmations WHERE canonical_object_key IS NOT NULL
+  UNION ALL SELECT 'upload_confirmation_canonical_list', key FROM bb_upload_confirmations,
+    LATERAL unnest(canonical_object_keys) key
   UNION ALL SELECT 'exec_log', object_key FROM bb_codex_exec_logs
   UNION ALL SELECT 'library_document', blob_key FROM bb_library_document_versions
   UNION ALL SELECT 'prompt_intent', object_key FROM bb_prompt_blob_intents

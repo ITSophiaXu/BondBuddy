@@ -5,6 +5,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import COS from 'cos-nodejs-sdk-v5';
 import { Problem, type BlobDigest, type PrivateBlobs } from './data.js';
+import { deleteCosObjectPermanently } from './cos-permanent-delete.js';
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
 
@@ -107,7 +108,7 @@ export function cosBlobs(client: COS, bucket: string, region: string): PrivateBl
     async getIfExistsBounded(key, maxBytes) { return (await consume(key, maxBytes, null))?.bytes ?? null; },
     async exists(key) { return (await head(key)) !== null; },
     headVersion: head,
-    async delete(key) { await client.deleteObject(object(key)); },
+    async delete(key) { await deleteCosObjectPermanently(client, bucket, region, key); },
     async listPage(prefix, continuation, pageSize) {
       if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 1000)
         throw new Problem(422, 'VALIDATION_FAILED', 'Invalid object listing page size');

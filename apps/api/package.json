@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cos-backup-retention": {"types":"./dist/cos-backup-retention.d.ts","default":"./dist/cos-backup-retention.js"},
     "./cos-storage": {"types":"./dist/cos-storage.d.ts","default":"./dist/cos-storage.js"},
     "./storage-provider": {"types":"./dist/storage-provider.d.ts","default":"./dist/storage-provider.js"},
     "./performance-trace": {"types":"./dist/performance-trace.d.ts","default":"./dist/performance-trace.js"},
