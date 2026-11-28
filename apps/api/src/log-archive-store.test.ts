@@ -21,6 +21,7 @@ test('COS archive store checks private bucket, conditional write and pinned read
     async getBucketAcl() { return { ACL: acl }; },
     async putObject(params: Record<string, unknown>) {
       uploads.push(params);
+      assert.equal(params.ServerSideEncryption, 'AES256');
       const key = String(params.Key);
       assert.deepEqual(params.Headers, { 'x-cos-forbid-overwrite': 'true' });
       if (saved.has(key)) throw { statusCode: 409, code: 'FileAlreadyExists' };

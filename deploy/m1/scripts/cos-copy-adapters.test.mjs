@@ -22,7 +22,7 @@ test('real COS SDK sends create-only PUT and pinned read to local protocol fixtu
       response.writeHead(body ? 200 : 404, body ? { ETag: '"fixture-v1"', 'Content-Length': body.length } : {}); response.end(); return;
     }
     if (request.method === 'PUT') {
-      seen.push({ method: 'PUT', condition: request.headers['x-cos-forbid-overwrite'] });
+      seen.push({ method: 'PUT', condition: request.headers['x-cos-forbid-overwrite'], encryption: request.headers['x-cos-server-side-encryption'] });
       if (request.headers['x-cos-forbid-overwrite'] !== 'true' || data.has(key)) { response.writeHead(409); response.end(); return; }
       const chunks = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
       data.set(key, Buffer.concat(chunks)); response.writeHead(200, { ETag: '"fixture-v1"' }); response.end(); return;
@@ -47,8 +47,8 @@ test('real COS SDK sends create-only PUT and pinned read to local protocol fixtu
     const record = await copyCurrentObject({ source, target, entry });
     assert.equal(record.status, 'copied');
     assert.equal(data.get(entry.key).toString(), 'synthetic copy');
-    assert.deepEqual(seen, [{ method: 'PUT', condition: 'true' }, { method: 'GET', condition: '"fixture-v1"' }]);
-  } finally { server.close(); await once(server, 'close'); }
+    assert.deepEqual(seen, [{ method: 'PUT', condition: 'true', encryption: 'AES256' }, { method: 'GET', condition: '"fixture-v1"' }]);
+  } finally { server.closeAllConnections(); server.close(); await once(server, 'close'); }
 });
 
 test('create-only migration refuses a versioned target bucket', async () => {

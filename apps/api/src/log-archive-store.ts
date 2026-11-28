@@ -62,6 +62,7 @@ export function archiveStoreFromEnv(env: NodeJS.ProcessEnv = process.env, cosCli
   const object = (key: string) => ({ Bucket: bucket, Region: region, Key: key });
   const put = async (key: string, body: Buffer | Readable, length: number, sha256: string, segmentId: string) => {
     await client.putObject({ ...object(key), Body: body, ContentLength: length, ContentType: 'application/x-ndjson',
+      ServerSideEncryption: 'AES256',
       Headers: { 'x-cos-forbid-overwrite': 'true' }, 'x-cos-meta-sha256': sha256, 'x-cos-meta-segmentid': segmentId });
   };
   return {

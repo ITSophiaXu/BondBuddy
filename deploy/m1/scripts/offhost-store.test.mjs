@@ -17,7 +17,8 @@ test('COS off-host backup keeps files and completion manifest in a separate buck
   const requests = [];
   const server = createServer(async (request, response) => {
     const key = decodeURIComponent(new URL(request.url || '/', `http://${request.headers.host}`).pathname.slice(1));
-    requests.push({ method: request.method, host: request.headers.host, key });
+    requests.push({ method: request.method, host: request.headers.host, key,
+      encryption: request.headers['x-cos-server-side-encryption'] });
     if (!key && request.method === 'HEAD') { response.writeHead(200); response.end(); return; }
     const bytes = data.get(key);
     if (request.method === 'HEAD') { response.writeHead(bytes ? 200 : 404, bytes ? { 'Content-Length': bytes.length } : {}); response.end(); return; }
@@ -51,9 +52,10 @@ test('COS off-host backup keeps files and completion manifest in a separate buck
     assert.equal(await store.exists('id/offhost-manifest.json'), true);
     assert.deepEqual(await store.readBuffer('id/offhost-manifest.json'), manifest);
     assert.ok(requests.every(entry => entry.host?.startsWith('backups-123.')));
+    assert.ok(requests.filter(entry => entry.method === 'PUT').every(entry => entry.encryption === 'AES256'));
   } finally {
     await rm(dir, { recursive: true, force: true });
-    server.close(); await once(server, 'close');
+    server.closeAllConnections(); server.close(); await once(server, 'close');
   }
 });
 

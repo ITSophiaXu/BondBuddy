@@ -98,7 +98,8 @@ export function cosBlobs(client: COS, bucket: string, region: string): PrivateBl
 
   return {
     async put(key, bytes, mediaType) {
-      await client.putObject({ ...object(key), Body: bytes, ContentLength: bytes.length, ContentType: mediaType });
+      await client.putObject({ ...object(key), Body: bytes, ContentLength: bytes.length, ContentType: mediaType,
+        ServerSideEncryption: 'AES256' });
     },
     async get(key) { return (await client.getObject(object(key))).Body; },
     async getIfExists(key) {
@@ -129,6 +130,7 @@ export function cosBlobs(client: COS, bucket: string, region: string): PrivateBl
     },
     async putFile(key, path, mediaType) {
       await client.sliceUploadFile({ ...object(key), FilePath: path, ContentType: mediaType,
+        ServerSideEncryption: 'AES256',
         ChunkSize: CHUNK_BYTES, SliceSize: CHUNK_BYTES });
     },
     async readToFile(key, path, maxBytes) { return (await consume(key, maxBytes, path))?.digest ?? null; },

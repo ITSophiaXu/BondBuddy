@@ -12,6 +12,7 @@ import { exportApplicationSnapshot, importApplicationSnapshot } from './snapshot
 test('COS application snapshot lists and reads version-pinned objects', async () => {
   const data = new Map();
   const seenMatch = [];
+  const seenEncryption = [];
   const server = createServer(async (request, response) => {
     const key = decodeURIComponent(new URL(request.url || '/', `http://${request.headers.host}`).pathname.slice(1));
     if (!key && request.method === 'HEAD') { response.writeHead(200); response.end(); return; }
@@ -22,6 +23,7 @@ test('COS application snapshot lists and reads version-pinned objects', async ()
     }
     const bytes = data.get(key);
     if (request.method === 'PUT') {
+      seenEncryption.push(request.headers['x-cos-server-side-encryption']);
       const chunks = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
       data.set(key, Buffer.concat(chunks)); response.writeHead(200, { ETag: '"fixture-etag"' }); response.end(); return;
     }
@@ -60,5 +62,6 @@ test('COS application snapshot lists and reads version-pinned objects', async ()
     assert.deepEqual(await importApplicationSnapshot(root, 'bb-backups', storeFor), { imported: 1 });
     assert.equal(data.get('users/a/proof')?.toString(), 'synthetic snapshot');
     assert.deepEqual(seenMatch, ['"fixture-etag"', '"fixture-etag"']);
-  } finally { await rm(dir, { recursive: true, force: true }); server.close(); await once(server, 'close'); }
+    assert.deepEqual(seenEncryption, ['AES256', 'AES256']);
+  } finally { await rm(dir, { recursive: true, force: true }); server.closeAllConnections(); server.close(); await once(server, 'close'); }
 });

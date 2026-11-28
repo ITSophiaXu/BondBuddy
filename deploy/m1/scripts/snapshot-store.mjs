@@ -66,6 +66,7 @@ export function snapshotStore(env = process.env, options = {}) {
       async readStream(key, etag) { return client.getObjectStream({ ...object(key), ...(etag ? { IfMatch: etag } : {}) }); },
       async putFile(key, file, contentType) {
         await client.putObject({ ...object(key), Body: createReadStream(file), ContentLength: statSync(file).size,
+          ServerSideEncryption: 'AES256',
           ...(contentType ? { ContentType: contentType } : {}) });
       },
     };

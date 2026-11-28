@@ -49,6 +49,7 @@ export function cosMigrationTarget({ secretId, secretKey, bucket, region, client
     },
     async put(key, body, bytes, contentType, options = {}) {
       await client.putObject({ ...object(key), Body: body, ContentLength: bytes, ContentType: contentType,
+        ServerSideEncryption: 'AES256',
         ...(options.createOnly ? { Headers: { 'x-cos-forbid-overwrite': 'true' } } : {}) });
     },
     async open(key) {

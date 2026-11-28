@@ -50,10 +50,12 @@ export function offhostStore(env = process.env, options = {}) {
     },
     async uploadFile(key, file, sha256) {
       await client.putObject({ ...object(key), Body: createReadStream(file), ContentLength: statSync(file).size,
+        ServerSideEncryption: 'AES256',
         'x-cos-meta-sha256': sha256 });
     },
     async uploadData(key, data) {
-      await client.putObject({ ...object(key), Body: data, ContentLength: data.length, ContentType: 'application/json' });
+      await client.putObject({ ...object(key), Body: data, ContentLength: data.length, ContentType: 'application/json',
+        ServerSideEncryption: 'AES256' });
     },
     async readStream(key) { return client.getObjectStream(object(key)); },
     async readBuffer(key) { return (await client.getObject(object(key))).Body; },

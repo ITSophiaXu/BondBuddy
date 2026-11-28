@@ -19,6 +19,6 @@ export async function login(page: Page, user: { username: string; password: stri
   await page.getByLabel('密码', { exact: true }).fill(user.password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
 }
