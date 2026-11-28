@@ -55,6 +55,14 @@ test('env wiring: sink file enables forwarding; purge needs blob; backfill is op
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_ARCHIVE_RETENTION_DAYS: '29' }, () => noBlobs), /30 to 3650/);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_SINK_MAX_BYTES: String(65 * 1024 * 1024) }, () => noBlobs), /64 MiB/);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_STORAGE_PURGE_ENABLED: 'true', BB_STORAGE_MATERIAL_RETENTION_DAYS: '7', BB_STORAGE_ORPHAN_GRACE_HOURS: '24' }), /AZURE_STORAGE_CONNECTION_STRING/);
+  const cos = { ...base, BB_STORAGE_PROVIDER: 'cos', BB_COS_SECRET_ID: 'synthetic-id', BB_COS_SECRET_KEY: 'synthetic-key',
+    BB_COS_BUCKET: 'synthetic-app-1250000000', BB_COS_REGION: 'ap-beijing', BB_COS_BACKUP_BUCKET: 'synthetic-backup-1250000000' };
+  assert.deepEqual(tasksFromEnv(pool, cos).map(t => t.name),
+    ['log_health', 'storage_inventory', 'trial_health', 'worker_heartbeat', 'backup_retention']);
+  assert.throws(() => tasksFromEnv(pool, { ...cos, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1' }),
+    /Invalid log archive configuration/);
+  assert.ok(tasksFromEnv(pool, { ...cos, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic' })
+    .some(t => t.name === 'archive_retention'));
 });
 
 test('two scheduler instances execute each due task exactly once', { skip: !connection }, async () => {

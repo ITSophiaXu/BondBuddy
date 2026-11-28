@@ -1,7 +1,8 @@
 import {lockStorageObject} from './storage-object-lock.js';
 import { pathToFileURL } from 'node:url';
 import { Pool, type PoolClient } from 'pg';
-import { azureBlobs, digest, transaction, uid, type PrivateBlobs } from './data.js';
+import { digest, transaction, uid, type PrivateBlobs } from './data.js';
+import { privateBlobsFromEnv } from './storage-provider.js';
 
 const MAX_BATCH_SIZE = 50;
 const DEFAULT_LEASE_MS = 5 * 60_000;
@@ -362,12 +363,12 @@ async function main() {
     process.stdout.write('Storage lifecycle purge disabled; no objects changed\n');
     return;
   }
-  if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) {
-    throw new StorageLifecycleConfigurationError('Enabled storage purge requires DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING');
-  }
+  if (!process.env.DATABASE_URL) throw new StorageLifecycleConfigurationError('Enabled storage purge requires DATABASE_URL');
+  const blobs = privateBlobsFromEnv();
+  if (!blobs) throw new StorageLifecycleConfigurationError('Enabled storage purge requires private object storage');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const result = await runStorageLifecycle(pool, azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING), policy);
+    const result = await runStorageLifecycle(pool, blobs, policy);
     process.stdout.write(`Storage lifecycle batch complete: queued=${result.orphanUploadsQueued} deadlines=${result.materialDeadlinesRecorded} claimed=${result.claimed} purged=${result.purged} pinned=${result.pinned} failed=${result.failed}\n`);
     if (result.failed > 0) process.exitCode = 1;
   } finally {

@@ -8,7 +8,8 @@ import {runUploadConfirmationOnce} from '@bondbuddy/api/upload-confirmation';
 import {M1_UPLOAD_LIMITS} from '@bondbuddy/contracts';
 import { Pool } from 'pg';
 import { readFileSync } from 'node:fs';
-import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
+import type { PrivateBlobs } from '@bondbuddy/api/data';
+import { privateBlobsFromEnv } from '@bondbuddy/api/storage-provider';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
 import { reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload, fileAuthoringPayloadRecoveryCandidates, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
@@ -434,7 +435,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING are required');
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
   const generalSlots = intEnv(process.env, 'BB_WORKER_CONCURRENCY', 2, 1, 16);
   const parseSlots = intEnv(process.env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4);
   const kinds = (process.env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(kind => kind.trim());
@@ -442,7 +443,8 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const interactiveSlots=kinds.includes('run')&&runKinds.some(kind=>kind==='qa'||kind==='generation')?intEnv(process.env,'BB_WORKER_INTERACTIVE_SLOTS',1,0,4):0;
   const confirmationSlots=process.env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'?intEnv(process.env,'BB_UPLOAD_CONFIRMATION_CONCURRENCY',1,1,4)+(process.env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT==='1'?1:0):0;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: generalSlots + interactiveSlots + (kinds.includes('run') && kinds.includes('parse') ? parseSlots : 0) + confirmationSlots + 4 });
-  const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
+  const blobs = privateBlobsFromEnv(process.env);
+  if (!blobs) throw new Error('Private object storage is required');
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);

@@ -10,6 +10,7 @@ import { cosBlobs } from './cos-storage.js';
 
 class FakeCos {
   objects = new Map<string, { bytes: Buffer; type: string; etag: string }>();
+  encryption: string[] = [];
   seenIfMatch: string[] = [];
   replaceBeforeGet = false;
   private value(key: string) {
@@ -17,12 +18,14 @@ class FakeCos {
     if (!value) throw Object.assign(new Error('absent'), { code: 'NoSuchKey', statusCode: 404 });
     return value;
   }
-  async putObject(input: { Key: string; Body: Buffer; ContentType: string }) {
+  async putObject(input: { Key: string; Body: Buffer; ContentType: string; ServerSideEncryption?: string }) {
+    this.encryption.push(input.ServerSideEncryption ?? 'none');
     this.objects.set(input.Key, { bytes: Buffer.from(input.Body), type: input.ContentType, etag: randomUUID() });
     return {};
   }
-  async sliceUploadFile(input: { Key: string; FilePath: string; ContentType: string }) {
-    return this.putObject({ Key: input.Key, Body: await readFile(input.FilePath), ContentType: input.ContentType });
+  async sliceUploadFile(input: { Key: string; FilePath: string; ContentType: string; ServerSideEncryption?: string }) {
+    return this.putObject({ Key: input.Key, Body: await readFile(input.FilePath), ContentType: input.ContentType,
+      ServerSideEncryption: input.ServerSideEncryption });
   }
   async getObject(input: { Key: string }) { return { Body: Buffer.from(this.value(input.Key).bytes) }; }
   async headObject(input: { Key: string }) {
@@ -40,6 +43,7 @@ class FakeCos {
     return Readable.from([Buffer.from(value.bytes)]);
   }
   async deleteObject(input: { Key: string }) { this.objects.delete(input.Key); return {}; }
+  async getBucketVersioning() { return { VersioningConfiguration: {} }; }
   async getBucket(input: { Prefix: string; Marker?: string; MaxKeys: number }) {
     const keys = [...this.objects.keys()].filter(key => key.startsWith(input.Prefix) && (!input.Marker || key > input.Marker)).sort();
     const selected = keys.slice(0, input.MaxKeys);
@@ -55,6 +59,7 @@ test('COS adapter supports private object operations with bounded streaming', as
   const bytes = Buffer.from('bondbuddy cos fixture');
   assert.equal(await blobs.getIfExists('users/a/missing'), null);
   await blobs.put('users/a/one', bytes, 'text/plain');
+  assert.equal(fake.encryption.at(-1), 'AES256');
   assert.equal(fake.objects.get('users/a/one')?.type, 'text/plain');
   assert.deepEqual(await blobs.get('users/a/one'), bytes);
   assert.equal(await blobs.exists('users/a/one'), true);
@@ -71,6 +76,7 @@ test('COS adapter supports private object operations with bounded streaming', as
     const upload = join(root, 'upload.txt');
     await writeFile(upload, Buffer.from('from disk'));
     await blobs.putFile!('users/a/two', upload, 'text/plain');
+    assert.equal(fake.encryption.at(-1), 'AES256');
     assert.equal((await blobs.get('users/a/two')).toString(), 'from disk');
     const opened = await blobs.openRead!('users/a/two');
     assert.equal(opened?.contentLength, 9);

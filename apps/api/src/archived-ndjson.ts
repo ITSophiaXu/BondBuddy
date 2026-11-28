@@ -5,9 +5,11 @@ import { open, readdir, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { isDeepStrictEqual } from 'node:util';
-import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
+import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import type { LogRecord } from './log-ops.js';
+import { storageProviderFromEnv } from './storage-provider.js';
+import { archiveStoreFromEnv, type ArchiveStore } from './log-archive-store.js';
 
 const keyPattern = /^[a-f0-9]{64}$/;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -109,15 +111,13 @@ async function activeId(path: string): Promise<string | null> {
   } finally { await file.close(); }
 }
 
-async function blobDigest(container: ContainerClient, objectKey: string, length: number, sha256: string) {
-  const response = await container.getBlobClient(objectKey).download();
-  if (!response.readableStreamBody || response.contentLength !== length) throw new Error('Archive Blob length mismatch');
-  const hash = createHash('sha256'); let bytes = 0;
-  for await (const chunk of response.readableStreamBody) { const data = Buffer.from(chunk); bytes += data.length; hash.update(data); }
-  if (bytes !== length || hash.digest('hex') !== sha256) throw new Error('Archive Blob hash mismatch');
+async function blobDigest(store: ArchiveStore, objectKey: string, length: number, sha256: string) {
+  const body = await store.read(objectKey);
+  if (!body || body.length !== length || createHash('sha256').update(body).digest('hex') !== sha256)
+    throw new Error('Archive object length or hash mismatch');
 }
 
-async function archive(pool: Pool, container: ContainerClient, sink: string, segment: Segment) {
+async function archive(pool: Pool, store: ArchiveStore, sink: string, segment: Segment) {
   // A missing PG key receipt means the local segment remains available for replay.
   const found = await receipts(pool, sink, segment.keys);
   if (segment.keys.some(key => !found.has(key))) return false;
@@ -129,21 +129,19 @@ async function archive(pool: Pool, container: ContainerClient, sink: string, seg
   if (!existing.rowCount) {
     try {
       const { file } = await safeOpen(segment.path);
-      try {
-        await container.getBlockBlobClient(objectKey).uploadStream(file.createReadStream({ autoClose: false }), 1024 * 1024, 1,
-          { conditions: { ifNoneMatch: '*' }, blobHTTPHeaders: { blobContentType: 'application/x-ndjson' },
-            metadata: { sha256: segment.sha256, segmentid: segment.id } });
-      } finally { await file.close(); }
+      try { await store.uploadStreamIfAbsent(objectKey, file.createReadStream({ autoClose: false }), segment.bytes, segment.sha256, segment.id); }
+      finally { await file.close(); }
     } catch {
       // A lost upload response is resolved by checking the same unique object name and its bytes.
-      await blobDigest(container, objectKey, segment.bytes, segment.sha256);
+      await blobDigest(store, objectKey, segment.bytes, segment.sha256);
     }
   }
   fault('after_blob_upload');
   // Test only: mutate the remote object to exercise an actual readback mismatch.
-  if (process.env.NODE_ENV === 'test' && process.env.BB_LOG_ARCHIVE_TEST_FAULT === 'hash_mismatch')
-    await container.getBlockBlobClient(objectKey).uploadData(Buffer.from('synthetic-corrupt-archive'));
-  await blobDigest(container, objectKey, segment.bytes, segment.sha256);
+  if (process.env.NODE_ENV === 'test' && process.env.BB_LOG_ARCHIVE_TEST_FAULT === 'hash_mismatch' && storageProviderFromEnv() === 'azure')
+    await BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING!).getContainerClient(process.env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private')
+      .getBlockBlobClient(objectKey).uploadData(Buffer.from('synthetic-corrupt-archive'));
+  await blobDigest(store, objectKey, segment.bytes, segment.sha256);
   fault('after_blob_readback');
   fault('before_receipt');
   if (!existing.rowCount) await pool.query(`INSERT INTO bb_log_archive_receipts(segment_id,object_key,byte_length,sha256,record_count)
@@ -173,14 +171,12 @@ export async function writeArchivedNdjson(path: string, sink: string, records: L
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(sink) || records.some(r => !keyPattern.test(r.delivery_key) ||
       !r.event || typeof r.event !== 'object' || Object.hasOwn(r.event, 'delivery_key'))) throw new Error('Invalid archive record');
   if (new Set(records.map(r => r.delivery_key)).size !== records.length) throw new Error('Duplicate archive delivery key');
-  const databaseUrl = process.env.DATABASE_URL, connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const containerName = process.env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private';
-  if (!databaseUrl || !connectionString || !/^[a-z0-9-]{3,63}$/.test(containerName)) throw new Error('Archive storage is not configured');
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('Archive database is not configured');
   const pool = new Pool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 5000 });
   try {
-    const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
-    const properties = await container.getProperties();
-    if (properties.blobPublicAccess) throw new Error('Log archive container must be private');
+    const store = archiveStoreFromEnv();
+    await store.ready();
     const targets = new Set(records.map(r => r.delivery_key)), seen = new Set<string>();
     const oldId = await activeId(path);
     const names = await readdir(dirname(path));
@@ -255,7 +251,7 @@ export async function writeArchivedNdjson(path: string, sink: string, records: L
     let current = await scan(path, id, targets, seen);
     await persistSegment(pool, sink, current, 'active');
     // A sealed file can be removed only after its immutable PG receipt, Blob readback and key receipts agree.
-    for (const segment of sealed) await archive(pool, container, sink, segment);
+    for (const segment of sealed) await archive(pool, store, sink, segment);
     const past = await receipts(pool, sink, records.map(r => r.delivery_key));
     const append: Buffer[] = [];
     for (const record of records) {
@@ -290,7 +286,7 @@ export async function writeArchivedNdjson(path: string, sink: string, records: L
       await syncDirectory(path);
       current = await scan(path, id, targets, seen);
       await persistSegment(pool, sink, current, 'active');
-      await archive(pool, container, sink, prior);
+      await archive(pool, store, sink, prior);
     }
     const localFiles = (await readdir(dirname(path))).filter(n => n === basename(path) || n.startsWith(prefix));
     let localBytes = 0;

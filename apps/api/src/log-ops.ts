@@ -775,7 +775,9 @@ export function logArchiveOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): 
   // The lifecycle verifier bounds one segment in memory while checking mixed-user rows.
   if (ndjsonSizeCapFromEnv(env) > 64 * 1024 * 1024) throw new Error('Archive segment cap must be at most 64 MiB');
   if (!Number.isSafeInteger(localBudget) || localBudget < ndjsonSizeCapFromEnv(env) * 2 || localBudget > 4 * 1024 ** 3 ||
-    !env.DATABASE_URL || !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Invalid log archive configuration');
+    !env.DATABASE_URL || (env.BB_STORAGE_PROVIDER === 'cos'
+      ? !env.BB_COS_SECRET_ID || !env.BB_COS_SECRET_KEY || !env.BB_COS_BUCKET || !env.BB_COS_REGION
+      : !env.AZURE_STORAGE_CONNECTION_STRING)) throw new Error('Invalid log archive configuration');
   return { localBudget };
 }
 

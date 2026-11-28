@@ -20,6 +20,8 @@ export function backupTime(id: string): Date | null {
 }
 
 export function backupContainer(connectionString: string, name = OFFHOST_BACKUP_CONTAINER): ContainerClient {
+  if (process.env.BB_STORAGE_PROVIDER && process.env.BB_STORAGE_PROVIDER !== 'azure')
+    throw new Error('Only Azure off-host backup retention is implemented');
   return BlobServiceClient.fromConnectionString(connectionString).getContainerClient(name);
 }
 

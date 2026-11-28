@@ -10,6 +10,7 @@ import { backupContainers, downloadFile, hashFile, hashStream } from './backup-s
 test('default container scope includes app, log archive and library only once', () => {
   assert.deepEqual(backupContainers({ BB_LOG_ARCHIVE_CONTAINER: 'logs', BB_LIBRARY_CONTAINER: 'library' }), ['bondbuddy-private', 'logs', 'library']);
   assert.deepEqual(backupContainers({ BB_LOG_ARCHIVE_CONTAINER: 'bondbuddy-private' }), ['bondbuddy-private']);
+  assert.deepEqual(backupContainers({ BB_STORAGE_CONTAINER: 'private-test' }), ['private-test']);
   assert.deepEqual(backupContainers({ BB_BLOB_BACKUP_CONTAINERS: ' app-one, app-two,app-one,bb-backups ', BB_BACKUP_CONTAINER: 'bb-backups' }), ['app-one', 'app-two']);
   assert.throws(() => backupContainers({ BB_BLOB_BACKUP_CONTAINERS: 'bb-backups' }), /no application containers/);
   assert.throws(() => backupContainers({ BB_BLOB_BACKUP_CONTAINERS: 'app-one,,app-two' }), /invalid or empty/);

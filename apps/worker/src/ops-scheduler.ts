@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import type { OpsScheduledTask } from '@bondbuddy/contracts';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
+import { privateBlobsFromEnv, storageProviderFromEnv } from '@bondbuddy/api/storage-provider';
+import { pruneCosOffhostBackups } from '@bondbuddy/api/cos-backup-retention';
 import { raiseAlert, tripEvidenceGate } from '@bondbuddy/api/evidence-gate';
 import { checkLogHealth, forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, logArchiveOptionsFromEnv, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
 import { archivePolicyFromEnv, runArchiveLifecycle } from '@bondbuddy/api/log-archive-lifecycle';
@@ -113,6 +115,18 @@ const off = (value: string | undefined) => ['0', 'false', 'off', 'no'].includes(
 
 export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string, container?: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer,
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
+  const provider = storageProviderFromEnv(env);
+  const applicationBlobs = (container?: string) => {
+    if (provider === 'azure') {
+      if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Azure application storage connection required');
+      return blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING, container);
+    }
+    if (container && container !== (env.BB_STORAGE_CONTAINER || 'bondbuddy-private'))
+      throw new Error('COS application storage has no mapping for requested container');
+    const blobs = privateBlobsFromEnv(env);
+    if (!blobs) throw new Error('COS application storage required');
+    return blobs;
+  };
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
   if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.BB_CODEX_AUTH_MODE !== 'copilot_enterprise' && env.BB_CODEX_PROVIDER !== 'copilot_enterprise' && env.DEEPSEEK_API_KEY) {
@@ -147,16 +161,16 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
     return { ok: true, detail: { backlog: r.backlog, alerts: r.alerts.length } };
   } });
   if (logArchiveOptionsFromEnv(env)) {
-    if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled archive retention requires AZURE_STORAGE_CONNECTION_STRING');
+    if (provider === 'azure' && !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled archive retention requires AZURE_STORAGE_CONNECTION_STRING');
     const archivePolicy = archivePolicyFromEnv(env);
     tasks.push({ name: 'archive_retention', intervalMs: seconds('BB_OPS_ARCHIVE_RETENTION_SECONDS', 900), leaseMs: 900_000, run: async (): Promise<TaskOutcome> => {
-      const r = await runArchiveLifecycle(pool, env.AZURE_STORAGE_CONNECTION_STRING!, env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private', archivePolicy);
+      const r = await runArchiveLifecycle(pool, env.AZURE_STORAGE_CONNECTION_STRING || '', env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private', archivePolicy, env);
       return r.failed ? { ok: false, errorCode: 'archive_lifecycle_failed', detail: r } : { ok: true, detail: r };
     } });
   }
   const storage = storageLifecyclePolicyFromEnv(env);
-  if (env.AZURE_STORAGE_CONNECTION_STRING && !off(env.BB_OPS_STORAGE_INVENTORY)) {
-    const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING);
+  if ((provider === 'cos' || env.AZURE_STORAGE_CONNECTION_STRING) && !off(env.BB_OPS_STORAGE_INVENTORY)) {
+    const blobs = applicationBlobs();
     const policy = inventoryPolicyFromEnv(env);
     policy.deleteEnabled = false;
     tasks.push({ name: 'storage_inventory', intervalMs: seconds('BB_OPS_STORAGE_INVENTORY_SECONDS', 3600), leaseMs: 900_000,
@@ -166,8 +180,8 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
       } });
   }
   if (storage && !off(env.BB_OPS_STORAGE_PURGE)) {
-    if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled storage purge requires AZURE_STORAGE_CONNECTION_STRING');
-    const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING);
+    if (provider === 'azure' && !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled storage purge requires AZURE_STORAGE_CONNECTION_STRING');
+    const blobs = applicationBlobs();
     const logDays = retentionPolicyFromEnv(env).contentRetentionDays;
     tasks.push({ name: 'storage_purge', intervalMs: seconds('BB_OPS_STORAGE_PURGE_SECONDS', 900), leaseMs: 900_000, run: async (): Promise<TaskOutcome> => {
       const r = await runUserDeletionLifecycle(pool, blobs, storage, logDays);
@@ -186,13 +200,13 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   }
   // #35: deletes off-host backups (bb-backups container) past BB_BACKUP_RETENTION_DAYS; the newest is always kept.
   // Backups themselves are taken by scripts/backup.sh from host cron (docs/runbooks/m1-deploy.md).
-  if (env.AZURE_STORAGE_CONNECTION_STRING && !off(env.BB_OPS_BACKUP_RETENTION)) {
+  if ((provider === 'cos' || env.AZURE_STORAGE_CONNECTION_STRING) && !off(env.BB_OPS_BACKUP_RETENTION)) {
     const days = intEnv(env, 'BB_BACKUP_RETENTION_DAYS', 30, 1, 3650);
     const connection = env.AZURE_STORAGE_CONNECTION_STRING;
     let container: ReturnType<typeof backupContainer> | null = null;
     tasks.push({ name: 'backup_retention', intervalMs: seconds('BB_OPS_BACKUP_RETENTION_SECONDS', 21600), leaseMs: 900_000, run: async (): Promise<TaskOutcome> => {
-      container ??= backupsFactory(connection);
-      const r = await pruneOffhostBackups(container, days);
+      const r = provider === 'cos' ? await pruneCosOffhostBackups(env, days) :
+        await pruneOffhostBackups(container ??= backupsFactory(connection!), days);
       const detail = { backups: r.backups, deleted: r.deleted, kept: r.kept, failed: r.failed, retention_days: days };
       return r.failed ? { ok: false, errorCode: 'backup_delete_failed', detail } : { ok: true, detail };
     } });
@@ -204,8 +218,8 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
     } });
   // #78 opt-in: per-source scheduled library sync (discover -> fetch -> dedupe -> review queue) and stale alerts.
   if (['1', 'true', 'on', 'yes'].includes((env.BB_OPS_LIBRARY_SYNC ?? '').toLowerCase())) {
-    if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled library sync requires AZURE_STORAGE_CONNECTION_STRING');
-    const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING, env.BB_LIBRARY_CONTAINER ?? 'bondbuddy-private');
+    if (provider === 'azure' && !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled library sync requires AZURE_STORAGE_CONNECTION_STRING');
+    const blobs = applicationBlobs(env.BB_LIBRARY_CONTAINER ?? 'bondbuddy-private');
     const adapters = libraryAdapters?.(blobs) ?? {
       [SSE_BOND_SOURCE.id]: new SseBondProjectAdapter({ maxProjects: intEnv(env, 'BB_LIBRARY_MAX_PROJECTS', 3, 1, 200), delayMs: 800 }),
       [OPERATOR_IMPORT_SOURCE.id]: new OperatorImportAdapter(blobs),

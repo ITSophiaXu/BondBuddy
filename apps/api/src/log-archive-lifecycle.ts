@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 import { Pool, type PoolClient } from 'pg';
 import { pathToFileURL } from 'node:url';
+import { storageProviderFromEnv } from './storage-provider.js';
+import { archiveStoreFromEnv, type ArchiveStore } from './log-archive-store.js';
 
 const DAY = 86_400_000;
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -20,17 +21,10 @@ export function archivePolicyFromEnv(env = process.env): ArchivePolicy {
   return { retentionDays: Number(raw) };
 }
 
-async function bytes(container: ContainerClient, key: string, expected: { byte_length: string | number; sha256: string; record_count: string | number }) {
-  const response = await container.getBlobClient(key).download();
-  if (!response.readableStreamBody || response.contentLength !== Number(expected.byte_length) || response.contentLength > 70 * 1024 * 1024)
-    throw new Error('Archive length mismatch');
-  const parts: Buffer[] = []; let size = 0;
-  for await (const part of response.readableStreamBody) {
-    const buffer = Buffer.from(part); size += buffer.length;
-    if (size > 70 * 1024 * 1024) throw new Error('Archive exceeds verification bound');
-    parts.push(buffer);
-  }
-  const body = Buffer.concat(parts);
+async function bytes(store: ArchiveStore, key: string, expected: { byte_length: string | number; sha256: string; record_count: string | number }) {
+  const body = await store.read(key);
+  if (!body) throw Object.assign(new Error('Archive missing'), { statusCode: 404 });
+  const size = body.length;
   if (size !== Number(expected.byte_length) || sha(body) !== expected.sha256.trim()) throw new Error('Archive hash mismatch');
   const text = body.toString('utf8');
   if (Buffer.from(text).length !== size || (text.length && !text.endsWith('\n'))) throw new Error('Invalid archive encoding');
@@ -100,12 +94,14 @@ export async function releaseArchiveLegalHold(pool: Pool, holdId: string, actorI
 }
 
 /** Runs only when archive mode is enabled. One transaction locks each segment through Blob I/O. */
-export async function runArchiveLifecycle(pool: Pool, connectionString: string, containerName: string, policy: ArchivePolicy) {
+export async function runArchiveLifecycle(pool: Pool, connectionString: string, containerName: string, policy: ArchivePolicy,
+  env: NodeJS.ProcessEnv = process.env, injectedStore?: ArchiveStore) {
   if (!Number.isInteger(policy.retentionDays) || policy.retentionDays < 30 || policy.retentionDays > 3650) throw new Error('Invalid archive retention');
   const now = policy.now?.() ?? new Date(), batch = policy.batchSize ?? 100;
   if (!Number.isInteger(batch) || batch < 1 || batch > 1000) throw new Error('Invalid archive batch size');
-  const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
-  if ((await container.getProperties()).blobPublicAccess) throw new Error('Log archive container must be private');
+  const store = injectedStore ?? archiveStoreFromEnv(storageProviderFromEnv(env) === 'cos' ? env :
+    { ...env, BB_STORAGE_PROVIDER: 'azure', AZURE_STORAGE_CONNECTION_STRING: connectionString, BB_LOG_ARCHIVE_CONTAINER: containerName });
+  await store.ready();
   const candidates = (await pool.query<{segment_id: string}>(`SELECT l.segment_id FROM bb_log_archive_lifecycle l
     JOIN bb_log_segments s ON s.id=l.segment_id
     WHERE l.deleted_at IS NULL AND (l.pending_old_key IS NOT NULL OR l.delete_started_at IS NOT NULL
@@ -125,7 +121,7 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
       if (!row || row.deleted_at) { await db.query('COMMIT'); continue; }
       if (row.pending_old_key) {
         failureAction = 'delete_failed';
-        const prior = await bytes(container, row.pending_old_key, {
+        const prior = await bytes(store, row.pending_old_key, {
           byte_length: row.pending_old_byte_length!, sha256: row.pending_old_sha256!, record_count: row.pending_old_count! }).catch(error => {
           if ((error as { statusCode?: number }).statusCode === 404) return null;
           throw error;
@@ -134,7 +130,7 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
           await audit(db, { ...row, sha256: row.pending_old_sha256!, record_count: row.pending_old_count! }, 'skipped_hold', 'user_deleted', null, null);
           result.skipped++; await db.query('COMMIT'); continue;
         }
-        await container.getBlobClient(row.pending_old_key).deleteIfExists({ deleteSnapshots: 'include' });
+        await store.remove(row.pending_old_key);
         await audit(db, { ...row, sha256: row.pending_old_sha256!, record_count: row.pending_old_count! }, 'old_deleted', 'user_deleted', null, null,
           { sha256: null, count: 0 });
         await db.query(`UPDATE bb_log_archive_lifecycle SET pending_old_key=NULL,pending_old_byte_length=NULL,
@@ -143,7 +139,7 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
       }
       const expired = new Date(row.sealed_at).getTime() <= now.getTime() - policy.retentionDays * DAY;
       failureAction = expired || row.delete_started_at ? 'delete_failed' : 'rewrite_failed';
-      const snapshot = await bytes(container, row.object_key, row).catch(error => {
+      const snapshot = await bytes(store, row.object_key, row).catch(error => {
         if (row.delete_started_at && (error as { statusCode?: number }).statusCode === 404) return null;
         throw error;
       });
@@ -174,7 +170,7 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
             await db.query('COMMIT'); result.skipped++; continue;
           }
         }
-        await container.getBlobClient(row.object_key).deleteIfExists();
+        await store.remove(row.object_key);
         await audit(db, row, 'deleted', reason, null, row.delete_user_id, { sha256: null, count: 0 });
         await db.query('UPDATE bb_log_archive_lifecycle SET deleted_at=$2 WHERE segment_id=$1', [segment_id, now]);
         if (row.delete_user_id) await db.query('INSERT INTO bb_log_archive_user_purges(segment_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [segment_id, row.delete_user_id]);
@@ -194,7 +190,7 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
           await audit(db, row, 'skipped_hold', 'user_deleted', null, user);
           await db.query('COMMIT'); result.skipped++; continue;
         }
-        await container.getBlobClient(row.object_key).deleteIfExists();
+        await store.remove(row.object_key);
         await audit(db, row, 'deleted', 'user_deleted', null, user, { sha256: null, count: 0 });
         await db.query('UPDATE bb_log_archive_lifecycle SET deleted_at=$2 WHERE segment_id=$1', [segment_id, now]);
         await db.query('INSERT INTO bb_log_archive_user_purges(segment_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [segment_id, user]);
@@ -204,10 +200,9 @@ export async function runArchiveLifecycle(pool: Pool, connectionString: string, 
       failureAction = 'rewrite_failed';
       const nextHash = sha(next);
       const nextKey = `log-archive/${row.sink}/${segment_id}.${createHash('sha256').update(user + row.sha256).digest('hex')}.ndjson`;
-      try { await container.getBlockBlobClient(nextKey).uploadData(next, { conditions: { ifNoneMatch: '*' },
-        blobHTTPHeaders: { blobContentType: 'application/x-ndjson' }, metadata: { sha256: nextHash, segmentid: segment_id } }); }
+      try { await store.uploadDataIfAbsent(nextKey, next, nextHash, segment_id); }
       catch { /* A lost upload response is resolved by the readback below. */ }
-      await bytes(container, nextKey, { byte_length: next.length, sha256: nextHash, record_count: kept.length });
+      await bytes(store, nextKey, { byte_length: next.length, sha256: nextHash, record_count: kept.length });
       await policy.beforeSwitch?.();
       await db.query(`UPDATE bb_log_archive_lifecycle SET object_key=$2,byte_length=$3,sha256=$4,record_count=$5,
         pending_old_key=$6,pending_old_byte_length=$7,pending_old_sha256=$8,pending_old_count=$9
@@ -234,9 +229,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     const command = process.argv[2];
     if (command === 'retention') {
-      if (process.env.BB_LOG_ARCHIVE_ENABLED !== '1' || !process.env.AZURE_STORAGE_CONNECTION_STRING)
+      if (process.env.BB_LOG_ARCHIVE_ENABLED !== '1' || storageProviderFromEnv() === 'azure' && !process.env.AZURE_STORAGE_CONNECTION_STRING)
         throw new Error('Enabled archive and Blob connection required');
-      const result = await runArchiveLifecycle(pool, process.env.AZURE_STORAGE_CONNECTION_STRING,
+      const result = await runArchiveLifecycle(pool, process.env.AZURE_STORAGE_CONNECTION_STRING || '',
         process.env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private', archivePolicyFromEnv());
       process.stdout.write(`${JSON.stringify(result)}\n`);
       if (result.failed) process.exitCode = 1;

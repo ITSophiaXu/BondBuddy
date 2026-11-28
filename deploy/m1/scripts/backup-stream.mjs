@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 
 export function backupContainers(env = process.env) {
   const names = !env.BB_BLOB_BACKUP_CONTAINERS
-    ? ['bondbuddy-private', env.BB_LOG_ARCHIVE_CONTAINER, env.BB_LIBRARY_CONTAINER]
+    ? [env.BB_STORAGE_CONTAINER || 'bondbuddy-private', env.BB_LOG_ARCHIVE_CONTAINER, env.BB_LIBRARY_CONTAINER]
     : env.BB_BLOB_BACKUP_CONTAINERS.split(',');
   const backups = env.BB_BACKUP_CONTAINER || 'bb-backups';
   const selected = [...new Set(names.filter(name => name !== undefined).map(name => name.trim()))];

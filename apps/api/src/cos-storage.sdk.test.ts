@@ -13,7 +13,10 @@ test('COS SDK adapter sends version-pinned reads to a local protocol fixture', a
     const key = decodeURIComponent(url.pathname.replace(/^\//, ''));
     const bytes = data.get(key);
     const etag = '"fixture-etag"';
-    if (request.method === 'PUT') {
+    if (request.method === 'GET' && url.searchParams.has('versioning')) {
+      response.writeHead(200, { 'Content-Type': 'application/xml' });
+      response.end('<VersioningConfiguration/>');
+    } else if (request.method === 'PUT') {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       data.set(key, Buffer.concat(chunks));

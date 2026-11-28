@@ -2,7 +2,8 @@ import { purgeAccountRecovery } from './recovery-lifecycle.js';
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import { DATA_POLICY_VERSION, DELETION_PURGED_CONTENT, DELETION_RETAINED_METADATA, type DataPolicy } from '@bondbuddy/contracts';
-import { azureBlobs, transaction, uid, type PrivateBlobs } from './data.js';
+import { transaction, uid, type PrivateBlobs } from './data.js';
+import { privateBlobsFromEnv } from './storage-provider.js';
 import { purgeLogContent, retentionPolicyFromEnv } from './log-ops.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv, type StorageLifecyclePolicy } from './storage-lifecycle.js';
 import { parseInventoryKey } from './storage-inventory.js';
@@ -216,10 +217,12 @@ export async function runUserDeletionLifecycle(pool: Pool, blobs: PrivateBlobs, 
 async function main() {
   const storage = storageLifecyclePolicyFromEnv();
   if (!storage) { process.stdout.write('User deletion purge disabled; no objects changed\n'); return; }
-  if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled deletion purge requires DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING');
+  if (!process.env.DATABASE_URL) throw new Error('Enabled deletion purge requires DATABASE_URL');
+  const blobs = privateBlobsFromEnv();
+  if (!blobs) throw new Error('Enabled deletion purge requires private object storage');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const result = await runUserDeletionLifecycle(pool, azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING), storage, retentionPolicyFromEnv().contentRetentionDays);
+    const result = await runUserDeletionLifecycle(pool, blobs, storage, retentionPolicyFromEnv().contentRetentionDays);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if (result.storage.failed + result.derived.failed + result.logs.failed > 0) process.exitCode = 1;
   } finally { await pool.end(); }
