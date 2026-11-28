@@ -4,7 +4,7 @@
 
 已使用用户在本机提供的测试子用户 CSV 临时加载 `SecretId`/`SecretKey`，未输出、复制到仓库或提交凭据。北京应用测试桶的 `HeadBucket`、`GetBucketVersioning`、`GET Bucket Object versions`、`GetBucketACL`、`GetBucket`、`PutObject`、`GetObject`（含 Range）和 `DeleteObject` 已经实际调用成功；ACL 为 `private`，版本控制未启用。普通 `If-None-Match: *` PUT 会覆盖对象；改用腾讯云官方的 `x-cos-forbid-overwrite: true` 后，第二次同名 PUT 返回 `FileAlreadyExists`，原内容保留。过期 ETag 的 `If-Match` DELETE 返回 412，表明当前桶的条件删除可用。随机探针对象均已删除，并用对象及版本列表确认无残留。依据：[PUT Object 请求头](https://cloud.tencent.com/document/product/436/7749)、[COS API 授权策略使用指引](https://cloud.tencent.com/document/product/436/31923)。防覆盖请求头在启用或暂停版本控制的桶上不作为保障，本分支的仅创建写入因此要求对应桶从未启用版本控制。
 
-同一密钥对应用桶中的**现存**随机测试对象调用 `HeadObject` 返回 403；对备份测试桶的 `HeadBucket`、版本状态、ACL 和列表调用均返回 403。因此真实应用读回、备份恢复和完整本地 COS 集成尚不能验收。官方将 `HEAD Object` 映射为 `name/cos:HeadObject`，版本状态映射为 `cos:GetBucketVersioning`，历史版本列表映射为 `cos:GetBucketObjectVersions`；实际 CAM JSON 使用 `name/cos:` 前缀。供该测试子用户使用的限两桶策略候选见 [cos-test-cam-policy.json](cos-test-cam-policy.json)。该文件已通过本地 JSON 语法检查后方可视为**语法有效**；目前尚未证明控制台接受，也尚未证明更新后目标身份的全部 API 调用成功。必须绑定到生成此 CSV 的同一子用户并实测，不能据策略文本宣称权限已生效。
+同一密钥对应用桶中的**现存**随机测试对象调用 `HeadObject` 返回 403；对备份测试桶的 `HeadBucket`、版本状态、ACL 和列表调用均返回 403。因此真实应用读回、备份恢复和完整本地 COS 集成尚不能验收。官方将 `HEAD Object` 映射为 `name/cos:HeadObject`，版本状态映射为 `cos:GetBucketVersioning`，历史版本列表映射为 `cos:GetBucketObjectVersions`；实际 CAM JSON 使用 `name/cos:` 前缀。限两桶策略候选直接交付用户，不进入 Git。该策略仅完成本地 JSON 语法检查；目前尚未证明控制台接受，也尚未证明更新后目标身份的全部 API 调用成功。必须绑定到生成此 CSV 的同一子用户并实测，不能据策略文本宣称权限已生效。
 
 当前桶的过期 ETag 条件删除虽然通过实测，库存自动删除仍保持关闭；它还需要版本桶与并发删除的完整验收。COS 目标桶的版本策略需单独决定，不能把本次未启用版本控制的测试结果外推到正式桶。
 
