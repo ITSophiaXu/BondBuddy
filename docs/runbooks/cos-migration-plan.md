@@ -1,20 +1,20 @@
 # BondBuddy Azure Blob → 腾讯云 COS 迁移实施方案（草案）
 
-## 2026-11-28 真实 COS 测试与待补权限
+## 2026-11-28 真实 COS 测试
 
 已使用用户在本机提供的测试子用户 CSV 临时加载 `SecretId`/`SecretKey`，未输出、复制到仓库或提交凭据。北京应用测试桶的 `HeadBucket`、`GetBucketVersioning`、`GET Bucket Object versions`、`GetBucketACL`、`GetBucket`、`PutObject`、`GetObject`（含 Range）和 `DeleteObject` 已经实际调用成功；ACL 为 `private`，版本控制未启用。普通 `If-None-Match: *` PUT 会覆盖对象；改用腾讯云官方的 `x-cos-forbid-overwrite: true` 后，第二次同名 PUT 返回 `FileAlreadyExists`，原内容保留。过期 ETag 的 `If-Match` DELETE 返回 412，表明当前桶的条件删除可用。随机探针对象均已删除，并用对象及版本列表确认无残留。依据：[PUT Object 请求头](https://cloud.tencent.com/document/product/436/7749)、[COS API 授权策略使用指引](https://cloud.tencent.com/document/product/436/31923)。防覆盖请求头在启用或暂停版本控制的桶上不作为保障，本分支的仅创建写入因此要求对应桶从未启用版本控制。
 
-同一密钥对应用桶中的**现存**随机测试对象调用 `HeadObject` 返回 403；对备份测试桶的 `HeadBucket`、版本状态、ACL 和列表调用均返回 403。因此真实应用读回、备份恢复和完整本地 COS 集成尚不能验收。官方将 `HEAD Object` 映射为 `name/cos:HeadObject`，版本状态映射为 `cos:GetBucketVersioning`，历史版本列表映射为 `cos:GetBucketObjectVersions`；实际 CAM JSON 使用 `name/cos:` 前缀。限两桶策略候选直接交付用户，不进入 Git。该策略仅完成本地 JSON 语法检查；目前尚未证明控制台接受，也尚未证明更新后目标身份的全部 API 调用成功。必须绑定到生成此 CSV 的同一子用户并实测，不能据策略文本宣称权限已生效。
+用户将限两桶 CAM 策略关联到生成测试 CSV 的子用户后，已重新用该身份实际调用两个桶的 `HeadBucket`、ACL、版本状态、当前对象列表、历史版本列表及现存对象的 `HeadObject`，均成功。两个桶均为 `private`，版本控制未启用。策略 JSON 直接交付用户，当前分支不包含该文件。此处已验证的是测试身份对两个测试桶的这些 API 调用，不代表正式桶权限或加密配置已验收。
+
+同一测试身份完成随机合成对象的应用桶备份至独立备份桶、下载、恢复及 SHA-256 一致性检查；完成 `PrivateBlobs` 读写、固定 ETag 读取、5 MiB 分块上传和删除；完成日志归档仅创建、回读及永久删除。备份桶保留清理测试写入两组完整合成备份，实际调用 `pruneCosOffhostBackups`，结果为 `backups=2`、`deleted=1`、`deletedBlobs=2`、`failed=0`：旧组被删除，最新完整备份保留。上述探针结束后，对两个桶的随机测试对象及版本列表核对均无残留。
 
 当前桶的过期 ETag 条件删除虽然通过实测，库存自动删除仍保持关闭；它还需要版本桶与并发删除的完整验收。COS 目标桶的版本策略需单独决定，不能把本次未启用版本控制的测试结果外推到正式桶。
 
-真实测试暴露的旧 `If-None-Match` COS 写法已在日志归档和迁移复制仅创建路径改为 `x-cos-forbid-overwrite`，探针也已修正。API TypeScript 编译通过，相关定向测试 10/10 通过；完整 worker 构建、Web/API/worker 本地集成、备份恢复、1% 样本测速和生产切换仍未完成。下文早于本节的“尚未取得测试凭据/未对真实 COS 调用”等进度描述由本节覆盖。
+真实测试暴露的旧 `If-None-Match` COS 写法已在日志归档和迁移复制仅创建路径改为 `x-cos-forbid-overwrite`，探针也已修正。API TypeScript 编译通过，相关定向测试 10/10 通过。完整 worker 构建、Web/API/worker 本地集成、版本桶和加密行为、1% 样本测速及生产切换仍未完成。下文早于本节的“尚未取得测试凭据/未对真实 COS 调用”等进度描述由本节覆盖。
 
-## 2026-11-28 开发状态更新
+## 2026-11-28 本地开发与合成测试记录
 
-用户已在北京 `ap-beijing` 创建独立的应用测试桶 `bb-cos-migration-app-test-1257052376` 与备份测试桶 `bb-cos-migration-backup-test-1257052376`。控制台列表证明桶已创建，不证明目标身份的 API 权限、私有 ACL、条件请求、版本控制或加密已通过实测；尚未取得测试凭据，未对真实 COS 发起调用。
-
-本开发分支已增加 COS 日志归档上传及回读校验、按所有对象版本清理的归档保留/应用对象删除、独立备份桶的保留清理、运维调度器 COS 接线，以及数据库显式对象引用对账。COS 库存删除仍关闭，因为它需要原子条件删除。合成客户端测试、隔离 PostgreSQL 16 的归档保留和对账 SQL 测试，以及既有 Azure/Azurite 归档保留回归已运行。完整 API/Web/worker 本地集成版、真实 COS 功能测试、备份恢复演练、全量/增量迁移、用户验收和生产切换均未完成。下文较早的“调度器仍拒绝 COS”等开发进度描述由本节覆盖。
+本开发分支已增加 COS 日志归档上传及回读校验、按所有对象版本清理的归档保留/应用对象删除、独立备份桶的保留清理、运维调度器 COS 接线，以及数据库显式对象引用对账。COS 库存删除仍关闭，因为它需要原子条件删除。合成客户端测试、隔离 PostgreSQL 16 的归档保留和对账 SQL 测试，以及既有 Azure/Azurite 归档保留回归已运行。完整 API/Web/worker 本地集成版、全量/增量迁移、用户验收和生产切换均未完成。
 
 定向证据：API TypeScript 编译通过；COS 适配器/归档存储/备份保留合成测试 8/8；隔离 PostgreSQL 16 + COS 客户端替身的归档保留测试 1/1；隔离 PostgreSQL 16 + Azurite 的既有 Azure 归档保留回归 1/1；对账 SQL/合成 HEAD 测试 3/3；调度器 COS 配置和备份保留定向测试 2/2；Compose/复制工具回归 8/8。完整 worker 构建受当前工作区缺失的 Playwright 包阻断；Linux 文件锁归档写入回归在 Windows 上因 POSIX 权限检查失败，不能计为通过。上述结果仍不构成完整本地业务链路或真实 COS 验收。
 
@@ -68,7 +68,7 @@
 
 安全边界补充：日志归档、保留处理和用户清理入口按所选存储提供方工作，不在 COS 模式回退 Azure。对象盘点 CLI 支持 COS 只读扫描；库存自动删除仍要求原子条件删除，COS 模式明确拒绝。这些代码路径仍需真实 COS 和完整本地集成验收。
 
-离机备份上传/下载、保留清理和应用对象快照导出/导入已有 COS 代码路径：主对象使用 `BB_COS_BUCKET`，离机备份必须另设 `BB_COS_BACKUP_BUCKET`，可使用独立的 `BB_COS_BACKUP_SECRET_ID`/`BB_COS_BACKUP_SECRET_KEY` 身份和 `BB_COS_BACKUP_REGION`。备份文件与恢复对象都做读回 SHA-256 校验；合成闭环已通过。保留任务保护最新一份带完成清单的备份，按版本删除旧对象，完成清单最后删除。实际恢复演练、真实 COS 私有权限、版本控制、加密、对象锁及费用尚未验证。
+离机备份上传/下载、保留清理和应用对象快照导出/导入已有 COS 代码路径：主对象使用 `BB_COS_BUCKET`，离机备份必须另设 `BB_COS_BACKUP_BUCKET`，可使用独立的 `BB_COS_BACKUP_SECRET_ID`/`BB_COS_BACKUP_SECRET_KEY` 身份和 `BB_COS_BACKUP_REGION`。备份文件与恢复对象都做读回 SHA-256 校验；合成闭环及真实 COS 的随机应用对象备份恢复已通过。保留任务保护最新一份带完成清单的备份，按版本删除旧对象，完成清单最后删除；未启用版本控制的真实测试桶已通过保留清理演练。真实 COS 私有权限已验证；版本桶、加密、对象锁、生产规模恢复及费用仍待验证。
 
 ## 保留与安全对照
 
